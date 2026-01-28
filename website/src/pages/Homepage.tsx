@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
 
 const howItWorks = [
-  { step: 1, title: 'Connect HubSpot', desc: 'Link your HubSpot account in one click.' },
+  { step: 1, title: 'Connect', desc: 'Link your CRM account in one click.' },
   { step: 2, title: 'Choose what to write', desc: 'Pick the type of copy you need.' },
-  { step: 3, title: 'Send to HubSpot', desc: 'Push finished copy straight into your CRM.' },
+  { step: 3, title: 'Send to CRM', desc: 'Push finished copy straight into your CRM.' },
 ]
 
 const whatYouCanCreate = [
@@ -17,7 +17,7 @@ const whatYouCanCreate = [
 const whyThisTool = [
   { title: 'Save time', desc: 'Minutes instead of hours.' },
   { title: 'No prompts', desc: 'Just pick a type and go.' },
-  { title: 'HubSpot-ready', desc: 'Built for your CRM.' },
+  { title: 'CRM-ready', desc: 'Built for your CRM.' },
 ]
 
 export function Homepage() {
@@ -25,7 +25,7 @@ export function Homepage() {
     <div>
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-stone-200">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <span className="font-display font-bold text-xl text-stone-800">HubSpot Copy AI</span>
+          <span className="font-display font-bold text-xl text-stone-800">ACI</span>
           <div className="flex items-center gap-4">
             <Link to="/help" className="text-stone-600 hover:text-orange-600 font-medium text-sm">
               How it works
@@ -49,17 +49,17 @@ export function Homepage() {
             Trusted by 1,000+ sales teams
           </p>
           <h1 className="font-display font-bold text-4xl sm:text-5xl md:text-6xl text-stone-900 leading-tight mb-6 animate-fade-in">
-            Create HubSpot CRM copy in minutes with AI
+            Create CRM copy in minutes with AI
           </h1>
           <p className="text-lg text-stone-600 max-w-2xl mx-auto mb-8 animate-fade-in">
-            Write sales emails, follow-ups, workflow messages, and CRM notes without prompts. Connect HubSpot once and send copy straight into your CRM.
+            Write sales emails, follow-ups, workflow messages, and CRM notes without prompts. Connect once and send copy straight into your CRM.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in">
             <Link
               to="/login"
               className="inline-flex justify-center px-6 py-3 rounded-xl bg-orange-500 text-white font-semibold hover:bg-orange-600 shadow-lg shadow-orange-500/25"
             >
-              Connect HubSpot
+              Connect
             </Link>
             <Link
               to="/help"
@@ -130,20 +130,20 @@ export function Homepage() {
             Start writing in minutes
           </h2>
           <p className="text-orange-100 text-lg mb-8">
-            Connect HubSpot, set your brand tone once, and generate copy whenever you need it.
+            Connect your CRM, set your brand tone once, and generate copy whenever you need it.
           </p>
           <Link
             to="/login"
             className="inline-flex justify-center px-6 py-3 rounded-xl bg-white text-orange-600 font-semibold hover:bg-orange-50 shadow-lg"
           >
-            Connect HubSpot
+            Connect
           </Link>
         </div>
       </section>
 
       <footer className="py-12 px-4 bg-stone-900 text-stone-400">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-          <span className="font-display font-bold text-white">HubSpot Copy AI</span>
+          <span className="font-display font-bold text-white">ACI</span>
           <div className="flex gap-6">
             <Link to="/privacy" className="hover:text-white">Privacy Policy</Link>
             <Link to="/terms" className="hover:text-white">Terms of Service</Link>

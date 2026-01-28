@@ -8,7 +8,7 @@ export function DashboardLayout() {
       <header className="sticky top-0 z-50 bg-white border-b border-stone-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link to="/dashboard" className="font-display font-bold text-xl text-stone-800">
-            HubSpot Copy AI
+            ACI
           </Link>
           <nav className="flex items-center gap-2">
             <Link to="/dashboard" className="px-3 py-2 text-stone-600 hover:text-orange-600 text-sm font-medium rounded-lg hover:bg-orange-50">

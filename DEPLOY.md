@@ -2,7 +2,7 @@
 
 ## 1. Publish to GitHub
 
-Create a new repository on GitHub (e.g. `crm` or `hubspot-ai-writer`), then run:
+Create a new repository on GitHub (e.g. `crm` or `aci`), then run:
 
 ```powershell
 cd "c:\Users\KiaJamishidi\OneDrive - BonApp Group\Documents\repo\crm"
@@ -53,9 +53,9 @@ The workflow builds the app and deploys to Azure Static Web Apps.
 
 ## 5. Check that it works
 
-1. After the first successful run, open the URL shown when you ran `azure-create.ps1` (e.g. `https://crm-hubspot-writer.azurestaticapps.net`).
+1. After the first successful run, open the URL shown when you ran `azure-create.ps1` (e.g. `https://aci.azurestaticapps.net`).
 2. Or in Azure Portal: **Static Web Apps** → your app → **Overview** → **URL**.
-3. Confirm the HubSpot AI Writer app loads and navigation works (SPA routing is configured).
+3. Confirm the ACI app loads and navigation works (SPA routing is configured).
 
 ## Summary
 

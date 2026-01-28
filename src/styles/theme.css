@@ -130,16 +130,25 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+  }
+
+  /* Keyboard focus for accessibility (visible ring, no ring on mouse click) */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none ring-2 ring-orange-500 ring-offset-2 ring-offset-slate-50;
   }
 
   /**
-  * Default typography styles for HTML elements (h1-h4, p, label, button, input).
-  * These are in @layer base, so Tailwind utility classes (like text-sm, text-lg) automatically override them.
+  * Default typography and behavior for HTML.
   */
-
   html {
     font-size: var(--font-size);
+    scroll-behavior: smooth;
   }
 
   h1 {

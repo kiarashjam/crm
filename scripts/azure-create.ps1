@@ -3,8 +3,8 @@
 # Requires: Azure CLI installed and logged in (az login)
 
 param(
-    [string]$ResourceGroupName = "rg-crm-hubspot",
-    [string]$StaticWebAppName = "crm-hubspot-writer",
+    [string]$ResourceGroupName = "rg-crm-aci",
+    [string]$StaticWebAppName = "aci",
     [string]$Location = "eastus2"
 )
 
