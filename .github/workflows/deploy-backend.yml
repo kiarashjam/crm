@@ -39,6 +39,11 @@ jobs:
         working-directory: backend
         run: dotnet publish src/ACI.WebApi/ACI.WebApi.csproj -c Release -o ${{ github.workspace }}/publish-api --no-build
 
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
