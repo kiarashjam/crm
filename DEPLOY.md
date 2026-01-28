@@ -114,4 +114,6 @@ The script prints:
 
 **Cost:**  
 - **Static Web App** Free tier: $0/month.  
-- **Azure SQL** Basic + **App Service** B1: paid. Use **F1** App Service for free tier (limits apply) by editing the script `--sku` for the App Service Plan.
+- **Azure SQL** Basic: paid. **App Service** uses **F1** (Free) by default; switch to B1 in the script if you have quota and want a paid plan.
+
+**Quota:** If App Service Plan creation fails with *"Operation cannot be completed without additional quota"*, your subscription has no App Service (Free/Basic) quota in that region. Either request a quota increase (Azure Portal → Subscriptions → your subscription → Usage + quotas → App Service), or run the script in another region (e.g. `-Location eastus`) where you have quota.

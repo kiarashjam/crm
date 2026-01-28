@@ -30,15 +30,14 @@ az appservice plan create `
     --name $AppServicePlanName `
     --resource-group $ResourceGroupName `
     --location $Location `
-    --sku B1 `
-    --is-linux $false
+    --sku F1
 
 Write-Host "Creating Web App: $WebAppName ..."
 az webapp create `
     --name $WebAppName `
     --resource-group $ResourceGroupName `
     --plan $AppServicePlanName `
-    --runtime "DOTNET|8.0"
+    --runtime "dotnet:8"
 
 Write-Host "Configuring Web App settings ..."
 az webapp config appsettings set `

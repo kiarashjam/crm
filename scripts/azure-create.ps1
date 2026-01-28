@@ -76,15 +76,14 @@ if (-not $SkipBackendAndDatabase) {
         --name $AppServicePlanName `
         --resource-group $ResourceGroupName `
         --location $Location `
-        --sku B1 `
-        --is-linux $false
+        --sku F1
 
     Write-Host "Creating Web App (backend): $WebAppName ..."
     az webapp create `
         --name $WebAppName `
         --resource-group $ResourceGroupName `
         --plan $AppServicePlanName `
-        --runtime "DOTNET|8.0"
+        --runtime "dotnet:8"
 
     $jwtSecret = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
     $corsOrigins = "https://$swaHost,http://localhost:5173,http://localhost:3000"
