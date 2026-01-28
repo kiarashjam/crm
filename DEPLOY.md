@@ -78,23 +78,21 @@ The script prints:
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | Token printed by the script (for frontend deploy) |
 | `AZURE_WEBAPP_NAME` | Backend Web App name (e.g. `aci-api-xxxxx`) printed by the script |
 | `AZURE_WEBAPP_PUBLISH_PROFILE` | Download from Azure Portal → **Web App** (your backend app) → **Get publish profile** → paste entire XML |
-| `AZURE_CREDENTIALS` | JSON for service principal (see below) – **required for backend deploy** |
+| `AZURE_CLIENT_ID` | Application (client) ID of the app registration (for backend deploy) |
+| `AZURE_TENANT_ID` | Directory (tenant) ID of the app registration |
+| `AZURE_SUBSCRIPTION_ID` | Your Azure subscription ID |
+| `AZURE_CLIENT_SECRET` | Client secret value from the app registration (Certificates & secrets) |
 
-**Creating `AZURE_CREDENTIALS` (for backend deploy):**
+**Creating the four Azure login secrets (for backend deploy):**
 
 1. In Azure Portal: **Microsoft Entra ID** → **App registrations** → **New registration** (e.g. name `github-actions-crm`). Note the **Application (client) ID** and **Directory (tenant) ID**.
 2. In the app: **Certificates & secrets** → **New client secret** → copy the **Value** (not the Secret ID).
-3. **Subscriptions** → your subscription → **Access control (IAM)** → **Add role assignment** → Role: **Contributor** → Members: select the app you created → Save.
-4. Build this JSON (replace placeholders with your values), then add it as secret `AZURE_CREDENTIALS`:
-
-```json
-{
-  "clientId": "<Application (client) ID>",
-  "clientSecret": "<client secret value>",
-  "subscriptionId": "<your subscription ID>",
-  "tenantId": "<Directory (tenant) ID>"
-}
-```
+3. **Subscriptions** → your subscription → **Access control (IAM)** → **Add role assignment** → Role: **Contributor** → Members: select the app you created → Save. Note your **Subscription ID** (Subscriptions → your subscription).
+4. Add these four **repository secrets** in GitHub (Settings → Secrets and variables → Actions):
+   - `AZURE_CLIENT_ID` = Application (client) ID  
+   - `AZURE_TENANT_ID` = Directory (tenant) ID  
+   - `AZURE_SUBSCRIPTION_ID` = Subscription ID  
+   - `AZURE_CLIENT_SECRET` = client secret value
 
 3. **Optional** – so the frontend calls the deployed API:
    - **Variables** → **New repository variable**
@@ -125,7 +123,7 @@ The script prints:
 |------|------|
 | 1 | Push code to GitHub |
 | 2 | Run `./scripts/azure-create.ps1 -SqlAdminPassword '...'` (or `-SkipBackendAndDatabase` for frontend-only) |
-| 3 | Add `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_WEBAPP_NAME`, `AZURE_WEBAPP_PUBLISH_PROFILE`, and `AZURE_CREDENTIALS`; optionally `VITE_API_URL` variable |
+| 3 | Add `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_WEBAPP_NAME`, `AZURE_WEBAPP_PUBLISH_PROFILE`, and `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_CLIENT_SECRET`; optionally `VITE_API_URL` variable |
 | 4 | Push to `main` or create a release → frontend and/or backend deploy |
 | 5 | Check Static Web App URL and backend Swagger |
 
