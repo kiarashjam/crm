@@ -17,54 +17,101 @@ git push -u origin main
 
 Replace `YOUR_USERNAME` and `YOUR_REPO_NAME` with your GitHub username and repo name.
 
-## 2. Create Azure resource group and website (cheapest = Free)
+## 2. Create Azure resources (resource group, Static Web App, SQL, Backend Web App)
+
+All resources are created in the **same resource group** (`rg-crm-aci` by default).
 
 - Install [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) if needed.
 - Log in: `az login`
-- Run the script:
+- Run the script **(SQL admin password required)**:
 
 ```powershell
-./scripts/azure-create.ps1
+./scripts/azure-create.ps1 -SqlAdminPassword 'YourSecurePwd1!'
 ```
 
-Optional parameters (defaults are fine):
+The password must have at least 8 characters, upper, lower, number, and a special character. Avoid `"` and `'` in the password.
+
+**Optional parameters:**
 
 ```powershell
-./scripts/azure-create.ps1 -ResourceGroupName "rg-crm" -StaticWebAppName "crm-app" -Location "eastus2"
+./scripts/azure-create.ps1 `
+  -ResourceGroupName "rg-crm-aci" `
+  -StaticWebAppName "aci" `
+  -Location "eastus2" `
+  -SqlAdminPassword 'YourSecurePwd1!' `
+  -SqlServerName "aci-sql-mysuffix" `
+  -SqlDatabaseName "ACI" `
+  -SqlAdminLogin "sqladmin" `
+  -AppServicePlanName "asp-aci" `
+  -WebAppName "aci-api-mysuffix"
 ```
 
-- Copy the **deployment token** printed at the end.
+**Frontend-only (no database or backend):**
 
-## 3. Add GitHub secret for Azure deploy
+```powershell
+./scripts/azure-create.ps1 -SkipBackendAndDatabase
+```
+
+(This only creates the resource group and Static Web App, like the original script. No `-SqlAdminPassword` needed.)
+
+**Finish Web App only** (if the main script timed out after creating SQL):
+
+```powershell
+./scripts/azure-create-webapp-only.ps1 -SqlAdminPassword 'YourPwd1!' -SqlServerName "aci-sql-XXXXXX" -WebAppName "aci-api-XXXXXX"
+```
+
+Use the same suffix as your SQL server (see Azure Portal → SQL servers).
+
+The script prints:
+
+- **Static Web App** deployment token and URL
+- **Backend Web App** name and URL
+- **GitHub secrets** to add (see below)
+
+## 3. Add GitHub secrets (and optional variable)
 
 1. Open your repo on GitHub → **Settings** → **Secrets and variables** → **Actions**.
-2. Click **New repository secret**.
-3. Name: `AZURE_STATIC_WEB_APPS_API_TOKEN`
-4. Value: paste the token from step 2.
+2. Add **Secrets**:
 
-## 4. Deploy (publish new version)
+| Secret | Value |
+|--------|--------|
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | Token printed by the script (for frontend deploy) |
+| `AZURE_WEBAPP_NAME` | Backend Web App name (e.g. `aci-api-xxxxx`) printed by the script |
+| `AZURE_WEBAPP_PUBLISH_PROFILE` | Download from Azure Portal → **Web App** (your backend app) → **Get publish profile** → paste entire XML |
 
-Deploys run automatically when:
+3. **Optional** – so the frontend calls the deployed API:
+   - **Variables** → **New repository variable**
+   - Name: `VITE_API_URL`
+   - Value: backend URL (e.g. `https://aci-api-xxxxx.azurewebsites.net`), no trailing slash
 
-- You **push to `main`** (excluding `.md` and `.gitignore`), or  
-- You **publish a release**: Repo → **Releases** → **Create a new release** → choose tag (e.g. `v0.0.1`) → **Publish release**.
+## 4. Deploy
 
-The workflow builds the app and deploys to Azure Static Web Apps.
+**Frontend (Static Web App)**  
+- Workflow: `Build and deploy to Azure Static Web Apps`  
+- Runs on **push to `main`** (ignoring `.md` / `.gitignore`) or **publish release**.  
+- Builds the React app and deploys to the Static Web App.
 
-## 5. Check that it works
+**Backend (Web App)**  
+- Workflow: `Build and deploy backend to Azure Web App`  
+- Runs on **push to `main`** when `backend/**` or `.github/workflows/deploy-backend.yml` change, on **publish release**, or via **workflow_dispatch**.  
+- Builds the .NET Web API and deploys to the Azure Web App. EF migrations run on app startup.
 
-1. After the first successful run, open the URL shown when you ran `azure-create.ps1` (e.g. `https://aci.azurestaticapps.net`).
-2. Or in Azure Portal: **Static Web Apps** → your app → **Overview** → **URL**.
-3. Confirm the ACI app loads and navigation works (SPA routing is configured).
+## 5. Verify
+
+1. **Frontend:** Open the Static Web App URL from the script (e.g. `https://aci.azurestaticapps.net`). Confirm the app loads and SPA routing works.
+2. **Backend:** Open `https://<your-webapp-name>.azurewebsites.net` (or `/swagger` if you enable it in production). Confirm the API responds (e.g. 401 on protected routes without a token).
+3. If `VITE_API_URL` is set, use the frontend, log in, and check that API calls go to the deployed backend.
 
 ## Summary
 
 | Step | What |
 |------|------|
 | 1 | Push code to GitHub |
-| 2 | Run `./scripts/azure-create.ps1`, copy token |
-| 3 | Add `AZURE_STATIC_WEB_APPS_API_TOKEN` in GitHub Actions secrets |
-| 4 | Push to `main` or create a release to deploy |
-| 5 | Open the Static Web App URL and verify |
+| 2 | Run `./scripts/azure-create.ps1 -SqlAdminPassword '...'` (or `-SkipBackendAndDatabase` for frontend-only) |
+| 3 | Add `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_WEBAPP_NAME`, `AZURE_WEBAPP_PUBLISH_PROFILE`; optionally `VITE_API_URL` variable |
+| 4 | Push to `main` or create a release → frontend and/or backend deploy |
+| 5 | Check Static Web App URL and backend Swagger |
 
-Cost: **Azure Static Web Apps Free tier = $0/month** (cheapest option).
+**Cost:**  
+- **Static Web App** Free tier: $0/month.  
+- **Azure SQL** Basic + **App Service** B1: paid. Use **F1** App Service for free tier (limits apply) by editing the script `--sku` for the App Service Plan.

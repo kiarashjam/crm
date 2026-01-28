@@ -34,6 +34,9 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Optional: set vars.VITE_API_URL (e.g. https://aci-api-xxx.azurewebsites.net) so frontend calls deployed backend
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
