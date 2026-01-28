@@ -1,4 +1,5 @@
 import type { UserSettings } from './types';
+import { isUsingRealApi, authFetchJson } from './apiClient';
 
 const STORAGE_KEY = 'crm_user_settings';
 
@@ -25,8 +26,16 @@ const defaults: UserSettings = {
   brandTone: 'professional',
 };
 
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 /** Get user settings (company name, brand tone). */
 export async function getUserSettings(): Promise<UserSettings> {
+  if (isUsingRealApi()) {
+    const res = await authFetchJson<{ companyName: string; brandTone: string }>('/api/settings');
+    return res ? { companyName: res.companyName, brandTone: res.brandTone as UserSettings['brandTone'] } : { ...defaults };
+  }
   await delay(80);
   const stored = getStored();
   return stored ? { ...defaults, ...stored } : { ...defaults };
@@ -34,13 +43,16 @@ export async function getUserSettings(): Promise<UserSettings> {
 
 /** Save user settings. */
 export async function saveUserSettings(settings: Partial<UserSettings>): Promise<UserSettings> {
+  if (isUsingRealApi()) {
+    const res = await authFetchJson<{ companyName: string; brandTone: string }>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+    return res ? { companyName: res.companyName, brandTone: res.brandTone as UserSettings['brandTone'] } : { ...defaults };
+  }
   await delay(100);
   const current = getStored() ?? defaults;
   const next = { ...current, ...settings };
   setStored(next);
   return next;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

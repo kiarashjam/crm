@@ -28,13 +28,16 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore backend/ACI.sln
+        working-directory: backend
+        run: dotnet restore ACI.sln
 
       - name: Build
-        run: dotnet build backend/ACI.sln --configuration Release --no-restore
+        working-directory: backend
+        run: dotnet build ACI.sln --configuration Release --no-restore
 
       - name: Publish
-        run: dotnet publish backend/src/ACI.WebApi/ACI.WebApi.csproj -c Release -o ${{ env.AZURE_WEBAPP_PACKAGE_PATH }} --no-build
+        working-directory: backend
+        run: dotnet publish src/ACI.WebApi/ACI.WebApi.csproj -c Release -o ${{ github.workspace }}/publish-api --no-build
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2

@@ -1,7 +1,19 @@
-/** Frontend API layer (mock implementations; replace with real fetch later). */
+/** Frontend API layer: always uses real backend when VITE_API_URL is set (never mock). */
 
 export * from './types';
 export { messages } from './messages';
+export { getApiBaseUrl, isUsingRealApi } from './apiClient';
+export {
+  login,
+  loginWithTwoFactor,
+  register,
+  me,
+  twoFactorSetup,
+  twoFactorEnable,
+  twoFactorDisable,
+  type TwoFactorSetupResponse,
+} from './auth';
+export * from './authApi';
 export * from './contacts';
 export * from './deals';
 export * from './templates';

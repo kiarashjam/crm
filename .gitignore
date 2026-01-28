@@ -3,6 +3,7 @@ node_modules/
 
 # Build
 dist/
+publish-api/
 *.local
 
 # IDE
@@ -26,3 +27,18 @@ npm-debug.log*
 
 # Vite
 website/.vite/
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.dbmdl
+*.jfm
+*.pfx
+*.publishsettings
+appsettings.*.local.json
+**/Properties/launchSettings.json

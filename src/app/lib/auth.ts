@@ -1,34 +1,57 @@
-const CRM_USER_KEY = 'crm_demo_user';
+const TOKEN_KEY = 'aci_token';
+const USER_KEY = 'aci_user';
 
-export type DemoUser = { name: string; email: string };
+export type AuthUser = { id: string; name: string; email: string };
 
-export function setDemoUser(user: DemoUser): void {
+export function setSession(token: string, user: AuthUser): void {
   try {
-    localStorage.setItem(CRM_USER_KEY, JSON.stringify(user));
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
   } catch {
     // ignore
   }
 }
 
-export function getDemoUser(): DemoUser | null {
+export function getAuthToken(): string | null {
   try {
-    const raw = localStorage.getItem(CRM_USER_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as DemoUser;
-    return data?.name && data?.email ? data : null;
+    return localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
   }
 }
 
-export function clearDemoUser(): void {
+export function getCurrentUser(): AuthUser | null {
   try {
-    localStorage.removeItem(CRM_USER_KEY);
+    const raw = localStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as AuthUser;
+    return data?.id && data?.name && data?.email ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearSession(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
   } catch {
     // ignore
   }
 }
 
 export function isLoggedIn(): boolean {
-  return getDemoUser() !== null;
+  return getCurrentUser() !== null;
 }
+
+/** Set user only (demo mode: no token). For real API use setSession after login/register. */
+export function setDemoUser(user: { name: string; email: string }): void {
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify({ id: 'demo', name: user.name, email: user.email }));
+  } catch {
+    // ignore
+  }
+}
+
+export const getDemoUser = (): AuthUser | null => getCurrentUser();
+export const clearDemoUser = (): void => clearSession();

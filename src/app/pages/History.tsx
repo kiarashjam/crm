@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import EmptyState from '@/app/components/EmptyState';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
+import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getCopyHistory } from '@/app/api';
 import type { CopyHistoryItem } from '@/app/api/types';
 import { messages } from '@/app/api/messages';

@@ -5,15 +5,23 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getUserSettings, saveUserSettings, getConnectionStatus } from '@/app/api';
+import { getUserSettings, saveUserSettings, getConnectionStatus, twoFactorSetup, twoFactorEnable, twoFactorDisable } from '@/app/api';
 import type { UserSettings } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/app/components/ui/input-otp';
 
 export default function Settings() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [twoFaEnabled, setTwoFaEnabled] = useState<boolean | null>(null);
+  const [twoFaLoading, setTwoFaLoading] = useState(false);
+  const [twoFaSecret, setTwoFaSecret] = useState<string | null>(null);
+  const [twoFaUri, setTwoFaUri] = useState<string | null>(null);
+  const [twoFaCode, setTwoFaCode] = useState('');
+  const [twoFaDisablePassword, setTwoFaDisablePassword] = useState('');
+  const [twoFaDisableCode, setTwoFaDisableCode] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,6 +31,15 @@ export default function Settings() {
     getConnectionStatus()
       .then((s) => setConnected(s.connected))
       .catch(() => {});
+
+    // Best-effort: fetch 2FA status (setup endpoint returns Enabled + secret)
+    twoFactorSetup()
+      .then((r) => {
+        setTwoFaEnabled(r.enabled);
+        setTwoFaSecret(r.secret);
+        setTwoFaUri(r.otpauthUri);
+      })
+      .catch(() => setTwoFaEnabled(false));
   }, []);
 
   const handleSave = async () => {
@@ -43,6 +60,56 @@ export default function Settings() {
       navigate('/');
     } else {
       setShowDeleteConfirm(true);
+    }
+  };
+
+  const handleStart2fa = async () => {
+    setTwoFaLoading(true);
+    try {
+      const r = await twoFactorSetup();
+      setTwoFaEnabled(r.enabled);
+      setTwoFaSecret(r.secret);
+      setTwoFaUri(r.otpauthUri);
+      toast.message('Scan the secret in your authenticator, then confirm the code.');
+    } catch {
+      toast.error(messages.errors.generic);
+    } finally {
+      setTwoFaLoading(false);
+    }
+  };
+
+  const handleEnable2fa = async () => {
+    if (twoFaCode.replace(/\D/g, '').length !== 6) return;
+    setTwoFaLoading(true);
+    try {
+      await twoFactorEnable(twoFaCode);
+      setTwoFaEnabled(true);
+      setTwoFaCode('');
+      toast.success('2FA enabled');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : messages.errors.generic;
+      toast.error(msg);
+    } finally {
+      setTwoFaLoading(false);
+    }
+  };
+
+  const handleDisable2fa = async () => {
+    if (!twoFaDisablePassword || twoFaDisableCode.replace(/\D/g, '').length !== 6) return;
+    setTwoFaLoading(true);
+    try {
+      await twoFactorDisable(twoFaDisablePassword, twoFaDisableCode);
+      setTwoFaEnabled(false);
+      setTwoFaSecret(null);
+      setTwoFaUri(null);
+      setTwoFaDisablePassword('');
+      setTwoFaDisableCode('');
+      toast.success('2FA disabled');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : messages.errors.generic;
+      toast.error(msg);
+    } finally {
+      setTwoFaLoading(false);
     }
   };
 
@@ -147,6 +214,102 @@ export default function Settings() {
                   {connected ? 'Reconnect' : 'Connect'}
                 </Link>
               </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <h2 className="text-xl font-semibold text-slate-900 mb-4">Security</h2>
+
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="font-medium text-slate-900">Two-factor authentication (2FA)</p>
+                  <p className="text-sm text-slate-600">
+                    {twoFaEnabled ? 'Enabled' : 'Optional (recommended)'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={twoFaLoading}
+                  onClick={handleStart2fa}
+                  className="h-10 px-4 rounded-lg border-2 border-slate-200 hover:bg-slate-50 font-medium text-slate-800 disabled:opacity-60"
+                >
+                  {twoFaEnabled ? 'View setup' : 'Enable'}
+                </button>
+              </div>
+
+              {!twoFaEnabled && twoFaSecret && twoFaUri && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                    <p className="text-sm font-medium text-slate-900 mb-1">Secret (manual entry)</p>
+                    <p className="font-mono text-sm text-slate-800 break-all">{twoFaSecret}</p>
+                    <p className="text-xs text-slate-500 mt-2 break-all">
+                      otpauth: <span className="font-mono">{twoFaUri}</span>
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Enter 6-digit code to confirm</label>
+                    <InputOTP maxLength={6} value={twoFaCode} onChange={setTwoFaCode}>
+                      <InputOTPGroup>
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <InputOTPSlot key={i} index={i} />
+                        ))}
+                      </InputOTPGroup>
+                    </InputOTP>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={twoFaLoading || twoFaCode.replace(/\D/g, '').length !== 6}
+                    onClick={handleEnable2fa}
+                    className="w-full h-11 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors"
+                  >
+                    {twoFaLoading ? 'Enabling…' : 'Confirm & enable 2FA'}
+                  </button>
+                </div>
+              )}
+
+              {twoFaEnabled && (
+                <div className="mt-4 space-y-4">
+                  <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-800">
+                    2FA is enabled. You’ll be asked for a code when signing in.
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Password (to disable)</label>
+                    <input
+                      type="password"
+                      value={twoFaDisablePassword}
+                      onChange={(e) => setTwoFaDisablePassword(e.target.value)}
+                      className="w-full h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-colors"
+                      autoComplete="current-password"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">2FA code (to disable)</label>
+                    <InputOTP maxLength={6} value={twoFaDisableCode} onChange={setTwoFaDisableCode}>
+                      <InputOTPGroup>
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <InputOTPSlot key={i} index={i} />
+                        ))}
+                      </InputOTPGroup>
+                    </InputOTP>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={
+                      twoFaLoading ||
+                      !twoFaDisablePassword ||
+                      twoFaDisableCode.replace(/\D/g, '').length !== 6
+                    }
+                    onClick={handleDisable2fa}
+                    className="w-full h-11 border-2 border-red-200 text-red-600 hover:bg-red-50 font-semibold rounded-xl transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {twoFaLoading ? 'Disabling…' : 'Disable 2FA'}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">

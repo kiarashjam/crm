@@ -1,0 +1,6 @@
+@ACI.WebApi_HostAddress = http://localhost:5160
+
+GET {{ACI.WebApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

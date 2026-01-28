@@ -1,5 +1,6 @@
 import type { Contact } from './types';
 import { mockContacts } from './mockData';
+import { isUsingRealApi, authFetchJson } from './apiClient';
 
 const STORAGE_KEY = 'crm_contacts';
 
@@ -13,16 +14,20 @@ function getStored(): Contact[] | null {
   }
 }
 
-function setStored(contacts: Contact[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(contacts));
-  } catch {
-    // ignore
-  }
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-/** Get all contacts (demo: merge mock + any stored overrides). */
+function mapContact(d: { id: string; name: string; email: string; companyId?: string | null }): Contact {
+  return { id: d.id, name: d.name, email: d.email, companyId: d.companyId ?? undefined };
+}
+
+/** Get all contacts (real API or mock). */
 export async function getContacts(): Promise<Contact[]> {
+  if (isUsingRealApi()) {
+    const list = await authFetchJson<{ id: string; name: string; email: string; companyId?: string | null }[]>('/api/contacts');
+    return Array.isArray(list) ? list.map(mapContact) : [];
+  }
   await delay(300);
   const stored = getStored();
   return stored ?? [...mockContacts];
@@ -30,6 +35,11 @@ export async function getContacts(): Promise<Contact[]> {
 
 /** Search contacts by name or email. */
 export async function searchContacts(query: string): Promise<Contact[]> {
+  if (isUsingRealApi()) {
+    const q = query?.trim() ? encodeURIComponent(query.trim()) : '';
+    const list = await authFetchJson<{ id: string; name: string; email: string; companyId?: string | null }[]>(`/api/contacts/search?q=${q}`);
+    return Array.isArray(list) ? list.map(mapContact) : [];
+  }
   await delay(200);
   const contacts = await getContacts();
   const q = query.trim().toLowerCase();
@@ -39,8 +49,4 @@ export async function searchContacts(query: string): Promise<Contact[]> {
       c.name.toLowerCase().includes(q) ||
       c.email.toLowerCase().includes(q)
   );
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

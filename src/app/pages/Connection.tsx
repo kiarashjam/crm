@@ -4,14 +4,14 @@ import { CheckCircle, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { getConnectionStatus, setConnectionStatus } from '@/app/api';
 import { messages } from '@/app/api/messages';
-import { getDemoUser } from '@/app/lib/auth';
+import { getCurrentUser } from '@/app/lib/auth';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 
 export default function Connection() {
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const user = getDemoUser();
+  const user = getCurrentUser();
 
   useEffect(() => {
     getConnectionStatus()

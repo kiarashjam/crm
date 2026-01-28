@@ -57,7 +57,11 @@ export default function SendToCrm() {
   const records = objectType === 'contact'
     ? filteredContacts.map((c) => ({ id: c.id, name: c.name, sub: c.email }))
     : objectType === 'deal'
-      ? filteredDeals.map((d) => ({ id: d.id, name: d.name, sub: d.value }))
+      ? filteredDeals.map((d) => ({
+          id: d.id,
+          name: d.name,
+          sub: d.stage ? `${d.value} · ${d.stage}` : d.value,
+        }))
       : [];
 
   const handleSend = async () => {

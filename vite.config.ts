@@ -16,4 +16,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    proxy: {
+      // Dev proxy to the .NET API (launchSettings default http:5160)
+      '/api': {
+        target: 'http://localhost:5160',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
 })

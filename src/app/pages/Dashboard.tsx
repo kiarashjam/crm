@@ -20,7 +20,7 @@ import {
   CheckCircle2,
   XCircle,
 } from 'lucide-react';
-import { getDemoUser } from '@/app/lib/auth';
+import { getCurrentUser } from '@/app/lib/auth';
 import AppHeader from '@/app/components/AppHeader';
 import { cn } from '@/app/components/ui/utils';
 import {
@@ -71,7 +71,7 @@ export default function Dashboard() {
   const [connectionStatus, setConnectionStatus] = useState<{ connected: boolean; accountEmail?: string }>({ connected: false });
   const [recentActivity, setRecentActivity] = useState<CopyHistoryItem[]>([]);
   const navigate = useNavigate();
-  const user = getDemoUser();
+  const user = getCurrentUser();
   const displayName = user?.name ?? 'there';
 
   useEffect(() => {

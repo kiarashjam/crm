@@ -11,7 +11,7 @@ import {
   Menu,
   ChevronDown,
 } from 'lucide-react';
-import { getDemoUser, clearDemoUser } from '@/app/lib/auth';
+import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,11 +62,11 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 
 export default function AppHeader() {
   const navigate = useNavigate();
-  const user = getDemoUser();
+  const user = getCurrentUser();
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const handleLogout = () => {
-    clearDemoUser();
+    clearSession();
     navigate('/login', { replace: true });
   };
 

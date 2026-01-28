@@ -1,4 +1,5 @@
 import type { GenerateCopyParams } from './types';
+import { isUsingRealApi, authFetchJson } from './apiClient';
 
 const COPY_BY_TYPE_AND_GOAL: Record<string, string> = {
   'sales-email|Schedule a meeting': `Hi [First Name],
@@ -20,11 +21,11 @@ Best regards,
 
 Thank you for taking the time to meet with me and see our demo. I wanted to follow up with a quick summary and next steps.
 
-Based on our conversation, here’s what I think could help [Company Name]:
+Based on our conversation, here's what I think could help [Company Name]:
 • [Key benefit 1 from demo]
 • [Key benefit 2 from demo]
 
-I’d love to schedule a short call to answer any questions and discuss implementation. Would [Day/Time] work for you?
+I'd love to schedule a short call to answer any questions and discuss implementation. Would [Day/Time] work for you?
 
 Best regards,
 [Your Name]`,
@@ -32,7 +33,7 @@ Best regards,
 
 Thanks for taking the time to meet with me yesterday. I wanted to follow up on our conversation and the next steps we discussed.
 
-As promised, here’s [resource/recap]. I’m happy to schedule another call if you’d like to dive deeper into any area.
+As promised, here's [resource/recap]. I'm happy to schedule another call if you'd like to dive deeper into any area.
 
 When would be a good time to connect again?
 
@@ -52,11 +53,11 @@ Action items:
 
 I wanted to provide you with a quick update on our proposal for [Company Name].
 
-We’re excited about the opportunity to work together. Here’s a brief recap of what we’ve agreed:
+We're excited about the opportunity to work together. Here's a brief recap of what we've agreed:
 • [Point 1]
 • [Point 2]
 
-I’ve attached the final agreement. Please let me know if you have any questions or if you’re ready to move forward.
+I've attached the final agreement. Please let me know if you have any questions or if you're ready to move forward.
 
 Best regards,
 [Your Name]`,
@@ -64,7 +65,7 @@ Best regards,
 
 I wanted to check in and see how things are going with [project/topic we discussed].
 
-If there’s anything we can do to support you or if you’d like to schedule a quick call, just let me know.
+If there's anything we can do to support you or if you'd like to schedule a quick call, just let me know.
 
 Best,
 [Your Name]`,
@@ -86,8 +87,26 @@ Looking forward to connecting!
 Best regards,
 [Your Name]`;
 
-/** Generate copy (demo: returns predefined or parameterized text after delay). */
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/** Generate copy (real API or mock). */
 export async function generateCopy(params: GenerateCopyParams): Promise<string> {
+  if (isUsingRealApi()) {
+    const res = await authFetchJson<{ copy: string }>('/api/copy/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        copyTypeId: params.copyTypeId,
+        goal: params.goal,
+        context: params.context ?? null,
+        length: params.length ?? 'medium',
+        companyName: params.companyName ?? null,
+        brandTone: params.brandTone ?? null,
+      }),
+    });
+    return res?.copy ?? '';
+  }
   await delay(1500 + Math.random() * 500);
   const key = `${params.copyTypeId}|${params.goal}`;
   let text = COPY_BY_TYPE_AND_GOAL[key] ?? DEFAULT_COPY;
@@ -100,11 +119,7 @@ export async function generateCopy(params: GenerateCopyParams): Promise<string> 
   if (params.length === 'short') {
     text = text.split('\n\n').slice(0, 4).join('\n\n') + '\n\nBest,\n[Your Name]';
   } else if (params.length === 'long') {
-    text = text + '\n\nI’m also happy to share case studies or arrange a deeper technical discussion if that would be helpful.';
+    text = text + "\n\nI'm also happy to share case studies or arrange a deeper technical discussion if that would be helpful.";
   }
   return text;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
