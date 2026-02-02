@@ -33,7 +33,7 @@ import { cn } from './ui/utils';
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/leads', label: 'Leads', icon: Users },
-  { path: '/pipeline', label: 'Pipeline', icon: Kanban },
+  { path: '/deals', label: 'Deals', icon: Kanban },
   { path: '/tasks', label: 'Tasks', icon: CheckSquare },
   { path: '/activities', label: 'Activities', icon: Activity },
   { path: '/contacts', label: 'Contacts', icon: UserCircle },

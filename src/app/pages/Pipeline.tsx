@@ -259,7 +259,7 @@ export default function Pipeline() {
       <main id={MAIN_CONTENT_ID} className="w-full max-w-7xl mx-auto px-[var(--page-padding)] py-8" tabIndex={-1}>
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Pipeline</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Deals</h1>
             <p className="text-slate-600 mt-1">Deals by stage. Move deals between stages to track progress.</p>
           </div>
           <Button onClick={() => setCreateOpen(true)} className="gap-2 bg-orange-600 hover:bg-orange-500">

@@ -37,7 +37,7 @@ export default function App() {
         <Route path="/templates" element={<Templates />} />
         <Route path="/history" element={<History />} />
         <Route path="/leads" element={<Leads />} />
-        <Route path="/pipeline" element={<Pipeline />} />
+        <Route path="/deals" element={<Pipeline />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/activities" element={<Activities />} />
         <Route path="/contacts" element={<Contacts />} />
