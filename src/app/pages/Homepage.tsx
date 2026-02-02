@@ -158,37 +158,89 @@ export default function Homepage() {
         </div>
       </section>
 
-      {/* How it works - step cards with connector line */}
-      <section className="w-full px-[var(--page-padding)] py-[var(--section-padding-y)] bg-white" aria-labelledby="how-it-works-heading">
-        <div className="w-full">
-          <div className="text-center mb-16 animate-fade-in-up">
-            <span className="inline-block text-xs font-semibold text-orange-600 uppercase tracking-widest mb-3">Process</span>
-            <h2 id="how-it-works-heading" className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">How It Works</h2>
-            <p className="text-xl text-slate-600 max-w-2xl mx-auto">Connect once. Generate in seconds. Send from the app. No switching tabs or copy-paste.</p>
+      {/* How it works - alternating left/right layout with circular gradient icons */}
+      <section className="w-full px-[var(--page-padding)] lg:px-12 py-[var(--section-padding-y)] bg-white relative z-10" aria-labelledby="how-it-works-heading">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-20 space-y-4 animate-fade-in-up">
+            <h2 id="how-it-works-heading" className="text-4xl md:text-5xl font-bold tracking-tight text-slate-900">
+              Our <span className="bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent">Process</span>
+            </h2>
+            <p className="text-xl text-slate-600">Connect once. Generate in seconds. Send from the app. No switching tabs or copy-paste.</p>
           </div>
-          <div className="relative grid md:grid-cols-3 gap-8 md:gap-6">
-            {/* Connector line (desktop) */}
-            <div className="hidden md:block absolute top-20 left-[15%] right-[15%] h-0.5 bg-gradient-to-r from-orange-200 via-orange-300 to-orange-200 rounded-full" aria-hidden />
-            {[
-              { step: '1', title: 'Connect your CRM', desc: 'Authorize Cadence to talk to your CRM. We keep the link encrypted—you send to contacts and deals from inside the app, no copying between tools.', Icon: Link2 },
-              { step: '2', title: 'Pick type & goal, get copy', desc: 'Choose what you need: sales email, follow-up, note, or deal message. Set a goal (e.g. schedule a meeting), add context—we draft it in your brand voice.', Icon: Sparkles },
-              { step: '3', title: 'Review, tweak, send', desc: 'Read the draft, adjust tone or length if you want, then send it to the right contact or deal. Every send is saved in your history.', Icon: Send },
-            ].map((item, idx) => (
-              <div
-                key={idx}
-                className="relative bg-gradient-to-b from-slate-50 to-white p-8 rounded-2xl border border-slate-200/80 shadow-md hover:shadow-xl hover:border-orange-200/60 transition-all duration-300 group animate-rise-in"
-                style={{ animationDelay: `${0.2 + idx * 0.15}s`, animationFillMode: 'backwards' }}
-              >
-                <div className="absolute -top-4 left-8 w-10 h-10 bg-gradient-to-br from-orange-600 to-orange-500 rounded-xl flex items-center justify-center text-white font-bold shadow-lg group-hover:scale-110 transition-transform" aria-hidden>
-                  {item.step}
+          <div className="space-y-16 md:space-y-24">
+            {/* 1. Connect — icon left, text right */}
+            <div className="relative animate-fade-in-up" style={{ animationDelay: '0.1s', animationFillMode: 'backwards' }}>
+              <div className="hidden md:block absolute top-full left-1/2 -translate-x-1/2 w-px h-16 bg-gradient-to-b from-orange-500/30 via-orange-400/20 to-transparent" aria-hidden />
+              <div className="flex flex-col md:flex-row items-center gap-8 md:gap-12">
+                <div className="relative flex-shrink-0">
+                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-full blur-2xl opacity-50 scale-110" aria-hidden />
+                  <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 p-1 shadow-2xl">
+                    <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
+                      <Link2 className="w-10 h-10 text-slate-700" aria-hidden />
+                    </div>
+                  </div>
+                  <span className="absolute w-2 h-2 bg-blue-500 rounded-full opacity-60 top-[20%] left-[20%]" aria-hidden />
+                  <span className="absolute w-2 h-2 bg-blue-500 rounded-full opacity-60 top-[50%] left-[40%]" aria-hidden />
+                  <span className="absolute w-2 h-2 bg-blue-500 rounded-full opacity-60 top-[80%] left-[60%]" aria-hidden />
                 </div>
-                <div className="w-14 h-14 mt-4 bg-orange-100 rounded-xl flex items-center justify-center text-orange-600 mb-5 group-hover:scale-105 transition-transform">
-                  <item.Icon className="w-7 h-7" />
+                <div className="flex-1 space-y-4 text-center md:text-left">
+                  <h3 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-500 to-cyan-500 bg-clip-text text-transparent">Connect your CRM</h3>
+                  <p className="text-lg text-slate-600 leading-relaxed max-w-2xl md:max-w-none">
+                    Authorize Cadence once with your CRM. We keep the link encrypted—you send to contacts and deals from inside the app. No copying between tools.
+                  </p>
+                  <div className="hidden md:block h-1 w-20 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full" aria-hidden />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-3">{item.title}</h3>
-                <p className="text-slate-600 leading-relaxed text-sm">{item.desc}</p>
               </div>
-            ))}
+            </div>
+
+            {/* 2. Generate — icon right, text left */}
+            <div className="relative animate-fade-in-up" style={{ animationDelay: '0.2s', animationFillMode: 'backwards' }}>
+              <div className="hidden md:block absolute top-full left-1/2 -translate-x-1/2 w-px h-16 bg-gradient-to-b from-orange-500/30 via-orange-400/20 to-transparent" aria-hidden />
+              <div className="flex flex-col md:flex-row items-center gap-8 md:gap-12 md:flex-row-reverse">
+                <div className="relative flex-shrink-0">
+                  <div className="absolute inset-0 bg-gradient-to-br from-pink-500/10 to-rose-500/10 rounded-full blur-2xl opacity-50 scale-110" aria-hidden />
+                  <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full bg-gradient-to-br from-pink-500 to-rose-500 p-1 shadow-2xl">
+                    <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
+                      <Sparkles className="w-10 h-10 text-slate-700" aria-hidden />
+                    </div>
+                  </div>
+                  <span className="absolute w-2 h-2 bg-pink-500 rounded-full opacity-60 top-[20%] left-[20%]" aria-hidden />
+                  <span className="absolute w-2 h-2 bg-pink-500 rounded-full opacity-60 top-[50%] left-[40%]" aria-hidden />
+                  <span className="absolute w-2 h-2 bg-pink-500 rounded-full opacity-60 top-[80%] left-[60%]" aria-hidden />
+                </div>
+                <div className="flex-1 space-y-4 text-center md:text-right">
+                  <h3 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-500 to-rose-500 bg-clip-text text-transparent">Pick type & goal, get copy</h3>
+                  <p className="text-lg text-slate-600 leading-relaxed max-w-2xl md:max-w-none md:ml-auto">
+                    Choose what you need: sales email, follow-up, note, or deal message. Set a goal (e.g. schedule a meeting), add context—we draft it in your brand voice.
+                  </p>
+                  <div className="hidden md:block h-1 w-20 bg-gradient-to-r from-pink-500 to-rose-500 rounded-full ml-auto" aria-hidden />
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Send — icon left, text right */}
+            <div className="relative animate-fade-in-up" style={{ animationDelay: '0.3s', animationFillMode: 'backwards' }}>
+              <div className="flex flex-col md:flex-row items-center gap-8 md:gap-12">
+                <div className="relative flex-shrink-0">
+                  <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-orange-500/10 rounded-full blur-2xl opacity-50 scale-110" aria-hidden />
+                  <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 p-1 shadow-2xl">
+                    <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
+                      <Send className="w-10 h-10 text-slate-700" aria-hidden />
+                    </div>
+                  </div>
+                  <span className="absolute w-2 h-2 bg-amber-500 rounded-full opacity-60 top-[20%] left-[20%]" aria-hidden />
+                  <span className="absolute w-2 h-2 bg-amber-500 rounded-full opacity-60 top-[50%] left-[40%]" aria-hidden />
+                  <span className="absolute w-2 h-2 bg-amber-500 rounded-full opacity-60 top-[80%] left-[60%]" aria-hidden />
+                </div>
+                <div className="flex-1 space-y-4 text-center md:text-left">
+                  <h3 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-amber-500 to-orange-500 bg-clip-text text-transparent">Review, tweak, send</h3>
+                  <p className="text-lg text-slate-600 leading-relaxed max-w-2xl md:max-w-none">
+                    Read the draft, adjust tone or length if you want, then send it to the right contact or deal. Every send is saved in your history.
+                  </p>
+                  <div className="hidden md:block h-1 w-20 bg-gradient-to-r from-amber-500 to-orange-500 rounded-full" aria-hidden />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { HelpCircle, Link2, Shield, Mail } from 'lucide-react';
+import { HelpCircle, Link2, Shield, Mail, FileText, Target, Sparkles, Send } from 'lucide-react';
 import AppHeader from '@/app/components/AppHeader';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 
@@ -45,8 +45,13 @@ export default function Help() {
           </section>
 
           <section className="mb-12" aria-labelledby="generate-heading">
-            <h2 id="generate-heading" className="text-2xl font-bold text-slate-900 mb-6">Generating Copy (4 Steps)</h2>
-            <div className="space-y-6">
+            <div className="text-center mb-12">
+              <span className="inline-block text-xs font-semibold text-orange-600 uppercase tracking-widest mb-3">Process</span>
+              <h2 id="generate-heading" className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">Generating Copy (4 Steps)</h2>
+              <p className="text-lg text-slate-600 max-w-2xl mx-auto">Pick what you need, set your goal, generate, and send. Everything stays in one flow.</p>
+            </div>
+            <div className="relative grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-4">
+              <div className="hidden lg:block absolute top-20 left-[10%] right-[10%] h-0.5 bg-gradient-to-r from-orange-200 via-orange-300 to-orange-200 rounded-full" aria-hidden="true" />
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                 <div className="flex items-start gap-4">
                   <div className="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">
