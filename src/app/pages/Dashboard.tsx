@@ -19,6 +19,7 @@ import {
   Settings,
   CheckCircle2,
   XCircle,
+  Users,
 } from 'lucide-react';
 import { getCurrentUser } from '@/app/lib/auth';
 import AppHeader from '@/app/components/AppHeader';
@@ -31,6 +32,7 @@ import {
   getCopyHistory,
   getTemplates,
   getConnectionStatus,
+  getDashboardStats,
 } from '@/app/api';
 import type { CopyTypeId } from '@/app/api/types';
 import type { CopyHistoryItem } from '@/app/api/types';
@@ -68,6 +70,13 @@ export default function Dashboard() {
     totalSent: 0,
     templateCount: 8,
   });
+  const [crmStats, setCrmStats] = useState<{
+    activeLeadsCount: number;
+    activeDealsCount: number;
+    pipelineValue: number;
+    dealsWonCount: number;
+    dealsLostCount: number;
+  } | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<{ connected: boolean; accountEmail?: string }>({ connected: false });
   const [recentActivity, setRecentActivity] = useState<CopyHistoryItem[]>([]);
   const navigate = useNavigate();
@@ -86,6 +95,9 @@ export default function Dashboard() {
       .catch(() => {});
     getCopyHistory()
       .then((items) => setRecentActivity(items.slice(0, 5)))
+      .catch(() => {});
+    getDashboardStats()
+      .then(setCrmStats)
       .catch(() => {});
   }, []);
 
@@ -204,6 +216,27 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+            {crmStats !== null && (
+              <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { value: String(crmStats.activeLeadsCount), label: 'Active leads', icon: Users, color: 'bg-blue-50 text-blue-700 border-blue-100' },
+                  { value: String(crmStats.activeDealsCount), label: 'Active deals', icon: Briefcase, color: 'bg-amber-50 text-amber-700 border-amber-100' },
+                  { value: `$${Number(crmStats.pipelineValue).toLocaleString()}`, label: 'Pipeline value', icon: TrendingUp, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+                  { value: `${crmStats.dealsWonCount} won / ${crmStats.dealsLostCount} lost`, label: 'Won vs lost', icon: CheckCircle2, color: 'bg-slate-100 text-slate-600 border-slate-200' },
+                ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow transition-shadow"
+                >
+                  <div className={cn('inline-flex p-2 rounded-lg border', stat.color)}>
+                    <stat.icon className="w-5 h-5" />
+                  </div>
+                  <p className="mt-3 text-2xl font-semibold text-slate-900 tabular-nums">{stat.value}</p>
+                  <p className="text-sm text-slate-500">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4 my-10" aria-hidden="true">
@@ -268,7 +301,6 @@ export default function Dashboard() {
                         onChange={(e) => setGoal(e.target.value)}
                         className="w-full h-11 pl-4 pr-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors"
                       >
-                        <option value="">Select a goal...</option>
                         {goals.map((g) => (
                           <option key={g} value={g}>
                             {g}
@@ -346,6 +378,14 @@ export default function Dashboard() {
                         </>
                       )}
                     </button>
+                    {!connectionStatus.connected && (
+                      <p className="mt-3 text-sm text-slate-600">
+                        <Link to="/connect" className="font-medium text-orange-600 hover:text-orange-700 focus-visible:underline">
+                          Connect CRM
+                        </Link>
+                        {' '}to send copy to contacts and deals.
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -355,6 +395,21 @@ export default function Dashboard() {
                   </div>
                   <p className="text-sm font-medium text-slate-700">Select a content type</p>
                   <p className="text-sm text-slate-500 mt-1">Choose one of the options above to create your copy.</p>
+                  <Link
+                    to="/templates"
+                    className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-orange-600 hover:text-orange-700 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                  >
+                    <LayoutTemplate className="w-4 h-4" />
+                    Try a template
+                  </Link>
+                  {!connectionStatus.connected && (
+                    <p className="mt-4 text-sm text-slate-600">
+                      <Link to="/connect" className="font-medium text-orange-600 hover:text-orange-700 focus-visible:underline">
+                        Connect CRM
+                      </Link>
+                      {' '}to send copy to contacts and deals.
+                    </p>
+                  )}
                 </div>
               )}
             </div>

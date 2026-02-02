@@ -46,4 +46,33 @@ public class DealsController : ControllerBase
         if (deal == null) return NotFound();
         return Ok(deal);
     }
+
+    [HttpPost]
+    public async Task<ActionResult<DealDto>> Create([FromBody] CreateDealRequest request, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var deal = await _dealService.CreateAsync(userId.Value, request, ct);
+        return deal == null ? BadRequest() : Ok(deal);
+    }
+
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<DealDto>> Update(Guid id, [FromBody] UpdateDealRequest request, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var deal = await _dealService.UpdateAsync(id, userId.Value, request, ct);
+        if (deal == null) return NotFound();
+        return Ok(deal);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var deleted = await _dealService.DeleteAsync(id, userId.Value, ct);
+        if (!deleted) return NotFound();
+        return NoContent();
+    }
 }

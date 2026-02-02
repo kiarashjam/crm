@@ -22,6 +22,8 @@ export default function Settings() {
   const [twoFaCode, setTwoFaCode] = useState('');
   const [twoFaDisablePassword, setTwoFaDisablePassword] = useState('');
   const [twoFaDisableCode, setTwoFaDisableCode] = useState('');
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -136,8 +138,8 @@ export default function Settings() {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-slate-900 mb-6">Brand Settings</h2>
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6" aria-labelledby="brand-heading">
+              <h2 id="brand-heading" className="text-xl font-semibold text-slate-900 mb-6">Brand</h2>
 
               <div className="space-y-6">
                 <div>
@@ -194,10 +196,10 @@ export default function Settings() {
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
-            </div>
+            </section>
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-slate-900 mb-4">CRM Connection</h2>
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6" aria-labelledby="crm-heading">
+              <h2 id="crm-heading" className="text-xl font-semibold text-slate-900 mb-4">CRM connection</h2>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-slate-900">{connected ? 'Connected' : 'Not connected'}</p>
@@ -214,10 +216,10 @@ export default function Settings() {
                   {connected ? 'Reconnect' : 'Connect'}
                 </Link>
               </div>
-            </div>
+            </section>
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-slate-900 mb-4">Security</h2>
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6" aria-labelledby="security-heading">
+              <h2 id="security-heading" className="text-xl font-semibold text-slate-900 mb-4">Security</h2>
 
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -238,6 +240,11 @@ export default function Settings() {
 
               {!twoFaEnabled && twoFaSecret && twoFaUri && (
                 <div className="space-y-4">
+                  <ol className="list-decimal list-inside space-y-1 text-sm text-slate-700 mb-4">
+                    <li>Scan the QR code (or enter the secret) in your authenticator app.</li>
+                    <li>Enter the 6-digit code from the app below.</li>
+                    <li>Click Enable to turn on 2FA.</li>
+                  </ol>
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
                     <p className="text-sm font-medium text-slate-900 mb-1">Secret (manual entry)</p>
                     <p className="font-mono text-sm text-slate-800 break-all">{twoFaSecret}</p>
@@ -310,10 +317,10 @@ export default function Settings() {
                   </button>
                 </div>
               )}
-            </div>
+            </section>
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-slate-900 mb-4">Account Actions</h2>
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6" aria-labelledby="account-heading">
+              <h2 id="account-heading" className="text-xl font-semibold text-slate-900 mb-4">Account</h2>
               <div className="space-y-3">
                 <Link
                   to="/login"
@@ -323,20 +330,59 @@ export default function Settings() {
                   Logout
                 </Link>
 
+                {showDeleteConfirm ? (
+                <div className="space-y-3 p-4 border-2 border-red-200 rounded-xl bg-red-50/50">
+                  <p className="text-sm text-slate-700">To permanently delete your account:</p>
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={deleteConfirmChecked}
+                      onChange={(e) => setDeleteConfirmChecked(e.target.checked)}
+                      className="mt-1 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                    />
+                    <span className="text-sm text-slate-700">I understand my data will be removed and this cannot be undone.</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    placeholder="Type DELETE to confirm"
+                    className="w-full h-11 px-4 border border-slate-300 rounded-xl"
+                    aria-label="Type DELETE to confirm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteConfirmChecked(false); }}
+                      className="flex-1 h-11 border-2 border-slate-200 rounded-xl font-medium text-slate-700 hover:bg-slate-100"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteAccount}
+                      disabled={!canConfirmDelete}
+                      className="flex-1 h-11 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl"
+                    >
+                      Delete account
+                    </button>
+                  </div>
+                </div>
+              ) : (
                 <button
                   type="button"
-                  onClick={handleDeleteAccount}
-                  className={`w-full flex items-center justify-center gap-2 h-11 py-3 px-6 rounded-xl transition-colors font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-                    showDeleteConfirm
-                      ? 'bg-red-600 hover:bg-red-700 text-white focus-visible:ring-red-500'
-                      : 'border-2 border-red-200 text-red-600 hover:border-red-300 hover:bg-red-50 focus-visible:ring-red-500'
-                  }`}
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full flex items-center justify-center gap-2 h-11 py-3 px-6 border-2 border-red-200 text-red-600 hover:border-red-300 hover:bg-red-50 rounded-xl font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
                 >
                   <Trash2 className="w-5 h-5" />
-                  {showDeleteConfirm ? 'Click again to confirm deletion' : 'Delete Account'}
+                  Delete Account
                 </button>
+              )}
+                <Link to="/help" className="block text-center text-sm text-orange-600 hover:text-orange-700 font-medium mt-4">
+                  Need help?
+                </Link>
               </div>
-            </div>
+            </section>
           </div>
         </div>
       </main>

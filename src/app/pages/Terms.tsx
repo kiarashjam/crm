@@ -5,9 +5,9 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 export default function Terms() {
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40" role="banner">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm" role="banner">
         <div className="w-full max-w-4xl mx-auto px-[var(--page-padding)] py-4 flex justify-between items-center">
-          <Link to="/" className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 rounded-lg" aria-label="Back to home">
+          <Link to="/" className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 rounded-lg min-h-[44px] min-w-[44px] items-center justify-center" aria-label="Back to home">
             <ArrowLeft className="w-5 h-5" aria-hidden />
             Back to Home
           </Link>

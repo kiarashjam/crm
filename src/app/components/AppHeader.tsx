@@ -10,6 +10,12 @@ import {
   Settings,
   Menu,
   ChevronDown,
+  Users,
+  UserCircle,
+  Kanban,
+  CheckSquare,
+  Activity,
+  Building2,
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import {
@@ -22,11 +28,16 @@ import {
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
 import { Button } from '@/app/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/app/components/ui/sheet';
-import { useState } from 'react';
 import { cn } from './ui/utils';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/leads', label: 'Leads', icon: Users },
+  { path: '/pipeline', label: 'Pipeline', icon: Kanban },
+  { path: '/tasks', label: 'Tasks', icon: CheckSquare },
+  { path: '/activities', label: 'Activities', icon: Activity },
+  { path: '/contacts', label: 'Contacts', icon: UserCircle },
+  { path: '/companies', label: 'Companies', icon: Building2 },
   { path: '/templates', label: 'Templates', icon: LayoutTemplate },
   { path: '/history', label: 'History', icon: History },
   { path: '/help', label: 'Help', icon: HelpCircle },
@@ -49,6 +60,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
                 ? 'bg-orange-100 text-orange-700'
                 : 'text-slate-600 hover:text-orange-600 hover:bg-orange-50'
             )}
+            aria-current={isActive ? 'page' : undefined}
           >
             <Icon className="w-5 h-5 shrink-0" />
             {label}
@@ -64,6 +76,13 @@ export default function AppHeader() {
   const navigate = useNavigate();
   const user = getCurrentUser();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [crmConnected, setCrmConnected] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    getConnectionStatus()
+      .then((s) => setCrmConnected(s.connected))
+      .catch(() => setCrmConnected(false));
+  }, []);
 
   const handleLogout = () => {
     clearSession();
@@ -129,6 +148,12 @@ export default function AppHeader() {
                   <p className="text-xs text-slate-500 truncate">{user?.email ?? ''}</p>
                 </div>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/connect" className="flex items-center gap-2 cursor-pointer">
+                    <Link2 className="w-4 h-4" />
+                    {crmConnected === true ? 'CRM: Connected' : crmConnected === false ? 'CRM: Not connected' : 'Connection'}
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link to="/settings" className="flex items-center gap-2 cursor-pointer">
                     <User className="w-4 h-4" />

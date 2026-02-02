@@ -12,6 +12,7 @@ internal sealed class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).HasMaxLength(256).IsRequired();
         builder.Property(e => e.Email).HasMaxLength(256).IsRequired();
+        builder.Property(e => e.Phone).HasMaxLength(64);
         builder.HasOne(e => e.User).WithMany(u => u.Contacts).HasForeignKey(e => e.UserId);
         builder.HasOne(e => e.Company).WithMany(c => c.Contacts).HasForeignKey(e => e.CompanyId);
     }

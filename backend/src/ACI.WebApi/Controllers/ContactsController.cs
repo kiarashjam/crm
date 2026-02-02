@@ -46,4 +46,23 @@ public class ContactsController : ControllerBase
         if (contact == null) return NotFound();
         return Ok(contact);
     }
+
+    [HttpPost]
+    public async Task<ActionResult<ContactDto>> Create([FromBody] CreateContactRequest request, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var contact = await _contactService.CreateAsync(userId.Value, request, ct);
+        return contact == null ? BadRequest() : Ok(contact);
+    }
+
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<ContactDto>> Update(Guid id, [FromBody] UpdateContactRequest request, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var contact = await _contactService.UpdateAsync(id, userId.Value, request, ct);
+        if (contact == null) return NotFound();
+        return Ok(contact);
+    }
 }

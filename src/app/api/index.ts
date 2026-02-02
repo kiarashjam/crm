@@ -16,6 +16,11 @@ export {
 export * from './authApi';
 export * from './contacts';
 export * from './deals';
+export * from './leads';
+export * from './companies';
+export * from './tasks';
+export * from './activities';
+export * from './reporting';
 export * from './templates';
 export { getCopyHistory, addToCopyHistory, getCopyHistoryStats } from './copyHistory';
 export * from './connection';

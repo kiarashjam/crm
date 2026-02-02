@@ -1,12 +1,9 @@
-# Deploy backend (.NET Web API) to Azure Web App when backend code or this workflow changes
+# Deploy backend (.NET Web API) to Azure Web App on every push to main (and on release / manual run)
 name: Build and deploy backend to Azure Web App
 
 on:
   push:
     branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/deploy-backend.yml'
   release:
     types: [published]
   workflow_dispatch:

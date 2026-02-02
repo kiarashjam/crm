@@ -46,7 +46,7 @@ This report checks that the ACI frontend has everything needed from a **CRM sale
 |------|--------|--------|
 | **Dashboard** | Yes | Main hub: connection status, stats, copy types, goal, context, length, generate → Generated Copy |
 | **Templates** | Yes | Templates page → “Use template” pre-fills Dashboard |
-| **Settings** | Yes | Brand (company name, tone), CRM connection status, Logout, Delete account |
+| **Settings** | Yes | Brand (company name, tone), CRM connection status, Security (2FA enable/disable), Logout, Delete account |
 | **Help** | Yes | How it works, generate steps, CRM connection, data & privacy, support |
 
 ---
@@ -56,8 +56,8 @@ This report checks that the ACI frontend has everything needed from a **CRM sale
 ### 1. Deal stage in “Send to CRM”
 
 - **Data:** `Deal` has `stage` (e.g. Qualification, Proposal, Negotiation, Closed Won in mockData).
-- **UI:** Send to CRM deal list shows deal name and value only; stage is not shown.
-- **Recommendation:** Show deal stage in the deal list (e.g. under deal name or next to value) so reps can pick the right opportunity. Implemented below.
+- **UI:** Send to CRM deal list shows deal name and **value · stage** (e.g. `$50,000 · Proposal`) so reps can pick the right opportunity.
+- **Status:** Implemented.
 
 ### 2. Pipeline view
 
@@ -86,7 +86,7 @@ From a **CRM sales point of view**, the app has:
 - **CRM connection** and **send to Contact/Deal** with history and recent activity.
 - **Brand/company settings** used in AI copy.
 
-**Implemented in this pass:** Deal stage is shown in the Send to CRM deal list for better sales context.
+**Current state:** Deal stage is shown in the Send to CRM deal list (value · stage). Settings includes 2FA (enable/disable). Login supports sign in, register, and 2FA code step; demo mode when no backend.
 
 ---
 

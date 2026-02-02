@@ -1,5 +1,6 @@
 interface LoadingSpinnerProps {
   size?: 'sm' | 'md' | 'lg';
+  label?: string;
   className?: string;
 }
 
@@ -9,14 +10,24 @@ const sizeClasses = {
   lg: 'h-10 w-10 border-[3px]',
 };
 
-export default function LoadingSpinner({ size = 'md', className = '' }: LoadingSpinnerProps) {
-  return (
+export default function LoadingSpinner({ size = 'md', label, className = '' }: LoadingSpinnerProps) {
+  const ariaLabel = label ?? 'Loading';
+  const spinner = (
     <div
-      className={`animate-spin rounded-full border-orange-500 border-t-transparent ${sizeClasses[size]} ${className}`}
+      className={`animate-spin rounded-full border-orange-500 border-t-transparent ${sizeClasses[size]} ${label ? '' : className}`}
       role="status"
-      aria-label="Loading"
+      aria-label={ariaLabel}
     >
-      <span className="sr-only">Loading</span>
+      <span className="sr-only">{ariaLabel}</span>
     </div>
   );
+  if (label) {
+    return (
+      <div className={`flex flex-col items-center justify-center gap-3 ${className}`}>
+        {spinner}
+        <p className="text-sm text-slate-600">{label}</p>
+      </div>
+    );
+  }
+  return spinner;
 }

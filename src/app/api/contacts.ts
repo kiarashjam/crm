@@ -1,6 +1,6 @@
 import type { Contact } from './types';
 import { mockContacts } from './mockData';
-import { isUsingRealApi, authFetchJson } from './apiClient';
+import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
 
 const STORAGE_KEY = 'crm_contacts';
 
@@ -18,14 +18,14 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function mapContact(d: { id: string; name: string; email: string; companyId?: string | null }): Contact {
-  return { id: d.id, name: d.name, email: d.email, companyId: d.companyId ?? undefined };
+function mapContact(d: { id: string; name: string; email: string; phone?: string | null; companyId?: string | null; lastActivityAtUtc?: string | null }): Contact {
+  return { id: d.id, name: d.name, email: d.email, phone: d.phone ?? undefined, companyId: d.companyId ?? undefined, lastActivityAtUtc: d.lastActivityAtUtc ?? undefined };
 }
 
 /** Get all contacts (real API or mock). */
 export async function getContacts(): Promise<Contact[]> {
   if (isUsingRealApi()) {
-    const list = await authFetchJson<{ id: string; name: string; email: string; companyId?: string | null }[]>('/api/contacts');
+    const list = await authFetchJson<{ id: string; name: string; email: string; phone?: string | null; companyId?: string | null; lastActivityAtUtc?: string | null }[]>('/api/contacts');
     return Array.isArray(list) ? list.map(mapContact) : [];
   }
   await delay(300);
@@ -37,7 +37,7 @@ export async function getContacts(): Promise<Contact[]> {
 export async function searchContacts(query: string): Promise<Contact[]> {
   if (isUsingRealApi()) {
     const q = query?.trim() ? encodeURIComponent(query.trim()) : '';
-    const list = await authFetchJson<{ id: string; name: string; email: string; companyId?: string | null }[]>(`/api/contacts/search?q=${q}`);
+    const list = await authFetchJson<{ id: string; name: string; email: string; phone?: string | null; companyId?: string | null; lastActivityAtUtc?: string | null }[]>(`/api/contacts/search?q=${q}`);
     return Array.isArray(list) ? list.map(mapContact) : [];
   }
   await delay(200);
@@ -49,4 +49,30 @@ export async function searchContacts(query: string): Promise<Contact[]> {
       c.name.toLowerCase().includes(q) ||
       c.email.toLowerCase().includes(q)
   );
+}
+
+/** Create a contact. */
+export async function createContact(params: { name: string; email: string; phone?: string; companyId?: string }): Promise<Contact | null> {
+  if (isUsingRealApi()) {
+    const contact = await authFetchJson<{ id: string; name: string; email: string; phone?: string | null; companyId?: string | null; lastActivityAtUtc?: string | null }>('/api/contacts', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    return contact ? mapContact(contact) : null;
+  }
+  await delay(200);
+  return null;
+}
+
+/** Update a contact. */
+export async function updateContact(id: string, params: Partial<{ name: string; email: string; phone: string; companyId: string }>): Promise<Contact | null> {
+  if (isUsingRealApi()) {
+    const contact = await authFetchJson<{ id: string; name: string; email: string; phone?: string | null; companyId?: string | null; lastActivityAtUtc?: string | null }>(`/api/contacts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(params),
+    });
+    return contact ? mapContact(contact) : null;
+  }
+  await delay(200);
+  return null;
 }

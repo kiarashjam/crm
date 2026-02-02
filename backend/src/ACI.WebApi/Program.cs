@@ -43,6 +43,10 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IContactService, ContactService>();
 builder.Services.AddScoped<IDealService, DealService>();
+builder.Services.AddScoped<ILeadService, LeadService>();
+builder.Services.AddScoped<ICompanyService, CompanyService>();
+builder.Services.AddScoped<ITaskService, TaskService>();
+builder.Services.AddScoped<IActivityService, ActivityService>();
 builder.Services.AddScoped<ITemplateService, TemplateService>();
 builder.Services.AddScoped<ICopyHistoryService, CopyHistoryService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
@@ -77,7 +81,10 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "ACI API v1");
+    });
 }
 
 app.UseHttpsRedirection();
@@ -89,8 +96,9 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
     await db.Database.MigrateAsync();
-    await SeedData.SeedAsync(db);
+    await SeedData.SeedAsync(db, passwordHasher);
 }
 
 app.Run();

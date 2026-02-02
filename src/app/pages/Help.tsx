@@ -15,8 +15,19 @@ export default function Help() {
             <p className="text-xl text-slate-600">Everything you need to know about using ACI</p>
           </div>
 
+          <nav className="mb-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-6" aria-label="Table of contents">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">On this page</h2>
+            <ul className="space-y-2">
+              <li><a href="#what-heading" className="text-orange-600 hover:text-orange-700 font-medium">What This Tool Does</a></li>
+              <li><a href="#generate-heading" className="text-orange-600 hover:text-orange-700 font-medium">How to Generate Copy</a></li>
+              <li><a href="#crm-heading" className="text-orange-600 hover:text-orange-700 font-medium">How CRM Connection Works</a></li>
+              <li><a href="#privacy-help-heading" className="text-orange-600 hover:text-orange-700 font-medium">Data & Privacy</a></li>
+              <li><a href="#support-heading" className="text-orange-600 hover:text-orange-700 font-medium">Need More Help?</a></li>
+            </ul>
+          </nav>
+
           {/* What This Tool Does */}
-          <section className="mb-12">
+          <section className="mb-12" aria-labelledby="what-heading">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                 <HelpCircle className="w-6 h-6 text-orange-600" />
@@ -92,7 +103,7 @@ export default function Help() {
               <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                 <Link2 className="w-6 h-6 text-orange-600" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">How CRM Connection Works</h2>
+              <h2 id="crm-heading" className="text-2xl font-bold text-slate-900">How CRM Connection Works</h2>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
               <p className="text-slate-700 mb-4">

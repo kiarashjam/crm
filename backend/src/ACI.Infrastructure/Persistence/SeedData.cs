@@ -1,3 +1,4 @@
+using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -6,10 +7,33 @@ namespace ACI.Infrastructure.Persistence;
 
 public static class SeedData
 {
-    public static async Task SeedAsync(AppDbContext db, CancellationToken ct = default)
+    /// <summary>
+    /// Seeded demo user. Use these credentials to sign in.
+    /// </summary>
+    public const string SeedUserEmail = "demo@aci.local";
+    public const string SeedUserName = "Demo User";
+    public const string SeedUserPassword = "DemoPass123!";
+
+    public static async Task SeedAsync(AppDbContext db, IPasswordHasher passwordHasher, CancellationToken ct = default)
     {
+        if (!await db.Users.AnyAsync(ct))
+        {
+            var seedUser = new User
+            {
+                Id = Guid.NewGuid(),
+                Name = SeedUserName,
+                Email = SeedUserEmail,
+                PasswordHash = passwordHasher.Hash(SeedUserPassword),
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+            db.Users.Add(seedUser);
+        }
+
         if (await db.Templates.AnyAsync(ct))
+        {
+            await db.SaveChangesAsync(ct);
             return;
+        }
 
         var templates = new[]
         {

@@ -117,15 +117,64 @@ The script prints:
 2. **Backend:** Open `https://<your-webapp-name>.azurewebsites.net` (or `/swagger` if you enable it in production). Confirm the API responds (e.g. 401 on protected routes without a token).
 3. If `VITE_API_URL` is set, use the frontend, log in, and check that API calls go to the deployed backend.
 
+## 6. Update Azure database and publish website
+
+### How the Azure database is updated
+
+The backend runs **EF Core migrations on startup** (`Program.cs` → `MigrateAsync()`). When you deploy the backend to the Azure Web App, the app starts and applies any pending migrations (e.g. **SalesCrmCore**: Leads, TaskItems, Activities, Contact.Phone, Deal.ContactId, ExpectedCloseDateUtc, IsWon) to the Azure SQL database. No separate “run migration” step is needed as long as the Web App has the correct connection string (the create script sets `ConnectionStrings__DefaultConnection`).
+
+### Publish the website (frontend + backend)
+
+1. **Push to `main`**
+   - **Frontend** deploys on every push to `main` (except when only `.md` / `.gitignore` change).
+   - **Backend** deploys only when files under `backend/` or `.github/workflows/deploy-backend.yml` change.
+
+2. **To update the Azure database** (apply the latest migration):
+   - Deploy the backend: either **push a change under `backend/`** (e.g. commit the migration and push) or **run the backend workflow manually**:
+     - GitHub → **Actions** → **Build and deploy backend to Azure Web App** → **Run workflow** → Run.
+   - After the backend finishes deploying, the Web App restarts and runs `MigrateAsync()`, updating the Azure SQL database.
+
+3. **Ensure frontend talks to the backend**
+   - In GitHub: **Settings** → **Secrets and variables** → **Actions** → **Variables** → set `VITE_API_URL` to your backend URL (e.g. `https://aci-api-xxxxx.azurewebsites.net`, no trailing slash). Re-run the frontend workflow or push a small change to trigger a new frontend build so the new variable is baked in.
+
+### Checklist: confirm everything is working
+
+| Check | How |
+|-------|-----|
+| Backend is live | Open `https://<AZURE_WEBAPP_NAME>.azurewebsites.net` (or `/swagger`). You should get 200 or 401, not 500. |
+| Database is updated | After a backend deploy, open Swagger or use the app: create a Lead, Task, or Activity. If those work, the SalesCrmCore migration was applied. |
+| Frontend is live | Open your Static Web App URL (e.g. `https://<name>.azurestaticapps.net`). The app should load. |
+| Frontend → backend | Log in from the Static Web App. If `VITE_API_URL` is set correctly, login and data (leads, deals, etc.) use the Azure backend. |
+| CORS | If the frontend shows CORS errors when calling the API, ensure the Web App has `Cors__AllowedOrigins` including your Static Web App host (the create script sets this). |
+
+### If the backend workflow didn’t run
+
+- Backend workflow runs only when `backend/**` or `.github/workflows/deploy-backend.yml` change. If you only changed frontend or docs, trigger it manually: **Actions** → **Build and deploy backend to Azure Web App** → **Run workflow**.
+
+### Optional: run migrations against Azure from your machine
+
+If you need to apply migrations to Azure SQL without redeploying (e.g. you have the connection string and want to update the DB from local):
+
+1. Get the connection string from **Azure Portal** → your Web App → **Configuration** → **Application settings** → `ConnectionStrings__DefaultConnection` (or Connection strings).
+2. From the repo root:
+
+```powershell
+cd backend
+$env:ConnectionStrings__DefaultConnection = "Server=tcp:YOUR_SQL_SERVER.database.windows.net,1433;Initial Catalog=ACI;..."
+dotnet ef database update --project src/ACI.Infrastructure/ACI.Infrastructure.csproj --startup-project src/ACI.WebApi/ACI.WebApi.csproj
+```
+
+Normally you don’t need this: deploying the backend and letting it run `MigrateAsync()` on startup is enough.
+
 ## Summary
 
 | Step | What |
 |------|------|
 | 1 | Push code to GitHub |
 | 2 | Run `./scripts/azure-create.ps1 -SqlAdminPassword '...'` (or `-SkipBackendAndDatabase` for frontend-only) |
-| 3 | Add `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_WEBAPP_NAME`, `AZURE_WEBAPP_PUBLISH_PROFILE`, and `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_CLIENT_SECRET`; optionally `VITE_API_URL` variable |
-| 4 | Push to `main` or create a release → frontend and/or backend deploy |
-| 5 | Check Static Web App URL and backend Swagger |
+| 3 | Add `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_WEBAPP_NAME`, `AZURE_WEBAPP_PUBLISH_PROFILE`, and `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_CLIENT_SECRET`; set `VITE_API_URL` variable so frontend uses the backend |
+| 4 | Push to `main` or create a release → frontend and/or backend deploy. To update Azure DB: deploy backend (push `backend/` or run "Build and deploy backend to Azure Web App" manually). |
+| 5 | Check Static Web App URL, backend Swagger, and login from the site (see §6 checklist) |
 
 **Cost:**  
 - **Static Web App** Free tier: $0/month.  

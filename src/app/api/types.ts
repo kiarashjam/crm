@@ -6,12 +6,24 @@ export interface Contact {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   companyId?: string;
+  lastActivityAtUtc?: string;
 }
 
 export interface Company {
   id: string;
   name: string;
+}
+
+export interface Lead {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  companyId?: string;
+  source?: string;
+  status: string;
 }
 
 export interface Deal {
@@ -20,6 +32,38 @@ export interface Deal {
   value: string;
   stage?: string;
   companyId?: string;
+  contactId?: string;
+  expectedCloseDateUtc?: string;
+  isWon?: boolean;
+  lastActivityAtUtc?: string;
+}
+
+export interface TaskItem {
+  id: string;
+  title: string;
+  description?: string;
+  dueDateUtc?: string;
+  completed: boolean;
+  leadId?: string;
+  dealId?: string;
+}
+
+export interface Activity {
+  id: string;
+  type: string;
+  subject?: string;
+  body?: string;
+  contactId?: string;
+  dealId?: string;
+  createdAt: string;
+}
+
+export interface DashboardStats {
+  activeLeadsCount: number;
+  activeDealsCount: number;
+  pipelineValue: number;
+  dealsWonCount: number;
+  dealsLostCount: number;
 }
 
 export interface Template {

@@ -19,6 +19,7 @@ export default function Login() {
   const [requires2fa, setRequires2fa] = useState(false);
   const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => {
     if (requires2fa) return code.replace(/\D/g, '').length === 6 && !!twoFactorToken;
@@ -29,6 +30,7 @@ export default function Login() {
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    setLastError(null);
     setSubmitting(true);
     try {
       if (requires2fa) {
@@ -58,6 +60,7 @@ export default function Login() {
       navigate('/dashboard', { replace: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong';
+      setLastError(msg);
       toast.error(msg);
     } finally {
       setSubmitting(false);
@@ -153,6 +156,12 @@ export default function Login() {
                 >
                   {submitting ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}
                 </button>
+
+                <p className="mt-4 text-center">
+                  <Link to="/help" className="text-sm text-slate-500 hover:text-orange-600 focus-visible:underline">
+                    Forgot password?
+                  </Link>
+                </p>
 
                 {!getApiBaseUrl() && (
                   <>

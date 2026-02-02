@@ -44,8 +44,8 @@ export default function Connection() {
 
   if (loading && !isConnected) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-orange-50 to-white flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full" />
+      <div className="min-h-screen bg-gradient-to-b from-orange-50 to-white flex items-center justify-center px-4">
+        <LoadingSpinner size="lg" label="Checking connection…" />
       </div>
     );
   }

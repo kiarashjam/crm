@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, RotateCcw, Search, Mail, MessageSquare, FileText, Briefcase, History as HistoryIcon } from 'lucide-react';
+import { Copy, RotateCcw, Search, Mail, MessageSquare, FileText, Briefcase, History as HistoryIcon, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import EmptyState from '@/app/components/EmptyState';
@@ -63,6 +63,10 @@ export default function History() {
     navigate('/dashboard', { state: { regenerateContext: item.copy.slice(0, 300) } });
   };
 
+  const handleSendAgain = (item: CopyHistoryItem) => {
+    navigate('/send', { state: { copy: item.copy, copyTypeLabel: item.type } });
+  };
+
   const filteredItems = items.filter(
     (item) =>
       item.copy.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -92,6 +96,11 @@ export default function History() {
                 className="w-full h-11 pl-12 pr-4 border border-slate-300 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-colors"
                 aria-label="Search copy history"
               />
+              {!loading && (
+                <p className="text-sm text-slate-500 mt-2">
+                  {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
+                </p>
+              )}
             </div>
           </div>
 
@@ -126,19 +135,30 @@ export default function History() {
 
                         <p className="text-slate-700 mb-4 line-clamp-2">{item.copy}</p>
 
-                        <div className="flex gap-4">
+                        <div className="flex flex-wrap gap-4">
                           <button
                             type="button"
                             onClick={() => handleCopy(item.id, item.copy)}
                             className="flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-medium transition-colors focus-visible:rounded"
+                            aria-label={copiedId === item.id ? 'Copied' : 'Copy to clipboard'}
                           >
                             <Copy className="w-4 h-4" aria-hidden />
                             {copiedId === item.id ? 'Copied!' : 'Copy'}
                           </button>
                           <button
                             type="button"
+                            onClick={() => handleSendAgain(item)}
+                            className="flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-medium transition-colors focus-visible:rounded"
+                            aria-label="Send again to CRM"
+                          >
+                            <Send className="w-4 h-4" aria-hidden />
+                            Send again
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleRegenerate(item)}
                             className="flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-medium transition-colors focus-visible:rounded"
+                            aria-label="Regenerate copy"
                           >
                             <RotateCcw className="w-4 h-4" aria-hidden />
                             Regenerate

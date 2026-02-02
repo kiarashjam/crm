@@ -1,14 +1,11 @@
-# Deploy to Azure Static Web Apps when you publish a release (or push to main)
+# Deploy to Azure Static Web Apps on every push to main (and on release)
 name: Build and deploy to Azure Static Web Apps
 
 on:
-  release:
-    types: [published]
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '.gitignore'
+  release:
+    types: [published]
 
 env:
   NODE_VERSION: '20'

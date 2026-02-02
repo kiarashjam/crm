@@ -60,9 +60,9 @@ export default function Onboarding() {
             </label>
             <div className="space-y-3" role="radiogroup" aria-label="Brand tone">
               {[
-                { value: 'professional' as const, label: 'Professional', desc: 'Formal, business-focused communication' },
-                { value: 'friendly' as const, label: 'Friendly', desc: 'Warm, approachable, and conversational' },
-                { value: 'persuasive' as const, label: 'Persuasive', desc: 'Compelling, action-oriented messaging' },
+                { value: 'professional' as const, label: 'Professional', desc: 'Formal, business-focused communication', example: 'e.g. "We are pleased to inform you…"' },
+                { value: 'friendly' as const, label: 'Friendly', desc: 'Warm, approachable, and conversational', example: 'e.g. "Hey! Hope you\'re having a great day…"' },
+                { value: 'persuasive' as const, label: 'Persuasive', desc: 'Compelling, action-oriented messaging', example: 'e.g. "Consider this: you could save 40%…"' },
               ].map((opt) => (
                 <label
                   key={opt.value}
@@ -79,6 +79,7 @@ export default function Onboarding() {
                   <div className="ml-3">
                     <p className="font-medium text-slate-900">{opt.label}</p>
                     <p className="text-sm text-slate-600">{opt.desc}</p>
+                    <p className="text-xs text-slate-500 mt-1 italic">{opt.example}</p>
                   </div>
                 </label>
               ))}

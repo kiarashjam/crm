@@ -88,7 +88,8 @@ export default function SendToCrm() {
     return (
       <div className="min-h-screen bg-slate-50">
         <AppHeader />
-        <main className="w-full max-w-2xl mx-auto px-[var(--page-padding)] py-12">
+        <main id={MAIN_CONTENT_ID} className="w-full max-w-2xl mx-auto px-[var(--page-padding)] py-12" tabIndex={-1}>
+          <h1 className="sr-only">Send to CRM</h1>
           <EmptyState
             icon={FileText}
             title="No copy to send"
@@ -217,9 +218,14 @@ export default function SendToCrm() {
                 <CheckCircle className="w-12 h-12 text-emerald-600" />
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-4">Successfully Sent!</h1>
-              <p className="text-slate-600 mb-8 max-w-md mx-auto">
+              <p className="text-slate-600 mb-2 max-w-md mx-auto">
                 Your copy has been added to your CRM and is ready to use.
               </p>
+              {selectedRecord && (
+                <p className="text-sm font-medium text-slate-700 mb-6">
+                  Copy added to <strong>{selectedRecord.name}</strong> ({objectType}).
+                </p>
+              )}
 
               {selectedRecord && (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-8 text-left max-w-md mx-auto">

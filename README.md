@@ -13,6 +13,10 @@ Run `npm i` to install the dependencies.
 
 Run `npm run dev` to start the development server.
 
+### Database in Docker, frontend and backend locally
+
+To run **only the database** in Docker and the **frontend** and **backend** on your machine, see **[LOCAL_DEV.md](./LOCAL_DEV.md)** (start DB with `docker compose up -d`, then run backend and frontend separately).
+
 ### Using the real backend
 
 1. Start the backend (see [backend/README.md](./backend/README.md)):  

@@ -4,37 +4,16 @@
  * when present; 401 from the backend clears session.
  */
 
-import { clearSession } from '@/app/lib/auth';
-
-const TOKEN_KEY = 'crm_token';
+import { clearSession, getAuthToken } from '@/app/lib/auth';
 
 export function getApiBaseUrl(): string | undefined {
   const url = import.meta.env.VITE_API_URL;
   return typeof url === 'string' && url.trim() ? url.trim().replace(/\/$/, '') : undefined;
 }
 
+/** Token used for API calls; must match lib/auth (setSession after login). */
 export function getToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function setToken(token: string): void {
-  try {
-    localStorage.setItem(TOKEN_KEY, token);
-  } catch {
-    // ignore
-  }
-}
-
-export function clearToken(): void {
-  try {
-    localStorage.removeItem(TOKEN_KEY);
-  } catch {
-    // ignore
-  }
+  return getAuthToken();
 }
 
 /** True when backend is configured: frontend always calls real API, never mock. */
@@ -50,7 +29,7 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
   const { skipAuth, ...init } = options;
   const headers = new Headers(init.headers);
   if (!skipAuth) {
-    const token = getToken();
+    const token = getAuthToken();
     if (token) headers.set('Authorization', `Bearer ${token}`);
   }
   if (headers.get('Content-Type') == null && (init.body != null && typeof init.body === 'string')) {

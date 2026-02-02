@@ -28,5 +28,8 @@ public class User : Common.BaseEntity
     public ICollection<Company> Companies { get; set; } = new List<Company>();
     public ICollection<Contact> Contacts { get; set; } = new List<Contact>();
     public ICollection<Deal> Deals { get; set; } = new List<Deal>();
+    public ICollection<Lead> Leads { get; set; } = new List<Lead>();
+    public ICollection<TaskItem> TaskItems { get; set; } = new List<TaskItem>();
+    public ICollection<Activity> Activities { get; set; } = new List<Activity>();
     public ICollection<CopyHistoryItem> CopyHistory { get; set; } = new List<CopyHistoryItem>();
 }

@@ -34,4 +34,16 @@ public sealed class ContactRepository : IContactRepository
         await _db.SaveChangesAsync(ct);
         return contact;
     }
+
+    public async Task<Contact?> UpdateAsync(Contact contact, Guid userId, CancellationToken ct = default)
+    {
+        var existing = await _db.Contacts.FirstOrDefaultAsync(c => c.Id == contact.Id && c.UserId == userId, ct);
+        if (existing == null) return null;
+        existing.Name = contact.Name;
+        existing.Email = contact.Email;
+        existing.Phone = contact.Phone;
+        existing.CompanyId = contact.CompanyId;
+        await _db.SaveChangesAsync(ct);
+        return existing;
+    }
 }

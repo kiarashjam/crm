@@ -34,4 +34,32 @@ public sealed class DealRepository : IDealRepository
         await _db.SaveChangesAsync(ct);
         return deal;
     }
+
+    public async Task<Deal?> UpdateAsync(Deal deal, Guid userId, CancellationToken ct = default)
+    {
+        var existing = await _db.Deals.FirstOrDefaultAsync(d => d.Id == deal.Id && d.UserId == userId, ct);
+        if (existing == null) return null;
+        existing.Name = deal.Name;
+        existing.Value = deal.Value;
+        existing.Stage = deal.Stage;
+        existing.CompanyId = deal.CompanyId;
+        existing.ContactId = deal.ContactId;
+        existing.ExpectedCloseDateUtc = deal.ExpectedCloseDateUtc;
+        existing.IsWon = deal.IsWon;
+        await _db.SaveChangesAsync(ct);
+        return existing;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken ct = default)
+    {
+        var existing = await _db.Deals.FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId, ct);
+        if (existing == null) return false;
+        var linkedTasks = await _db.TaskItems.Where(t => t.DealId == id).ToListAsync(ct);
+        foreach (var t in linkedTasks) t.DealId = null;
+        var linkedActivities = await _db.Activities.Where(a => a.DealId == id).ToListAsync(ct);
+        foreach (var a in linkedActivities) a.DealId = null;
+        _db.Deals.Remove(existing);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
 }

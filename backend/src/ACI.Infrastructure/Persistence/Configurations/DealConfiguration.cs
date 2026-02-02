@@ -15,5 +15,6 @@ internal sealed class DealConfiguration : IEntityTypeConfiguration<Deal>
         builder.Property(e => e.Stage).HasMaxLength(128);
         builder.HasOne(e => e.User).WithMany(u => u.Deals).HasForeignKey(e => e.UserId);
         builder.HasOne(e => e.Company).WithMany(c => c.Deals).HasForeignKey(e => e.CompanyId);
+        builder.HasOne(e => e.Contact).WithMany().HasForeignKey(e => e.ContactId);
     }
 }

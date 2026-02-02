@@ -40,7 +40,7 @@ export default function GeneratedCopy() {
       navigator.clipboard.writeText(generatedText);
       setCopied(true);
       toast.success(messages.copy.copied);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 3000);
     } catch {
       toast.error(messages.errors.generic);
     }
@@ -94,6 +94,7 @@ export default function GeneratedCopy() {
                     type="button"
                     onClick={handleCopy}
                     className="flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-medium transition-colors focus-visible:rounded-md"
+                    aria-label={copied ? 'Copied to clipboard' : 'Copy to clipboard'}
                   >
                     <Copy className="w-4 h-4" aria-hidden />
                     {copied ? 'Copied!' : 'Copy'}
@@ -121,7 +122,8 @@ export default function GeneratedCopy() {
 
             <div className="space-y-4">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-                <h2 className="font-semibold text-slate-900 mb-4">Adjust Copy</h2>
+                <h2 className="font-semibold text-slate-900 mb-1">Adjust Copy</h2>
+                <p className="text-xs text-slate-500 mb-4">Sample adjustments; edit the text above to refine.</p>
                 <div className="space-y-3">
                   {[
                     { label: 'Make shorter', onClick: handleMakeShorter },
