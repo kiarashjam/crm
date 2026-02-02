@@ -207,7 +207,7 @@ This report maps each core must-have to **what the system has** vs **what it doe
 | **Contacts list page** | ✅ Implemented | `/contacts` page (list, search); nav link. |
 | **Convert lead** | No "convert lead to contact/deal" flow. |
 | **Lead/deal delete** | ✅ Implemented | DELETE API and UI for leads and deals (confirm dialog). |
-| **Company CRUD** | ✅ Implemented | Create/update API and Companies page (Add company, Edit). |
+| **Company CRUD** | ✅ Implemented | Create/update API and Companies page (`/companies` — Add company, Edit). |
 
 ---
 
@@ -216,7 +216,7 @@ This report maps each core must-have to **what the system has** vs **what it doe
 | Core area | Implemented | Notes |
 |-----------|-------------|--------|
 | **1. Lead management** | Yes | Leads page: list, search, create/edit, company, source, status. |
-| **2. Contact & company** | Partial | Contacts: API + Send to CRM. Companies: API + Companies page (read-only). No dedicated Contacts list page. |
+| **2. Contact & company** | Yes | Contacts: API + Send to CRM + Contacts page (`/contacts` list, search). Companies: API + Companies page (list, create, edit). |
 | **3. Deal management** | Yes | Pipeline: create deal (name, value, stage, expected close date, company); move stage; isWon on Closed Won/Lost. |
 | **4. Sales pipeline** | Yes | Pipeline page: Kanban by stage (Qualification → Closed Won/Lost); move deals between stages. |
 | **5. Activity tracking** | Yes | Activities page: list, log call/meeting/email/note; filter by contact/deal for timeline. |
@@ -232,6 +232,6 @@ This report maps each core must-have to **what the system has** vs **what it doe
 
 **Verified against:** `App.tsx` routes (including /leads, /pipeline, /tasks, /activities, /companies); `src/app/api/*` (leads including searchLeads, companies, tasks, activities, reporting, deals create/update, contacts with phone); `src/app/pages/*` (Leads, Pipeline, Tasks, Activities, Companies, Dashboard with getDashboardStats); backend controllers (Leads, Deals, Tasks, Activities, Companies, Reporting, Contacts) and DTOs/entities as listed. Frontend–backend alignment checked: endpoints and payloads match.
 
-**Re-verification (January 2026):** Frontend and backend re-checked; all flows have matching API modules, types, and controller endpoints. See [FLOWS_BACKEND_DATABASE_VERIFICATION.md](FLOWS_BACKEND_DATABASE_VERIFICATION.md), [FRONTEND_PAGES_REPORT.md](FRONTEND_PAGES_REPORT.md), and [USER_FLOWS_REPORT.md](USER_FLOWS_REPORT.md) for full user flows from beginning through CRM.
+**Re-verification:** Frontend and backend re-checked; all flows have matching API modules, types, and controller endpoints. See [FLOWS_BACKEND_DATABASE_VERIFICATION.md](FLOWS_BACKEND_DATABASE_VERIFICATION.md), [FRONTEND_PAGES_REPORT.md](FRONTEND_PAGES_REPORT.md), and [USER_FLOWS_REPORT.md](USER_FLOWS_REPORT.md) for full user flows. For every aspect of the project, see [PROJECT_ASPECTS.md](../../PROJECT_ASPECTS.md).
 
-*Last updated: January 2026*
+*Last updated: February 2026*

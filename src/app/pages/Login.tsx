@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import { ArrowLeft, Sparkles, Play } from 'lucide-react';
 import { toast } from 'sonner';
-import { login, loginWithTwoFactor, register } from '@/app/api';
+import { login, loginWithTwoFactor, register, messages } from '@/app/api';
 import { setSession, setDemoUser } from '@/app/lib/auth';
 import { getApiBaseUrl } from '@/app/api/apiClient';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/app/components/ui/input-otp';
@@ -37,7 +37,7 @@ export default function Login() {
         const res = await loginWithTwoFactor(twoFactorToken!, code);
         if (!res.token || !res.user) throw new Error('Login failed');
         setSession(res.token, res.user);
-        toast.success('Signed in');
+        toast.success(messages.auth.signedIn);
         navigate('/dashboard', { replace: true });
         return;
       }
@@ -50,16 +50,16 @@ export default function Login() {
       if (res.requiresTwoFactor && res.twoFactorToken) {
         setRequires2fa(true);
         setTwoFactorToken(res.twoFactorToken);
-        toast.message('Two-factor code required');
+        toast.message(messages.auth.twoFactorCodeRequired);
         return;
       }
 
       if (!res.token || !res.user) throw new Error('Login failed');
       setSession(res.token, res.user);
-      toast.success(mode === 'register' ? 'Account created' : 'Signed in');
+      toast.success(mode === 'register' ? messages.auth.accountCreated : messages.auth.signedIn);
       navigate('/dashboard', { replace: true });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Something went wrong';
+      const msg = e instanceof Error ? e.message : messages.errors.generic;
       setLastError(msg);
       toast.error(msg);
     } finally {
@@ -174,7 +174,7 @@ export default function Login() {
                       type="button"
                       onClick={() => {
                         setDemoUser({ name: 'Demo User', email: 'demo@example.com' });
-                        toast.success('Demo mode');
+                        toast.success(messages.auth.demoMode);
                         navigate('/dashboard', { replace: true });
                       }}
                       className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"

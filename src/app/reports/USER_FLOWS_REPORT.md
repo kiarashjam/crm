@@ -1,6 +1,6 @@
 # User Flows Report — From Beginning to Full CRM
 
-This report describes **all the flows one user can do** in the ACI program: from the very beginning (sign up, company setup) through **having their own company**, **inviting or adding new people** (what exists today), and **all CRM stuff** (leads, deals, tasks, activities, copy, etc.).
+This report describes **all the flows one user can do** in the ACI program: from the very beginning (sign up, company setup) through **having their own company**, **inviting or adding new people** (what exists today), and **all CRM stuff** (leads, deals, tasks, activities, copy, etc.). The system is **standalone**: no external API or cloud is required (demo mode or full stack locally—see [RUN_FROM_SCRATCH.md](../../RUN_FROM_SCRATCH.md)).
 
 ---
 
@@ -24,12 +24,12 @@ One user = one account. They **sign up** → (optionally) **connect CRM** → **
 | Concept | What the app has | What it does **not** have |
 |--------|-------------------|----------------------------|
 | **My company (brand)** | **UserSettings:** Company name + brand tone set in Onboarding or Settings. Used when generating copy (e.g. “how we can help [Company Name]”). | No “company” as a multi-user organization. |
-| **Companies in the CRM** | **Companies** (`/companies`): List of **accounts/organizations** the user tracks (customer companies). Read-only list and search. Used when creating **Leads** or **Deals** (link a lead/deal to a company). | No create/edit companies in UI; no “my company” as the owner of these records. |
+| **Companies in the CRM** | **Companies** (`/companies`): List of **accounts/organizations** the user tracks (customer companies). List, search, **Add company**, **Edit**. Used when creating **Leads** or **Deals** (link a lead/deal to a company). | No create/edit companies in UI; no “my company” as the owner of these records. |
 | **Who owns the data** | Every record (contacts, deals, leads, tasks, activities, copy history) is **owned by the signed-in user** (filtered by `UserId` in the backend). So “their company” in practice = **one user’s data**. | No company entity that “owns” multiple users or shared data. |
 
 **Summary — Their own company:**  
 - **Their company** = company name + brand tone (Onboarding/Settings) for copy.  
-- **Companies in CRM** = accounts they sell to (read-only list; used on leads/deals).  
+- **Companies in CRM** = accounts they sell to (list, add, edit; used on leads/deals).  
 - **Inviting or adding new people** to the same “company” or team is **not implemented** (see next section).
 
 ---
@@ -75,9 +75,9 @@ Below is the full set of **flows one user can do** in the app after sign-in.
 
 | Flow | What the user does | Route / Page |
 |------|--------------------|--------------|
-| **View pipeline** | Kanban: deals by stage (Qualification, Proposal, Negotiation, Closed Won, Closed Lost). | `/pipeline` |
-| **Move deal stage** | Change stage in dropdown on a deal card; if set to Closed Won/Lost, deal is marked won/lost. | `/pipeline` |
-| **New deal** | “New deal” → name, value, stage, optional expected close date, optional company → Save. | `/pipeline` |
+| **View pipeline** | Kanban: deals by stage (Qualification, Proposal, Negotiation, Closed Won, Closed Lost). | `/deals` |
+| **Move deal stage** | Change stage in dropdown on a deal card; if set to Closed Won/Lost, deal is marked won/lost. | `/deals` |
+| **New deal** | “New deal” → name, value, stage, optional expected close date, optional company → Save. | `/deals` |
 
 ### 4.4 Tasks
 
@@ -103,11 +103,12 @@ Below is the full set of **flows one user can do** in the app after sign-in.
 | **Add company** | "Add company" → dialog: name → Save. | `/companies` |
 | **Edit company** | "Edit" on a company → dialog: name → Update. | `/companies` |
 
-### 4.7 Contacts (for Send to CRM)
+### 4.7 Contacts
 
 | Flow | What the user does | Route / Page |
 |------|--------------------|--------------|
-| **Use contacts** | Contacts are used when sending copy to CRM (select a contact or deal). No dedicated “Contacts list” page; contacts are loaded only on Send to CRM (and in Activities for “by contact” filter). | `/send`, `/activities` |
+| **List contacts** | View contacts (name, email, phone); search by name/email/phone. | `/contacts` |
+| **Use contacts** | Contacts are used when sending copy to CRM (select a contact or deal) and in Activities for “by contact” filter. | `/send`, `/activities` |
 
 ### 4.8 Dashboard & Reporting
 
@@ -143,7 +144,7 @@ Below is the full set of **flows one user can do** in the app after sign-in.
 | **Beginning** | Homepage → Login/Register (with 2FA) → Connect CRM (optional) → Onboarding (company name + brand) → Dashboard | No |
 | **Their company** | Company name + brand in settings; Companies in CRM = accounts they track (read-only). One user = one account. | No |
 | **Inviting/adding people** | — | **Not implemented** |
-| **CRM** | Leads (list, search, add, edit), Pipeline (Kanban, move stage, new deal), Tasks (list, add, edit, complete), Activities (list, log, filter by contact/deal), Companies (list, search), Send to CRM (contacts/deals), Copy (generate, templates, history), Dashboard stats, Settings (brand, connection, 2FA, logout, delete) | N/A |
+| **CRM** | Leads (list, search, add, edit, delete), Pipeline (`/deals` — Kanban, move stage, new deal, delete), Tasks (list, add, edit, complete), Activities (list, log, filter by contact/deal), Contacts (list, search at `/contacts`), Companies (list, add, edit), Send to CRM (contacts/deals), Copy (generate, templates, history), Dashboard stats, Settings (brand, connection, 2FA, logout, delete) | N/A |
 
 ---
 
@@ -152,7 +153,8 @@ Below is the full set of **flows one user can do** in the app after sign-in.
 - **[SALES_CRM_CORE_GAP_REPORT.md](SALES_CRM_CORE_GAP_REPORT.md)** — Core CRM features: what we have vs what we don’t.
 - **[FRONTEND_PAGES_REPORT.md](FRONTEND_PAGES_REPORT.md)** — All routes, pages, and API usage.
 - **[FLOWS_BACKEND_DATABASE_VERIFICATION.md](FLOWS_BACKEND_DATABASE_VERIFICATION.md)** — Backend and database alignment for these flows.
+- **[PROJECT_ASPECTS.md](../../PROJECT_ASPECTS.md)** — Every aspect of the project in one place.
 
 ---
 
-*Report describes all user flows from beginning through company setup, inviting/adding people (not implemented), and full CRM usage. Last updated: January 2026.*
+*Report describes all user flows from beginning through company setup, inviting/adding people (not implemented), and full CRM usage. Last updated: February 2026.*

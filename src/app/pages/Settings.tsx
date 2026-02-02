@@ -72,7 +72,7 @@ export default function Settings() {
       setTwoFaEnabled(r.enabled);
       setTwoFaSecret(r.secret);
       setTwoFaUri(r.otpauthUri);
-      toast.message('Scan the secret in your authenticator, then confirm the code.');
+      toast.message(messages.twoFa.scanSecretConfirm);
     } catch {
       toast.error(messages.errors.generic);
     } finally {
@@ -87,7 +87,7 @@ export default function Settings() {
       await twoFactorEnable(twoFaCode);
       setTwoFaEnabled(true);
       setTwoFaCode('');
-      toast.success('2FA enabled');
+      toast.success(messages.twoFa.enabled);
     } catch (e) {
       const msg = e instanceof Error ? e.message : messages.errors.generic;
       toast.error(msg);
@@ -106,7 +106,7 @@ export default function Settings() {
       setTwoFaUri(null);
       setTwoFaDisablePassword('');
       setTwoFaDisableCode('');
-      toast.success('2FA disabled');
+      toast.success(messages.twoFa.disabled);
     } catch (e) {
       const msg = e instanceof Error ? e.message : messages.errors.generic;
       toast.error(msg);

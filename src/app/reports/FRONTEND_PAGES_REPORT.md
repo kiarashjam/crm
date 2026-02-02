@@ -9,7 +9,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 - **Router:** `BrowserRouter` (React Router).
 - **Global UI:** `SkipLink` (skip to main content, visible on focus); `Toaster` from Sonner (`position="top-center"`, `richColors`, `closeButton`).
 - **Catch-all:** `path="*"` → `Navigate to="/" replace`.
-- **Route guard:** None; all routes are reachable without auth. Auth is enforced by backend when `VITE_API_URL` is set; demo mode uses `setDemoUser` without token.
+- **Route guard:** None; all routes are reachable without auth. Auth is enforced by backend when `VITE_API_URL` is set; **standalone demo mode** (no backend) uses `setDemoUser` without token—no external API required.
 
 ---
 
@@ -25,7 +25,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 | 6 | `/generated` | GeneratedCopy | No | None (clipboard, navigate with state) |
 | 7 | `/send` | SendToCrm | No | getContacts, getDeals, sendCopyToCrm |
 | 8 | `/leads` | Leads | No | getLeads, searchLeads, getCompanies, createLead, updateLead, deleteLead |
-| 9 | `/pipeline` | Pipeline | No | getDeals, updateDeal, createDeal, deleteDeal, getCompanies |
+| 9 | `/deals` | Pipeline | No | getDeals, updateDeal, createDeal, deleteDeal, getCompanies |
 | 10 | `/tasks` | Tasks | No | getTasks (overdueOnly when filter=overdue), createTask, updateTask, getLeads, getDeals (for dialog) |
 | 11 | `/activities` | Activities | No | getActivities, getActivitiesByContact, getActivitiesByDeal, createActivity, getContacts, getDeals |
 | 12 | `/contacts` | Contacts | No | getContacts |
@@ -36,6 +36,15 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 | 17 | `/help` | Help | No | None |
 | 18 | `/privacy` | Privacy | No | None |
 | 19 | `/terms` | Terms | No | None |
+
+---
+
+## Conventions (all pages, current)
+
+- **Toasts:** All success and error toasts use centralized `messages` from `@/app/api` (`messages.success.*`, `messages.errors.generic`, `messages.validation.*`, `messages.auth.*`, `messages.twoFa.*`, `messages.task.*`). Validation messages (e.g. name required) use `messages.validation.*`.
+- **Search / no-results:** Pages with search (Leads, Contacts, Companies, History, SendToCrm) show a hint under the search box when the query returns no results (e.g. “No results for ‘X’. Try a different search or add a lead.”).
+- **Async safety:** Data-loading `useEffect`s use a `cancelled` flag and return a cleanup that sets `cancelled = true` so `setState` is not called after unmount (History, Connection, SendToCrm, Templates, Dashboard, Activities contacts/deals fetch). Copy “Copied” timeouts in History and GeneratedCopy are stored in a ref and cleared on unmount.
+- **Pipeline:** `handleMoveStage` is wrapped in try/catch; errors show `messages.errors.generic`.
 
 ---
 
@@ -80,7 +89,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
   - When !requires2fa: Sign in / Create account tabs; register shows Name input; Email, Password; primary button (Create account / Sign in); when no backend, divider + “Try demo (no backend)” (Play icon).
   - When requires2fa: “Authentication code” label; InputOTP (6 slots); “Verify & sign in”; “Back” (clears 2FA state).
   - Footer in card: “Connect your CRM in one click…”; Privacy Policy, Terms of Service; below card: “Having trouble? See help” → `/help`.
-- **Toasts:** success “Signed in” / “Account created”; message “Two-factor code required”; error on catch.
+- **Toasts:** `messages.auth.signedIn`, `messages.auth.accountCreated`, `messages.auth.demoMode`, `messages.auth.twoFactorCodeRequired`; error uses API message or `messages.errors.generic`.
 - **README:** [pages/Login.README.md](../pages/Login.README.md)
 
 ---
@@ -90,7 +99,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 - **File:** `pages/Connection.tsx`
 - **Purpose:** Connect CRM; when connected, “Continue” → onboarding; else “Skip for now” → dashboard.
 - **State:** `isConnected`, `loading` (true until first getConnectionStatus).
-- **Effects:** On mount, `getConnectionStatus()` → set `isConnected`, set `loading` false.
+- **Effects:** On mount, `getConnectionStatus()` → set `isConnected`, set `loading` false; cleanup with `cancelled` so no setState after unmount.
 - **Handlers:** `handleConnect`: `setConnectionStatus({ connected: true, accountEmail: user?.email ?? 'company@example.com' })` → set isConnected, toast success. `handleContinue`: navigate `/onboarding`.
 - **API:** `getConnectionStatus`, `setConnectionStatus`; `getCurrentUser` (lib/auth) for display/email.
 - **Layout:**
@@ -171,7 +180,85 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 8. Templates (`/templates`)
+### 8. Leads (`/leads`)
+
+- **File:** `pages/Leads.tsx`
+- **Purpose:** List, search, create, edit, delete, and convert leads; company, source, status.
+- **State:** leads, companies, loading, searchQuery, dialog (create/edit), deleteConfirmLead, convertDialogLead, form, saving, deleting, converting.
+- **Effects:** On mount, getLeads + getCompanies with `cancelled` cleanup.
+- **Handlers:** openCreate, openEdit, handleSubmit (create/update), handleDeleteConfirm, openConvert, handleConvert.
+- **API:** getLeads, getCompanies, createLead, updateLead, deleteLead, convertLead; toasts use `messages`.
+- **Layout:** AppHeader; title + count (“X leads”); search with no-results hint; list with Edit/Delete/Convert; dialogs for create/edit/delete/convert.
+- **README:** [pages/Leads.README.md](../pages/Leads.README.md)
+
+---
+
+### 9. Pipeline (`/deals`)
+
+- **File:** `pages/Pipeline.tsx`
+- **Purpose:** Kanban of deals by stage; move stage, create, edit, delete deal.
+- **State:** deals, contacts, companies, loading, createOpen, editDeal, deleteConfirmDeal, createForm, editForm, saving, savingEdit, deleting.
+- **Effects:** On mount getDeals + getContacts with `cancelled` cleanup; when createOpen or editDeal, getCompanies.
+- **Handlers:** handleMoveStage (try/catch, updateDeal), handleDeleteConfirm, handleSaveEdit, handleCreate.
+- **API:** getDeals, getContacts, getCompanies, updateDeal, createDeal, deleteDeal; toasts use `messages`.
+- **Layout:** AppHeader; “Deals”; Kanban columns (Qualification, Proposal, Negotiation, Closed Won, Closed Lost); deal cards with stage dropdown, Edit, Delete; dialogs for new deal and edit deal.
+- **README:** [pages/Pipeline.README.md](../pages/Pipeline.README.md)
+
+---
+
+### 10. Tasks (`/tasks`)
+
+- **File:** `pages/Tasks.tsx`
+- **Purpose:** List tasks; filter All/Pending/Overdue; create, edit, toggle complete; optional link to lead/deal.
+- **State:** tasks, loading, filter, dialogOpen, editingTask, form, leads, deals, saving.
+- **Effects:** On mount and when filter changes, getTasks (overdueOnly when filter=overdue) with `cancelled` cleanup; when dialogOpen, getLeads + getDeals.
+- **Handlers:** openCreate, openEdit, handleSubmit (create/update), handleToggleComplete.
+- **API:** getTasks, createTask, updateTask, getLeads, getDeals; toasts use `messages`.
+- **Layout:** AppHeader; “Tasks”; filter buttons; list with checkbox, title, due date, Edit; dialog for create/edit.
+- **README:** [pages/Tasks.README.md](../pages/Tasks.README.md)
+
+---
+
+### 11. Activities (`/activities`)
+
+- **File:** `pages/Activities.tsx`
+- **Purpose:** List activities; filter All / By contact / By deal; log activity (call/meeting/email/note) with optional contact/deal.
+- **State:** activities, contacts, deals, loading, filter, filterContactId, filterDealId, dialogOpen, form, saving, deleteConfirmActivity, deleting.
+- **Effects:** Main data load with `cancelled`; when dialogOpen or filter !== 'all', getContacts + getDeals with `cancelled`.
+- **Handlers:** handleSubmit (createActivity), handleDeleteConfirm.
+- **API:** getActivities, getActivitiesByContact, getActivitiesByDeal, createActivity, deleteActivity, getContacts, getDeals; toasts use `messages`.
+- **Layout:** AppHeader; “Activities”; filter; “Log activity”; list of activities; dialog for log; delete confirm.
+- **README:** [pages/Activities.README.md](../pages/Activities.README.md)
+
+---
+
+### 12. Contacts (`/contacts`)
+
+- **File:** `pages/Contacts.tsx`
+- **Purpose:** List, search, create, edit contacts; used for Send to CRM and Activities filter.
+- **State:** contacts, companies, loading, searchQuery, dialogOpen, editingContact, form, saving.
+- **Effects:** On mount getContacts with `cancelled` cleanup; when dialogOpen, getCompanies.
+- **Handlers:** openCreate, openEdit, handleSubmit (create/update).
+- **API:** getContacts, createContact, updateContact, getCompanies; toasts use `messages`.
+- **Layout:** AppHeader; title + count; search with no-results hint; list (clickable row → /send); Add contact; dialog for create/edit.
+- **README:** [pages/Contacts.README.md](../pages/Contacts.README.md)
+
+---
+
+### 13. Companies (`/companies`)
+
+- **File:** `pages/Companies.tsx`
+- **Purpose:** List, search, create, edit companies; used when creating leads and linking deals.
+- **State:** companies, loading, searchQuery, dialogOpen, editingCompany, formName, saving.
+- **Effects:** On mount getCompanies with `cancelled` cleanup.
+- **Handlers:** openCreate, openEdit, handleSubmit (create/update).
+- **API:** getCompanies, createCompany, updateCompany; toasts use `messages`.
+- **Layout:** AppHeader; title + count; search with no-results hint; list with Edit; Add company; dialog for create/edit.
+- **README:** [pages/Companies.README.md](../pages/Companies.README.md)
+
+---
+
+### 14. Templates (`/templates`)
 
 - **File:** `pages/Templates.tsx`
 - **Purpose:** Browse templates by category; “Use template” → dashboard with templateId in state.
@@ -184,92 +271,17 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 9. History (`/history`)
+### 15. History (`/history`)
 
 - **File:** `pages/History.tsx`
-- **Purpose:** List copy history; search by copy/type/recipient; copy to clipboard; regenerate (→ dashboard with first 300 chars as context).
-- **State:** searchQuery, copiedId (reset after 2s), items (CopyHistoryItem[]), loading.
-- **Effects:** On mount, getCopyHistory() → set items, loading false.
-- **Handlers:** handleCopy(id, text) — clipboard, setCopiedId, toast; handleRegenerate(item) → navigate('/dashboard', { state: { regenerateContext: item.copy.slice(0, 300) } }).
-- **Derived:** filteredItems by search (copy, type, recipientName).
-- **API:** getCopyHistory.
-- **Layout:** AppHeader; “Copy History”; search input (placeholder “Search your copy history…”); loading spinner; list of articles: type icon, type + “To: {recipientName}”, relative date (formatDate), line-clamp-2 copy, Copy + Regenerate buttons; EmptyState when no items or no search results (“No copy history yet” / “No results found”), optional “Create your first copy” → `/dashboard`.
+- **Purpose:** List copy history; search by copy/type/recipient; copy to clipboard; regenerate (→ dashboard with context); “Send again” → /send with copy.
+- **State:** searchQuery, copiedId (reset after 2s via ref + cleanup), items (CopyHistoryItem[]), loading, copyTimeoutRef.
+- **Effects:** On mount, getCopyHistory() with `cancelled` cleanup; copy timeout cleared on unmount.
+- **Handlers:** handleCopy (clipboard, setCopiedId, toast; timeout stored in ref); handleRegenerate(item); handleSendAgain(item) → navigate /send with copy.
+- **Derived:** filteredItems by search (copy, type, recipientName). Item count and no-results hint under search.
+- **API:** getCopyHistory; toasts use `messages`.
+- **Layout:** AppHeader; “Copy History”; search + “X items” + no-results hint; list with Copy, Send again, Regenerate; EmptyState when no items or no results.
 - **README:** [pages/History.README.md](../pages/History.README.md)
-
----
-
-### 10. Leads (`/leads`)
-
-- **File:** `pages/Leads.tsx`
-- **Purpose:** List, search, create, and edit leads; company/source/status.
-- **State:** leads (Lead[]), companies (Company[]), loading, searchQuery, dialogOpen, editingLead (Lead | null), form (name, email, phone, companyId, source, status), saving.
-- **Effects:** On mount, getLeads() and getCompanies() → set leads, companies, loading false.
-- **Handlers:** openCreate (reset form, set editingLead null, open dialog); openEdit(lead) (set form from lead, set editingLead, open dialog); handleSubmit (createLead or updateLead → update list, toast, close dialog).
-- **Derived:** filteredLeads by searchQuery (name, email, phone).
-- **API:** getLeads, searchLeads, getCompanies, createLead, updateLead.
-- **Layout:** AppHeader; “Leads”; “Add lead” button; search input; list of leads (name, email, company badge, status, source, Edit button) or EmptyState; Dialog for create/edit (name*, email*, phone, company select, source select, status select).
-
----
-
-### 11. Pipeline (`/pipeline`)
-
-- **File:** `pages/Pipeline.tsx`
-- **Purpose:** Deals by stage (Kanban); move deal stage; new deal.
-- **State:** deals (Deal[]), loading, createOpen, createForm (name, value, stage, expectedCloseDate, companyId), companies (Company[]), saving.
-- **Effects:** On mount, getDeals() → set deals. When createOpen, getCompanies() → set companies.
-- **Handlers:** handleMoveStage(dealId, newStage) → updateDeal (stage + isWon when Closed Won/Lost) → refresh list, toast; handleCreate (createDeal → add to list, toast, close dialog); handleDeleteConfirm (deleteDeal → remove from list, toast). Delete button per deal opens confirm dialog.
-- **API:** getDeals, updateDeal, createDeal, deleteDeal, getCompanies.
-- **Layout:** AppHeader; “Pipeline”; “New deal” button; grid of stage columns (Qualification, Proposal, Negotiation, Closed Won, Closed Lost); each column shows deal cards (name, value, stage Select); Dialog for new deal (name*, value*, stage, optional expected close date, optional company).
-
----
-
-### 12. Tasks (`/tasks`)
-
-- **File:** `pages/Tasks.tsx`
-- **Purpose:** List tasks; filter All/Pending/Overdue; create/edit task; toggle complete.
-- **State:** tasks (TaskItem[]), loading, filter ('all' | 'pending' | 'overdue'), dialogOpen, editingTask (TaskItem | null), form (title, description, dueDate, leadId, dealId), leads (Lead[]), deals (Deal[]), saving.
-- **Effects:** On mount and when filter changes, getTasks(filter === 'overdue') → set tasks. When dialogOpen, getLeads() and getDeals() → set leads, deals.
-- **Handlers:** openCreate, openEdit(task), handleSubmit (createTask or updateTask with leadId, dealId), handleToggleComplete(task) → updateTask(completed: !task.completed).
-- **Derived:** filteredTasks (when filter pending: !completed; when overdue: API returns overdue only).
-- **API:** getTasks (overdueOnly when filter=overdue), createTask, updateTask, getLeads, getDeals (for create/edit dialog dropdowns).
-- **Layout:** AppHeader; “Tasks”; “Add task” button; filter buttons (Pending, Overdue, All); list of tasks (checkbox complete, title, description, due date, overdue badge, Edit) or EmptyState; Dialog for create/edit (title*, description, due datetime, link to lead, link to deal).
-
----
-
-### 13. Activities (`/activities`)
-
-- **File:** `pages/Activities.tsx`
-- **Purpose:** List activities; log activity (call/meeting/email/note) with optional contact/deal link.
-- **State:** activities (Activity[]), contacts (Contact[]), deals (Deal[]), loading, filter ('all'|'contact'|'deal'), filterContactId, filterDealId, dialogOpen, form (type, subject, body, contactId, dealId), saving.
-- **Effects:** On mount and when filter/filterContactId/filterDealId change: getActivities() or getActivitiesByContact(filterContactId) or getActivitiesByDeal(filterDealId) → set activities. When dialogOpen or filter !== 'all', getContacts() and getDeals() for dropdowns.
-- **Handlers:** handleSubmit (createActivity → prepend to list, loadData, toast, close dialog).
-- **API:** getActivities, getActivitiesByContact, getActivitiesByDeal, createActivity, getContacts, getDeals.
-- **Layout:** AppHeader; “Activities”; “Log activity” button; filter All / By contact / By deal with contact or deal Select; list of activities (type icon, label, subject, body snippet, date) or EmptyState; Dialog for log activity (type select, subject, body, contact select, deal select).
-
----
-
-### 14. Contacts (`/contacts`)
-
-- **File:** `pages/Contacts.tsx`
-- **Purpose:** List contacts (read-only with search). Used when sending copy to CRM and filtering activities.
-- **State:** contacts (Contact[]), loading, searchQuery.
-- **Effects:** On mount, getContacts() → set contacts, loading false.
-- **Derived:** filteredContacts by searchQuery (name, email, phone).
-- **API:** getContacts.
-- **Layout:** AppHeader; "Contacts"; search input; list of contacts (name, email, phone) or EmptyState.
-
----
-
-### 15. Companies (`/companies`)
-
-- **File:** `pages/Companies.tsx`
-- **Purpose:** List companies; add and edit companies. Used when creating leads and linking deals.
-- **State:** companies (Company[]), loading, searchQuery, dialogOpen, editingCompany (Company | null), formName, saving.
-- **Effects:** On mount, getCompanies() → set companies, loading false.
-- **Handlers:** openCreate, openEdit(company), handleSubmit (createCompany or updateCompany → update list, toast, close dialog).
-- **Derived:** filteredCompanies by searchQuery (name).
-- **API:** getCompanies, createCompany, updateCompany.
-- **Layout:** AppHeader; "Companies"; "Add company" button; search input; list of companies (icon, name, id, Edit button) or EmptyState with "Add company" action; Dialog for add/edit (name*).
 
 ---
 
@@ -280,7 +292,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 - **State:** settings (UserSettings | null), showDeleteConfirm, saving, connected, twoFaEnabled, twoFaLoading, twoFaSecret, twoFaUri, twoFaCode, twoFaDisablePassword, twoFaDisableCode.
 - **Effects:** On mount: getUserSettings → setSettings (fallback Acme Corporation + professional); getConnectionStatus → set connected; twoFactorSetup → set twoFaEnabled, twoFaSecret, twoFaUri.
 - **Handlers:** handleSave (saveUserSettings); handleDeleteAccount: first click set showDeleteConfirm, second navigate `/`; handleStart2fa (twoFactorSetup, show secret/otpauth); handleEnable2fa (twoFactorEnable with code); handleDisable2fa (twoFactorDisable with password + code).
-- **API:** getUserSettings, getConnectionStatus, saveUserSettings, twoFactorSetup, twoFactorEnable, twoFactorDisable.
+- **API:** getUserSettings, getConnectionStatus, saveUserSettings, twoFactorSetup, twoFactorEnable, twoFactorDisable. Toasts use `messages` (e.g. `messages.settings.saved`, `messages.twoFa.enabled`, `messages.twoFa.disabled`, `messages.twoFa.scanSecretConfirm`).
 - **Layout:** AppHeader; when settings === null → LoadingSpinner. Else: “Settings”; Brand Settings (company name input, Brand Tone radios, “Save Changes”); CRM Connection (Connected/Not connected, “Reconnect”/“Connect” → `/connect`); Security — 2FA (Enable / View setup); when !twoFaEnabled && twoFaSecret: secret + otpauth display, 6-digit InputOTP, “Confirm & enable 2FA”; when twoFaEnabled: “2FA is enabled”, password + 6-digit code inputs, “Disable 2FA”; Account Actions: Logout → `/login`, Delete Account (two-click: “Click again to confirm deletion” then navigate `/`).
 - **README:** [pages/Settings.README.md](../pages/Settings.README.md)
 
@@ -318,7 +330,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 ## Shared Conventions
 
 - **Skip link:** `SkipLink` exports `MAIN_CONTENT_ID = 'main-content'`. Pages set `<main id={MAIN_CONTENT_ID}>` except SendToCrm empty state (no main id there).
-- **App header:** Used on Dashboard, GeneratedCopy, SendToCrm, Leads, Pipeline, Tasks, Activities, Contacts, Companies, Templates, History, Settings, Help. Nav items: Dashboard, Leads, Pipeline, Tasks, Activities, Contacts, Companies, Templates, History, Help. User dropdown: avatar (initials), name; Settings link; Sign out (clearSession + navigate /login). Mobile: Sheet with same nav + Settings + Sign out.
+- **App header:** Used on Dashboard, GeneratedCopy, SendToCrm, Leads, Pipeline, Tasks, Activities, Contacts, Companies, Templates, History, Settings, Help. Nav items: Dashboard, Leads, Pipeline (route `/deals`), Tasks, Activities, Contacts, Companies, Templates, History, Help. User dropdown: avatar (initials), name; Settings link; Sign out (clearSession + navigate /login). Mobile: Sheet with same nav + Settings + Sign out.
 - **Toasts:** Sonner — `toast.success`, `toast.error`, `toast.message` for API and copy feedback.
 - **Navigation:** React Router `Link` and `useNavigate`; state via `navigate(path, { state })`: copy, copyTypeLabel (GeneratedCopy ↔ SendToCrm); templateId (Templates → Dashboard); regenerateContext (History/GeneratedCopy → Dashboard).
 - **Loading/empty:** LoadingSpinner (Connection, SendToCrm, Templates, History, Settings); EmptyState (SendToCrm no copy, History empty or no results).
@@ -326,6 +338,6 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-**Verification:** Frontend routes (`App.tsx`), API modules (`src/app/api/index.ts`), types (`types.ts`), and page API usage checked against backend controllers and endpoints. All aligned as of January 2026. For user flows from beginning through company setup and full CRM, see [USER_FLOWS_REPORT.md](USER_FLOWS_REPORT.md).
+**Verification:** Frontend routes (`App.tsx`), API modules (`src/app/api/index.ts`), types (`types.ts`), and page API usage checked against backend controllers and endpoints. All aligned. For user flows from beginning through company setup and full CRM, see [USER_FLOWS_REPORT.md](USER_FLOWS_REPORT.md). For running from scratch (no external connection), see [RUN_FROM_SCRATCH.md](../../RUN_FROM_SCRATCH.md). For every aspect of the project, see [PROJECT_ASPECTS.md](../../PROJECT_ASPECTS.md).
 
-*Last updated: January 2026*
+*Last updated: February 2026*

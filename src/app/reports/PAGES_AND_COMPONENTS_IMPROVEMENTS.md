@@ -569,5 +569,6 @@ Use this to prioritize work. Items are ordered by priority (P0 first), then by a
 
 - [FRONTEND_PAGES_REPORT.md](./FRONTEND_PAGES_REPORT.md) — Routes, state, API, layout per page  
 - [UI_DESIGN_RATIONALE.md](./UI_DESIGN_RATIONALE.md) — Why the UI looks the way it does  
+- [PROJECT_ASPECTS.md](../../PROJECT_ASPECTS.md) — Every aspect of the project in one place  
 
 *Last updated: February 2026*

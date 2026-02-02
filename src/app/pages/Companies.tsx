@@ -5,7 +5,7 @@ import AppHeader from '@/app/components/AppHeader';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import EmptyState from '@/app/components/EmptyState';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getCompanies, createCompany, updateCompany } from '@/app/api';
+import { getCompanies, createCompany, updateCompany, messages } from '@/app/api';
 import type { Company } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -59,7 +59,7 @@ export default function Companies() {
     e.preventDefault();
     const name = formName.trim();
     if (!name) {
-      toast.error('Name is required');
+      toast.error(messages.validation.nameRequired);
       return;
     }
     setSaving(true);
@@ -68,23 +68,23 @@ export default function Companies() {
         const updated = await updateCompany(editingCompany.id, { name });
         if (updated) {
           setCompanies((prev) => prev.map((c) => (c.id === editingCompany.id ? updated : c)));
-          toast.success('Company updated');
+          toast.success(messages.success.companyUpdated);
           setDialogOpen(false);
         } else {
-          toast.error('Failed to update company');
+          toast.error(messages.errors.generic);
         }
       } else {
         const created = await createCompany({ name });
         if (created) {
           setCompanies((prev) => [created, ...prev]);
-          toast.success('Company created');
+          toast.success(messages.success.companyCreated);
           setDialogOpen(false);
         } else {
-          toast.error('Failed to create company');
+          toast.error(messages.errors.generic);
         }
       }
     } catch {
-      toast.error(editingCompany ? 'Failed to update company' : 'Failed to create company');
+      toast.error(messages.errors.generic);
     } finally {
       setSaving(false);
     }
@@ -109,15 +109,23 @@ export default function Companies() {
           </Button>
         </div>
 
-        <div className="mb-4 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <Input
-            type="search"
-            placeholder="Search by name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 rounded-lg border-slate-300"
-          />
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" aria-hidden />
+            <Input
+              type="search"
+              placeholder="Search by name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 rounded-lg border-slate-300"
+              aria-label="Search companies"
+            />
+          </div>
+          {searchQuery.trim() && filteredCompanies.length === 0 && !loading && (
+            <p className="text-sm text-slate-500 mt-2">
+              No results for &quot;{searchQuery.trim()}&quot;. Try a different search or add a company.
+            </p>
+          )}
         </div>
 
         {loading ? (

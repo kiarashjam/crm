@@ -40,5 +40,7 @@ Defined in `App.tsx` with React Router:
 ## Docs & Reports
 
 - **[pages/README.md](./pages/README.md)** — Index and per-page READMEs
+- **[reports/README.md](./reports/README.md)** — Index of all frontend and full-stack reports
 - **[reports/FRONTEND_PAGES_REPORT.md](./reports/FRONTEND_PAGES_REPORT.md)** — Frontend pages report (routes, purpose, APIs)
 - **[reports/CRM_SALES_CHECKLIST.md](./reports/CRM_SALES_CHECKLIST.md)** — CRM sales checklist (contacts, deals, copy, connection, gaps)
+- **[PROJECT_ASPECTS.md](../../PROJECT_ASPECTS.md)** (repo root) — Every aspect of the project in one place

@@ -1,7 +1,10 @@
-
 # ACI (CRM)
 
-This is a code bundle for Website Structure Overview. The original project is available at https://www.figma.com/design/SLQRDIWbMgPPnEr99EXq1C/Website-Structure-Overview.
+**ACI** is a CRM companion app built **from scratch**—it is not a fork or copy of another CRM (e.g. Salesforce, HubSpot, Pipedrive, Zoho, Monday). The frontend (React + TypeScript) and backend (ASP.NET Core) are original; third-party use is limited to attributed libraries (see [ATTRIBUTIONS.md](./ATTRIBUTIONS.md)).
+
+Design and structure reference: [Website Structure Overview](https://www.figma.com/design/SLQRDIWbMgPPnEr99EXq1C/Website-Structure-Overview) (Figma). The linked Figma file is a design reference only; the application code is original.
+
+**The app is standalone:** you can run it entirely on your machine with no required external connection. Use **Try demo (no backend)** for frontend-only with mock data, or run the full stack locally (database + backend + frontend)—see [RUN_FROM_SCRATCH.md](./RUN_FROM_SCRATCH.md) and [LOCAL_DEV.md](./LOCAL_DEV.md).
 
 ## Project report
 

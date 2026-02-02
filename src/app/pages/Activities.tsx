@@ -5,7 +5,7 @@ import AppHeader from '@/app/components/AppHeader';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import EmptyState from '@/app/components/EmptyState';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getActivities, createActivity, deleteActivity, getContacts, getDeals, getActivitiesByContact, getActivitiesByDeal } from '@/app/api';
+import { getActivities, createActivity, deleteActivity, getContacts, getDeals, getActivitiesByContact, getActivitiesByDeal, messages } from '@/app/api';
 import type { Activity, Contact, Deal } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -63,17 +63,17 @@ export default function Activities() {
     if (filter === 'contact' && filterContactId) {
       getActivitiesByContact(filterContactId)
         .then(setActivities)
-        .catch(() => toast.error('Failed to load activities'))
+        .catch(() => toast.error(messages.errors.loadFailed))
         .finally(() => setLoading(false));
     } else if (filter === 'deal' && filterDealId) {
       getActivitiesByDeal(filterDealId)
         .then(setActivities)
-        .catch(() => toast.error('Failed to load activities'))
+        .catch(() => toast.error(messages.errors.loadFailed))
         .finally(() => setLoading(false));
     } else {
       getActivities()
         .then(setActivities)
-        .catch(() => toast.error('Failed to load activities'))
+        .catch(() => toast.error(messages.errors.loadFailed))
         .finally(() => setLoading(false));
     }
   };
@@ -89,24 +89,27 @@ export default function Activities() {
           : getActivities();
     promise
       .then((data) => { if (!cancelled) setActivities(data); })
-      .catch(() => { if (!cancelled) toast.error('Failed to load activities'); })
+      .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [filter, filterContactId, filterDealId]);
 
   useEffect(() => {
-    if (dialogOpen || filter !== 'all') {
-      Promise.all([getContacts(), getDeals()]).then(([c, d]) => {
+    if (!(dialogOpen || filter !== 'all')) return;
+    let cancelled = false;
+    Promise.all([getContacts(), getDeals()]).then(([c, d]) => {
+      if (!cancelled) {
         setContacts(c);
         setDeals(d);
-      });
-    }
+      }
+    });
+    return () => { cancelled = true; };
   }, [dialogOpen, filter]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.subject.trim() && !form.body.trim()) {
-      toast.error('Subject or body is required');
+      toast.error(messages.validation.subjectOrBodyRequired);
       return;
     }
     setSaving(true);
@@ -120,16 +123,16 @@ export default function Activities() {
       });
       if (created) {
         setActivities((prev) => [created, ...prev]);
-        toast.success('Activity logged');
+        toast.success(messages.success.activityLogged);
         setDialogOpen(false);
         setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '' });
         // Refetch when filtered so list stays correct (new activity shows only if it matches filter)
         if (filter !== 'all') loadData();
       } else {
-        toast.error('Failed to log activity');
+        toast.error(messages.errors.generic);
       }
     } catch {
-      toast.error('Something went wrong');
+      toast.error(messages.errors.generic);
     } finally {
       setSaving(false);
     }
@@ -144,13 +147,13 @@ export default function Activities() {
       const ok = await deleteActivity(deleteConfirmActivity.id);
       if (ok) {
         setActivities((prev) => prev.filter((a) => a.id !== deleteConfirmActivity.id));
-        toast.success('Activity deleted');
+        toast.success(messages.success.activityDeleted);
         setDeleteConfirmActivity(null);
       } else {
-        toast.error('Failed to delete activity');
+        toast.error(messages.errors.generic);
       }
     } catch {
-      toast.error('Something went wrong');
+      toast.error(messages.errors.generic);
     } finally {
       setDeleting(false);
     }

@@ -15,3 +15,7 @@ Static “How it works”: what ACI does, how to generate copy, connect CRM, dat
 ## API / Data
 
 None. Static content only.
+
+## Conventions
+
+- Uses `MAIN_CONTENT_ID` for skip link; AppHeader.

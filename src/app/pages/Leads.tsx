@@ -12,6 +12,7 @@ import {
   deleteLead,
   getCompanies,
   convertLead,
+  messages,
   type ConvertLeadRequest,
 } from '@/app/api';
 import type { Lead, Company } from '@/app/api/types';
@@ -85,7 +86,7 @@ export default function Leads() {
           setCompanies(c);
         }
       })
-      .catch(() => { if (!cancelled) toast.error('Failed to load leads'); })
+      .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -114,13 +115,13 @@ export default function Leads() {
       const ok = await deleteLead(deleteConfirmLead.id);
       if (ok) {
         setLeads((prev) => prev.filter((l) => l.id !== deleteConfirmLead.id));
-        toast.success('Lead deleted');
+        toast.success(messages.success.leadDeleted);
         setDeleteConfirmLead(null);
       } else {
-        toast.error('Failed to delete lead');
+        toast.error(messages.errors.generic);
       }
     } catch {
-      toast.error('Failed to delete lead');
+      toast.error(messages.errors.generic);
     } finally {
       setDeleting(false);
     }
@@ -141,7 +142,7 @@ export default function Leads() {
     e.preventDefault();
     if (!convertDialogLead) return;
     if (!convertForm.createContact && !convertForm.createDeal) {
-      toast.error('Select at least one: Create contact or Create deal');
+      toast.error(messages.validation.selectContactOrDeal);
       return;
     }
     setConverting(true);
@@ -151,14 +152,14 @@ export default function Leads() {
         const parts: string[] = [];
         if (result.contactId) parts.push('contact created');
         if (result.dealId) parts.push('deal created');
-        toast.success(parts.length ? `Lead converted: ${parts.join(', ')}` : 'Lead converted');
+        toast.success(parts.length ? `Lead converted: ${parts.join(', ')}` : messages.success.leadConverted);
         setConvertDialogLead(null);
         getLeads().then(setLeads).catch(() => {});
       } else {
-        toast.error('Failed to convert lead');
+        toast.error(messages.errors.generic);
       }
     } catch {
-      toast.error('Failed to convert lead');
+      toast.error(messages.errors.generic);
     } finally {
       setConverting(false);
     }
@@ -180,7 +181,7 @@ export default function Leads() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim()) {
-      toast.error('Name and email are required');
+      toast.error(messages.validation.nameAndEmailRequired);
       return;
     }
     setSaving(true);
@@ -196,10 +197,10 @@ export default function Leads() {
         });
         if (updated) {
           setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
-          toast.success('Lead updated');
+          toast.success(messages.success.leadUpdated);
           setDialogOpen(false);
         } else {
-          toast.error('Failed to update lead');
+          toast.error(messages.errors.generic);
         }
       } else {
         const created = await createLead({
@@ -212,14 +213,14 @@ export default function Leads() {
         });
         if (created) {
           setLeads((prev) => [created, ...prev]);
-          toast.success('Lead created');
+          toast.success(messages.success.leadCreated);
           setDialogOpen(false);
         } else {
-          toast.error('Failed to create lead');
+          toast.error(messages.errors.generic);
         }
       }
     } catch {
-      toast.error('Something went wrong');
+      toast.error(messages.errors.generic);
     } finally {
       setSaving(false);
     }
@@ -234,7 +235,9 @@ export default function Leads() {
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Leads</h1>
-            <p className="text-slate-600 mt-1">Manage and track your leads.</p>
+            <p className="text-slate-600 mt-1">
+              {loading ? 'Loading…' : `${filteredLeads.length} ${filteredLeads.length === 1 ? 'lead' : 'leads'}`} · Manage and track your leads.
+            </p>
           </div>
           <Button onClick={openCreate} className="gap-2 bg-orange-600 hover:bg-orange-500">
             <Plus className="w-4 h-4" />
@@ -242,15 +245,23 @@ export default function Leads() {
           </Button>
         </div>
 
-        <div className="mb-4 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <Input
-            type="search"
-            placeholder="Search by name, email, or phone..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 rounded-lg border-slate-300"
-          />
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" aria-hidden />
+            <Input
+              type="search"
+              placeholder="Search by name, email, or phone..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 rounded-lg border-slate-300"
+              aria-label="Search leads"
+            />
+          </div>
+          {searchQuery.trim() && filteredLeads.length === 0 && !loading && (
+            <p className="text-sm text-slate-500 mt-2">
+              No results for &quot;{searchQuery.trim()}&quot;. Try a different search or add a lead.
+            </p>
+          )}
         </div>
 
         {loading ? (

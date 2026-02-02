@@ -396,4 +396,6 @@ Note: Lead, TaskItem, and Activity configurations are applied at build time; the
 - **SalesCrmCore migration:** Migration `20260129120000_SalesCrmCore` was added: creates Leads, TaskItems, Activities; adds Contact.Phone, Deal.ContactId, Deal.ExpectedCloseDateUtc, Deal.IsWon. Program.cs runs `MigrateAsync()` on startup, so the migration applies when the API is started (stop API first if you need to rebuild).
 - **Frontend–backend alignment:** (1) API client now uses `getAuthToken()` from `lib/auth` (aci_token) so authenticated calls send the token set at login. (2) `createDeal` accepts and sends `contactId`; Pipeline “New deal” form passes `contactId` so deal–contact link is persisted.
 
-*Verified against: backend Domain, Application, Infrastructure, WebApi (entities, DTOs, interfaces, services, repositories, configurations, migrations, Program.cs, DependencyInjection); frontend api/* and page usage. Last updated: January 2026.*
+**Related:** [USER_FLOWS_REPORT.md](USER_FLOWS_REPORT.md), [FRONTEND_PAGES_REPORT.md](FRONTEND_PAGES_REPORT.md), [PROJECT_ASPECTS.md](../../PROJECT_ASPECTS.md) (every aspect).
+
+*Verified against: backend Domain, Application, Infrastructure, WebApi (entities, DTOs, interfaces, services, repositories, configurations, migrations, Program.cs, DependencyInjection); frontend api/* and page usage. Last updated: February 2026.*

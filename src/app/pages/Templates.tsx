@@ -20,12 +20,16 @@ export default function Templates() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
     getTemplates()
       .then((list) => {
-        setTemplates(list);
-        setLoading(false);
+        if (!cancelled) {
+          setTemplates(list);
+          setLoading(false);
+        }
       })
-      .catch(() => setLoading(false));
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const handleUseTemplate = (template: Template) => {

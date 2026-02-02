@@ -1,6 +1,6 @@
 # CRM Sales Point of View – Checklist
 
-This report checks that the ACI frontend has everything needed from a **CRM sales** perspective: contacts, deals, copy types, connection, send-to-CRM, history, and sales workflows.
+This report checks that the ACI frontend has everything needed from a **CRM sales** perspective: contacts, deals, copy types, connection, send-to-CRM, history, and sales workflows. The app is **standalone**: it can run with no external service (demo mode or full stack locally—see [RUN_FROM_SCRATCH.md](../../RUN_FROM_SCRATCH.md)).
 
 ---
 
@@ -12,7 +12,7 @@ This report checks that the ACI frontend has everything needed from a **CRM sale
 |------|--------|--------|
 | **Contacts** | Yes | `api/types` Contact (id, name, email, companyId); `getContacts()`, `searchContacts()`; Send to CRM → Contact |
 | **Deals** | Yes | `api/types` Deal (id, name, value, stage, companyId); `getDeals()`, `searchDeals()`; Send to CRM → Deal |
-| **Companies** | Data only | `api/types` Company; `mockCompanies` in mockData. Used as `companyId` on Contact/Deal. No company list UI or API. |
+| **Companies** | Yes | `api/types` Company; `getCompanies`, `createCompany`, `updateCompany`; Companies page (`/companies`) — list, search, Add company, Edit. Used as `companyId` on Contact/Deal/Lead. |
 
 ### Sales copy and goals
 
@@ -61,13 +61,13 @@ This report checks that the ACI frontend has everything needed from a **CRM sale
 
 ### 2. Pipeline view
 
-- **Data:** Deals have `stage`; no pipeline/Kanban view.
-- **Recommendation:** For a full CRM sales experience later, consider a Pipeline page (deals by stage). Not required for the current “AI copy + send to CRM” focus.
+- **Data:** Deals have `stage`; Pipeline page at `/deals` shows Kanban by stage (Qualification, Proposal, Negotiation, Closed Won, Closed Lost); move deal stage, new deal, delete deal.
+- **Status:** Implemented.
 
 ### 3. Companies as first-class list
 
-- **Data:** `Company` type and `companyId` on Contact/Deal exist; no companies API or list UI.
-- **Recommendation:** Optional later: company list or company filter when choosing contact/deal. Current flow (pick contact/deal by name/search) is sufficient for copy generation and send.
+- **Data:** `Company` type and `companyId` on Contact/Deal/Lead exist; Companies API (list, create, update) and Companies page (`/companies`) — list, search, Add company, Edit.
+- **Status:** Implemented.
 
 ### 4. “Connect CRM” in main nav
 
@@ -90,4 +90,6 @@ From a **CRM sales point of view**, the app has:
 
 ---
 
-*Last updated: January 2026*
+**Related:** [FRONTEND_PAGES_REPORT.md](FRONTEND_PAGES_REPORT.md), [USER_FLOWS_REPORT.md](USER_FLOWS_REPORT.md), [PROJECT_ASPECTS.md](../../PROJECT_ASPECTS.md) (every aspect).
+
+*Last updated: February 2026*

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, RotateCcw, Search, Mail, MessageSquare, FileText, Briefcase, History as HistoryIcon, Send } from 'lucide-react';
 import { toast } from 'sonner';
@@ -37,27 +37,42 @@ export default function History() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [items, setItems] = useState<CopyHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
     getCopyHistory()
       .then((list) => {
-        setItems(list);
-        setLoading(false);
+        if (!cancelled) {
+          setItems(list);
+          setLoading(false);
+        }
       })
-      .catch(() => setLoading(false));
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const handleCopy = (id: string, text: string) => {
     try {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
       navigator.clipboard.writeText(text);
       setCopiedId(id);
       toast.success(messages.copy.copied);
-      setTimeout(() => setCopiedId(null), 2000);
+      copyTimeoutRef.current = setTimeout(() => {
+        copyTimeoutRef.current = null;
+        setCopiedId(null);
+      }, 2000);
     } catch {
       toast.error(messages.errors.generic);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
 
   const handleRegenerate = (item: CopyHistoryItem) => {
     navigate('/dashboard', { state: { regenerateContext: item.copy.slice(0, 300) } });
@@ -97,9 +112,16 @@ export default function History() {
                 aria-label="Search copy history"
               />
               {!loading && (
-                <p className="text-sm text-slate-500 mt-2">
-                  {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
-                </p>
+                <>
+                  <p className="text-sm text-slate-500 mt-2">
+                    {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
+                  </p>
+                  {searchQuery.trim() && filteredItems.length === 0 && items.length > 0 && (
+                    <p className="text-sm text-slate-500 mt-1">
+                      No results for &quot;{searchQuery.trim()}&quot;. Try a different search.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>

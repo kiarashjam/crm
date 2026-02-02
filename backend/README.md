@@ -61,9 +61,14 @@ All endpoints except auth require `Authorization: Bearer <token>`.
 
 | Area | Endpoints |
 |------|-----------|
-| **Auth** | `POST /api/auth/register`, `POST /api/auth/login` |
+| **Auth** | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/2fa` |
 | **Contacts** | `GET /api/contacts`, `GET /api/contacts/search?q=`, `GET /api/contacts/{id}` |
-| **Deals** | `GET /api/deals`, `GET /api/deals/search?q=`, `GET /api/deals/{id}` |
+| **Companies** | `GET /api/companies`, `GET /api/companies/{id}`, `POST /api/companies`, `PUT /api/companies/{id}` |
+| **Deals** | `GET /api/deals`, `GET /api/deals/search?q=`, `GET /api/deals/{id}`, `POST /api/deals`, `PUT /api/deals/{id}`, `DELETE /api/deals/{id}` |
+| **Leads** | `GET /api/leads`, `GET /api/leads/search?q=`, `GET /api/leads/{id}`, `POST /api/leads`, `PUT /api/leads/{id}`, `DELETE /api/leads/{id}` |
+| **Tasks** | `GET /api/tasks?overdueOnly=`, `GET /api/tasks/{id}`, `POST /api/tasks`, `PUT /api/tasks/{id}` |
+| **Activities** | `GET /api/activities`, `GET /api/activities/contact/{id}`, `GET /api/activities/deal/{id}`, `POST /api/activities` |
+| **Reporting** | `GET /api/reporting/dashboard` (active leads, active deals, pipeline value, won/lost) |
 | **Templates** | `GET /api/templates`, `GET /api/templates/{id}` |
 | **Copy** | `POST /api/copy/generate`, `POST /api/copy/send` |
 | **History** | `GET /api/copyhistory`, `GET /api/copyhistory/stats` |
@@ -81,10 +86,15 @@ All endpoints except auth require `Authorization: Bearer <token>`.
 - **Users** – Auth and ownership of data
 - **UserSettings** – Company name, brand tone per user
 - **CrmConnections** – CRM connection status per user
-- **Companies** – Organizations (optional link for contacts/deals)
-- **Contacts** – People; optional CompanyId
-- **Deals** – Opportunities; optional CompanyId
+- **Companies** – Organizations (optional link for contacts/deals/leads)
+- **Contacts** – People; optional CompanyId, Phone
+- **Deals** – Opportunities; optional CompanyId, ExpectedCloseDateUtc, IsWon
+- **Leads** – Potential customers; CompanyId, Source, Status
+- **TaskItems** – Tasks; optional LeadId, DealId; DueDateUtc, Completed
+- **Activities** – Calls, meetings, emails, notes; optional ContactId, DealId
 - **Templates** – Copy templates (system and user)
 - **CopyHistoryItems** – Generated/sent copy for history and stats
+
+Migrations: `InitialCreate` plus `SalesCrmCore` (Leads, TaskItems, Activities, Contact.Phone, Deal.ExpectedCloseDateUtc, Deal.IsWon). On startup, `MigrateAsync()` applies pending migrations and seed data runs.
 
 Copy generation is currently template-based; you can replace `ICopyGenerator` in Infrastructure with an AI/LLM integration.

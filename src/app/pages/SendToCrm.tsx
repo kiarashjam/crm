@@ -29,13 +29,17 @@ export default function SendToCrm() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([getContacts(), getDeals()])
       .then(([c, d]) => {
-        setContacts(c);
-        setDeals(d);
-        setLoading(false);
+        if (!cancelled) {
+          setContacts(c);
+          setDeals(d);
+          setLoading(false);
+        }
       })
-      .catch(() => setLoading(false));
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const filteredContacts = searchQuery.trim()
@@ -152,16 +156,23 @@ export default function SendToCrm() {
                     <label className="block text-sm font-medium text-slate-700 mb-3">
                       Select specific record
                     </label>
-                    <div className="relative mb-3">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" aria-hidden />
-                      <input
-                        type="search"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder={`Search ${objectType}s...`}
-                        className="w-full h-11 pl-10 pr-4 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-colors"
-                        aria-label={`Search ${objectType}s`}
-                      />
+                    <div className="mb-3">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" aria-hidden />
+                        <input
+                          type="search"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder={`Search ${objectType}s...`}
+                          className="w-full h-11 pl-10 pr-4 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-colors"
+                          aria-label={`Search ${objectType}s`}
+                        />
+                      </div>
+                      {searchQuery.trim() && records.length === 0 && !loading && (
+                        <p className="text-sm text-slate-500 mt-2">
+                          No results for &quot;{searchQuery.trim()}&quot;. Try a different search.
+                        </p>
+                      )}
                     </div>
                     {loading ? (
                       <div className="py-10 flex justify-center">

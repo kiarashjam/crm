@@ -9,7 +9,7 @@ Connect or confirm CRM account. Shows connection status, “Connect” action, a
 
 ## Behavior
 
-- On load: `getConnectionStatus()` → show connected vs not; loading spinner until resolved.
+- On load: `getConnectionStatus()` with `cancelled` cleanup so no setState after unmount; loading spinner until resolved.
 - When not connected: bullet list (read contacts/deals, create emails/notes, update workflow messages), “Connect” button (`setConnectionStatus({ connected: true, accountEmail: user?.email ?? 'company@example.com' })`, toast), “Skip for now” link to `/dashboard`.
 - When connected: “Successfully Connected!”, connected account email, “Continue” button → `navigate('/onboarding')`.
 - Uses `getDemoUser()` for account email when connecting.

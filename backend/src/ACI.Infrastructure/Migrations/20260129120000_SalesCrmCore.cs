@@ -84,7 +84,7 @@ namespace ACI.Infrastructure.Migrations
                     UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Type = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     Subject = table.Column<string>(type: "nvarchar(512)", maxLength: 512, nullable: true),
-                    Body = table.Column<string>(type: "nvarchar(8000)", maxLength: 8000, nullable: true),
+                    Body = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     ContactId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     DealId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)

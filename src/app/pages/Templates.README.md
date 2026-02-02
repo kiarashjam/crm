@@ -17,3 +17,7 @@ Browse quick-start templates by category. “Use template” opens dashboard wit
 ## API / Data
 
 - **GET:** `getTemplates()` — returns `Template[]`
+
+## Conventions
+
+- Uses `MAIN_CONTENT_ID` for skip link; AppHeader. Data load uses `cancelled` cleanup on unmount.

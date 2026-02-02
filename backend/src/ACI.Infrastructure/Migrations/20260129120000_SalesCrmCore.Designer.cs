@@ -302,8 +302,7 @@ namespace ACI.Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Body")
-                        .HasMaxLength(8000)
-                        .HasColumnType("nvarchar(8000)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid?>("ContactId")
                         .HasColumnType("uniqueidentifier");

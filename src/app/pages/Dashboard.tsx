@@ -39,6 +39,7 @@ import type { CopyHistoryItem } from '@/app/api/types';
 import { toast } from 'sonner';
 import { messages } from '@/app/api/messages';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import EmptyState from '@/app/components/EmptyState';
 
 const copyTypes = [
   { id: 'sales-email' as CopyTypeId, icon: Mail, title: 'Sales Email', desc: 'Personalized outreach' },
@@ -61,7 +62,7 @@ export default function Dashboard() {
   const location = useLocation();
   const templateId = (location.state as { templateId?: string } | null)?.templateId;
   const [selectedType, setSelectedType] = useState<CopyTypeId | ''>('');
-  const [goal, setGoal] = useState('');
+  const [goal, setGoal] = useState(goals[0]);
   const [context, setContext] = useState('');
   const [length, setLength] = useState<'short' | 'medium' | 'long'>('medium');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -84,33 +85,38 @@ export default function Dashboard() {
   const displayName = user?.name ?? 'there';
 
   useEffect(() => {
+    let cancelled = false;
+    const guard = <T,>(fn: (x: T) => void) => (x: T) => { if (!cancelled) fn(x); };
     getCopyHistoryStats()
-      .then((s) => setStats((prev) => ({ ...prev, ...s })))
+      .then(guard((s) => setStats((prev) => ({ ...prev, ...s }))))
       .catch(() => {});
     getTemplates()
-      .then((t) => setStats((prev) => ({ ...prev, templateCount: t.length })))
+      .then(guard((t) => setStats((prev) => ({ ...prev, templateCount: t.length }))))
       .catch(() => {});
     getConnectionStatus()
-      .then((s) => setConnectionStatus({ connected: s.connected, accountEmail: s.accountEmail }))
+      .then(guard((s) => setConnectionStatus({ connected: s.connected, accountEmail: s.accountEmail })))
       .catch(() => {});
     getCopyHistory()
-      .then((items) => setRecentActivity(items.slice(0, 5)))
+      .then(guard((items) => setRecentActivity(items.slice(0, 5))))
       .catch(() => {});
     getDashboardStats()
-      .then(setCrmStats)
+      .then(guard(setCrmStats))
       .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!templateId) return;
+    let cancelled = false;
     getTemplateById(templateId)
       .then((t) => {
-        if (t) {
+        if (!cancelled && t) {
           setSelectedType(t.copyTypeId);
           setGoal(t.goal);
         }
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [templateId]);
 
   const regenerateContext = (location.state as { regenerateContext?: string } | null)?.regenerateContext;
@@ -142,121 +148,141 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-slate-50/95 to-slate-100">
       <AppHeader />
 
       <main id={MAIN_CONTENT_ID} className="w-full max-w-6xl mx-auto px-[var(--page-padding)] py-8 lg:py-10" tabIndex={-1}>
         <div className="w-full">
-          <div className="mb-10">
-            <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-1">
+          {/* Hero: title with in-text highlight */}
+          <header className="mb-10 animate-fade-in">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-[0.2em] mb-3">
               Dashboard
             </p>
-            <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight mb-2">
-              Welcome back, {displayName}
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 tracking-tight mb-3">
+              Welcome back,{' '}
+              <span className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 bg-clip-text text-transparent">
+                {displayName}
+              </span>
             </h1>
-            <p className="text-slate-600 mb-6 max-w-xl">
+            <p className="text-slate-600 text-base sm:text-lg max-w-xl leading-relaxed">
               Create AI-powered copy and send it directly to your CRM. Select a type below to get started.
             </p>
+          </header>
 
-            <div className="mb-8 flex flex-wrap items-center gap-4">
-              <div
-                className={cn(
-                  'flex items-center gap-3 rounded-xl border px-4 py-3',
-                  connectionStatus.connected
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : 'bg-amber-50 border-amber-200 text-amber-800'
-                )}
-                aria-live="polite"
-              >
-                {connectionStatus.connected ? (
-                  <>
-                    <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
-                    <div>
-                      <p className="font-medium">CRM connected</p>
-                      {connectionStatus.accountEmail && (
-                        <p className="text-sm opacity-90">{connectionStatus.accountEmail}</p>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="w-5 h-5 shrink-0 text-amber-600" />
-                    <div>
-                      <p className="font-medium">CRM not connected</p>
-                      <p className="text-sm opacity-90">Connect to send copy to your CRM.</p>
-                    </div>
-                  </>
-                )}
-                <Link
-                  to="/connect"
-                  className="ml-2 inline-flex items-center gap-1.5 text-sm font-medium underline underline-offset-2 hover:no-underline focus-visible:rounded"
-                >
-                  <Link2 className="w-4 h-4" />
-                  {connectionStatus.connected ? 'Manage' : 'Connect'}
-                </Link>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                { value: String(stats.sentThisWeek), label: 'Generated this week', icon: FileOutput, color: 'bg-orange-50 text-orange-700 border-orange-100' },
-                { value: String(stats.templateCount), label: 'Templates', icon: LayoutTemplate, color: 'bg-slate-100 text-slate-600 border-slate-200' },
-                { value: String(stats.totalSent), label: 'Sent to CRM', icon: Send, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-                { value: '~2 min', label: 'Avg. time saved', icon: TrendingUp, color: 'bg-violet-50 text-violet-700 border-violet-100' },
-              ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow transition-shadow"
-                >
-                  <div className={cn('inline-flex p-2 rounded-lg border', stat.color)}>
-                    <stat.icon className="w-5 h-5" />
-                  </div>
-                  <p className="mt-3 text-2xl font-semibold text-slate-900 tabular-nums">{stat.value}</p>
-                  <p className="text-sm text-slate-500">{stat.label}</p>
-                </div>
-              ))}
-            </div>
-            {crmStats !== null && (
-              <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  { value: String(crmStats.activeLeadsCount), label: 'Active leads', icon: Users, color: 'bg-blue-50 text-blue-700 border-blue-100' },
-                  { value: String(crmStats.activeDealsCount), label: 'Active deals', icon: Briefcase, color: 'bg-amber-50 text-amber-700 border-amber-100' },
-                  { value: `$${Number(crmStats.pipelineValue).toLocaleString()}`, label: 'Pipeline value', icon: TrendingUp, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-                  { value: `${crmStats.dealsWonCount} won / ${crmStats.dealsLostCount} lost`, label: 'Won vs lost', icon: CheckCircle2, color: 'bg-slate-100 text-slate-600 border-slate-200' },
-                ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow transition-shadow"
-                >
-                  <div className={cn('inline-flex p-2 rounded-lg border', stat.color)}>
-                    <stat.icon className="w-5 h-5" />
-                  </div>
-                  <p className="mt-3 text-2xl font-semibold text-slate-900 tabular-nums">{stat.value}</p>
-                  <p className="text-sm text-slate-500">{stat.label}</p>
-                </div>
-              ))}
-            </div>
+          {/* Connection status */}
+          <div
+            className={cn(
+              'mb-8 flex flex-wrap items-center gap-3 rounded-2xl border px-5 py-4 transition-all duration-300',
+              connectionStatus.connected
+                ? 'bg-emerald-50/80 border-emerald-200/80 text-emerald-800 shadow-sm shadow-emerald-100/50'
+                : 'bg-amber-50/80 border-amber-200/80 text-amber-800 shadow-sm shadow-amber-100/50'
             )}
+            aria-live="polite"
+          >
+            {connectionStatus.connected ? (
+              <>
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 animate-pulse-soft">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold">CRM connected</p>
+                  {connectionStatus.accountEmail && (
+                    <p className="text-sm opacity-90 truncate">{connectionStatus.accountEmail}</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-100 text-amber-600">
+                  <XCircle className="w-5 h-5 shrink-0" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold">CRM not connected</p>
+                  <p className="text-sm opacity-90">Connect to send copy to your CRM.</p>
+                </div>
+              </>
+            )}
+            <Link
+              to="/connect"
+              className="inline-flex items-center gap-2 text-sm font-semibold underline underline-offset-2 hover:no-underline focus-visible:rounded-lg px-3 py-2 -m-2 rounded-lg hover:bg-black/5 transition-colors"
+            >
+              <Link2 className="w-4 h-4" />
+              {connectionStatus.connected ? 'Manage' : 'Connect'}
+            </Link>
           </div>
 
-          <div className="flex items-center gap-4 my-10" aria-hidden="true">
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent via-orange-200/60 to-transparent rounded-full" />
-            <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-orange-200/80 shadow-sm text-sm font-medium text-orange-800 ring-1 ring-orange-100/50 transition-shadow hover:shadow-md">
-              <Sparkles className="w-4 h-4 text-orange-500" />
+          {/* Stats grid with staggered animation */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
+            {[
+              { value: String(stats.sentThisWeek), label: 'Generated this week', icon: FileOutput, color: 'bg-orange-50 text-orange-700 border-orange-100' },
+              { value: String(stats.templateCount), label: 'Templates', icon: LayoutTemplate, color: 'bg-slate-100 text-slate-600 border-slate-200' },
+              { value: String(stats.totalSent), label: 'Sent to CRM', icon: Send, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+              { value: '~2 min', label: 'Avg. time saved', icon: TrendingUp, color: 'bg-violet-50 text-violet-700 border-violet-100' },
+            ].map((stat, i) => (
+              <div
+                key={stat.label}
+                className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 animate-fade-in-up"
+                style={{ animationDelay: `${i * 100}ms`, animationFillMode: 'backwards' }}
+              >
+                <div className={cn('inline-flex p-2.5 rounded-xl border', stat.color)}>
+                  <stat.icon className="w-5 h-5" />
+                </div>
+                <p className="mt-3 text-2xl font-bold text-slate-900 tabular-nums">{stat.value}</p>
+                <p className="text-sm text-slate-500 font-medium">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+          {crmStats !== null && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+              {[
+                { value: String(crmStats.activeLeadsCount), label: 'Active leads', icon: Users, color: 'bg-blue-50 text-blue-700 border-blue-100' },
+                { value: String(crmStats.activeDealsCount), label: 'Active deals', icon: Briefcase, color: 'bg-amber-50 text-amber-700 border-amber-100' },
+                { value: `$${Number(crmStats.pipelineValue).toLocaleString()}`, label: 'Pipeline value', icon: TrendingUp, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+                { value: `${crmStats.dealsWonCount} won / ${crmStats.dealsLostCount} lost`, label: 'Won vs lost', icon: CheckCircle2, color: 'bg-slate-100 text-slate-600 border-slate-200' },
+              ].map((stat, i) => (
+                <div
+                  key={stat.label}
+                  className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 animate-fade-in-up"
+                  style={{ animationDelay: `${400 + i * 80}ms`, animationFillMode: 'backwards' }}
+                >
+                  <div className={cn('inline-flex p-2.5 rounded-xl border', stat.color)}>
+                    <stat.icon className="w-5 h-5" />
+                  </div>
+                  <p className="mt-3 text-2xl font-bold text-slate-900 tabular-nums">{stat.value}</p>
+                  <p className="text-sm text-slate-500 font-medium">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Section divider */}
+          <div className="flex items-center gap-4 my-12" aria-hidden="true">
+            <span className="h-px flex-1 bg-gradient-to-r from-transparent via-orange-300/70 to-transparent rounded-full" />
+            <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-orange-200/80 shadow-md text-sm font-semibold text-orange-800 ring-1 ring-orange-100/50 transition-all duration-300 hover:shadow-lg hover:scale-105">
+              <Sparkles className="w-4 h-4 text-orange-500 animate-float" />
               Create your content
             </span>
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent via-orange-200/60 to-transparent rounded-full" />
+            <span className="h-px flex-1 bg-gradient-to-l from-transparent via-orange-300/70 to-transparent rounded-full" />
           </div>
 
-          <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-5 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-900">Create new copy</h2>
-              <p className="text-sm text-slate-500 mt-0.5">Choose a content type and customize your message.</p>
+          {/* Create new copy section */}
+          <section className="bg-white rounded-2xl border border-slate-200/80 shadow-lg shadow-slate-200/30 overflow-hidden animate-scale-in" aria-labelledby="create-copy-heading">
+            <div className="px-6 sm:px-8 py-6 border-b border-slate-100 bg-gradient-to-b from-slate-50/50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-orange-100 text-orange-600" aria-hidden>
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Create</span>
+                  <h2 id="create-copy-heading" className="text-xl font-bold text-slate-900 mt-0.5">Create new copy</h2>
+                  <p className="text-sm text-slate-500 mt-0.5">Choose a content type and customize your message.</p>
+                </div>
+              </div>
             </div>
 
             <div className="p-6 sm:p-8">
               <div className="mb-8">
-                <label className="block text-sm font-medium text-slate-700 mb-3">Content type</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-3">Content type</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                   {copyTypes.map((type) => {
                     const isSelected = selectedType === type.id;
@@ -266,21 +292,21 @@ export default function Dashboard() {
                         type="button"
                         onClick={() => setSelectedType(type.id)}
                         className={cn(
-                          'flex flex-col items-center text-center p-4 rounded-xl border-2 transition-all duration-200',
+                          'flex flex-col items-center text-center p-4 rounded-2xl border-2 transition-all duration-300',
                           isSelected
-                            ? 'border-orange-500 bg-orange-50/50 shadow-sm'
-                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-50'
+                            ? 'border-orange-500 bg-orange-50/70 shadow-md shadow-orange-100/50 scale-[1.02]'
+                            : 'border-slate-200 bg-slate-50/50 hover:border-orange-200 hover:bg-orange-50/30 hover:shadow-sm'
                         )}
                       >
                         <span
                           className={cn(
-                            'flex items-center justify-center w-12 h-12 rounded-lg mb-3 transition-colors',
-                            isSelected ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600'
+                            'flex items-center justify-center w-12 h-12 rounded-xl mb-3 transition-all duration-300',
+                            isSelected ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-lg' : 'bg-slate-200 text-slate-600'
                           )}
                         >
                           <type.icon className="w-6 h-6" />
                         </span>
-                        <span className="text-sm font-medium text-slate-900">{type.title}</span>
+                        <span className="text-sm font-semibold text-slate-900">{type.title}</span>
                         <span className="text-xs text-slate-500 mt-0.5">{type.desc}</span>
                       </button>
                     );
@@ -342,10 +368,10 @@ export default function Dashboard() {
                           type="button"
                           onClick={() => setLength(opt.id)}
                           className={cn(
-                            'flex-1 py-3 px-4 rounded-lg border text-left transition-all',
+                            'flex-1 py-3 px-4 rounded-xl border-2 text-left transition-all duration-300',
                             length === opt.id
-                              ? 'border-orange-500 bg-orange-50 text-orange-800 shadow-sm'
-                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                              ? 'border-orange-500 bg-orange-50 text-orange-800 shadow-sm scale-[1.02]'
+                              : 'border-slate-200 bg-white text-slate-700 hover:border-orange-200 hover:bg-orange-50/30'
                           )}
                         >
                           <span className="block text-sm font-medium">{opt.label}</span>
@@ -361,9 +387,9 @@ export default function Dashboard() {
                       onClick={handleGenerate}
                       disabled={isGenerating}
                       className={cn(
-                        'w-full sm:w-auto min-w-[200px] h-12 px-6 rounded-lg font-medium text-white flex items-center justify-center gap-2 transition-all',
-                        'bg-orange-600 hover:bg-orange-500 active:bg-orange-700',
-                        'disabled:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-90'
+                        'w-full sm:w-auto min-w-[200px] h-12 px-6 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all duration-300',
+                        'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-[0.98] shadow-lg shadow-orange-200/50 hover:shadow-xl hover:shadow-orange-200/60',
+                        'disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed disabled:opacity-90'
                       )}
                     >
                       {isGenerating ? (
@@ -389,58 +415,70 @@ export default function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 px-4 text-center border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                  <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mb-4 text-slate-500">
-                    <Sparkles className="w-7 h-7" aria-hidden />
-                  </div>
-                  <p className="text-sm font-medium text-slate-700">Select a content type</p>
-                  <p className="text-sm text-slate-500 mt-1">Choose one of the options above to create your copy.</p>
-                  <Link
-                    to="/templates"
-                    className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-orange-600 hover:text-orange-700 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-                  >
-                    <LayoutTemplate className="w-4 h-4" />
-                    Try a template
-                  </Link>
-                  {!connectionStatus.connected && (
-                    <p className="mt-4 text-sm text-slate-600">
-                      <Link to="/connect" className="font-medium text-orange-600 hover:text-orange-700 focus-visible:underline">
-                        Connect CRM
-                      </Link>
-                      {' '}to send copy to contacts and deals.
-                    </p>
-                  )}
-                </div>
+                <EmptyState
+                  icon={Sparkles}
+                  title="Select a content type"
+                  description="Choose one of the options above to create your copy."
+                  actionLabel="Try a template"
+                  actionHref="/templates"
+                  secondaryActionLabel={!connectionStatus.connected ? 'Connect CRM' : undefined}
+                  secondaryActionHref={!connectionStatus.connected ? '/connect' : undefined}
+                  className="animate-fade-in"
+                />
               )}
             </div>
           </section>
 
-          <section className="mt-10 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden" aria-labelledby="recent-activity-heading">
-            <div className="px-6 py-5 border-b border-slate-100">
-              <h2 id="recent-activity-heading" className="text-lg font-semibold text-slate-900">Recent activity</h2>
-              <p className="text-sm text-slate-500 mt-0.5">Latest copy sent to CRM.</p>
+          {/* Recent activity section */}
+          <section
+            className="mt-10 bg-white rounded-2xl border border-slate-200/80 shadow-lg shadow-slate-200/30 overflow-hidden animate-scale-in"
+            style={{ animationDelay: '150ms', animationFillMode: 'backwards' }}
+            aria-labelledby="recent-activity-heading"
+          >
+            <div className="px-6 sm:px-8 py-6 border-b border-slate-100 bg-gradient-to-b from-slate-50/50 to-white">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 text-slate-600" aria-hidden>
+                  <History className="w-5 h-5" />
+                </div>
+                <div>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Activity</span>
+                  <h2 id="recent-activity-heading" className="text-xl font-bold text-slate-900 mt-0.5">Recent activity</h2>
+                  <p className="text-sm text-slate-500 mt-0.5">Latest copy sent to CRM.</p>
+                </div>
+              </div>
             </div>
-            <div className="p-6">
+            <div className="p-6 sm:p-8">
               {recentActivity.length === 0 ? (
-                <p className="text-sm text-slate-500 py-4">No activity yet. Generate copy and send it to your CRM to see it here.</p>
+                <EmptyState
+                  icon={History}
+                  title="No activity yet"
+                  description="Generate copy and send it to your CRM to see it here."
+                  actionLabel="Try a template"
+                  actionHref="/templates"
+                  className="animate-fade-in"
+                />
               ) : (
-                <ul className="space-y-3">
-                  {recentActivity.map((item) => (
-                    <li key={item.id} className="flex flex-wrap items-center gap-2 text-sm border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                      <span className="font-medium text-slate-900">{item.type}</span>
-                      <span className="text-slate-500">→</span>
+                <ul className="space-y-0 divide-y divide-slate-100">
+                  {recentActivity.map((item, i) => (
+                    <li
+                      key={item.id}
+                      className="flex flex-wrap items-center gap-2 py-4 first:pt-0 text-sm animate-slide-in-right hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors"
+                      style={{ animationDelay: `${200 + i * 60}ms`, animationFillMode: 'backwards' }}
+                    >
+                      <span className="font-semibold text-slate-900">{item.type}</span>
+                      <span className="text-slate-400">→</span>
                       <span className="text-slate-700">{item.recipientName}</span>
-                      <span className="text-slate-400 text-xs">
+                      <span className="ml-auto text-slate-400 text-xs font-medium">
                         {new Date(item.createdAt).toLocaleDateString(undefined, { dateStyle: 'short' })}
                       </span>
                     </li>
                   ))}
                 </ul>
               )}
-              <div className="mt-4">
+              <div className="mt-5">
                 <Link
                   to="/history"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors focus-visible:rounded"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-orange-600 hover:text-orange-700 transition-colors focus-visible:rounded-lg px-3 py-2 -m-2 rounded-lg hover:bg-orange-50"
                 >
                   View full history
                   <ArrowRight className="w-4 h-4" />
@@ -449,45 +487,34 @@ export default function Dashboard() {
             </div>
           </section>
 
-          <div className="flex items-center gap-4 my-10" aria-hidden="true">
+          {/* More options divider */}
+          <div className="flex items-center gap-4 my-12" aria-hidden="true">
             <span className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 to-transparent rounded-full" />
-            <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-50 border border-slate-200 shadow-sm text-sm font-medium text-slate-600 transition-shadow hover:shadow-md hover:border-slate-300">
+            <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-slate-200 shadow-md text-sm font-semibold text-slate-600 transition-all duration-300 hover:shadow-lg hover:border-slate-300 hover:scale-105">
               <LayoutTemplate className="w-4 h-4 text-slate-500" />
               More options
             </span>
             <span className="h-px flex-1 bg-gradient-to-l from-transparent via-slate-300 to-transparent rounded-full" />
           </div>
 
-          <div className="mt-6 flex flex-wrap justify-center gap-6" role="navigation" aria-label="Quick links">
-            <Link
-              to="/templates"
-              className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors focus-visible:rounded-lg"
-            >
-              <LayoutTemplate className="w-4 h-4" />
-              Templates
-            </Link>
-            <Link
-              to="/history"
-              className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors focus-visible:rounded-lg"
-            >
-              <History className="w-4 h-4" />
-              History
-            </Link>
-            <Link
-              to="/settings"
-              className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors focus-visible:rounded-lg"
-            >
-              <Settings className="w-4 h-4" />
-              Settings
-            </Link>
-            <Link
-              to="/connect"
-              className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-orange-600 transition-colors focus-visible:rounded-lg"
-            >
-              <Link2 className="w-4 h-4" />
-              Connection
-            </Link>
-          </div>
+          {/* Quick links */}
+          <nav className="flex flex-wrap justify-center gap-3 sm:gap-4" aria-label="Quick links">
+            {[
+              { to: '/templates', icon: LayoutTemplate, label: 'Templates' },
+              { to: '/history', icon: History, label: 'History' },
+              { to: '/settings', icon: Settings, label: 'Settings' },
+              { to: '/connect', icon: Link2, label: 'Connection' },
+            ].map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold text-slate-700 bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-orange-200 hover:text-orange-700 hover:bg-orange-50/50 transition-all duration-300 focus-visible:rounded-xl"
+              >
+                <link.icon className="w-4 h-4" />
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
       </main>
     </div>

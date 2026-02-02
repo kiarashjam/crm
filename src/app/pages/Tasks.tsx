@@ -5,7 +5,7 @@ import AppHeader from '@/app/components/AppHeader';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import EmptyState from '@/app/components/EmptyState';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getTasks, createTask, updateTask, deleteTask, getLeads, getDeals } from '@/app/api';
+import { getTasks, createTask, updateTask, deleteTask, getLeads, getDeals, messages } from '@/app/api';
 import type { TaskItem, Lead, Deal } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -52,7 +52,7 @@ export default function Tasks() {
     setLoading(true);
     getTasks(filter === 'overdue')
       .then((data) => { if (!cancelled) setTasks(data); })
-      .catch(() => { if (!cancelled) toast.error('Failed to load tasks'); })
+      .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [filter]);
@@ -107,7 +107,7 @@ export default function Tasks() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title.trim()) {
-      toast.error('Title is required');
+      toast.error(messages.validation.titleRequired);
       return;
     }
     setSaving(true);
@@ -123,10 +123,10 @@ export default function Tasks() {
         });
         if (updated) {
           setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-          toast.success('Task updated');
+          toast.success(messages.success.taskUpdated);
           setDialogOpen(false);
         } else {
-          toast.error('Failed to update task');
+          toast.error(messages.errors.generic);
         }
       } else {
         const created = await createTask({
@@ -138,14 +138,14 @@ export default function Tasks() {
         });
         if (created) {
           setTasks((prev) => [created, ...prev]);
-          toast.success('Task created');
+          toast.success(messages.success.taskCreated);
           setDialogOpen(false);
         } else {
-          toast.error('Failed to create task');
+          toast.error(messages.errors.generic);
         }
       }
     } catch {
-      toast.error('Something went wrong');
+      toast.error(messages.errors.generic);
     } finally {
       setSaving(false);
     }
@@ -155,9 +155,9 @@ export default function Tasks() {
     const updated = await updateTask(task.id, { completed: !task.completed });
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-      toast.success(updated.completed ? 'Task completed' : 'Task reopened');
+      toast.success(updated.completed ? messages.task.completed : messages.task.reopened);
     } else {
-      toast.error('Failed to update task');
+      toast.error(messages.errors.generic);
     }
   };
 

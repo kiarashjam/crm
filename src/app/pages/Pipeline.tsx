@@ -5,7 +5,7 @@ import AppHeader from '@/app/components/AppHeader';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import EmptyState from '@/app/components/EmptyState';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDeals, updateDeal, createDeal, deleteDeal, getCompanies, getContacts } from '@/app/api';
+import { getDeals, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, messages } from '@/app/api';
 import type { Deal, Company, Contact } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -131,7 +131,7 @@ export default function Pipeline() {
           setContacts(contactsData);
         }
       })
-      .catch(() => { if (!cancelled) toast.error('Failed to load deals'); })
+      .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
@@ -153,12 +153,16 @@ export default function Pipeline() {
     const isWon = newStage === 'Closed Won' ? true : newStage === 'Closed Lost' ? false : undefined;
     const payload: { stage: string; isWon?: boolean } = { stage: newStage };
     if (isWon !== undefined) payload.isWon = isWon;
-    const updated = await updateDeal(dealId, payload);
-    if (updated) {
-      setDeals((prev) => prev.map((d) => (d.id === dealId ? updated : d)));
-      toast.success('Deal moved');
-    } else {
-      toast.error('Failed to update deal');
+    try {
+      const updated = await updateDeal(dealId, payload);
+      if (updated) {
+        setDeals((prev) => prev.map((d) => (d.id === dealId ? updated : d)));
+        toast.success(messages.success.dealMoved);
+      } else {
+        toast.error(messages.errors.generic);
+      }
+    } catch {
+      toast.error(messages.errors.generic);
     }
   };
 
@@ -169,13 +173,13 @@ export default function Pipeline() {
       const ok = await deleteDeal(deleteConfirmDeal.id);
       if (ok) {
         setDeals((prev) => prev.filter((d) => d.id !== deleteConfirmDeal.id));
-        toast.success('Deal deleted');
+        toast.success(messages.success.dealDeleted);
         setDeleteConfirmDeal(null);
       } else {
-        toast.error('Failed to delete deal');
+        toast.error(messages.errors.generic);
       }
     } catch {
-      toast.error('Failed to delete deal');
+      toast.error(messages.errors.generic);
     } finally {
       setDeleting(false);
     }
@@ -185,7 +189,7 @@ export default function Pipeline() {
     e.preventDefault();
     if (!editDeal) return;
     if (!editForm.name.trim() || !editForm.value.trim()) {
-      toast.error('Name and value are required');
+      toast.error(messages.validation.nameAndValueRequired);
       return;
     }
     setSavingEdit(true);
@@ -201,13 +205,13 @@ export default function Pipeline() {
       });
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === editDeal.id ? updated : d)));
-        toast.success('Deal updated');
+        toast.success(messages.success.dealUpdated);
         setEditDeal(null);
       } else {
-        toast.error('Failed to update deal');
+        toast.error(messages.errors.generic);
       }
     } catch {
-      toast.error('Something went wrong');
+      toast.error(messages.errors.generic);
     } finally {
       setSavingEdit(false);
     }
@@ -222,7 +226,7 @@ export default function Pipeline() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createForm.name.trim() || !createForm.value.trim()) {
-      toast.error('Name and value are required');
+      toast.error(messages.validation.nameAndValueRequired);
       return;
     }
     setSaving(true);
@@ -240,14 +244,14 @@ export default function Pipeline() {
       });
       if (created) {
         setDeals((prev) => [created, ...prev]);
-        toast.success('Deal created');
+        toast.success(messages.success.dealCreated);
         setCreateOpen(false);
         setCreateForm({ name: '', value: '', stage: 'Qualification', expectedCloseDate: '', companyId: '', contactId: '' });
       } else {
-        toast.error('Failed to create deal');
+        toast.error(messages.errors.generic);
       }
     } catch {
-      toast.error('Something went wrong');
+      toast.error(messages.errors.generic);
     } finally {
       setSaving(false);
     }

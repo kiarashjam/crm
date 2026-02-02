@@ -14,12 +14,16 @@ export default function Connection() {
   const user = getCurrentUser();
 
   useEffect(() => {
+    let cancelled = false;
     getConnectionStatus()
       .then((status) => {
-        setIsConnected(status.connected);
-        setLoading(false);
+        if (!cancelled) {
+          setIsConnected(status.connected);
+          setLoading(false);
+        }
       })
-      .catch(() => setLoading(false));
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const handleConnect = async () => {

@@ -19,7 +19,18 @@ Replace `YOUR_USERNAME` and `YOUR_REPO_NAME` with your GitHub username and repo 
 
 ## 2. Create Azure resources (resource group, Static Web App, SQL, Backend Web App)
 
-All resources are created in the **same resource group** (`rg-crm-aci` by default).
+All resources are created in the **same resource group**.
+
+### Option A: West Europe (recommended – cheapest, West Europe location)
+
+```powershell
+# Creates rg-crm-aci-we with Free/Basic tiers in West Europe
+./scripts/azure-create-west-europe.ps1 -SqlAdminPassword 'YourSecurePwd1!' -CreateServicePrincipal
+```
+
+`-CreateServicePrincipal` creates Azure credentials for GitHub Actions automatically.
+
+### Option B: East US 2 (legacy)
 
 - Install [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) if needed.
 - Log in: `az login`
@@ -171,7 +182,7 @@ Normally you don’t need this: deploying the backend and letting it run `Migrat
 | Step | What |
 |------|------|
 | 1 | Push code to GitHub |
-| 2 | Run `./scripts/azure-create.ps1 -SqlAdminPassword '...'` (or `-SkipBackendAndDatabase` for frontend-only) |
+| 2 | Run `./scripts/azure-create-west-europe.ps1 -SqlAdminPassword '...' -CreateServicePrincipal` (West Europe) or `./scripts/azure-create.ps1 -SqlAdminPassword '...'` (East US 2) |
 | 3 | Add `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_WEBAPP_NAME`, `AZURE_WEBAPP_PUBLISH_PROFILE`, and `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_CLIENT_SECRET`; set `VITE_API_URL` variable so frontend uses the backend |
 | 4 | Push to `main` or create a release → frontend and/or backend deploy. To update Azure DB: deploy backend (push `backend/` or run "Build and deploy backend to Azure Web App" manually). |
 | 5 | Check Static Web App URL, backend Swagger, and login from the site (see §6 checklist) |

@@ -149,6 +149,6 @@ Why the ACI frontend looks and behaves the way it does: design system, layout pa
 
 ---
 
-**Related:** [FRONTEND_PAGES_REPORT.md](./FRONTEND_PAGES_REPORT.md) (routes and pages), [USER_FLOWS_REPORT.md](./USER_FLOWS_REPORT.md) (user journeys).
+**Related:** [FRONTEND_PAGES_REPORT.md](./FRONTEND_PAGES_REPORT.md) (routes and pages), [USER_FLOWS_REPORT.md](./USER_FLOWS_REPORT.md) (user journeys), [PROJECT_ASPECTS.md](../../PROJECT_ASPECTS.md) (every aspect).
 
 *Last updated: February 2026*

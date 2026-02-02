@@ -6,7 +6,7 @@ import AppHeader from '@/app/components/AppHeader';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import EmptyState from '@/app/components/EmptyState';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getContacts, createContact, updateContact, getCompanies } from '@/app/api';
+import { getContacts, createContact, updateContact, getCompanies, messages } from '@/app/api';
 import type { Contact, Company } from '@/app/api/types';
 import { Input } from '@/app/components/ui/input';
 import { Button } from '@/app/components/ui/button';
@@ -81,7 +81,7 @@ export default function Contacts() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim()) {
-      toast.error('Name and email are required');
+      toast.error(messages.validation.nameAndEmailRequired);
       return;
     }
     setSaving(true);
@@ -95,10 +95,10 @@ export default function Contacts() {
         });
         if (updated) {
           setContacts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
-          toast.success('Contact updated');
+          toast.success(messages.success.contactUpdated);
           setDialogOpen(false);
         } else {
-          toast.error('Failed to update contact');
+          toast.error(messages.errors.generic);
         }
       } else {
         const created = await createContact({
@@ -109,14 +109,14 @@ export default function Contacts() {
         });
         if (created) {
           setContacts((prev) => [created, ...prev]);
-          toast.success('Contact created');
+          toast.success(messages.success.contactCreated);
           setDialogOpen(false);
         } else {
-          toast.error('Failed to create contact');
+          toast.error(messages.errors.generic);
         }
       }
     } catch {
-      toast.error('Something went wrong');
+      toast.error(messages.errors.generic);
     } finally {
       setSaving(false);
     }
@@ -141,15 +141,23 @@ export default function Contacts() {
           </Button>
         </div>
 
-        <div className="mb-4 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <Input
-            type="search"
-            placeholder="Search by name, email, or phone..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 rounded-lg border-slate-300"
-          />
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" aria-hidden />
+            <Input
+              type="search"
+              placeholder="Search by name, email, or phone..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 rounded-lg border-slate-300"
+              aria-label="Search contacts"
+            />
+          </div>
+          {searchQuery.trim() && filteredContacts.length === 0 && !loading && (
+            <p className="text-sm text-slate-500 mt-2">
+              No results for &quot;{searchQuery.trim()}&quot;. Try a different search or add a contact.
+            </p>
+          )}
         </div>
 
         {loading ? (

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Copy, RotateCcw, Send } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,25 +22,36 @@ Looking forward to connecting!
 Best regards,
 [Your Name]`;
 
-export default function GeneratedCopy() {
+function GeneratedCopy() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as { copy?: string; copyTypeLabel?: string } | null;
   const [generatedText, setGeneratedText] = useState(state?.copy ?? DEFAULT_COPY);
   const [copyTypeLabel, setCopyTypeLabel] = useState(state?.copyTypeLabel ?? 'Copy');
   const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (state?.copy) setGeneratedText(state.copy);
     if (state?.copyTypeLabel) setCopyTypeLabel(state.copyTypeLabel);
   }, [state?.copy, state?.copyTypeLabel]);
 
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
+
   const handleCopy = () => {
     try {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
       navigator.clipboard.writeText(generatedText);
       setCopied(true);
       toast.success(messages.copy.copied);
-      setTimeout(() => setCopied(false), 3000);
+      copyTimeoutRef.current = setTimeout(() => {
+        copyTimeoutRef.current = null;
+        setCopied(false);
+      }, 3000);
     } catch {
       toast.error(messages.errors.generic);
     }
@@ -162,3 +173,5 @@ export default function GeneratedCopy() {
     </div>
   );
 }
+
+export default GeneratedCopy;

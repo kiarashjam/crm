@@ -1,6 +1,6 @@
 # Local development: database in Docker, frontend and backend on your machine
 
-Run the **database** in Docker and the **frontend** and **backend** directly on your machine (no Docker for the app).
+This describes **standalone** local run: the **database** runs in Docker (or use LocalDB), and the **frontend** and **backend** run on your machine. No external service or cloud is required.
 
 ## 1. Start the database (Docker)
 
