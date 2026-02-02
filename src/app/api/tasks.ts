@@ -1,4 +1,5 @@
 import type { TaskItem } from './types';
+import { mockTasks } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
 
 function delay(ms: number): Promise<void> {
@@ -25,7 +26,11 @@ export async function getTasks(overdueOnly?: boolean): Promise<TaskItem[]> {
     return Array.isArray(list) ? list.map(mapTask) : [];
   }
   await delay(200);
-  return [];
+  if (overdueOnly) {
+    const now = new Date();
+    return mockTasks.filter((t) => !t.completed && t.dueDateUtc && new Date(t.dueDateUtc) < now);
+  }
+  return [...mockTasks];
 }
 
 /** Create a task. */

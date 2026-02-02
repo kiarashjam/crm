@@ -54,4 +54,11 @@ export function setDemoUser(user: { name: string; email: string }): void {
 }
 
 export const getDemoUser = (): AuthUser | null => getCurrentUser();
+
+/** True when the user is in demo mode (no backend; sample data only). */
+export function isDemoMode(): boolean {
+  const user = getCurrentUser();
+  return user?.id === 'demo' ?? false;
+}
+
 export const clearDemoUser = (): void => clearSession();

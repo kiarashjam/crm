@@ -1,7 +1,7 @@
-# ACI CRM — Project Report (Repo Root)
+# Cadence CRM — Project Report (Repo Root)
 
 ## What this project is
-**ACI** is a **CRM companion** that helps sales teams generate and save CRM-ready copy (sales emails, follow-ups, CRM notes, deal messages). **The system is standalone:** it does not require any external service to run (no required cloud API, no required external database; backend and database are optional or local—see [RUN_FROM_SCRATCH.md](./RUN_FROM_SCRATCH.md)).
+**Cadence** is a **CRM companion** that helps sales teams generate and save CRM-ready copy (sales emails, follow-ups, CRM notes, deal messages). **The system is standalone:** it does not require any external service to run (no required cloud API, no required external database; backend and database are optional or local—see [RUN_FROM_SCRATCH.md](./RUN_FROM_SCRATCH.md)).
 
 The repo contains:
 - **Frontend SPA** (`src/`) — React + TypeScript UI.

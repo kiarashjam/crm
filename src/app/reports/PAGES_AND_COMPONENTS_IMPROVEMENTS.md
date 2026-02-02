@@ -115,7 +115,7 @@
 
 | # | Priority | Action |
 |---|----------|--------|
-| P1 | P2 | Add a one-line testimonial or trust line near CTA (e.g. "Join teams using ACI"). |
+| P1 | P2 | Add a one-line testimonial or trust line near CTA (e.g. "Join teams using Cadence"). |
 | P2 | P1 | Add a short FAQ (e.g. "Do I need a CRM?" "Is my data secure?") to reduce sign-up anxiety. |
 
 ---
@@ -381,7 +381,7 @@
 
 | Attribute | Detail |
 |-----------|--------|
-| **Meaning** | What ACI does; how to generate copy; how CRM connection works; data & privacy; contact support. |
+| **Meaning** | What Cadence does; how to generate copy; how CRM connection works; data & privacy; contact support. |
 | **API** | None. |
 
 **Improvements**

@@ -69,14 +69,14 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50/80 to-slate-50 flex flex-col">
-      <header className="w-full px-[var(--page-padding)] py-6" role="banner">
+      <header className="w-full px-[var(--page-padding)] py-[var(--header-block-padding-y)]" role="banner">
         <Link to="/" className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 rounded-lg" aria-label="Back to home">
           <ArrowLeft className="w-5 h-5" aria-hidden />
           Back to home
         </Link>
       </header>
 
-      <main id={MAIN_CONTENT_ID} className="flex-1 flex items-center justify-center px-[var(--page-padding)] py-12" tabIndex={-1}>
+      <main id={MAIN_CONTENT_ID} className="flex-1 flex items-center justify-center px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg" aria-hidden>
@@ -84,7 +84,7 @@ export default function Login() {
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-2">Welcome back</h1>
             <p className="text-slate-600">
-              {requires2fa ? 'Enter your 2FA code to continue' : 'Sign in to start creating AI-powered copy'}
+              {requires2fa ? 'Enter your 2FA code to continue' : 'Sign in to Cadence and start creating AI-powered copy'}
             </p>
           </div>
 
@@ -222,7 +222,7 @@ export default function Login() {
             )}
 
             <p className="text-center text-sm text-slate-500 mt-6">
-              Connect your CRM in one click after signing in
+              Connect your CRM in one click after you sign in
             </p>
 
             <nav className="flex justify-center gap-4 mt-6 text-sm" aria-label="Legal links">

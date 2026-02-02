@@ -1,6 +1,6 @@
 # UI Design Rationale
 
-Why the ACI frontend looks and behaves the way it does: design system, layout patterns, accessibility, and component choices.
+Why the Cadence frontend looks and behaves the way it does: design system, layout patterns, accessibility, and component choices.
 
 ---
 

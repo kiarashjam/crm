@@ -1,6 +1,6 @@
 # Frontend Pages Report
 
-Report of all frontend routes, pages, purpose, state, API usage, and UI structure. Generated from the ACI app source files.
+Report of all frontend routes, pages, purpose, state, API usage, and UI structure. Generated from the Cadence app source files.
 
 ---
 
@@ -53,18 +53,18 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 ### 1. Homepage (`/`)
 
 - **File:** `pages/Homepage.tsx`
-- **Purpose:** Public landing: hero, stats, How It Works, What You Can Do, Why Choose ACI, CTA, footer.
+- **Purpose:** Public landing: hero, stats, How It Works, What You Can Do, Why Choose Cadence, CTA, footer.
 - **State:** None (stateless).
 - **API:** None.
 - **Layout:**
-  - **Header:** Sticky, `bg-white/80 backdrop-blur-md`; ACI logo (Sparkles) + “Sign In” link → `/login`.
+  - **Header:** Sticky, `bg-white/80 backdrop-blur-md`; Cadence logo (Sparkles) + “Sign In” link → `/login`.
   - **Hero:** Trust badge (“AI copy for your CRM”); headline “Write sales copy in seconds, not hours”; subtext; CTAs “Get started” → `/login`, “See how it works” → `/help`. Animated blob backgrounds.
   - **Stats:** 3 columns — “5” Copy types, “Templates” Ready-to-use, “1-click” Send to CRM.
   - **How It Works:** 3 cards — Connect your CRM, Generate copy, Send to CRM (step number + title + description).
   - **What You Can Do:** 10 feature cards (Mail, MessageSquare, FileText, Briefcase, Workflow, LayoutTemplate, History, Send, Link2, Settings) with title + short description.
-  - **Why Choose ACI:** 3 cards — Save time, Simple setup, Your brand voice (Clock, Check, Sparkles; stat badge + title + desc).
+  - **Why Choose Cadence:** 3 cards — Save time, Simple setup, Your brand voice (Clock, Check, Sparkles; stat badge + title + desc).
   - **CTA strip:** Orange gradient; “Start writing in minutes”; “Get Started Free” → `/login`; “No credit card required • Free forever plan”.
-  - **Footer:** 4 columns — ACI + tagline; Product (How it works, Templates, Dashboard, History, Settings, Connect CRM); Legal (Privacy, Terms, Help); copyright + Twitter/LinkedIn/GitHub.
+  - **Footer:** 4 columns — Cadence + tagline; Product (How it works, Templates, Dashboard, History, Settings, Connect CRM); Legal (Privacy, Terms, Help); copyright + Twitter/LinkedIn/GitHub.
 - **Accessibility:** `main id={MAIN_CONTENT_ID}`, `tabIndex={-1}`; section `aria-labelledby` for hero, how-it-works, features, why, cta.
 - **README:** [pages/Homepage.README.md](../pages/Homepage.README.md)
 
@@ -301,7 +301,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 ### 17. Help (`/help`)
 
 - **File:** `pages/Help.tsx`
-- **Purpose:** What ACI does, How to Generate Copy (4 steps), How CRM Connection Works, Data & Privacy, Contact Support.
+- **Purpose:** What Cadence does, How to Generate Copy (4 steps), How CRM Connection Works, Data & Privacy, Contact Support.
 - **State:** None.
 - **API:** None.
 - **Layout:** AppHeader; “How It Works”; sections: What This Tool Does; How to Generate Copy (1–4: choose type, set goal, generate and refine, send to CRM); How CRM Connection Works (OAuth, permissions, disconnect); Data & Privacy (bullets + link to Privacy); Need More Help? (mailto support@example.com).
@@ -313,7 +313,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 - **File:** `pages/Privacy.tsx`
 - **Purpose:** Privacy policy (intro, collection, use, security, sharing, rights, CRM, cookies, transfers, children, changes, contact).
-- **Layout:** Custom header (Back to Home, ACI logo); main: prose sections (Introduction, Information We Collect, How We Use, etc.).
+- **Layout:** Custom header (Back to Home, Cadence logo); main: prose sections (Introduction, Information We Collect, How We Use, etc.).
 - **README:** [pages/Privacy.README.md](../pages/Privacy.README.md)
 
 ---

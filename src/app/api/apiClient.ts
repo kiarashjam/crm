@@ -1,5 +1,5 @@
 /**
- * API client for the ACI backend. When VITE_API_URL is set, all API modules
+ * API client for the Cadence backend. When VITE_API_URL is set, all API modules
  * use this client to call the real backend (never mock/fake). Token is sent
  * when present; 401 from the backend clears session.
  */

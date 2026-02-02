@@ -1,6 +1,6 @@
 # User Flows Report — From Beginning to Full CRM
 
-This report describes **all the flows one user can do** in the ACI program: from the very beginning (sign up, company setup) through **having their own company**, **inviting or adding new people** (what exists today), and **all CRM stuff** (leads, deals, tasks, activities, copy, etc.). The system is **standalone**: no external API or cloud is required (demo mode or full stack locally—see [RUN_FROM_SCRATCH.md](../../RUN_FROM_SCRATCH.md)).
+This report describes **all the flows one user can do** in the Cadence program: from the very beginning (sign up, company setup) through **having their own company**, **inviting or adding new people** (what exists today), and **all CRM stuff** (leads, deals, tasks, activities, copy, etc.). The system is **standalone**: no external API or cloud is required (demo mode or full stack locally—see [RUN_FROM_SCRATCH.md](../../RUN_FROM_SCRATCH.md)).
 
 ---
 

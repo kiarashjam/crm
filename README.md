@@ -1,6 +1,6 @@
-# ACI (CRM)
+# Cadence (CRM)
 
-**ACI** is a CRM companion app built **from scratch**—it is not a fork or copy of another CRM (e.g. Salesforce, HubSpot, Pipedrive, Zoho, Monday). The frontend (React + TypeScript) and backend (ASP.NET Core) are original; third-party use is limited to attributed libraries (see [ATTRIBUTIONS.md](./ATTRIBUTIONS.md)).
+**Cadence** is a CRM companion app built **from scratch**—it is not a fork or copy of another CRM (e.g. Salesforce, HubSpot, Pipedrive, Zoho, Monday). The frontend (React + TypeScript) and backend (ASP.NET Core) are original; third-party use is limited to attributed libraries (see [ATTRIBUTIONS.md](./ATTRIBUTIONS.md)).
 
 Design and structure reference: [Website Structure Overview](https://www.figma.com/design/SLQRDIWbMgPPnEr99EXq1C/Website-Structure-Overview) (Figma). The linked Figma file is a design reference only; the application code is original.
 

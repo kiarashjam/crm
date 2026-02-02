@@ -1,4 +1,5 @@
 import type { Activity } from './types';
+import { mockActivities } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
 
 function delay(ms: number): Promise<void> {
@@ -24,7 +25,7 @@ export async function getActivities(): Promise<Activity[]> {
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
-  return [];
+  return [...mockActivities];
 }
 
 /** Get activities by contact. */
@@ -34,7 +35,7 @@ export async function getActivitiesByContact(contactId: string): Promise<Activit
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
-  return [];
+  return mockActivities.filter((a) => a.contactId === contactId);
 }
 
 /** Get activities by deal. */
@@ -44,7 +45,7 @@ export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
-  return [];
+  return mockActivities.filter((a) => a.dealId === dealId);
 }
 
 /** Create an activity. */

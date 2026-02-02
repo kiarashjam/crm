@@ -6,7 +6,7 @@ This report explains how to run the CRM **from scratch** on your machine—witho
 
 ## This system is standalone
 
-**The ACI CRM is a standalone application.** It does **not** require any external service to run:
+**The Cadence CRM is a standalone application.** It does **not** require any external service to run:
 
 | Requirement | Standalone behavior |
 |-------------|---------------------|

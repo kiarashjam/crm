@@ -57,6 +57,8 @@ export default function Activities() {
     dealId: '',
   });
   const [saving, setSaving] = useState(false);
+  const [deleteConfirmActivity, setDeleteConfirmActivity] = useState<Activity | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadData = () => {
     setLoading(true);
@@ -160,9 +162,9 @@ export default function Activities() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-slate-50">
       <AppHeader />
-      <main id={MAIN_CONTENT_ID} className="w-full max-w-4xl mx-auto px-[var(--page-padding)] py-8" tabIndex={-1}>
+      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
         <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Activities</h1>

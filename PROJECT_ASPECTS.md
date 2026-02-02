@@ -1,12 +1,12 @@
-# ACI CRM — Every Aspect (Full Overview)
+# Cadence CRM — Every Aspect (Full Overview)
 
-This document lists **every major aspect** of the ACI CRM project: what it is, how to run it, what it has, and where to read more. Use it as a single entry point for understanding the whole system.
+This document lists **every major aspect** of the Cadence CRM project: what it is, how to run it, what it has, and where to read more. Use it as a single entry point for understanding the whole system.
 
 ---
 
 ## 1. Standalone system
 
-**The ACI CRM is standalone.** It does not require any external service to run.
+**The Cadence CRM is standalone.** It does not require any external service to run.
 
 | Aspect | Standalone behavior |
 |--------|---------------------|
@@ -24,7 +24,7 @@ See [RUN_FROM_SCRATCH.md](./RUN_FROM_SCRATCH.md) for how to run standalone (demo
 
 | Aspect | Description |
 |--------|-------------|
-| **Product** | **ACI** — a CRM companion for sales teams: generate CRM-ready copy (sales emails, follow-ups, notes, deal messages) and send it to contacts/deals. |
+| **Product** | **Cadence** — a CRM companion for sales teams: generate CRM-ready copy (sales emails, follow-ups, notes, deal messages) and send it to contacts/deals. |
 | **Repo contents** | **Frontend** (`src/`) — React + TypeScript SPA. **Backend** (`backend/`) — ASP.NET Core Web API, EF Core, SQL Server. **Marketing site** (`website/`) — separate Vite app for public pages. **Scripts** (`scripts/`) — Azure deployment. |
 | **Original design** | Figma: Website Structure Overview (see README). |
 

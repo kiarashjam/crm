@@ -1,6 +1,6 @@
 # CRM Sales Point of View – Checklist
 
-This report checks that the ACI frontend has everything needed from a **CRM sales** perspective: contacts, deals, copy types, connection, send-to-CRM, history, and sales workflows. The app is **standalone**: it can run with no external service (demo mode or full stack locally—see [RUN_FROM_SCRATCH.md](../../RUN_FROM_SCRATCH.md)).
+This report checks that the Cadence frontend has everything needed from a **CRM sales** perspective: contacts, deals, copy types, connection, send-to-CRM, history, and sales workflows. The app is **standalone**: it can run with no external service (demo mode or full stack locally—see [RUN_FROM_SCRATCH.md](../../RUN_FROM_SCRATCH.md)).
 
 ---
 

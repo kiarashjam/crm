@@ -1,7 +1,28 @@
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Spacing (padding & margin) standard
+ * Scale: 4px base → 0.5rem (8px), 1rem (16px), 1.5rem (24px), 2rem (32px), 2.5rem (40px), 3rem (48px), 4rem (64px), 5rem (80px), 6rem (96px).
+ * Use these variables for consistent layout across header, main, sections, footer.
+ */
 :root {
+  /* Horizontal: left/right padding for page edges (header, main, footer) */
   --page-padding: 1rem;
+  /* Vertical: main content area top/bottom */
+  --main-block-padding-y: 2rem;
+  /* Vertical: full-width sections (e.g. Homepage sections) */
+  --section-padding-y: 4rem;
+  /* Vertical: page header top/bottom */
+  --header-block-padding-y: 1.25rem;
+  /* Vertical: footer top/bottom */
+  --footer-block-padding-y: 4rem;
+  /* Default gap between content blocks (e.g. between cards, form groups) */
+  --content-gap: 1rem;
+  /* Larger gap for section-level spacing */
+  --content-gap-lg: 1.5rem;
+  /* Extra-large gap (e.g. between major sections) */
+  --content-gap-xl: 2rem;
+
   --font-size: 16px;
   --text-base: 1rem;
   --text-lg: 1.125rem;
@@ -44,6 +65,27 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+}
+
+/* Tablet and up: more breathing room */
+@media (min-width: 768px) {
+  :root {
+    --page-padding: 1.5rem;
+    --main-block-padding-y: 2.5rem;
+    --section-padding-y: 5rem;
+    --header-block-padding-y: 1.5rem;
+    --footer-block-padding-y: 5rem;
+  }
+}
+
+/* Large desktop: comfortable margins, generous section spacing */
+@media (min-width: 1024px) {
+  :root {
+    --page-padding: 2rem;
+    --main-block-padding-y: 3rem;
+    --section-padding-y: 6rem;
+    --footer-block-padding-y: 6rem;
+  }
 }
 
 .dark {

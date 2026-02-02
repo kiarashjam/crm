@@ -1,4 +1,5 @@
 import type { Lead } from './types';
+import { mockLeads } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
 
 function delay(ms: number): Promise<void> {
@@ -24,7 +25,7 @@ export async function getLeads(): Promise<Lead[]> {
     return Array.isArray(list) ? list.map(mapLead) : [];
   }
   await delay(300);
-  return [];
+  return [...mockLeads];
 }
 
 /** Search leads by name or email. */

@@ -1,6 +1,6 @@
 # Pages
 
-Route-level components for the ACI frontend. Each page has a short README below (where present) and is summarized in [../reports/FRONTEND_PAGES_REPORT.md](../reports/FRONTEND_PAGES_REPORT.md).
+Route-level components for the Cadence frontend. Each page has a short README below (where present) and is summarized in [../reports/FRONTEND_PAGES_REPORT.md](../reports/FRONTEND_PAGES_REPORT.md).
 
 ## Route index
 

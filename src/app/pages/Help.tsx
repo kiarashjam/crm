@@ -5,47 +5,47 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 
 export default function Help() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-slate-50">
       <AppHeader />
 
-      <main id={MAIN_CONTENT_ID} className="w-full max-w-4xl mx-auto px-[var(--page-padding)] py-12" tabIndex={-1}>
+      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
         <div className="w-full">
           <div className="mb-12 text-center">
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-4">How It Works</h1>
-            <p className="text-xl text-slate-600">Everything you need to know about using ACI</p>
+            <p className="text-xl text-slate-600">A quick guide to getting the most out of Cadence</p>
           </div>
 
           <nav className="mb-12 bg-white rounded-2xl border border-slate-200 shadow-sm p-6" aria-label="Table of contents">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">On this page</h2>
             <ul className="space-y-2">
-              <li><a href="#what-heading" className="text-orange-600 hover:text-orange-700 font-medium">What This Tool Does</a></li>
-              <li><a href="#generate-heading" className="text-orange-600 hover:text-orange-700 font-medium">How to Generate Copy</a></li>
-              <li><a href="#crm-heading" className="text-orange-600 hover:text-orange-700 font-medium">How CRM Connection Works</a></li>
-              <li><a href="#privacy-help-heading" className="text-orange-600 hover:text-orange-700 font-medium">Data & Privacy</a></li>
-              <li><a href="#support-heading" className="text-orange-600 hover:text-orange-700 font-medium">Need More Help?</a></li>
+              <li><a href="#what-heading" className="text-orange-600 hover:text-orange-700 font-medium">What Cadence does</a></li>
+              <li><a href="#generate-heading" className="text-orange-600 hover:text-orange-700 font-medium">Generating copy (4 steps)</a></li>
+              <li><a href="#crm-heading" className="text-orange-600 hover:text-orange-700 font-medium">CRM connection</a></li>
+              <li><a href="#privacy-help-heading" className="text-orange-600 hover:text-orange-700 font-medium">Data & privacy</a></li>
+              <li><a href="#support-heading" className="text-orange-600 hover:text-orange-700 font-medium">Contact support</a></li>
             </ul>
           </nav>
 
-          {/* What This Tool Does */}
+          {/* What Cadence does */}
           <section className="mb-12" aria-labelledby="what-heading">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                 <HelpCircle className="w-6 h-6 text-orange-600" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900">What This Tool Does</h2>
+              <h2 id="what-heading" className="text-2xl font-bold text-slate-900">What Cadence Does</h2>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
               <p className="text-slate-700 mb-4">
-                ACI is a powerful tool that generates professional copy for your CRM in seconds. It uses advanced AI to create personalized emails, follow-ups, workflow messages, and CRM notes that match your brand voice.
+                Cadence drafts sales copy for you—emails, follow-ups, CRM notes, deal messages—in your brand voice. You pick the type and goal; we generate the text. No blank screen, no hopping between apps.
               </p>
               <p className="text-slate-700">
-                No more staring at a blank screen or worrying about what to write. Just select what you need, and we'll generate it for you—ready to send directly to your CRM.
+                Everything stays inside Cadence until you send it. When you’re ready, you push the copy to the right contact or deal in your CRM. Fast, consistent, and on-brand.
               </p>
             </div>
           </section>
 
           <section className="mb-12" aria-labelledby="generate-heading">
-            <h2 id="generate-heading" className="text-2xl font-bold text-slate-900 mb-6">How to Generate Copy</h2>
+            <h2 id="generate-heading" className="text-2xl font-bold text-slate-900 mb-6">Generating Copy (4 Steps)</h2>
             <div className="space-y-6">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                 <div className="flex items-start gap-4">
@@ -53,8 +53,8 @@ export default function Help() {
                     1
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Choose what to write</h3>
-                    <p className="text-slate-700">Select from sales emails, follow-ups, CRM notes, deal messages, or workflow content.</p>
+                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Pick what you’re writing</h3>
+                    <p className="text-slate-700">Sales email, follow-up, CRM note, deal message, or workflow copy. You can also start from a template.</p>
                   </div>
                 </div>
               </div>
@@ -65,8 +65,8 @@ export default function Help() {
                     2
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Set your goal</h3>
-                    <p className="text-slate-700">Pick your objective (schedule meeting, follow up, close deal, etc.) and add any specific context.</p>
+                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Set the goal</h3>
+                    <p className="text-slate-700">Choose an outcome—e.g. schedule a meeting, follow up after a demo, close the deal—and add any extra context. We use your company name and brand tone from Settings.</p>
                   </div>
                 </div>
               </div>
@@ -77,8 +77,8 @@ export default function Help() {
                     3
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Generate and refine</h3>
-                    <p className="text-slate-700">Click generate, review the AI-created copy, and use adjustment buttons to make it shorter, friendlier, or more persuasive.</p>
+                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Generate and tweak</h3>
+                    <p className="text-slate-700">Hit generate, then review the draft. Use the controls to make it shorter, friendlier, or more persuasive—then copy it or send it on.</p>
                   </div>
                 </div>
               </div>
@@ -89,8 +89,8 @@ export default function Help() {
                     4
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Send to CRM</h3>
-                    <p className="text-slate-700">Choose which contact, deal, or workflow to send to, and your copy appears instantly in your CRM.</p>
+                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Send to your CRM</h3>
+                    <p className="text-slate-700">Select the contact or deal, confirm, and the copy is sent. It’s stored in your copy history so you can reuse or reference it later.</p>
                   </div>
                 </div>
               </div>
@@ -103,22 +103,20 @@ export default function Help() {
               <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                 <Link2 className="w-6 h-6 text-orange-600" />
               </div>
-              <h2 id="crm-heading" className="text-2xl font-bold text-slate-900">How CRM Connection Works</h2>
+              <h2 id="crm-heading" className="text-2xl font-bold text-slate-900">CRM Connection</h2>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
               <p className="text-slate-700 mb-4">
-                We use secure OAuth integration to connect to your CRM. When you click "Connect," you'll be redirected to your CRM's authorization page where you can review and approve the permissions.
+                When you connect your CRM, you’re taken to your CRM’s own authorization screen. You review and approve what Cadence can do. We use standard OAuth—we never see or store your CRM password.
               </p>
-              <p className="text-slate-700 mb-4">
-                <strong>We request access to:</strong>
-              </p>
+              <p className="text-slate-700 mb-2 font-medium">We ask for permission to:</p>
               <ul className="list-disc list-inside space-y-2 text-slate-700 mb-4">
-                <li>Read your contacts and deals (to personalize copy)</li>
-                <li>Create emails and notes (to save generated content)</li>
-                <li>Update workflow messages (for automation integration)</li>
+                <li>Read contacts and deals (so we can personalize and target copy)</li>
+                <li>Create or update emails and notes (so we can send generated copy into the right record)</li>
+                <li>Update workflow messages (for automation and sequences)</li>
               </ul>
               <p className="text-slate-700">
-                You can disconnect at any time from your Settings page. We never store your CRM credentials.
+                You can disconnect anytime from Settings. Your CRM credentials are never stored by Cadence.
               </p>
             </div>
           </section>
@@ -132,17 +130,17 @@ export default function Help() {
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
               <p className="text-slate-700 mb-4">
-                Your privacy and data security are our top priorities. Here's what you should know:
+                We only use what’s needed to generate and send copy. Here’s the short version:
               </p>
               <ul className="list-disc list-inside space-y-2 text-slate-700 mb-4">
-                <li>We only access the CRM data necessary to generate copy</li>
-                <li>All data is encrypted in transit and at rest</li>
-                <li>We don't sell or share your data with third parties</li>
-                <li>You can delete your account and all associated data at any time</li>
-                <li>We comply with GDPR, CCPA, and other privacy regulations</li>
+                <li>Access is limited to the data required for copy and sending</li>
+                <li>Data is encrypted in transit and at rest</li>
+                <li>We don’t sell or share your data</li>
+                <li>You can delete your account and data whenever you want</li>
+                <li>We follow GDPR, CCPA, and similar privacy rules</li>
               </ul>
               <Link to="/privacy" className="text-orange-600 hover:text-orange-700 font-medium focus-visible:underline">
-                Read our full Privacy Policy →
+                Full Privacy Policy →
               </Link>
             </div>
           </section>
@@ -152,10 +150,10 @@ export default function Help() {
               <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center" aria-hidden>
                 <Mail className="w-6 h-6 text-orange-600" />
               </div>
-              <h2 id="support-heading" className="text-2xl font-bold text-slate-900">Need More Help?</h2>
+              <h2 id="support-heading" className="text-2xl font-bold text-slate-900">Contact Support</h2>
             </div>
             <div className="bg-gradient-to-r from-orange-600 to-orange-500 rounded-2xl shadow-sm border border-orange-200 p-8 text-white">
-              <p className="text-lg mb-4">Can't find what you're looking for? Our support team is here to help!</p>
+              <p className="text-lg mb-4">Something unclear or broken? We’re here to help.</p>
               <a href="mailto:support@example.com" className="inline-block bg-white text-orange-600 hover:bg-slate-50 px-6 py-3 rounded-2xl font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-orange-500">
                 Contact Support
               </a>

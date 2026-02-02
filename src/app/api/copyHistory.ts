@@ -1,4 +1,5 @@
 import type { CopyHistoryItem } from './types';
+import { mockCopyHistory } from './mockData';
 import { isUsingRealApi, authFetchJson } from './apiClient';
 
 const STORAGE_KEY = 'crm_copy_history';
@@ -45,7 +46,8 @@ export async function getCopyHistory(): Promise<CopyHistoryItem[]> {
   }
   await delay(200);
   const items = getStored();
-  return [...items].sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
+  const list = items.length > 0 ? items : [...mockCopyHistory];
+  return [...list].sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
 }
 
 /** Add an item to history (e.g. after "Send to CRM"). */
@@ -84,8 +86,9 @@ export async function getCopyHistoryStats(): Promise<{ sentThisWeek: number; tot
     return res ?? { sentThisWeek: 0, totalSent: 0 };
   }
   const items = getStored();
+  const list = items.length > 0 ? items : mockCopyHistory;
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const sentThisWeek = items.filter((i) => new Date(i.createdAt) >= weekAgo).length;
-  return { sentThisWeek, totalSent: items.length };
+  const sentThisWeek = list.filter((i) => new Date(i.createdAt) >= weekAgo).length;
+  return { sentThisWeek, totalSent: list.length };
 }

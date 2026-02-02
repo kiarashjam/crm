@@ -90,10 +90,10 @@ export default function History() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-slate-50">
       <AppHeader />
 
-      <main id={MAIN_CONTENT_ID} className="w-full max-w-4xl mx-auto px-[var(--page-padding)] py-12" tabIndex={-1}>
+      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
         <div className="w-full">
           <div className="mb-8">
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-2">Copy History</h1>

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { saveUserSettings } from '@/app/api';
 import { messages } from '@/app/api/messages';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import DemoBanner from '@/app/components/DemoBanner';
 
 export default function Onboarding() {
   const [companyName, setCompanyName] = useState('');
@@ -28,7 +29,8 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50/80 to-slate-50 flex flex-col items-center justify-center px-[var(--page-padding)] py-12">
-      <main id={MAIN_CONTENT_ID} className="w-full max-w-md" tabIndex={-1}>
+      <DemoBanner />
+      <main id={MAIN_CONTENT_ID} className="w-full max-w-md flex-1 flex flex-col justify-center" tabIndex={-1}>
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg" aria-hidden>
             <Sparkles className="w-10 h-10 text-white" />

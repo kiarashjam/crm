@@ -1,6 +1,6 @@
-# Frontend App (ACI)
+# Frontend App (Cadence)
 
-React + TypeScript SPA for **ACI** — AI-powered copy generation for CRM (sales emails, follow-ups, CRM notes, deal messages, workflow messages).
+React + TypeScript SPA for **Cadence** — AI-powered copy generation for CRM (sales emails, follow-ups, CRM notes, deal messages, workflow messages).
 
 ## Structure
 

@@ -6,6 +6,8 @@ import { getConnectionStatus, setConnectionStatus } from '@/app/api';
 import { messages } from '@/app/api/messages';
 import { getCurrentUser } from '@/app/lib/auth';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import LoadingSpinner from '@/app/components/LoadingSpinner';
+import DemoBanner from '@/app/components/DemoBanner';
 
 export default function Connection() {
   const [isConnected, setIsConnected] = useState(false);
@@ -56,7 +58,8 @@ export default function Connection() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50/80 to-slate-50 flex flex-col items-center justify-center px-[var(--page-padding)] py-12">
-      <main id={MAIN_CONTENT_ID} className="w-full max-w-lg" tabIndex={-1}>
+      <DemoBanner />
+      <main id={MAIN_CONTENT_ID} className="w-full max-w-lg flex-1 flex flex-col items-center justify-center" tabIndex={-1}>
         {!isConnected ? (
           <div className="text-center">
             <div className="w-20 h-20 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg" aria-hidden>

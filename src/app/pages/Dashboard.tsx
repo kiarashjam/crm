@@ -20,8 +20,12 @@ import {
   CheckCircle2,
   XCircle,
   Users,
+  UserCircle,
+  Building2,
+  CheckSquare,
+  Activity,
 } from 'lucide-react';
-import { getCurrentUser } from '@/app/lib/auth';
+import { getCurrentUser, isDemoMode } from '@/app/lib/auth';
 import AppHeader from '@/app/components/AppHeader';
 import { cn } from '@/app/components/ui/utils';
 import {
@@ -31,7 +35,6 @@ import {
   getCopyHistoryStats,
   getCopyHistory,
   getTemplates,
-  getConnectionStatus,
   getDashboardStats,
 } from '@/app/api';
 import type { CopyTypeId } from '@/app/api/types';
@@ -58,10 +61,21 @@ const goals = [
   'Close the deal',
 ];
 
+const quickNavItems = [
+  { to: '/leads', icon: Users, label: 'Leads' },
+  { to: '/contacts', icon: UserCircle, label: 'Contacts' },
+  { to: '/deals', icon: Briefcase, label: 'Deals' },
+  { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
+  { to: '/companies', icon: Building2, label: 'Companies' },
+  { to: '/activities', icon: Activity, label: 'Activities' },
+];
+
 export default function Dashboard() {
   const location = useLocation();
   const templateId = (location.state as { templateId?: string } | null)?.templateId;
-  const [selectedType, setSelectedType] = useState<CopyTypeId | ''>('');
+  const [selectedType, setSelectedType] = useState<CopyTypeId | ''>(() =>
+    isDemoMode() ? 'sales-email' : ''
+  );
   const [goal, setGoal] = useState(goals[0]);
   const [context, setContext] = useState('');
   const [length, setLength] = useState<'short' | 'medium' | 'long'>('medium');
@@ -78,7 +92,6 @@ export default function Dashboard() {
     dealsWonCount: number;
     dealsLostCount: number;
   } | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<{ connected: boolean; accountEmail?: string }>({ connected: false });
   const [recentActivity, setRecentActivity] = useState<CopyHistoryItem[]>([]);
   const navigate = useNavigate();
   const user = getCurrentUser();
@@ -92,9 +105,6 @@ export default function Dashboard() {
       .catch(() => {});
     getTemplates()
       .then(guard((t) => setStats((prev) => ({ ...prev, templateCount: t.length }))))
-      .catch(() => {});
-    getConnectionStatus()
-      .then(guard((s) => setConnectionStatus({ connected: s.connected, accountEmail: s.accountEmail })))
       .catch(() => {});
     getCopyHistory()
       .then(guard((items) => setRecentActivity(items.slice(0, 5))))
@@ -147,143 +157,99 @@ export default function Dashboard() {
     }
   };
 
+  // North Star metric: pipeline value or generated this week (F-pattern: top-left prominence)
+  const northStarValue = crmStats ? `$${Number(crmStats.pipelineValue).toLocaleString()}` : String(stats.sentThisWeek);
+  const northStarLabel = crmStats ? 'Pipeline value' : 'Generated this week';
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-slate-50/95 to-slate-100">
+    <div className="min-h-screen flex flex-col bg-slate-50">
       <AppHeader />
 
-      <main id={MAIN_CONTENT_ID} className="w-full max-w-6xl mx-auto px-[var(--page-padding)] py-8 lg:py-10" tabIndex={-1}>
-        <div className="w-full">
-          {/* Hero: title with in-text highlight */}
-          <header className="mb-10 animate-fade-in">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-[0.2em] mb-3">
-              Dashboard
-            </p>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 tracking-tight mb-3">
-              Welcome back,{' '}
-              <span className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 bg-clip-text text-transparent">
-                {displayName}
-              </span>
-            </h1>
-            <p className="text-slate-600 text-base sm:text-lg max-w-xl leading-relaxed">
-              Create AI-powered copy and send it directly to your CRM. Select a type below to get started.
-            </p>
+      <main id={MAIN_CONTENT_ID} className="flex-1 w-full max-w-7xl mx-auto px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+        <div className="space-y-8">
+          {/* Hero: F-pattern — North Star metric + welcome top-left */}
+          <header className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 animate-fade-in">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                Welcome back, <span className="text-orange-600">{displayName}</span>
+              </h1>
+              <p className="mt-1.5 text-slate-600 text-sm sm:text-base">
+                Here’s your CRM at a glance.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm">
+                <TrendingUp className="w-5 h-5 text-orange-500" aria-hidden />
+                <div>
+                  <p className="text-xl font-bold text-slate-900 tabular-nums">{northStarValue}</p>
+                  <p className="text-xs font-medium text-slate-500">{northStarLabel}</p>
+                </div>
+              </div>
+            </div>
           </header>
 
-          {/* Connection status */}
-          <div
-            className={cn(
-              'mb-8 flex flex-wrap items-center gap-3 rounded-2xl border px-5 py-4 transition-all duration-300',
-              connectionStatus.connected
-                ? 'bg-emerald-50/80 border-emerald-200/80 text-emerald-800 shadow-sm shadow-emerald-100/50'
-                : 'bg-amber-50/80 border-amber-200/80 text-amber-800 shadow-sm shadow-amber-100/50'
-            )}
-            aria-live="polite"
-          >
-            {connectionStatus.connected ? (
-              <>
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 animate-pulse-soft">
-                  <CheckCircle2 className="w-5 h-5 shrink-0" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold">CRM connected</p>
-                  {connectionStatus.accountEmail && (
-                    <p className="text-sm opacity-90 truncate">{connectionStatus.accountEmail}</p>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-100 text-amber-600">
-                  <XCircle className="w-5 h-5 shrink-0" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold">CRM not connected</p>
-                  <p className="text-sm opacity-90">Connect to send copy to your CRM.</p>
-                </div>
-              </>
-            )}
-            <Link
-              to="/connect"
-              className="inline-flex items-center gap-2 text-sm font-semibold underline underline-offset-2 hover:no-underline focus-visible:rounded-lg px-3 py-2 -m-2 rounded-lg hover:bg-black/5 transition-colors"
-            >
-              <Link2 className="w-4 h-4" />
-              {connectionStatus.connected ? 'Manage' : 'Connect'}
-            </Link>
-          </div>
-
-          {/* Stats grid with staggered animation */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
+          {/* KPI row: 4–5 metrics max, flat design, no gradients */}
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" aria-labelledby="kpi-heading">
+            <h2 id="kpi-heading" className="sr-only">Key metrics</h2>
             {[
-              { value: String(stats.sentThisWeek), label: 'Generated this week', icon: FileOutput, color: 'bg-orange-50 text-orange-700 border-orange-100' },
-              { value: String(stats.templateCount), label: 'Templates', icon: LayoutTemplate, color: 'bg-slate-100 text-slate-600 border-slate-200' },
-              { value: String(stats.totalSent), label: 'Sent to CRM', icon: Send, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-              { value: '~2 min', label: 'Avg. time saved', icon: TrendingUp, color: 'bg-violet-50 text-violet-700 border-violet-100' },
+              { value: String(stats.sentThisWeek), label: 'Generated this week', icon: FileOutput },
+              { value: String(stats.templateCount), label: 'Templates', icon: LayoutTemplate },
+              { value: String(stats.totalSent), label: 'Sent to CRM', icon: Send },
+              { value: '~2 min', label: 'Avg. time saved', icon: TrendingUp },
             ].map((stat, i) => (
               <div
                 key={stat.label}
-                className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 animate-fade-in-up"
-                style={{ animationDelay: `${i * 100}ms`, animationFillMode: 'backwards' }}
+                className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 animate-fade-in-up"
+                style={{ animationDelay: `${i * 80}ms`, animationFillMode: 'backwards' }}
               >
-                <div className={cn('inline-flex p-2.5 rounded-xl border', stat.color)}>
-                  <stat.icon className="w-5 h-5" />
-                </div>
-                <p className="mt-3 text-2xl font-bold text-slate-900 tabular-nums">{stat.value}</p>
-                <p className="text-sm text-slate-500 font-medium">{stat.label}</p>
+                <stat.icon className="w-5 h-5 text-slate-400" aria-hidden />
+                <p className="mt-2 text-lg sm:text-xl font-bold text-slate-900 tabular-nums">{stat.value}</p>
+                <p className="text-xs sm:text-sm text-slate-500 font-medium">{stat.label}</p>
               </div>
             ))}
-          </div>
+          </section>
+
           {crmStats !== null && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+            <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" aria-labelledby="crm-kpi-heading">
+              <h2 id="crm-kpi-heading" className="sr-only">CRM metrics</h2>
               {[
-                { value: String(crmStats.activeLeadsCount), label: 'Active leads', icon: Users, color: 'bg-blue-50 text-blue-700 border-blue-100' },
-                { value: String(crmStats.activeDealsCount), label: 'Active deals', icon: Briefcase, color: 'bg-amber-50 text-amber-700 border-amber-100' },
-                { value: `$${Number(crmStats.pipelineValue).toLocaleString()}`, label: 'Pipeline value', icon: TrendingUp, color: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
-                { value: `${crmStats.dealsWonCount} won / ${crmStats.dealsLostCount} lost`, label: 'Won vs lost', icon: CheckCircle2, color: 'bg-slate-100 text-slate-600 border-slate-200' },
+                { value: String(crmStats.activeLeadsCount), label: 'Active leads', icon: Users },
+                { value: String(crmStats.activeDealsCount), label: 'Active deals', icon: Briefcase },
+                { value: String(crmStats.dealsWonCount), label: 'Deals won', icon: CheckCircle2 },
+                { value: String(crmStats.dealsLostCount), label: 'Deals lost', icon: XCircle },
               ].map((stat, i) => (
                 <div
                   key={stat.label}
-                  className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 animate-fade-in-up"
-                  style={{ animationDelay: `${400 + i * 80}ms`, animationFillMode: 'backwards' }}
+                  className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 animate-fade-in-up"
+                  style={{ animationDelay: `${100 + i * 80}ms`, animationFillMode: 'backwards' }}
                 >
-                  <div className={cn('inline-flex p-2.5 rounded-xl border', stat.color)}>
-                    <stat.icon className="w-5 h-5" />
-                  </div>
-                  <p className="mt-3 text-2xl font-bold text-slate-900 tabular-nums">{stat.value}</p>
-                  <p className="text-sm text-slate-500 font-medium">{stat.label}</p>
+                  <stat.icon className="w-5 h-5 text-slate-400" aria-hidden />
+                  <p className="mt-2 text-lg sm:text-xl font-bold text-slate-900 tabular-nums">{stat.value}</p>
+                  <p className="text-xs sm:text-sm text-slate-500 font-medium">{stat.label}</p>
                 </div>
               ))}
-            </div>
+            </section>
           )}
 
-          {/* Section divider */}
-          <div className="flex items-center gap-4 my-12" aria-hidden="true">
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent via-orange-300/70 to-transparent rounded-full" />
-            <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-orange-200/80 shadow-md text-sm font-semibold text-orange-800 ring-1 ring-orange-100/50 transition-all duration-300 hover:shadow-lg hover:scale-105">
-              <Sparkles className="w-4 h-4 text-orange-500 animate-float" />
-              Create your content
-            </span>
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent via-orange-300/70 to-transparent rounded-full" />
-          </div>
-
-          {/* Create new copy section */}
-          <section className="bg-white rounded-2xl border border-slate-200/80 shadow-lg shadow-slate-200/30 overflow-hidden animate-scale-in" aria-labelledby="create-copy-heading">
-            <div className="px-6 sm:px-8 py-6 border-b border-slate-100 bg-gradient-to-b from-slate-50/50 to-white">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-orange-100 text-orange-600" aria-hidden>
-                  <Sparkles className="w-5 h-5" />
+          {/* Asymmetrical layout: Create copy (2/3) + Activity (1/3) */}
+          <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
+            {/* Primary action: Create copy — hero section, 2 cols on desktop */}
+            <section
+              className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-scale-in"
+              aria-labelledby="create-copy-heading"
+            >
+              <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-orange-100 text-orange-600">
+                  <Sparkles className="w-4 h-4" aria-hidden />
                 </div>
                 <div>
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Create</span>
-                  <h2 id="create-copy-heading" className="text-xl font-bold text-slate-900 mt-0.5">Create new copy</h2>
-                  <p className="text-sm text-slate-500 mt-0.5">Choose a content type and customize your message.</p>
+                  <h2 id="create-copy-heading" className="text-base font-bold text-slate-900">Create new copy</h2>
+                  <p className="text-xs text-slate-500">Choose a type, set your goal, generate.</p>
                 </div>
               </div>
-            </div>
-
-            <div className="p-6 sm:p-8">
-              <div className="mb-8">
-                <label className="block text-sm font-semibold text-slate-700 mb-3">Content type</label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="p-5 sm:p-6">
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3">Content type</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
                   {copyTypes.map((type) => {
                     const isSelected = selectedType === type.id;
                     return (
@@ -292,229 +258,197 @@ export default function Dashboard() {
                         type="button"
                         onClick={() => setSelectedType(type.id)}
                         className={cn(
-                          'flex flex-col items-center text-center p-4 rounded-2xl border-2 transition-all duration-300',
+                          'flex flex-col items-center text-center p-3 sm:p-4 rounded-lg border-2 transition-all duration-200',
                           isSelected
-                            ? 'border-orange-500 bg-orange-50/70 shadow-md shadow-orange-100/50 scale-[1.02]'
-                            : 'border-slate-200 bg-slate-50/50 hover:border-orange-200 hover:bg-orange-50/30 hover:shadow-sm'
+                            ? 'border-orange-500 bg-orange-50 text-orange-800'
+                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-100 text-slate-700'
                         )}
                       >
                         <span
                           className={cn(
-                            'flex items-center justify-center w-12 h-12 rounded-xl mb-3 transition-all duration-300',
-                            isSelected ? 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-lg' : 'bg-slate-200 text-slate-600'
+                            'flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-lg mb-2 transition-colors',
+                            isSelected ? 'bg-orange-500 text-white' : 'bg-slate-200 text-slate-600'
                           )}
                         >
-                          <type.icon className="w-6 h-6" />
+                          <type.icon className="w-5 h-5" />
                         </span>
-                        <span className="text-sm font-semibold text-slate-900">{type.title}</span>
-                        <span className="text-xs text-slate-500 mt-0.5">{type.desc}</span>
+                        <span className="text-xs sm:text-sm font-medium">{type.title}</span>
                       </button>
                     );
                   })}
                 </div>
-              </div>
 
-              {selectedType ? (
-                <div className="space-y-6 pt-6 border-t border-slate-100">
-                  <div>
-                    <label htmlFor="goal" className="block text-sm font-medium text-slate-700 mb-2">
-                      Message goal
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="goal"
-                        value={goal}
-                        onChange={(e) => setGoal(e.target.value)}
-                        className="w-full h-11 pl-4 pr-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors"
-                      >
-                        {goals.map((g) => (
-                          <option key={g} value={g}>
-                            {g}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="context" className="block text-sm font-medium text-slate-700 mb-2">
-                      Optional context
-                    </label>
-                    <textarea
-                      id="context"
-                      value={context}
-                      onChange={(e) => setContext(e.target.value)}
-                      placeholder="e.g. previous conversation, company info, pain points..."
-                      rows={3}
-                      className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors resize-none"
-                    />
-                    <p className="flex items-center gap-1.5 mt-2 text-xs text-slate-500">
-                      <Lightbulb className="w-3.5 h-3.5 shrink-0" />
-                      More context improves the AI output.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Length</label>
-                    <div className="flex gap-2">
-                      {[
-                        { id: 'short' as const, label: 'Short', sub: '2–3 sentences' },
-                        { id: 'medium' as const, label: 'Medium', sub: '1 paragraph' },
-                        { id: 'long' as const, label: 'Long', sub: '2+ paragraphs' },
-                      ].map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setLength(opt.id)}
-                          className={cn(
-                            'flex-1 py-3 px-4 rounded-xl border-2 text-left transition-all duration-300',
-                            length === opt.id
-                              ? 'border-orange-500 bg-orange-50 text-orange-800 shadow-sm scale-[1.02]'
-                              : 'border-slate-200 bg-white text-slate-700 hover:border-orange-200 hover:bg-orange-50/30'
-                          )}
+                {selectedType ? (
+                  <div className="mt-6 pt-5 border-t border-slate-100 space-y-4">
+                    <div>
+                      <label htmlFor="goal" className="block text-sm font-medium text-slate-700 mb-1.5">Message goal</label>
+                      <div className="relative">
+                        <select
+                          id="goal"
+                          value={goal}
+                          onChange={(e) => setGoal(e.target.value)}
+                          className="w-full h-10 pl-3 pr-9 rounded-lg border border-slate-300 bg-white text-slate-900 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none"
                         >
-                          <span className="block text-sm font-medium">{opt.label}</span>
-                          <span className="block text-xs text-slate-500 mt-0.5">{opt.sub}</span>
-                        </button>
-                      ))}
+                          {goals.map((g) => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="pt-2">
+                    <div>
+                      <label htmlFor="context" className="block text-sm font-medium text-slate-700 mb-1.5">Optional context</label>
+                      <textarea
+                        id="context"
+                        value={context}
+                        onChange={(e) => setContext(e.target.value)}
+                        placeholder="Previous conversation, company info, pain points..."
+                        rows={2}
+                        className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-900 text-sm placeholder:text-slate-400 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none resize-none"
+                      />
+                      <p className="flex items-center gap-1.5 mt-1.5 text-xs text-slate-500">
+                        <Lightbulb className="w-3.5 h-3.5 shrink-0" />
+                        More context improves output.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Length</label>
+                      <div className="flex gap-2">
+                        {[
+                          { id: 'short' as const, label: 'Short', sub: '2–3 sentences' },
+                          { id: 'medium' as const, label: 'Medium', sub: '1 paragraph' },
+                          { id: 'long' as const, label: 'Long', sub: '2+ paragraphs' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setLength(opt.id)}
+                            className={cn(
+                              'flex-1 py-2.5 px-3 rounded-lg border-2 text-left transition-colors',
+                              length === opt.id
+                                ? 'border-orange-500 bg-orange-50 text-orange-800'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                            )}
+                          >
+                            <span className="block text-sm font-medium">{opt.label}</span>
+                            <span className="block text-xs text-slate-500">{opt.sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <button
                       type="button"
                       onClick={handleGenerate}
                       disabled={isGenerating}
                       className={cn(
-                        'w-full sm:w-auto min-w-[200px] h-12 px-6 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all duration-300',
-                        'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-[0.98] shadow-lg shadow-orange-200/50 hover:shadow-xl hover:shadow-orange-200/60',
-                        'disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed disabled:opacity-90'
+                        'w-full sm:w-auto min-w-[180px] h-10 px-5 rounded-lg font-semibold text-white flex items-center justify-center gap-2 transition-colors',
+                        'bg-orange-600 hover:bg-orange-500 active:scale-[0.98]',
+                        'disabled:bg-slate-300 disabled:cursor-not-allowed'
                       )}
                     >
                       {isGenerating ? (
                         <>
-                          <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           Generating...
                         </>
                       ) : (
                         <>
-                          <Sparkles className="w-5 h-5" />
+                          <Sparkles className="w-4 h-4" />
                           Generate copy
                         </>
                       )}
                     </button>
-                    {!connectionStatus.connected && (
-                      <p className="mt-3 text-sm text-slate-600">
-                        <Link to="/connect" className="font-medium text-orange-600 hover:text-orange-700 focus-visible:underline">
-                          Connect CRM
-                        </Link>
-                        {' '}to send copy to contacts and deals.
-                      </p>
-                    )}
                   </div>
-                </div>
-              ) : (
-                <EmptyState
-                  icon={Sparkles}
-                  title="Select a content type"
-                  description="Choose one of the options above to create your copy."
-                  actionLabel="Try a template"
-                  actionHref="/templates"
-                  secondaryActionLabel={!connectionStatus.connected ? 'Connect CRM' : undefined}
-                  secondaryActionHref={!connectionStatus.connected ? '/connect' : undefined}
-                  className="animate-fade-in"
-                />
-              )}
-            </div>
-          </section>
-
-          {/* Recent activity section */}
-          <section
-            className="mt-10 bg-white rounded-2xl border border-slate-200/80 shadow-lg shadow-slate-200/30 overflow-hidden animate-scale-in"
-            style={{ animationDelay: '150ms', animationFillMode: 'backwards' }}
-            aria-labelledby="recent-activity-heading"
-          >
-            <div className="px-6 sm:px-8 py-6 border-b border-slate-100 bg-gradient-to-b from-slate-50/50 to-white">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-slate-100 text-slate-600" aria-hidden>
-                  <History className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Activity</span>
-                  <h2 id="recent-activity-heading" className="text-xl font-bold text-slate-900 mt-0.5">Recent activity</h2>
-                  <p className="text-sm text-slate-500 mt-0.5">Latest copy sent to CRM.</p>
-                </div>
+                ) : (
+                  <EmptyState
+                    icon={Sparkles}
+                    title="Select a content type"
+                    description="Click one of the options above to create your copy."
+                    actionLabel="Try a template"
+                    actionHref="/templates"
+                    className="mt-6 animate-fade-in"
+                  />
+                )}
               </div>
-            </div>
-            <div className="p-6 sm:p-8">
-              {recentActivity.length === 0 ? (
-                <EmptyState
-                  icon={History}
-                  title="No activity yet"
-                  description="Generate copy and send it to your CRM to see it here."
-                  actionLabel="Try a template"
-                  actionHref="/templates"
-                  className="animate-fade-in"
-                />
-              ) : (
-                <ul className="space-y-0 divide-y divide-slate-100">
-                  {recentActivity.map((item, i) => (
-                    <li
-                      key={item.id}
-                      className="flex flex-wrap items-center gap-2 py-4 first:pt-0 text-sm animate-slide-in-right hover:bg-slate-50/50 -mx-2 px-2 rounded-lg transition-colors"
-                      style={{ animationDelay: `${200 + i * 60}ms`, animationFillMode: 'backwards' }}
-                    >
-                      <span className="font-semibold text-slate-900">{item.type}</span>
-                      <span className="text-slate-400">→</span>
-                      <span className="text-slate-700">{item.recipientName}</span>
-                      <span className="ml-auto text-slate-400 text-xs font-medium">
-                        {new Date(item.createdAt).toLocaleDateString(undefined, { dateStyle: 'short' })}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <div className="mt-5">
-                <Link
-                  to="/history"
-                  className="inline-flex items-center gap-2 text-sm font-semibold text-orange-600 hover:text-orange-700 transition-colors focus-visible:rounded-lg px-3 py-2 -m-2 rounded-lg hover:bg-orange-50"
-                >
-                  View full history
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </div>
-            </div>
-          </section>
+            </section>
 
-          {/* More options divider */}
-          <div className="flex items-center gap-4 my-12" aria-hidden="true">
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent via-slate-300 to-transparent rounded-full" />
-            <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white border border-slate-200 shadow-md text-sm font-semibold text-slate-600 transition-all duration-300 hover:shadow-lg hover:border-slate-300 hover:scale-105">
-              <LayoutTemplate className="w-4 h-4 text-slate-500" />
-              More options
-            </span>
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent via-slate-300 to-transparent rounded-full" />
-          </div>
-
-          {/* Quick links */}
-          <nav className="flex flex-wrap justify-center gap-3 sm:gap-4" aria-label="Quick links">
-            {[
-              { to: '/templates', icon: LayoutTemplate, label: 'Templates' },
-              { to: '/history', icon: History, label: 'History' },
-              { to: '/settings', icon: Settings, label: 'Settings' },
-              { to: '/connect', icon: Link2, label: 'Connection' },
-            ].map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-semibold text-slate-700 bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-orange-200 hover:text-orange-700 hover:bg-orange-50/50 transition-all duration-300 focus-visible:rounded-xl"
+            {/* Secondary: Recent activity + Quick nav — 1 col on desktop */}
+            <aside className="space-y-6">
+              <section
+                className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-scale-in"
+                style={{ animationDelay: '100ms', animationFillMode: 'backwards' }}
+                aria-labelledby="recent-activity-heading"
               >
-                <link.icon className="w-4 h-4" />
-                {link.label}
-              </Link>
-            ))}
-          </nav>
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+                  <History className="w-4 h-4 text-slate-500" aria-hidden />
+                  <h2 id="recent-activity-heading" className="text-sm font-bold text-slate-900">Recent activity</h2>
+                </div>
+                <div className="p-5">
+                  {recentActivity.length === 0 ? (
+                    <EmptyState
+                      icon={History}
+                      title="No activity yet"
+                      description="Generate copy and send it to your CRM."
+                      actionLabel="Try a template"
+                      actionHref="/templates"
+                      className="!p-6 !pt-4"
+                    />
+                  ) : (
+                    <ul className="space-y-0">
+                      {recentActivity.map((item, i) => (
+                        <li
+                          key={item.id}
+                          className="flex items-center gap-2 py-3 border-b border-slate-100 last:border-0 last:pb-0 first:pt-0 text-sm"
+                        >
+                          <span className="font-medium text-slate-900 truncate">{item.type}</span>
+                          <span className="text-slate-400 shrink-0">→</span>
+                          <span className="text-slate-600 truncate">{item.recipientName}</span>
+                          <span className="ml-auto text-xs text-slate-400 shrink-0">
+                            {new Date(item.createdAt).toLocaleDateString(undefined, { dateStyle: 'short' })}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <Link
+                    to="/history"
+                    className="mt-4 flex items-center gap-1.5 text-sm font-medium text-orange-600 hover:text-orange-700"
+                  >
+                    View full history
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </div>
+              </section>
+
+              {/* Quick nav — compact, icon + label */}
+              <nav className="bg-white rounded-xl border border-slate-200 p-4 animate-fade-in-up" style={{ animationDelay: '150ms', animationFillMode: 'backwards' }} aria-label="Quick links">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Go to</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {quickNavItems.map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-orange-600 transition-colors"
+                    >
+                      <item.icon className="w-4 h-4 shrink-0 text-slate-500" />
+                      <span>{item.label}</span>
+                    </Link>
+                  ))}
+                </div>
+                <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
+                  <Link to="/templates" className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-orange-600">
+                    <LayoutTemplate className="w-3.5 h-3.5" /> Templates
+                  </Link>
+                  <Link to="/settings" className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-orange-600">
+                    <Settings className="w-3.5 h-3.5" /> Settings
+                  </Link>
+                  <Link to="/connect" className="flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-orange-600">
+                    <Link2 className="w-3.5 h-3.5" /> Connection
+                  </Link>
+                </div>
+              </nav>
+            </aside>
+          </div>
         </div>
       </main>
     </div>

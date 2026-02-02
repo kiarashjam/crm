@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Sparkles,
@@ -17,8 +17,10 @@ import {
   CheckSquare,
   Activity,
   Building2,
+  Link2,
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
+import { getConnectionStatus } from '@/app/api';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,6 +32,7 @@ import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
 import { Button } from '@/app/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/app/components/ui/sheet';
 import { cn } from './ui/utils';
+import DemoBanner from './DemoBanner';
 
 const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -56,14 +59,14 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             to={path}
             onClick={onNavigate}
             className={cn(
-              'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+              'flex items-center gap-2 px-3.5 py-2 rounded-full text-sm font-medium transition-all duration-200',
               isActive
-                ? 'bg-orange-100 text-orange-700'
-                : 'text-slate-600 hover:text-orange-600 hover:bg-orange-50'
+                ? 'bg-white/90 text-slate-900 shadow-sm ring-1 ring-slate-200/80'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
             )}
             aria-current={isActive ? 'page' : undefined}
           >
-            <Icon className="w-5 h-5 shrink-0" />
+            <Icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-amber-500' : 'opacity-80')} />
             {label}
           </Link>
         );
@@ -100,101 +103,119 @@ export default function AppHeader() {
     : '?';
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm" role="banner">
+    <>
+    <header
+      className="sticky top-0 z-50 border-b border-slate-200/60 bg-slate-50/95 backdrop-blur-md supports-[backdrop-filter]:bg-slate-50/80"
+      role="banner"
+    >
       <div className="w-full px-[var(--page-padding)]">
-        <div className="flex h-14 items-center justify-between gap-4">
+        <div className="flex h-16 items-center justify-between gap-4">
           {/* Logo */}
           <Link
             to="/dashboard"
-            className="flex items-center gap-2 shrink-0 rounded-lg transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+            className="group flex items-center gap-2.5 shrink-0 rounded-xl transition-all duration-200 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50"
             aria-label="Go to dashboard"
           >
-            <div className="w-9 h-9 bg-gradient-to-br from-orange-600 to-orange-500 rounded-lg flex items-center justify-center shadow-md" aria-hidden>
-              <Sparkles className="w-5 h-5 text-white" />
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 shadow-lg shadow-amber-500/25 ring-1 ring-white/20 transition-transform duration-200 group-hover:scale-105"
+              aria-hidden
+            >
+              <Sparkles className="h-5 w-5 text-white drop-shadow-sm" />
             </div>
-            <span className="text-lg font-bold text-slate-900 hidden sm:inline">
-              ACI
+            <span className="hidden text-lg font-semibold tracking-tight text-slate-800 sm:inline">
+              Cadence
             </span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
+          <nav
+            className="hidden items-center gap-1 rounded-full bg-slate-200/50 px-1.5 py-1 md:flex"
+            aria-label="Main navigation"
+          >
             <NavLinks />
           </nav>
 
           {/* Right: user menu + mobile trigger */}
           <div className="flex items-center gap-2">
-            {/* User dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="gap-2 px-2 py-1.5 h-auto rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                  className="h-auto gap-2 rounded-full px-2.5 py-1.5 text-slate-600 shadow-sm ring-1 ring-slate-200/60 transition-all duration-200 hover:bg-white/80 hover:text-slate-900 hover:ring-slate-300/80 focus-visible:ring-2 focus-visible:ring-amber-500/60 focus-visible:ring-offset-2"
                 >
-                  <Avatar className="h-8 w-8 rounded-full border-2 border-orange-200">
-                    <AvatarFallback className="bg-orange-100 text-orange-700 text-xs font-semibold">
+                  <Avatar className="h-8 w-8 rounded-full border-2 border-amber-200/80 shadow-inner">
+                    <AvatarFallback className="bg-gradient-to-br from-amber-100 to-orange-100 text-sm font-semibold text-amber-800">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="hidden sm:inline text-sm font-medium max-w-[120px] truncate">
+                  <span className="hidden max-w-[120px] truncate text-sm font-medium sm:inline">
                     {user?.name ?? 'Account'}
                   </span>
-                  <ChevronDown className="w-4 h-4 shrink-0 text-gray-400" />
+                  <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform [[data-state=open]_&]:rotate-180" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <div className="px-2 py-1.5">
-                  <p className="text-sm font-medium text-slate-900 truncate">
+              <DropdownMenuContent
+                align="end"
+                className="w-60 rounded-xl border-slate-200/80 bg-white/95 p-1.5 shadow-xl shadow-slate-200/50 backdrop-blur-sm"
+              >
+                <div className="px-3 py-2.5">
+                  <p className="truncate text-sm font-semibold text-slate-900">
                     {user?.name ?? 'Account'}
                   </p>
-                  <p className="text-xs text-slate-500 truncate">{user?.email ?? ''}</p>
+                  <p className="truncate text-xs text-slate-500">{user?.email ?? ''}</p>
                 </div>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="bg-slate-100" />
                 <DropdownMenuItem asChild>
-                  <Link to="/connect" className="flex items-center gap-2 cursor-pointer">
-                    <Link2 className="w-4 h-4" />
-                    {crmConnected === true ? 'CRM: Connected' : crmConnected === false ? 'CRM: Not connected' : 'Connection'}
+                  <Link to="/connect" className="flex cursor-pointer items-center gap-2 rounded-lg">
+                    <Link2 className="h-4 w-4" />
+                    {crmConnected === true
+                      ? 'CRM: Connected'
+                      : crmConnected === false
+                        ? 'CRM: Not connected'
+                        : 'Connection'}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link to="/settings" className="flex items-center gap-2 cursor-pointer">
-                    <User className="w-4 h-4" />
+                  <Link to="/settings" className="flex cursor-pointer items-center gap-2 rounded-lg">
+                    <User className="h-4 w-4" />
                     Settings
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="bg-slate-100" />
                 <DropdownMenuItem
                   onClick={handleLogout}
-                  className="text-red-600 focus:text-red-600 cursor-pointer"
+                  className="cursor-pointer rounded-lg text-red-600 focus:text-red-600"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="h-4 w-4" />
                   Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Mobile menu */}
             <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
               <SheetTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="md:hidden rounded-lg text-gray-600 hover:bg-gray-100"
+                  className="rounded-full text-slate-600 ring-1 ring-slate-200/60 hover:bg-white/80 md:hidden"
                   aria-label="Open menu"
                 >
-                  <Menu className="w-5 h-5" />
+                  <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="right" className="w-72 pt-8">
-                <nav className="flex flex-col gap-1" aria-label="Main navigation">
+              <SheetContent
+                side="right"
+                className="w-72 border-slate-200/80 bg-slate-50/95 pt-8 backdrop-blur-md"
+              >
+                <nav className="flex flex-col gap-1 rounded-xl bg-slate-200/40 p-1.5" aria-label="Main navigation">
                   <NavLinks onNavigate={() => setSheetOpen(false)} />
                 </nav>
-                <div className="mt-6 pt-6 border-t border-slate-200">
+                <div className="mt-6 border-t border-slate-200/80 pt-6">
                   <Link
                     to="/settings"
                     onClick={() => setSheetOpen(false)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-slate-600 hover:bg-orange-50 hover:text-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                    className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-slate-600 transition-colors hover:bg-white/80 hover:text-slate-900"
                   >
-                    <Settings className="w-5 h-5" />
+                    <Settings className="h-5 w-5" />
                     Settings
                   </Link>
                   <button
@@ -203,9 +224,9 @@ export default function AppHeader() {
                       setSheetOpen(false);
                       handleLogout();
                     }}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 w-full text-left"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-red-600 transition-colors hover:bg-red-50"
                   >
-                    <LogOut className="w-5 h-5" />
+                    <LogOut className="h-5 w-5" />
                     Sign out
                   </button>
                 </div>
@@ -215,5 +236,7 @@ export default function AppHeader() {
         </div>
       </div>
     </header>
+    <DemoBanner />
+    </>
   );
 }

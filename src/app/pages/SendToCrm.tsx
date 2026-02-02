@@ -90,9 +90,9 @@ export default function SendToCrm() {
 
   if (!copy.trim() && !isSent) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen flex flex-col bg-slate-50">
         <AppHeader />
-        <main id={MAIN_CONTENT_ID} className="w-full max-w-2xl mx-auto px-[var(--page-padding)] py-12" tabIndex={-1}>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           <h1 className="sr-only">Send to CRM</h1>
           <EmptyState
             icon={FileText}
@@ -107,10 +107,10 @@ export default function SendToCrm() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-slate-50">
       <AppHeader />
 
-      <main id={MAIN_CONTENT_ID} className="w-full max-w-2xl mx-auto px-[var(--page-padding)] py-12" tabIndex={-1}>
+      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
         <div className="w-full">
           {!isSent ? (
             <>

@@ -25,7 +25,7 @@ export function Homepage() {
     <div>
       <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-stone-200">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <span className="font-display font-bold text-xl text-stone-800">ACI</span>
+          <span className="font-display font-bold text-xl text-stone-800">Cadence</span>
           <div className="flex items-center gap-4">
             <Link to="/help" className="text-stone-600 hover:text-orange-600 font-medium text-sm">
               How it works
@@ -143,7 +143,7 @@ export function Homepage() {
 
       <footer className="py-12 px-4 bg-stone-900 text-stone-400">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-          <span className="font-display font-bold text-white">ACI</span>
+          <span className="font-display font-bold text-white">Cadence</span>
           <div className="flex gap-6">
             <Link to="/privacy" className="hover:text-white">Privacy Policy</Link>
             <Link to="/terms" className="hover:text-white">Terms of Service</Link>

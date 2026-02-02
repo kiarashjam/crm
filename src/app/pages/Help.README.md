@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Static “How it works”: what ACI does, how to generate copy, connect CRM, data & privacy, and support link.
+Static “How it works”: what Cadence does, how to generate copy, connect CRM, data & privacy, and support link.
 
 ## Behavior
 

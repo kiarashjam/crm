@@ -1,6 +1,6 @@
 # Frontend Reports
 
-Reports and documentation for the ACI frontend and full-stack CRM.
+Reports and documentation for the Cadence frontend and full-stack CRM.
 
 ## Report index (every aspect)
 

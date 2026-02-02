@@ -1,4 +1,4 @@
-# ACI Backend
+# Cadence Backend
 
 ASP.NET Core 8 Web API with **Clean Architecture**: Domain, Application, Infrastructure, and WebApi layers. The database is SQL Server with Entity Framework Core 8.
 

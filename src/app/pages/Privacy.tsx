@@ -1,26 +1,28 @@
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import DemoBanner from '@/app/components/DemoBanner';
 
 export default function Privacy() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm" role="banner">
-        <div className="w-full max-w-4xl mx-auto px-[var(--page-padding)] py-4 flex justify-between items-center">
+        <div className="w-full px-[var(--page-padding)] py-4 flex justify-between items-center">
           <Link to="/" className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 rounded-lg min-h-[44px] min-w-[44px] items-center justify-center" aria-label="Back to home">
             <ArrowLeft className="w-5 h-5" aria-hidden />
             Back to Home
           </Link>
-          <Link to="/" className="flex items-center gap-2" aria-label="ACI home">
+          <Link to="/" className="flex items-center gap-2" aria-label="Cadence home">
             <div className="w-10 h-10 bg-orange-600 rounded-lg flex items-center justify-center" aria-hidden>
               <Sparkles className="w-6 h-6 text-white" />
             </div>
-            <span className="text-xl font-bold text-slate-900">ACI</span>
+            <span className="text-xl font-bold text-slate-900">Cadence</span>
           </Link>
         </div>
       </header>
+      <DemoBanner />
 
-      <main id={MAIN_CONTENT_ID} className="w-full max-w-4xl mx-auto px-[var(--page-padding)] py-12" tabIndex={-1}>
+      <main id={MAIN_CONTENT_ID} className="w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
         <div className="w-full">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 md:p-12">
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-4">Privacy Policy</h1>
@@ -30,7 +32,7 @@ export default function Privacy() {
               <section className="mb-8">
                 <h2 className="text-2xl font-bold text-slate-900 mb-4">Introduction</h2>
                 <p className="text-slate-700 mb-4">
-                  Welcome to ACI. We respect your privacy and are committed to protecting your personal data. This privacy policy explains how we collect, use, and safeguard your information when you use our service.
+                  Welcome to Cadence. We respect your privacy and are committed to protecting your personal data. This privacy policy explains how we collect, use, and safeguard your information when you use our service.
                 </p>
               </section>
 

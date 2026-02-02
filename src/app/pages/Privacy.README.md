@@ -9,7 +9,7 @@ Privacy policy: data collection, use, security, sharing, rights, CRM integration
 
 ## Behavior
 
-- Custom header: “Back to Home” (→ `/`), ACI logo (→ `/`). No AppHeader.
+- Custom header: “Back to Home” (→ `/`), Cadence logo (→ `/`). No AppHeader.
 - Main content: Introduction; Information We Collect; How We Use Your Information; Data Security; Data Sharing; Your Rights; CRM Integration; Cookies; International Transfers; Children’s Privacy; Changes to This Policy; Contact Us.
 - Uses `MAIN_CONTENT_ID` for skip link.
 
