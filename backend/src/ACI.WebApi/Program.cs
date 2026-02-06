@@ -474,6 +474,42 @@ try
                     ALTER TABLE [UserSettings] ADD [UpdatedAtUtc] datetime2 NOT NULL DEFAULT GETUTCDATE();
             ");
             
+            // Fix Leads table columns
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'OrganizationId')
+                BEGIN
+                    ALTER TABLE [Leads] ADD [OrganizationId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_Leads_OrganizationId] ON [Leads] ([OrganizationId]);
+                END;
+            ");
+            
+            // Fix Deals table columns
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'OrganizationId')
+                BEGIN
+                    ALTER TABLE [Deals] ADD [OrganizationId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_Deals_OrganizationId] ON [Deals] ([OrganizationId]);
+                END;
+            ");
+            
+            // Fix Companies table columns
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'OrganizationId')
+                BEGIN
+                    ALTER TABLE [Companies] ADD [OrganizationId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_Companies_OrganizationId] ON [Companies] ([OrganizationId]);
+                END;
+            ");
+            
+            // Fix Activities table columns
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Activities') AND name = 'OrganizationId')
+                BEGIN
+                    ALTER TABLE [Activities] ADD [OrganizationId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_Activities_OrganizationId] ON [Activities] ([OrganizationId]);
+                END;
+            ");
+            
             // Fix Contacts table columns
             await db.Database.ExecuteSqlRawAsync(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'OrganizationId')
