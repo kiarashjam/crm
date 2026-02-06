@@ -239,45 +239,34 @@ try
             var maskedConnStr = connStr.Length > 30 ? connStr.Substring(0, 30) + "..." : connStr;
             Log.Information("Database connection: {ConnectionString}", maskedConnStr);
             
-            // Check if database already has tables but no migration history
-            var pendingMigrations = await db.Database.GetPendingMigrationsAsync();
-            var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
-            
-            Log.Information("Pending migrations: {Count}, Applied migrations: {AppliedCount}", 
-                pendingMigrations.Count(), appliedMigrations.Count());
-            
-            if (pendingMigrations.Any() && !appliedMigrations.Any())
+            Log.Information("Applying database migrations...");
+            try
             {
-                // Check if database already has tables (from previous deployment without proper migration)
-                var canConnect = await db.Database.CanConnectAsync();
-                if (canConnect)
-                {
-                    try
-                    {
-                        // Try to check if Users table exists
-                        var usersExist = await db.Users.AnyAsync();
-                        Log.Information("Database tables already exist (Users found: {UsersExist}), marking InitialCreate as applied", usersExist || true);
-                        
-                        // Mark the InitialCreate migration as applied without running it
-                        await db.Database.ExecuteSqlRawAsync(
-                            "IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = '20260206130556_InitialCreate') " +
-                            "INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion]) VALUES ('20260206130556_InitialCreate', '8.0.11')");
-                        
-                        Log.Information("InitialCreate marked as applied");
-                    }
-                    catch (Exception checkEx)
-                    {
-                        Log.Information("Tables don't exist yet, will run migrations: {Error}", checkEx.Message);
-                        // Tables don't exist, proceed with normal migration
-                        Log.Information("Applying database migrations...");
-                        await db.Database.MigrateAsync();
-                    }
-                }
-            }
-            else
-            {
-                Log.Information("Applying database migrations...");
                 await db.Database.MigrateAsync();
+            }
+            catch (Microsoft.Data.SqlClient.SqlException sqlEx) when (sqlEx.Number == 2714) // Object already exists
+            {
+                Log.Warning("Tables already exist (error 2714), marking InitialCreate migration as applied...");
+                
+                // Ensure __EFMigrationsHistory table exists and mark InitialCreate as applied
+                await db.Database.ExecuteSqlRawAsync(@"
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '__EFMigrationsHistory')
+                    BEGIN
+                        CREATE TABLE [__EFMigrationsHistory] (
+                            [MigrationId] nvarchar(150) NOT NULL,
+                            [ProductVersion] nvarchar(32) NOT NULL,
+                            CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
+                        );
+                    END;
+                    
+                    IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = '20260206130556_InitialCreate')
+                    BEGIN
+                        INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion]) 
+                        VALUES ('20260206130556_InitialCreate', '8.0.11');
+                    END;
+                ");
+                
+                Log.Information("InitialCreate marked as applied, migration history fixed");
             }
             
             Log.Information("Seeding database...");
