@@ -225,29 +225,94 @@ export default function Homepage() {
 
               {/* Right - Dashboard preview - CRAZY ANIMATED VERSION */}
               <div className="relative">
-                {/* Animated glow rings behind the card */}
-                <div className="absolute inset-0 -m-8">
+                {/* Animated decorations around the card */}
+                <div className="absolute inset-0 -m-6 pointer-events-none">
+                  {/* Orbiting dots */}
                   <div 
-                    className="absolute inset-0 rounded-3xl bg-gradient-to-r from-orange-500 via-amber-500 to-orange-500 opacity-20 blur-2xl"
-                    style={{ animation: 'pulse 3s ease-in-out infinite' }}
-                  />
+                    className="absolute inset-0"
+                    style={{ animation: 'orbit 20s linear infinite' }}
+                  >
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-gradient-to-r from-orange-400 to-amber-400 shadow-lg shadow-orange-400/50" />
+                  </div>
                   <div 
-                    className="absolute inset-4 rounded-3xl bg-gradient-to-r from-violet-500 via-purple-500 to-violet-500 opacity-10 blur-xl"
-                    style={{ animation: 'pulse 4s ease-in-out infinite 1s' }}
+                    className="absolute inset-0"
+                    style={{ animation: 'orbit 25s linear infinite reverse' }}
+                  >
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-1.5 h-1.5 rounded-full bg-gradient-to-r from-emerald-400 to-teal-400 shadow-lg shadow-emerald-400/50" />
+                  </div>
+                  <div 
+                    className="absolute inset-0"
+                    style={{ animation: 'orbit 18s linear infinite', animationDelay: '-5s' }}
+                  >
+                    <div className="absolute top-1/2 right-0 translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-gradient-to-r from-violet-400 to-purple-400 shadow-lg shadow-violet-400/50" />
+                  </div>
+                  
+                  {/* Animated corner brackets */}
+                  <div className="absolute -top-2 -left-2 w-8 h-8">
+                    <div 
+                      className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-orange-400 to-transparent"
+                      style={{ animation: 'corner-glow 2s ease-in-out infinite' }}
+                    />
+                    <div 
+                      className="absolute top-0 left-0 h-full w-0.5 bg-gradient-to-b from-orange-400 to-transparent"
+                      style={{ animation: 'corner-glow 2s ease-in-out infinite' }}
+                    />
+                  </div>
+                  <div className="absolute -top-2 -right-2 w-8 h-8">
+                    <div 
+                      className="absolute top-0 right-0 w-full h-0.5 bg-gradient-to-l from-orange-400 to-transparent"
+                      style={{ animation: 'corner-glow 2s ease-in-out infinite 0.5s' }}
+                    />
+                    <div 
+                      className="absolute top-0 right-0 h-full w-0.5 bg-gradient-to-b from-orange-400 to-transparent"
+                      style={{ animation: 'corner-glow 2s ease-in-out infinite 0.5s' }}
+                    />
+                  </div>
+                  <div className="absolute -bottom-2 -left-2 w-8 h-8">
+                    <div 
+                      className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-orange-400 to-transparent"
+                      style={{ animation: 'corner-glow 2s ease-in-out infinite 1s' }}
+                    />
+                    <div 
+                      className="absolute bottom-0 left-0 h-full w-0.5 bg-gradient-to-t from-orange-400 to-transparent"
+                      style={{ animation: 'corner-glow 2s ease-in-out infinite 1s' }}
+                    />
+                  </div>
+                  <div className="absolute -bottom-2 -right-2 w-8 h-8">
+                    <div 
+                      className="absolute bottom-0 right-0 w-full h-0.5 bg-gradient-to-l from-orange-400 to-transparent"
+                      style={{ animation: 'corner-glow 2s ease-in-out infinite 1.5s' }}
+                    />
+                    <div 
+                      className="absolute bottom-0 right-0 h-full w-0.5 bg-gradient-to-t from-orange-400 to-transparent"
+                      style={{ animation: 'corner-glow 2s ease-in-out infinite 1.5s' }}
+                    />
+                  </div>
+                  
+                  {/* Rotating dashed border */}
+                  <div 
+                    className="absolute inset-0 rounded-2xl border-2 border-dashed border-slate-200/30"
+                    style={{ animation: 'rotate-border 30s linear infinite' }}
                   />
                 </div>
 
                 {/* Floating particles around the card */}
-                {[...Array(6)].map((_, i) => (
+                {[
+                  { size: 'w-2 h-2', color: 'from-orange-400 to-amber-400', top: '15%', left: '-16px', delay: 0 },
+                  { size: 'w-1.5 h-1.5', color: 'from-emerald-400 to-teal-400', top: '35%', right: '-14px', delay: 0.5 },
+                  { size: 'w-2 h-2', color: 'from-violet-400 to-purple-400', top: '55%', left: '-18px', delay: 1 },
+                  { size: 'w-1 h-1', color: 'from-blue-400 to-cyan-400', top: '75%', right: '-12px', delay: 1.5 },
+                  { size: 'w-1.5 h-1.5', color: 'from-rose-400 to-pink-400', top: '90%', left: '-14px', delay: 2 },
+                ].map((particle, i) => (
                   <div
                     key={i}
-                    className="absolute w-2 h-2 rounded-full bg-gradient-to-r from-orange-400 to-amber-400"
+                    className={`absolute ${particle.size} rounded-full bg-gradient-to-r ${particle.color} shadow-sm`}
                     style={{
-                      top: `${20 + i * 15}%`,
-                      left: i % 2 === 0 ? '-20px' : 'auto',
-                      right: i % 2 === 1 ? '-20px' : 'auto',
-                      animation: `float-particle ${3 + i * 0.5}s ease-in-out infinite ${i * 0.3}s`,
-                      opacity: 0.6,
+                      top: particle.top,
+                      left: particle.left,
+                      right: particle.right,
+                      animation: `float-particle ${3 + i * 0.4}s ease-in-out infinite ${particle.delay}s`,
+                      opacity: 0.7,
                     }}
                   />
                 ))}
@@ -291,6 +356,52 @@ export default function Homepage() {
                     0%, 100% { box-shadow: 0 0 20px rgba(249, 115, 22, 0.3); }
                     50% { box-shadow: 0 0 40px rgba(249, 115, 22, 0.6); }
                   }
+                  @keyframes soft-breathe {
+                    0%, 100% { transform: scale(1); opacity: 1; }
+                    50% { transform: scale(1.02); opacity: 0.95; }
+                  }
+                  @keyframes subtle-sway {
+                    0%, 100% { transform: translateX(0); }
+                    50% { transform: translateX(3px); }
+                  }
+                  @keyframes icon-wiggle {
+                    0%, 100% { transform: rotate(0deg); }
+                    25% { transform: rotate(-5deg); }
+                    75% { transform: rotate(5deg); }
+                  }
+                  @keyframes text-glow {
+                    0%, 100% { text-shadow: 0 0 0 transparent; }
+                    50% { text-shadow: 0 0 8px rgba(249, 115, 22, 0.4); }
+                  }
+                  @keyframes gradient-shift {
+                    0%, 100% { filter: hue-rotate(0deg); }
+                    50% { filter: hue-rotate(10deg); }
+                  }
+                  @keyframes ripple {
+                    0% { transform: scale(0.8); opacity: 0.5; }
+                    100% { transform: scale(2); opacity: 0; }
+                  }
+                  @keyframes slide-in-bounce {
+                    0% { transform: translateX(-10px); opacity: 0; }
+                    60% { transform: translateX(3px); opacity: 1; }
+                    100% { transform: translateX(0); opacity: 1; }
+                  }
+                  @keyframes orbit {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                  @keyframes corner-glow {
+                    0%, 100% { opacity: 0.4; }
+                    50% { opacity: 1; }
+                  }
+                  @keyframes rotate-border {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                  }
+                  @keyframes trace-line {
+                    0% { stroke-dashoffset: 1000; }
+                    100% { stroke-dashoffset: 0; }
+                  }
                 `}</style>
 
                 {/* Main dashboard card with floating animation */}
@@ -308,24 +419,40 @@ export default function Homepage() {
                   />
 
                   {/* Browser chrome */}
-                  <div className="flex items-center gap-3 px-5 py-4 bg-slate-50 border-b border-slate-200 relative">
+                  <div className="flex items-center gap-3 px-5 py-4 bg-slate-50 border-b border-slate-200 relative overflow-hidden">
+                    {/* Subtle shimmer across browser chrome */}
+                    <div 
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none"
+                      style={{ 
+                        backgroundSize: '200% 100%',
+                        animation: 'shimmer 8s linear infinite',
+                      }}
+                    />
                     <div className="flex gap-2">
                       <div 
                         className="w-3 h-3 rounded-full bg-red-400 hover:scale-150 transition-transform cursor-pointer"
-                        style={{ animation: 'pulse 2s ease-in-out infinite' }}
+                        style={{ animation: 'pulse 2s ease-in-out infinite, soft-breathe 3s ease-in-out infinite' }}
                       />
                       <div 
                         className="w-3 h-3 rounded-full bg-amber-400 hover:scale-150 transition-transform cursor-pointer"
-                        style={{ animation: 'pulse 2s ease-in-out infinite 0.3s' }}
+                        style={{ animation: 'pulse 2s ease-in-out infinite 0.3s, soft-breathe 3s ease-in-out infinite 0.3s' }}
                       />
                       <div 
                         className="w-3 h-3 rounded-full bg-emerald-400 hover:scale-150 transition-transform cursor-pointer"
-                        style={{ animation: 'pulse 2s ease-in-out infinite 0.6s' }}
+                        style={{ animation: 'pulse 2s ease-in-out infinite 0.6s, soft-breathe 3s ease-in-out infinite 0.6s' }}
                       />
                     </div>
                     <div className="flex-1 flex justify-center">
-                      <div className="bg-white rounded-lg px-4 py-1.5 text-sm text-slate-400 border border-slate-200 flex items-center gap-2 relative overflow-hidden">
-                        <Lock className="w-3 h-3 text-emerald-500" style={{ animation: 'pulse 1.5s ease-in-out infinite' }} />
+                      <div 
+                        className="bg-white rounded-lg px-4 py-1.5 text-sm text-slate-400 border border-slate-200 flex items-center gap-2 relative overflow-hidden"
+                        style={{ animation: 'soft-breathe 4s ease-in-out infinite' }}
+                      >
+                        {/* URL bar inner glow */}
+                        <div 
+                          className="absolute inset-0 bg-gradient-to-r from-emerald-50/0 via-emerald-50/50 to-emerald-50/0 pointer-events-none"
+                          style={{ animation: 'shimmer 6s linear infinite' }}
+                        />
+                        <Lock className="w-3 h-3 text-emerald-500 relative" style={{ animation: 'pulse 1.5s ease-in-out infinite, icon-wiggle 6s ease-in-out infinite' }} />
                         <span className="relative">
                           cadence.app/dashboard
                           <span 
@@ -342,30 +469,42 @@ export default function Homepage() {
                     {/* Stats grid with staggered animations */}
                     <div className="grid grid-cols-4 gap-2 mb-5">
                       {[
-                        { label: 'Active Leads', value: '156', icon: Users, color: 'blue', delay: 0 },
-                        { label: 'Active Deals', value: '47', icon: Target, color: 'orange', delay: 0.1 },
-                        { label: 'Pipeline', value: '$284K', icon: TrendingUp, color: 'emerald', delay: 0.2 },
-                        { label: 'Won Deals', value: '12', icon: Award, color: 'violet', delay: 0.3 },
+                        { label: 'Active Leads', value: '2,847', icon: Users, color: 'blue', delay: 0, trend: '+12%' },
+                        { label: 'Active Deals', value: '183', icon: Target, color: 'orange', delay: 0.1, trend: '+8%' },
+                        { label: 'Pipeline', value: '$1.2M', icon: TrendingUp, color: 'emerald', delay: 0.2, trend: '+23%' },
+                        { label: 'Won This Month', value: '47', icon: Award, color: 'violet', delay: 0.3, trend: '+15%' },
                       ].map((stat) => (
                         <div 
                           key={stat.label}
                           className={`bg-gradient-to-br from-${stat.color}-50 to-white p-3 rounded-xl border border-${stat.color}-100 hover:scale-105 hover:shadow-lg transition-all duration-300 cursor-pointer group relative overflow-hidden`}
-                          style={{ animation: `count-up 0.6s ease-out ${stat.delay}s both` }}
+                          style={{ animation: `count-up 0.6s ease-out ${stat.delay}s both, soft-breathe 4s ease-in-out infinite ${stat.delay * 2}s` }}
                         >
                           {/* Hover glow effect */}
                           <div className={`absolute inset-0 bg-${stat.color}-400 opacity-0 group-hover:opacity-10 transition-opacity`} />
                           
+                          {/* Subtle corner accent */}
+                          <div 
+                            className={`absolute -top-1 -right-1 w-8 h-8 bg-gradient-to-br from-${stat.color}-200/50 to-transparent rounded-full blur-sm`}
+                            style={{ animation: `pulse 3s ease-in-out infinite ${stat.delay}s` }}
+                          />
+                          
                           <stat.icon 
                             className={`w-4 h-4 text-${stat.color}-500 mb-1 group-hover:scale-110 transition-transform`} 
-                            style={{ animation: `pulse 2s ease-in-out infinite ${stat.delay}s` }}
+                            style={{ animation: `pulse 2s ease-in-out infinite ${stat.delay}s, icon-wiggle 4s ease-in-out infinite ${stat.delay + 1}s` }}
                           />
                           <div 
                             className="text-lg font-bold text-slate-900"
-                            style={{ animation: `count-up 0.8s ease-out ${stat.delay + 0.2}s both` }}
+                            style={{ animation: `count-up 0.8s ease-out ${stat.delay + 0.2}s both, text-glow 3s ease-in-out infinite ${stat.delay}s` }}
                           >
                             {stat.value}
                           </div>
-                          <div className="text-[10px] text-slate-500">{stat.label}</div>
+                          <div 
+                            className="text-[10px] text-slate-500 flex items-center gap-1"
+                            style={{ animation: `slide-in-bounce 0.5s ease-out ${stat.delay + 0.3}s both` }}
+                          >
+                            {stat.label}
+                            <span className="text-emerald-500 font-semibold">{stat.trend}</span>
+                          </div>
                           
                           {/* Sparkle on hover */}
                           <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -376,26 +515,39 @@ export default function Homepage() {
                     </div>
                     
                     {/* Pipeline section */}
-                    <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm relative overflow-hidden">
+                    <div 
+                      className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm relative overflow-hidden"
+                      style={{ animation: 'soft-breathe 5s ease-in-out infinite 0.5s' }}
+                    >
                       {/* Animated background gradient */}
                       <div 
                         className="absolute inset-0 bg-gradient-to-r from-orange-50 via-transparent to-amber-50 opacity-50"
-                        style={{ animation: 'shimmer 5s linear infinite', backgroundSize: '200% 100%' }}
+                        style={{ animation: 'shimmer 5s linear infinite, gradient-shift 12s ease-in-out infinite', backgroundSize: '200% 100%' }}
+                      />
+                      
+                      {/* Subtle corner glow */}
+                      <div 
+                        className="absolute -top-2 -left-2 w-16 h-16 bg-gradient-to-br from-orange-300/30 to-transparent rounded-full blur-md"
+                        style={{ animation: 'pulse 4s ease-in-out infinite' }}
                       />
                       
                       <div className="flex items-center justify-between mb-4 relative">
-                        <h4 className="font-semibold text-slate-900 flex items-center gap-2">
+                        <h4 
+                          className="font-semibold text-slate-900 flex items-center gap-2"
+                          style={{ animation: 'subtle-sway 6s ease-in-out infinite' }}
+                        >
                           <Kanban 
                             className="w-4 h-4 text-orange-500" 
-                            style={{ animation: 'pulse 2s ease-in-out infinite' }}
+                            style={{ animation: 'pulse 2s ease-in-out infinite, icon-wiggle 5s ease-in-out infinite 1s' }}
                           />
                           Pipeline Stages
                         </h4>
                         <span 
-                          className="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded-full"
-                          style={{ animation: 'pulse 1.5s ease-in-out infinite' }}
+                          className="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded-full flex items-center gap-1"
+                          style={{ animation: 'pulse 1.5s ease-in-out infinite, text-glow 2s ease-in-out infinite' }}
                         >
-                          $428K
+                          <TrendingUp className="w-3 h-3" />
+                          $1.2M Total
                         </span>
                       </div>
                       <div className="flex gap-2 relative">
@@ -426,6 +578,39 @@ export default function Homepage() {
                           </div>
                         ))}
                       </div>
+                      
+                      {/* Mini activity feed */}
+                      <div className="mt-4 pt-3 border-t border-slate-100 relative">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Recent Activity</span>
+                          <span 
+                            className="text-[9px] text-orange-500 font-medium"
+                            style={{ animation: 'pulse 2s ease-in-out infinite' }}
+                          >
+                            Live
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {[
+                            { text: 'Sarah closed deal with TechFlow', time: '2m ago', color: 'emerald' },
+                            { text: 'New lead: Enterprise inquiry', time: '5m ago', color: 'blue' },
+                            { text: 'AI drafted 3 follow-up emails', time: '8m ago', color: 'orange' },
+                          ].map((activity, i) => (
+                            <div 
+                              key={i}
+                              className="flex items-center gap-2 text-[9px] text-slate-500"
+                              style={{ animation: `slide-in-bounce 0.4s ease-out ${i * 0.1}s both` }}
+                            >
+                              <div 
+                                className={`w-1.5 h-1.5 rounded-full bg-${activity.color}-400`}
+                                style={{ animation: 'pulse 2s ease-in-out infinite' }}
+                              />
+                              <span className="flex-1 truncate">{activity.text}</span>
+                              <span className="text-slate-400">{activity.time}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -438,22 +623,38 @@ export default function Homepage() {
                   <div className="bg-white rounded-xl shadow-2xl p-3 border-2 border-emerald-200 flex items-center gap-3 hover:scale-110 transition-transform cursor-pointer relative overflow-hidden">
                     {/* Glow effect */}
                     <div className="absolute inset-0 bg-emerald-400 opacity-0 hover:opacity-10 transition-opacity" />
+                    {/* Shimmer overlay */}
+                    <div 
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-50/30 to-transparent pointer-events-none"
+                      style={{ backgroundSize: '200% 100%', animation: 'shimmer 4s linear infinite' }}
+                    />
                     <div 
                       className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center"
-                      style={{ animation: 'pulse 1.5s ease-in-out infinite' }}
+                      style={{ animation: 'pulse 1.5s ease-in-out infinite, soft-breathe 3s ease-in-out infinite' }}
                     >
                       <Check className="w-5 h-5 text-white" style={{ animation: 'bounce 1s ease-in-out infinite' }} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-900 flex items-center gap-1">
-                        Deal Closed! 
+                      <p 
+                        className="text-sm font-bold text-slate-900 flex items-center gap-1"
+                        style={{ animation: 'text-glow 2s ease-in-out infinite' }}
+                      >
+                        Deal Won! 
                         <span style={{ animation: 'sparkle-spin 2s linear infinite' }}>🎉</span>
                       </p>
-                      <p className="text-xs text-emerald-600 font-semibold">+$24,500 ↑</p>
+                      <p 
+                        className="text-xs text-emerald-600 font-semibold"
+                        style={{ animation: 'subtle-sway 3s ease-in-out infinite' }}
+                      >
+                        +$48,500 • Acme Corp
+                      </p>
                     </div>
                     {/* Confetti particles */}
                     <div className="absolute -top-1 -right-1">
                       <div className="w-2 h-2 bg-emerald-400 rounded-full" style={{ animation: 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite' }} />
+                    </div>
+                    <div className="absolute -bottom-1 -left-1">
+                      <div className="w-1.5 h-1.5 bg-emerald-300 rounded-full" style={{ animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite 0.5s' }} />
                     </div>
                   </div>
                 </div>
@@ -465,19 +666,27 @@ export default function Homepage() {
                   <div className="bg-white rounded-xl shadow-2xl p-3 border-2 border-orange-200 flex items-center gap-3 hover:scale-110 transition-transform cursor-pointer relative overflow-hidden">
                     {/* Glow effect */}
                     <div className="absolute inset-0 bg-orange-400 opacity-0 hover:opacity-10 transition-opacity" />
+                    {/* Shimmer overlay */}
+                    <div 
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-orange-50/30 to-transparent pointer-events-none"
+                      style={{ backgroundSize: '200% 100%', animation: 'shimmer 4s linear infinite 1s' }}
+                    />
                     <div 
                       className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center relative"
-                      style={{ animation: 'glow-pulse 2s ease-in-out infinite' }}
+                      style={{ animation: 'glow-pulse 2s ease-in-out infinite, soft-breathe 3s ease-in-out infinite 0.5s' }}
                     >
                       <Sparkles className="w-5 h-5 text-white" style={{ animation: 'sparkle-spin 2s linear infinite' }} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-900 flex items-center gap-1">
-                        Writer Ready
+                      <p 
+                        className="text-sm font-bold text-slate-900 flex items-center gap-1"
+                        style={{ animation: 'text-glow 2s ease-in-out infinite 0.5s' }}
+                      >
+                        AI Email Ready
                         <span style={{ animation: 'pulse 1s ease-in-out infinite' }}>✨</span>
                       </p>
                       <p className="text-xs text-orange-600 font-semibold flex items-center gap-1">
-                        Generated 
+                        Follow-up drafted 
                         <span className="flex gap-0.5">
                           <span className="w-1 h-1 rounded-full bg-orange-500" style={{ animation: 'bounce 0.6s ease-in-out infinite' }} />
                           <span className="w-1 h-1 rounded-full bg-orange-500" style={{ animation: 'bounce 0.6s ease-in-out infinite 0.1s' }} />
@@ -489,6 +698,9 @@ export default function Homepage() {
                     <div className="absolute -top-1 -right-1">
                       <div className="w-2 h-2 bg-orange-400 rounded-full" style={{ animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite' }} />
                     </div>
+                    <div className="absolute -bottom-1 -left-1">
+                      <div className="w-1.5 h-1.5 bg-amber-300 rounded-full" style={{ animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite 0.8s' }} />
+                    </div>
                   </div>
                 </div>
 
@@ -499,7 +711,7 @@ export default function Homepage() {
                 >
                   <div className="bg-gradient-to-r from-violet-500 to-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1">
                     <Zap className="w-3 h-3" style={{ animation: 'sparkle-spin 1s linear infinite' }} />
-                    Live
+                    Real-time Sync
                   </div>
                 </div>
 
@@ -509,9 +721,39 @@ export default function Homepage() {
                 >
                   <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" style={{ animation: 'bounce 1s ease-in-out infinite' }} />
-                    +23%
+                    +34% MTD
                   </div>
                 </div>
+
+                {/* Additional subtle floating elements */}
+                <div 
+                  className="absolute top-1/3 -left-6 hidden lg:block"
+                  style={{ animation: 'float-particle 6s ease-in-out infinite 0.8s' }}
+                >
+                  <div className="w-3 h-3 rounded-full bg-gradient-to-r from-blue-400 to-cyan-400 opacity-60 blur-[1px]" />
+                </div>
+                <div 
+                  className="absolute top-1/2 -right-6 hidden lg:block"
+                  style={{ animation: 'float-particle 5s ease-in-out infinite 1.2s' }}
+                >
+                  <div className="w-2 h-2 rounded-full bg-gradient-to-r from-violet-400 to-purple-400 opacity-50 blur-[1px]" />
+                </div>
+                <div 
+                  className="absolute bottom-1/4 -left-8 hidden lg:block"
+                  style={{ animation: 'float-particle 7s ease-in-out infinite 0.5s' }}
+                >
+                  <div className="w-4 h-4 rounded-full bg-gradient-to-r from-amber-400/40 to-orange-400/40 blur-sm" />
+                </div>
+                
+                {/* Subtle connecting lines */}
+                <div 
+                  className="absolute top-12 -right-3 w-12 h-px bg-gradient-to-r from-orange-300/60 to-transparent hidden lg:block"
+                  style={{ animation: 'subtle-sway 3s ease-in-out infinite, pulse 2s ease-in-out infinite' }}
+                />
+                <div 
+                  className="absolute bottom-16 -left-3 w-10 h-px bg-gradient-to-l from-emerald-300/60 to-transparent hidden lg:block"
+                  style={{ animation: 'subtle-sway 4s ease-in-out infinite 1s, pulse 2s ease-in-out infinite 0.5s' }}
+                />
               </div>
             </div>
           </div>
