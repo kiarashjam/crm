@@ -499,6 +499,16 @@ try
                 END;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'DoNotContactReason')
                     ALTER TABLE [Contacts] ADD [DoNotContactReason] nvarchar(512) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'ConvertedAtUtc')
+                    ALTER TABLE [Contacts] ADD [ConvertedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'JobTitle')
+                    ALTER TABLE [Contacts] ADD [JobTitle] nvarchar(128) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'PreferredContactMethod')
+                    ALTER TABLE [Contacts] ADD [PreferredContactMethod] nvarchar(32) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'UpdatedAtUtc')
+                    ALTER TABLE [Contacts] ADD [UpdatedAtUtc] datetime2 NOT NULL DEFAULT GETUTCDATE();
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'UpdatedByUserId')
+                    ALTER TABLE [Contacts] ADD [UpdatedByUserId] uniqueidentifier NULL;
             ");
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
