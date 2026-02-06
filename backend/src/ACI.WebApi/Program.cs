@@ -280,6 +280,13 @@ try
                     ALTER TABLE [Templates] ADD [UpdatedAtUtc] datetime2 NULL;
                 END;
             ");
+            
+            // Fix existing orphan templates to be system templates
+            await db.Database.ExecuteSqlRawAsync(@"
+                UPDATE [Templates] 
+                SET [IsSystemTemplate] = 1 
+                WHERE [UserId] IS NULL AND [IsSystemTemplate] = 0;
+            ");
             Log.Information("Schema check complete");
             
             Log.Information("Applying database migrations...");

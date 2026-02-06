@@ -36,10 +36,11 @@ public sealed class TemplateRepository : ITemplateRepository
         string? category = null,
         CancellationToken ct = default)
     {
-        // Templates available to user: own templates + shared org templates
+        // Templates available to user: own templates + shared org templates + system templates
         var query = _db.Templates
             .Include(t => t.User)
             .Where(t => t.UserId == userId || 
+                        t.IsSystemTemplate ||
                         (organizationId != null && t.OrganizationId == organizationId && t.IsSharedWithOrganization));
 
         query = ApplySearch(query, search);
