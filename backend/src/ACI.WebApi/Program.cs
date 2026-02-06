@@ -227,6 +227,7 @@ try
     app.MapControllers();
 
     // Database migration and seeding
+    string? dbError = null;
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -248,10 +249,16 @@ try
         }
         catch (Exception dbEx)
         {
-            Log.Fatal(dbEx, "Database migration failed: {ErrorMessage}", dbEx.Message);
-            throw; // Re-throw to prevent app from starting with broken DB
+            dbError = dbEx.ToString();
+            Log.Error(dbEx, "Database migration failed (app will start but DB operations will fail): {ErrorMessage}", dbEx.Message);
+            // Don't throw - allow app to start for debugging
         }
     }
+    
+    // Add diagnostic endpoint that shows DB error if any
+    app.MapGet("/db-status", () => dbError == null 
+        ? Results.Ok(new { status = "ok", message = "Database initialized successfully" }) 
+        : Results.Ok(new { status = "error", message = dbError }));
 
     Log.Information("ACI CRM API started successfully");
     app.Run();
