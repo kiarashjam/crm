@@ -1550,11 +1550,61 @@ export default function Homepage() {
         <section className="py-28 bg-gradient-to-b from-slate-50 to-white relative overflow-hidden">
           <AnimatedShapes />
           
+          {/* Additional animated background elements */}
+          <style>{`
+            @keyframes workflow-float {
+              0%, 100% { transform: translateY(0) rotate(0deg); }
+              50% { transform: translateY(-15px) rotate(3deg); }
+            }
+            @keyframes workflow-pulse {
+              0%, 100% { opacity: 0.3; transform: scale(1); }
+              50% { opacity: 0.6; transform: scale(1.1); }
+            }
+            @keyframes icon-rotate {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+            @keyframes list-slide {
+              0% { opacity: 0; transform: translateX(-10px); }
+              100% { opacity: 1; transform: translateX(0); }
+            }
+            @keyframes card-glow {
+              0%, 100% { box-shadow: 0 0 0 rgba(249, 115, 22, 0); }
+              50% { box-shadow: 0 0 30px rgba(249, 115, 22, 0.15); }
+            }
+            @keyframes badge-bounce {
+              0%, 100% { transform: translateY(0); }
+              50% { transform: translateY(-5px); }
+            }
+            @keyframes checkmark-pop {
+              0% { transform: scale(0); opacity: 0; }
+              50% { transform: scale(1.2); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `}</style>
+          
+          {/* Floating decorative elements */}
+          <div className="absolute top-32 left-[5%] w-20 h-20 pointer-events-none hidden lg:block" style={{ animation: 'workflow-float 8s ease-in-out infinite' }}>
+            <div className="w-full h-full rounded-2xl bg-gradient-to-br from-orange-400/10 to-amber-400/10 backdrop-blur-sm border border-orange-200/20" />
+          </div>
+          <div className="absolute bottom-40 right-[8%] w-16 h-16 pointer-events-none hidden lg:block" style={{ animation: 'workflow-float 6s ease-in-out infinite 1s' }}>
+            <div className="w-full h-full rounded-full bg-gradient-to-br from-violet-400/10 to-purple-400/10 backdrop-blur-sm border border-violet-200/20" />
+          </div>
+          <div className="absolute top-1/2 left-[3%] w-12 h-12 pointer-events-none hidden lg:block" style={{ animation: 'workflow-float 7s ease-in-out infinite 2s' }}>
+            <div className="w-full h-full rounded-lg bg-gradient-to-br from-emerald-400/10 to-teal-400/10 backdrop-blur-sm border border-emerald-200/20 rotate-45" />
+          </div>
+          
+          {/* Animated connecting lines */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-px bg-gradient-to-r from-transparent via-orange-200/30 to-transparent hidden lg:block" style={{ animation: 'workflow-pulse 4s ease-in-out infinite' }} />
+          
           <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 relative">
             <AnimatedSection className="text-center mb-16">
               <ParticleExplosion>
-                <div className="inline-flex items-center gap-2 bg-violet-100 text-violet-700 px-4 py-2 rounded-full text-sm font-semibold mb-6 cursor-pointer">
-                  <Layers className="w-4 h-4" />
+                <div 
+                  className="inline-flex items-center gap-2 bg-violet-100 text-violet-700 px-4 py-2 rounded-full text-sm font-semibold mb-6 cursor-pointer"
+                  style={{ animation: 'badge-bounce 3s ease-in-out infinite' }}
+                >
+                  <Layers className="w-4 h-4" style={{ animation: 'icon-rotate 8s linear infinite' }} />
                   Complete Copy Workflow
                 </div>
               </ParticleExplosion>
@@ -1570,21 +1620,35 @@ export default function Homepage() {
               {/* 6 Goals */}
               <AnimatedSection animation="fade-up" delay={0}>
                 <TiltCard className="h-full">
-                  <div className="relative h-full bg-white rounded-2xl p-6 border border-slate-200 hover:shadow-2xl transition-all duration-500 group overflow-hidden">
+                  <div 
+                    className="relative h-full bg-white rounded-2xl p-6 border border-slate-200 hover:shadow-2xl transition-all duration-500 group overflow-hidden"
+                    style={{ animation: 'card-glow 4s ease-in-out infinite' }}
+                  >
                     <div className="absolute inset-0 bg-gradient-to-br from-orange-500/0 to-amber-500/0 group-hover:from-orange-500/5 group-hover:to-amber-500/5 transition-all duration-500" />
+                    {/* Animated corner accent */}
+                    <div className="absolute -top-10 -right-10 w-20 h-20 bg-gradient-to-br from-orange-400/20 to-transparent rounded-full blur-xl" style={{ animation: 'workflow-pulse 3s ease-in-out infinite' }} />
                     <ShakeOnHover>
-                      <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-                        <Target className="w-7 h-7 text-white" />
+                      <div 
+                        className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 relative"
+                        style={{ animation: 'workflow-float 5s ease-in-out infinite' }}
+                      >
+                        <Target className="w-7 h-7 text-white" style={{ animation: 'pulse 2s ease-in-out infinite' }} />
+                        {/* Icon glow ring */}
+                        <div className="absolute inset-0 rounded-xl bg-orange-400/30 blur-md -z-10" style={{ animation: 'workflow-pulse 2s ease-in-out infinite' }} />
                       </div>
                     </ShakeOnHover>
                     <h3 className="text-xl font-bold text-slate-900 mb-3">6 Smart Goals</h3>
                     <ul className="space-y-2 text-sm text-slate-600">
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Schedule a meeting</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Follow up after demo</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Request feedback</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Share resources</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Check in on progress</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Close the deal</li>
+                      {['Schedule a meeting', 'Follow up after demo', 'Request feedback', 'Share resources', 'Check in on progress', 'Close the deal'].map((item, i) => (
+                        <li 
+                          key={item}
+                          className="flex items-center gap-2 hover:translate-x-1 transition-transform"
+                          style={{ animation: `list-slide 0.5s ease-out ${i * 0.1}s both` }}
+                        >
+                          <Check className="w-4 h-4 text-emerald-500" style={{ animation: `checkmark-pop 0.3s ease-out ${i * 0.1 + 0.2}s both` }} />
+                          {item}
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 </TiltCard>
@@ -1593,20 +1657,42 @@ export default function Homepage() {
               {/* Templates */}
               <AnimatedSection animation="fade-up" delay={100}>
                 <TiltCard className="h-full">
-                  <div className="relative h-full bg-white rounded-2xl p-6 border border-slate-200 hover:shadow-2xl transition-all duration-500 group overflow-hidden">
+                  <div 
+                    className="relative h-full bg-white rounded-2xl p-6 border border-slate-200 hover:shadow-2xl transition-all duration-500 group overflow-hidden"
+                    style={{ animation: 'card-glow 4s ease-in-out infinite 0.5s' }}
+                  >
                     <div className="absolute inset-0 bg-gradient-to-br from-violet-500/0 to-purple-500/0 group-hover:from-violet-500/5 group-hover:to-purple-500/5 transition-all duration-500" />
+                    {/* Animated corner accent */}
+                    <div className="absolute -top-10 -right-10 w-20 h-20 bg-gradient-to-br from-violet-400/20 to-transparent rounded-full blur-xl" style={{ animation: 'workflow-pulse 3s ease-in-out infinite 0.5s' }} />
                     <ShakeOnHover>
-                      <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-                        <FileText className="w-7 h-7 text-white" />
+                      <div 
+                        className="w-14 h-14 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 relative"
+                        style={{ animation: 'workflow-float 5s ease-in-out infinite 0.3s' }}
+                      >
+                        <FileText className="w-7 h-7 text-white" style={{ animation: 'pulse 2s ease-in-out infinite 0.2s' }} />
+                        {/* Icon glow ring */}
+                        <div className="absolute inset-0 rounded-xl bg-violet-400/30 blur-md -z-10" style={{ animation: 'workflow-pulse 2s ease-in-out infinite 0.3s' }} />
                       </div>
                     </ShakeOnHover>
                     <h3 className="text-xl font-bold text-slate-900 mb-3">Templates Library</h3>
                     <ul className="space-y-2 text-sm text-slate-600">
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Sales templates</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Follow-up templates</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Meeting templates</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Re-engagement templates</li>
-                      <li className="text-slate-500 italic mt-2">One-click to generate</li>
+                      {['Sales templates', 'Follow-up templates', 'Meeting templates', 'Re-engagement templates'].map((item, i) => (
+                        <li 
+                          key={item}
+                          className="flex items-center gap-2 hover:translate-x-1 transition-transform"
+                          style={{ animation: `list-slide 0.5s ease-out ${i * 0.1 + 0.1}s both` }}
+                        >
+                          <Check className="w-4 h-4 text-emerald-500" style={{ animation: `checkmark-pop 0.3s ease-out ${i * 0.1 + 0.3}s both` }} />
+                          {item}
+                        </li>
+                      ))}
+                      <li 
+                        className="text-slate-500 italic mt-2 flex items-center gap-1"
+                        style={{ animation: 'list-slide 0.5s ease-out 0.5s both' }}
+                      >
+                        <Sparkles className="w-3 h-3 text-violet-400" style={{ animation: 'sparkle-spin 2s linear infinite' }} />
+                        One-click to generate
+                      </li>
                     </ul>
                   </div>
                 </TiltCard>
@@ -1615,20 +1701,42 @@ export default function Homepage() {
               {/* Copy Adjustments */}
               <AnimatedSection animation="fade-up" delay={200}>
                 <TiltCard className="h-full">
-                  <div className="relative h-full bg-white rounded-2xl p-6 border border-slate-200 hover:shadow-2xl transition-all duration-500 group overflow-hidden">
+                  <div 
+                    className="relative h-full bg-white rounded-2xl p-6 border border-slate-200 hover:shadow-2xl transition-all duration-500 group overflow-hidden"
+                    style={{ animation: 'card-glow 4s ease-in-out infinite 1s' }}
+                  >
                     <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-teal-500/0 group-hover:from-emerald-500/5 group-hover:to-teal-500/5 transition-all duration-500" />
+                    {/* Animated corner accent */}
+                    <div className="absolute -top-10 -right-10 w-20 h-20 bg-gradient-to-br from-emerald-400/20 to-transparent rounded-full blur-xl" style={{ animation: 'workflow-pulse 3s ease-in-out infinite 1s' }} />
                     <ShakeOnHover>
-                      <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-                        <Settings className="w-7 h-7 text-white" />
+                      <div 
+                        className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 relative"
+                        style={{ animation: 'workflow-float 5s ease-in-out infinite 0.6s' }}
+                      >
+                        <Settings className="w-7 h-7 text-white" style={{ animation: 'icon-rotate 8s linear infinite' }} />
+                        {/* Icon glow ring */}
+                        <div className="absolute inset-0 rounded-xl bg-emerald-400/30 blur-md -z-10" style={{ animation: 'workflow-pulse 2s ease-in-out infinite 0.6s' }} />
                       </div>
                     </ShakeOnHover>
                     <h3 className="text-xl font-bold text-slate-900 mb-3">Quick Adjustments</h3>
                     <ul className="space-y-2 text-sm text-slate-600">
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Make it shorter</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Make it friendlier</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Make it persuasive</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Regenerate instantly</li>
-                      <li className="text-slate-500 italic mt-2">Perfect every message</li>
+                      {['Make it shorter', 'Make it friendlier', 'Make it persuasive', 'Regenerate instantly'].map((item, i) => (
+                        <li 
+                          key={item}
+                          className="flex items-center gap-2 hover:translate-x-1 transition-transform"
+                          style={{ animation: `list-slide 0.5s ease-out ${i * 0.1 + 0.2}s both` }}
+                        >
+                          <Check className="w-4 h-4 text-emerald-500" style={{ animation: `checkmark-pop 0.3s ease-out ${i * 0.1 + 0.4}s both` }} />
+                          {item}
+                        </li>
+                      ))}
+                      <li 
+                        className="text-slate-500 italic mt-2 flex items-center gap-1"
+                        style={{ animation: 'list-slide 0.5s ease-out 0.6s both' }}
+                      >
+                        <Sparkles className="w-3 h-3 text-emerald-400" style={{ animation: 'sparkle-spin 2s linear infinite' }} />
+                        Perfect every message
+                      </li>
                     </ul>
                   </div>
                 </TiltCard>
@@ -1637,24 +1745,66 @@ export default function Homepage() {
               {/* History & Send */}
               <AnimatedSection animation="fade-up" delay={300}>
                 <TiltCard className="h-full">
-                  <div className="relative h-full bg-white rounded-2xl p-6 border border-slate-200 hover:shadow-2xl transition-all duration-500 group overflow-hidden">
+                  <div 
+                    className="relative h-full bg-white rounded-2xl p-6 border border-slate-200 hover:shadow-2xl transition-all duration-500 group overflow-hidden"
+                    style={{ animation: 'card-glow 4s ease-in-out infinite 1.5s' }}
+                  >
                     <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 to-cyan-500/0 group-hover:from-blue-500/5 group-hover:to-cyan-500/5 transition-all duration-500" />
+                    {/* Animated corner accent */}
+                    <div className="absolute -top-10 -right-10 w-20 h-20 bg-gradient-to-br from-blue-400/20 to-transparent rounded-full blur-xl" style={{ animation: 'workflow-pulse 3s ease-in-out infinite 1.5s' }} />
                     <ShakeOnHover>
-                      <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-                        <Database className="w-7 h-7 text-white" />
+                      <div 
+                        className="w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 relative"
+                        style={{ animation: 'workflow-float 5s ease-in-out infinite 0.9s' }}
+                      >
+                        <Database className="w-7 h-7 text-white" style={{ animation: 'pulse 2s ease-in-out infinite 0.4s' }} />
+                        {/* Icon glow ring */}
+                        <div className="absolute inset-0 rounded-xl bg-blue-400/30 blur-md -z-10" style={{ animation: 'workflow-pulse 2s ease-in-out infinite 0.9s' }} />
                       </div>
                     </ShakeOnHover>
                     <h3 className="text-xl font-bold text-slate-900 mb-3">History & Sending</h3>
                     <ul className="space-y-2 text-sm text-slate-600">
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Full copy history</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Search past copies</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Send to contacts</li>
-                      <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" />Send to deals</li>
-                      <li className="text-slate-500 italic mt-2">Reuse & resend anytime</li>
+                      {['Full copy history', 'Search past copies', 'Send to contacts', 'Send to deals'].map((item, i) => (
+                        <li 
+                          key={item}
+                          className="flex items-center gap-2 hover:translate-x-1 transition-transform"
+                          style={{ animation: `list-slide 0.5s ease-out ${i * 0.1 + 0.3}s both` }}
+                        >
+                          <Check className="w-4 h-4 text-emerald-500" style={{ animation: `checkmark-pop 0.3s ease-out ${i * 0.1 + 0.5}s both` }} />
+                          {item}
+                        </li>
+                      ))}
+                      <li 
+                        className="text-slate-500 italic mt-2 flex items-center gap-1"
+                        style={{ animation: 'list-slide 0.5s ease-out 0.7s both' }}
+                      >
+                        <Sparkles className="w-3 h-3 text-blue-400" style={{ animation: 'sparkle-spin 2s linear infinite' }} />
+                        Reuse & resend anytime
+                      </li>
                     </ul>
                   </div>
                 </TiltCard>
               </AnimatedSection>
+            </div>
+            
+            {/* Animated step indicators below cards */}
+            <div className="flex justify-center items-center gap-4 mt-12">
+              {[1, 2, 3, 4].map((num, i) => (
+                <div key={num} className="flex items-center">
+                  <div 
+                    className="w-8 h-8 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 flex items-center justify-center text-white text-sm font-bold shadow-lg"
+                    style={{ animation: `badge-bounce 2s ease-in-out infinite ${i * 0.2}s` }}
+                  >
+                    {num}
+                  </div>
+                  {i < 3 && (
+                    <div 
+                      className="w-12 h-0.5 bg-gradient-to-r from-orange-300 to-amber-300 mx-2"
+                      style={{ animation: `workflow-pulse 2s ease-in-out infinite ${i * 0.3}s` }}
+                    />
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -1911,11 +2061,63 @@ export default function Homepage() {
 
         {/* ==================== SECURITY ==================== */}
         <section className="py-32 bg-slate-950 relative overflow-hidden">
-          {/* Animated gradient orbs */}
-          <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 rounded-full blur-[120px]" />
-          <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-gradient-to-br from-violet-500/20 to-purple-500/20 rounded-full blur-[100px]" />
+          {/* Security section animations */}
+          <style>{`
+            @keyframes security-pulse {
+              0%, 100% { opacity: 0.2; transform: scale(1); }
+              50% { opacity: 0.4; transform: scale(1.05); }
+            }
+            @keyframes security-scan {
+              0% { transform: translateY(-100%); opacity: 0; }
+              50% { opacity: 1; }
+              100% { transform: translateY(100%); opacity: 0; }
+            }
+            @keyframes security-float {
+              0%, 100% { transform: translateY(0) rotate(0deg); }
+              50% { transform: translateY(-10px) rotate(2deg); }
+            }
+            @keyframes lock-shake {
+              0%, 100% { transform: rotate(0deg); }
+              25% { transform: rotate(-3deg); }
+              75% { transform: rotate(3deg); }
+            }
+            @keyframes data-flow {
+              0% { background-position: 0% 50%; }
+              100% { background-position: 200% 50%; }
+            }
+            @keyframes shield-glow {
+              0%, 100% { box-shadow: 0 0 20px rgba(52, 211, 153, 0.3); }
+              50% { box-shadow: 0 0 40px rgba(52, 211, 153, 0.6); }
+            }
+            @keyframes typing-dots {
+              0%, 100% { opacity: 0.3; }
+              50% { opacity: 1; }
+            }
+            @keyframes badge-float {
+              0%, 100% { transform: translateY(0); }
+              50% { transform: translateY(-8px); }
+            }
+            @keyframes grid-scan {
+              0% { transform: translateY(-100%); }
+              100% { transform: translateY(100%); }
+            }
+          `}</style>
           
-          {/* Grid pattern overlay */}
+          {/* Animated gradient orbs */}
+          <div 
+            className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 rounded-full blur-[120px]"
+            style={{ animation: 'security-pulse 8s ease-in-out infinite' }}
+          />
+          <div 
+            className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-gradient-to-br from-violet-500/20 to-purple-500/20 rounded-full blur-[100px]"
+            style={{ animation: 'security-pulse 10s ease-in-out infinite 2s' }}
+          />
+          <div 
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-br from-cyan-500/10 to-emerald-500/10 rounded-full blur-[150px]"
+            style={{ animation: 'security-pulse 12s ease-in-out infinite 4s' }}
+          />
+          
+          {/* Grid pattern overlay with scan effect */}
           <div 
             className="absolute inset-0 opacity-[0.03]"
             style={{
@@ -1923,18 +2125,42 @@ export default function Homepage() {
               backgroundSize: '60px 60px',
             }}
           />
+          {/* Scanning line effect */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div 
+              className="absolute left-0 right-0 h-32 bg-gradient-to-b from-transparent via-emerald-500/5 to-transparent"
+              style={{ animation: 'grid-scan 8s linear infinite' }}
+            />
+          </div>
+          
+          {/* Floating security particles */}
+          <div className="absolute top-20 left-[10%] hidden lg:block" style={{ animation: 'security-float 6s ease-in-out infinite' }}>
+            <div className="w-3 h-3 rounded-full bg-emerald-400/30" />
+          </div>
+          <div className="absolute top-40 right-[15%] hidden lg:block" style={{ animation: 'security-float 5s ease-in-out infinite 1s' }}>
+            <div className="w-2 h-2 rounded-full bg-cyan-400/40" />
+          </div>
+          <div className="absolute bottom-32 left-[20%] hidden lg:block" style={{ animation: 'security-float 7s ease-in-out infinite 2s' }}>
+            <div className="w-2 h-2 rounded-full bg-violet-400/30" />
+          </div>
 
           <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12 relative">
             {/* Header */}
             <div className="text-center mb-20">
-              <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-5 py-2.5 rounded-full text-sm font-semibold mb-8">
-                <Shield className="w-4 h-4" />
-                Enterprise-Grade Security
+              <div 
+                className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-5 py-2.5 rounded-full text-sm font-semibold mb-8"
+                style={{ animation: 'badge-float 3s ease-in-out infinite' }}
+              >
+                <Shield className="w-4 h-4" style={{ animation: 'lock-shake 2s ease-in-out infinite' }} />
+                Bank-Grade Security & Privacy
               </div>
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
                 Your data is{' '}
                 <span className="relative inline-block">
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-400 to-emerald-400">
+                  <span 
+                    className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-cyan-400 to-emerald-400"
+                    style={{ backgroundSize: '200% auto', animation: 'data-flow 3s linear infinite' }}
+                  >
                     fortress-protected
                   </span>
                   <svg className="absolute -bottom-2 left-0 w-full" viewBox="0 0 200 8" fill="none">
@@ -1950,7 +2176,7 @@ export default function Homepage() {
                 </span>
               </h2>
               <p className="text-lg text-slate-400 max-w-2xl mx-auto">
-                Built from the ground up with security as the foundation, not an afterthought.
+                Enterprise-grade encryption, zero-trust architecture, and full compliance — security isn't a feature, it's our foundation.
               </p>
             </div>
 
@@ -1958,36 +2184,66 @@ export default function Homepage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
               {/* Large Feature Card - Encryption */}
               <div className="lg:col-span-2 lg:row-span-2 group">
-                <div className="h-full bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-8 border border-slate-700/50 hover:border-emerald-500/30 transition-all duration-300 relative overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-8 border border-slate-700/50 hover:border-emerald-500/30 transition-all duration-300 relative overflow-hidden"
+                >
                   {/* Decorative elements */}
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2" />
+                  <div 
+                    className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2"
+                    style={{ animation: 'security-pulse 4s ease-in-out infinite' }}
+                  />
+                  {/* Scanning effect */}
+                  <div className="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
+                    <div 
+                      className="absolute left-0 right-0 h-20 bg-gradient-to-b from-transparent via-emerald-500/10 to-transparent"
+                      style={{ animation: 'security-scan 4s linear infinite' }}
+                    />
+                  </div>
                   
                   <div className="relative">
                     <div className="flex items-start justify-between mb-8">
-                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25">
-                        <Lock className="w-8 h-8 text-white" />
+                      <div 
+                        className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25"
+                        style={{ animation: 'shield-glow 3s ease-in-out infinite' }}
+                      >
+                        <Lock className="w-8 h-8 text-white" style={{ animation: 'lock-shake 3s ease-in-out infinite' }} />
                       </div>
                       <div className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 px-3 py-1.5 rounded-full text-xs font-semibold">
-                        <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
-                        Active
+                        <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" style={{ animation: 'pulse 1s ease-in-out infinite' }} />
+                        Always Protected
                       </div>
                     </div>
                     
-                    <h3 className="text-2xl font-bold text-white mb-3">AES-256 Encryption</h3>
+                    <h3 className="text-2xl font-bold text-white mb-3">AES-256 End-to-End Encryption</h3>
                     <p className="text-slate-400 mb-8 leading-relaxed">
-                      Military-grade encryption protects your data at rest and in transit. Every piece of information is encrypted using the same standard trusted by governments worldwide.
+                      The same encryption standard used by banks and governments worldwide. Your data is encrypted at rest, in transit, and during processing — we can't read it even if we wanted to.
                     </p>
                     
                     {/* Visual representation */}
                     <div className="bg-slate-800/50 rounded-2xl p-5 border border-slate-700/50">
                       <div className="flex items-center gap-4 mb-4">
                         <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
-                          <div className="h-full w-full bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-full" />
+                          <div 
+                            className="h-full w-full bg-gradient-to-r from-emerald-500 via-cyan-400 to-emerald-500 rounded-full"
+                            style={{ backgroundSize: '200% 100%', animation: 'data-flow 2s linear infinite' }}
+                          />
                         </div>
                         <span className="text-emerald-400 text-sm font-mono">256-bit</span>
                       </div>
-                      <div className="font-mono text-xs text-slate-500 break-all">
-                        ████████████████████████████████
+                      <div className="font-mono text-xs text-slate-500 break-all flex gap-1">
+                        {[...Array(32)].map((_, i) => (
+                          <span 
+                            key={i} 
+                            className="text-emerald-500/60"
+                            style={{ animation: `typing-dots 1s ease-in-out infinite ${i * 0.05}s` }}
+                          >
+                            █
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        <span>Zero-knowledge architecture</span>
                       </div>
                     </div>
                   </div>
@@ -1996,22 +2252,30 @@ export default function Homepage() {
 
               {/* Two-Factor Authentication */}
               <div className="group">
-                <div className="h-full bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 border border-slate-700/50 hover:border-violet-500/30 transition-all duration-300 relative overflow-hidden">
-                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-violet-500/10 rounded-full blur-2xl" />
+                <div 
+                  className="h-full bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 border border-slate-700/50 hover:border-violet-500/30 transition-all duration-300 relative overflow-hidden"
+                >
+                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-violet-500/10 rounded-full blur-2xl" style={{ animation: 'security-pulse 5s ease-in-out infinite' }} />
                   
                   <div className="relative">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mb-5 shadow-lg shadow-violet-500/25">
-                      <Shield className="w-6 h-6 text-white" />
+<div 
+                        className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mb-5 shadow-lg shadow-violet-500/25"
+                      >
+                      <Shield className="w-6 h-6 text-white" style={{ animation: 'pulse 2s ease-in-out infinite' }} />
                     </div>
                     
-                    <h3 className="text-lg font-bold text-white mb-2">Two-Factor Auth</h3>
-                    <p className="text-slate-400 text-sm mb-4">TOTP-based authentication adds an extra layer of protection.</p>
+                    <h3 className="text-lg font-bold text-white mb-2">Multi-Factor Auth</h3>
+                    <p className="text-slate-400 text-sm mb-4">TOTP, SMS, or hardware keys — choose your security level.</p>
                     
-                    {/* Mini visual */}
+                    {/* Mini visual - animated OTP */}
                     <div className="flex items-center gap-2">
-                      {[1,2,3,4,5,6].map((_, i) => (
-                        <div key={i} className="w-6 h-8 rounded bg-slate-700 border border-slate-600 flex items-center justify-center text-violet-400 text-xs font-mono">
-                          {i < 3 ? '•' : ''}
+                      {[4, 7, 2, 9, 1, 8].map((num, i) => (
+                        <div 
+                          key={i} 
+                          className="w-6 h-8 rounded bg-slate-700 border border-slate-600 flex items-center justify-center text-violet-400 text-xs font-mono"
+                          style={{ animation: `typing-dots 2s ease-in-out infinite ${i * 0.15}s` }}
+                        >
+                          {num}
                         </div>
                       ))}
                     </div>
@@ -2021,45 +2285,60 @@ export default function Homepage() {
 
               {/* Data Isolation */}
               <div className="group">
-                <div className="h-full bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 border border-slate-700/50 hover:border-orange-500/30 transition-all duration-300 relative overflow-hidden">
-                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-orange-500/10 rounded-full blur-2xl" />
+                <div 
+                  className="h-full bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 border border-slate-700/50 hover:border-orange-500/30 transition-all duration-300 relative overflow-hidden"
+                >
+                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-orange-500/10 rounded-full blur-2xl" style={{ animation: 'security-pulse 6s ease-in-out infinite 1s' }} />
                   
                   <div className="relative">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center mb-5 shadow-lg shadow-orange-500/25">
-                      <Database className="w-6 h-6 text-white" />
+<div 
+                        className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center mb-5 shadow-lg shadow-orange-500/25"
+                      >
+                      <Database className="w-6 h-6 text-white" style={{ animation: 'pulse 2s ease-in-out infinite 0.5s' }} />
                     </div>
                     
-                    <h3 className="text-lg font-bold text-white mb-2">Data Isolation</h3>
-                    <p className="text-slate-400 text-sm mb-4">Complete separation between organizations ensures privacy.</p>
+                    <h3 className="text-lg font-bold text-white mb-2">Tenant Isolation</h3>
+                    <p className="text-slate-400 text-sm mb-4">Complete data separation — your data never touches another org's.</p>
                     
-                    {/* Mini visual */}
+                    {/* Mini visual - animated bars */}
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 h-3 bg-orange-500/20 rounded border border-orange-500/30" />
-                      <div className="flex-1 h-3 bg-amber-500/20 rounded border border-amber-500/30" />
-                      <div className="flex-1 h-3 bg-orange-500/20 rounded border border-orange-500/30" />
+                      {[0, 1, 2].map((i) => (
+                        <div 
+                          key={i}
+                          className={`flex-1 h-3 rounded border ${i === 1 ? 'bg-amber-500/30 border-amber-500/50' : 'bg-orange-500/20 border-orange-500/30'}`}
+                          style={{ animation: `security-pulse 2s ease-in-out infinite ${i * 0.3}s` }}
+                        />
+                      ))}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Self-Hosted Option */}
+              {/* GDPR Compliant */}
               <div className="group">
-                <div className="h-full bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 border border-slate-700/50 hover:border-cyan-500/30 transition-all duration-300 relative overflow-hidden">
-                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl" />
+                <div 
+                  className="h-full bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 border border-slate-700/50 hover:border-cyan-500/30 transition-all duration-300 relative overflow-hidden"
+                >
+                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl" style={{ animation: 'security-pulse 5s ease-in-out infinite 0.5s' }} />
                   
                   <div className="relative">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center mb-5 shadow-lg shadow-cyan-500/25">
-                      <Globe className="w-6 h-6 text-white" />
+<div 
+                        className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center mb-5 shadow-lg shadow-cyan-500/25"
+                      >
+                      <Globe className="w-6 h-6 text-white" style={{ animation: 'icon-rotate 20s linear infinite' }} />
                     </div>
                     
-                    <h3 className="text-lg font-bold text-white mb-2">Self-Hosted</h3>
-                    <p className="text-slate-400 text-sm mb-4">Deploy on your own infrastructure for complete control.</p>
+                    <h3 className="text-lg font-bold text-white mb-2">GDPR & CCPA Ready</h3>
+                    <p className="text-slate-400 text-sm mb-4">Full data export, deletion, and consent management built-in.</p>
                     
-                    {/* Mini visual */}
+                    {/* Mini visual - animated connection */}
                     <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full bg-cyan-400" />
-                      <div className="flex-1 h-[2px] bg-gradient-to-r from-cyan-400 to-transparent" />
-                      <Server className="w-4 h-4 text-slate-500" />
+                      <div className="w-3 h-3 rounded-full bg-cyan-400" style={{ animation: 'pulse 1.5s ease-in-out infinite' }} />
+                      <div 
+                        className="flex-1 h-[2px] bg-gradient-to-r from-cyan-400 to-transparent"
+                        style={{ animation: 'data-flow 2s linear infinite' }}
+                      />
+                      <Server className="w-4 h-4 text-cyan-400" style={{ animation: 'pulse 2s ease-in-out infinite 0.5s' }} />
                     </div>
                   </div>
                 </div>
@@ -2067,14 +2346,50 @@ export default function Homepage() {
 
               {/* Compliance Badge */}
               <div className="group">
-                <div className="h-full bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 rounded-3xl p-6 border border-emerald-500/20 hover:border-emerald-500/40 transition-all duration-300 relative overflow-hidden flex flex-col items-center justify-center text-center">
-                  <div className="w-14 h-14 rounded-full bg-emerald-500/20 flex items-center justify-center mb-4">
-                    <CheckCircle2 className="w-7 h-7 text-emerald-400" />
+                <div 
+                  className="h-full bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 rounded-3xl p-6 border border-emerald-500/20 hover:border-emerald-500/40 transition-all duration-300 relative overflow-hidden flex flex-col items-center justify-center text-center"
+                >
+                  {/* Animated ring */}
+                  <div className="absolute inset-4 rounded-2xl border border-emerald-500/20" style={{ animation: 'security-pulse 3s ease-in-out infinite' }} />
+                  
+                  <div 
+                    className="w-14 h-14 rounded-full bg-emerald-500/20 flex items-center justify-center mb-4"
+                    style={{ animation: 'shield-glow 2s ease-in-out infinite' }}
+                  >
+                    <CheckCircle2 className="w-7 h-7 text-emerald-400" style={{ animation: 'pulse 1.5s ease-in-out infinite' }} />
                   </div>
-                  <span className="text-white font-bold">SOC 2 Ready</span>
-                  <span className="text-slate-400 text-sm">Compliance built-in</span>
+                  <span className="text-white font-bold">SOC 2 Type II</span>
+                  <span className="text-slate-400 text-sm">Audited & Certified</span>
+                  <div className="mt-2 flex items-center gap-1">
+                    {[...Array(3)].map((_, i) => (
+                      <div 
+                        key={i} 
+                        className="w-1.5 h-1.5 rounded-full bg-emerald-400"
+                        style={{ animation: `typing-dots 1s ease-in-out infinite ${i * 0.2}s` }}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
+            </div>
+            
+            {/* Trust indicators */}
+            <div className="mt-12 flex flex-wrap justify-center items-center gap-8 text-slate-500 text-sm">
+              {[
+                { icon: Lock, text: '99.99% Uptime SLA' },
+                { icon: Shield, text: 'Daily Backups' },
+                { icon: Globe, text: 'EU & US Data Centers' },
+                { icon: CheckCircle2, text: '24/7 Monitoring' },
+              ].map((item, i) => (
+                <div 
+                  key={item.text}
+                  className="flex items-center gap-2"
+                  style={{ animation: `list-slide 0.5s ease-out ${i * 0.1}s both` }}
+                >
+                  <item.icon className="w-4 h-4 text-emerald-400/60" />
+                  <span>{item.text}</span>
+                </div>
+              ))}
             </div>
           </div>
         </section>
