@@ -239,8 +239,175 @@ try
             var maskedConnStr = connStr.Length > 30 ? connStr.Substring(0, 30) + "..." : connStr;
             Log.Information("Database connection: {ConnectionString}", maskedConnStr);
             
-            // First, fix any missing columns in the Templates table (from older schema)
+            // First, create missing tables and fix schema
             Log.Information("Checking and fixing database schema...");
+            
+            // Create Organizations table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Organizations')
+                BEGIN
+                    CREATE TABLE [Organizations] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [Name] nvarchar(256) NOT NULL,
+                        [OwnerUserId] uniqueidentifier NOT NULL,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        [WebhookApiKey] nvarchar(max) NULL,
+                        [WebhookApiKeyCreatedAtUtc] datetime2 NULL,
+                        CONSTRAINT [PK_Organizations] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_Organizations_Users_OwnerUserId] FOREIGN KEY ([OwnerUserId]) 
+                            REFERENCES [Users] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_Organizations_OwnerUserId] ON [Organizations] ([OwnerUserId]);
+                END;
+            ");
+            
+            // Create OrganizationMembers table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'OrganizationMembers')
+                BEGIN
+                    CREATE TABLE [OrganizationMembers] (
+                        [OrganizationId] uniqueidentifier NOT NULL,
+                        [UserId] uniqueidentifier NOT NULL,
+                        [Role] nvarchar(32) NOT NULL,
+                        [JoinedAtUtc] datetime2 NOT NULL,
+                        CONSTRAINT [PK_OrganizationMembers] PRIMARY KEY ([OrganizationId], [UserId]),
+                        CONSTRAINT [FK_OrganizationMembers_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId]) 
+                            REFERENCES [Organizations] ([Id]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_OrganizationMembers_Users_UserId] FOREIGN KEY ([UserId]) 
+                            REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                    );
+                    CREATE INDEX [IX_OrganizationMembers_UserId] ON [OrganizationMembers] ([UserId]);
+                END;
+            ");
+            
+            // Create OrgSettings table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'OrgSettings')
+                BEGIN
+                    CREATE TABLE [OrgSettings] (
+                        [OrganizationId] uniqueidentifier NOT NULL,
+                        [CompanyName] nvarchar(256) NOT NULL,
+                        [BrandTone] nvarchar(32) NOT NULL,
+                        [UpdatedAtUtc] datetime2 NOT NULL,
+                        CONSTRAINT [PK_OrgSettings] PRIMARY KEY ([OrganizationId]),
+                        CONSTRAINT [FK_OrgSettings_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId]) 
+                            REFERENCES [Organizations] ([Id]) ON DELETE CASCADE
+                    );
+                END;
+            ");
+            
+            // Create Invites table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Invites')
+                BEGIN
+                    CREATE TABLE [Invites] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NOT NULL,
+                        [Email] nvarchar(256) NOT NULL,
+                        [Token] nvarchar(128) NOT NULL,
+                        [ExpiresAtUtc] datetime2 NOT NULL,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        [AcceptedByUserId] uniqueidentifier NULL,
+                        [AcceptedAtUtc] datetime2 NULL,
+                        CONSTRAINT [PK_Invites] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_Invites_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId]) 
+                            REFERENCES [Organizations] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE UNIQUE INDEX [IX_Invites_Token] ON [Invites] ([Token]);
+                    CREATE INDEX [IX_Invites_OrganizationId_Email] ON [Invites] ([OrganizationId], [Email]);
+                END;
+            ");
+            
+            // Create JoinRequests table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'JoinRequests')
+                BEGIN
+                    CREATE TABLE [JoinRequests] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NOT NULL,
+                        [UserId] uniqueidentifier NOT NULL,
+                        [Status] nvarchar(32) NOT NULL,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        [RespondedByUserId] uniqueidentifier NULL,
+                        [RespondedAtUtc] datetime2 NULL,
+                        CONSTRAINT [PK_JoinRequests] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_JoinRequests_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId]) 
+                            REFERENCES [Organizations] ([Id]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_JoinRequests_Users_UserId] FOREIGN KEY ([UserId]) 
+                            REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                    );
+                    CREATE INDEX [IX_JoinRequests_OrganizationId_UserId] ON [JoinRequests] ([OrganizationId], [UserId]);
+                END;
+            ");
+            
+            // Create Pipelines table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Pipelines')
+                BEGIN
+                    CREATE TABLE [Pipelines] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NOT NULL,
+                        [Name] nvarchar(256) NOT NULL,
+                        [DisplayOrder] int NOT NULL,
+                        CONSTRAINT [PK_Pipelines] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_Pipelines_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId]) 
+                            REFERENCES [Organizations] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_Pipelines_OrganizationId] ON [Pipelines] ([OrganizationId]);
+                END;
+            ");
+            
+            // Create DealStages table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'DealStages')
+                BEGIN
+                    CREATE TABLE [DealStages] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [PipelineId] uniqueidentifier NOT NULL,
+                        [Name] nvarchar(128) NOT NULL,
+                        [DisplayOrder] int NOT NULL,
+                        [Color] nvarchar(32) NULL,
+                        CONSTRAINT [PK_DealStages] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_DealStages_Pipelines_PipelineId] FOREIGN KEY ([PipelineId]) 
+                            REFERENCES [Pipelines] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_DealStages_PipelineId] ON [DealStages] ([PipelineId]);
+                END;
+            ");
+            
+            // Create LeadSources table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'LeadSources')
+                BEGIN
+                    CREATE TABLE [LeadSources] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NOT NULL,
+                        [Name] nvarchar(128) NOT NULL,
+                        [DisplayOrder] int NOT NULL,
+                        CONSTRAINT [PK_LeadSources] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_LeadSources_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId]) 
+                            REFERENCES [Organizations] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_LeadSources_OrganizationId] ON [LeadSources] ([OrganizationId]);
+                END;
+            ");
+            
+            // Create LeadStatuses table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'LeadStatuses')
+                BEGIN
+                    CREATE TABLE [LeadStatuses] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NOT NULL,
+                        [Name] nvarchar(128) NOT NULL,
+                        [DisplayOrder] int NOT NULL,
+                        CONSTRAINT [PK_LeadStatuses] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_LeadStatuses_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId]) 
+                            REFERENCES [Organizations] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_LeadStatuses_OrganizationId] ON [LeadStatuses] ([OrganizationId]);
+                END;
+            ");
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')
