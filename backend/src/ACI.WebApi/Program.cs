@@ -912,7 +912,7 @@ try
     {
         try
         {
-            var count = await db.Tasks.CountAsync();
+            var count = await db.TaskItems.CountAsync();
             return Results.Ok(new { status = "ok", count });
         }
         catch (Exception ex)
