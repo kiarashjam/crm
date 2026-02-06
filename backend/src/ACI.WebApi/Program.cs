@@ -221,6 +221,9 @@ try
     // Health check endpoint
     app.MapHealthChecks("/health");
     
+    // Simple ping endpoint (no DB)
+    app.MapGet("/ping", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
+    
     app.MapControllers();
 
     // Database migration and seeding
@@ -229,11 +232,25 @@ try
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
         
-        Log.Information("Applying database migrations...");
-        await db.Database.MigrateAsync();
-        
-        Log.Information("Seeding database...");
-        await SeedData.SeedAsync(db, passwordHasher);
+        try
+        {
+            var connStr = app.Configuration.GetConnectionString("DefaultConnection") ?? "(not configured)";
+            var maskedConnStr = connStr.Length > 30 ? connStr.Substring(0, 30) + "..." : connStr;
+            Log.Information("Database connection: {ConnectionString}", maskedConnStr);
+            
+            Log.Information("Applying database migrations...");
+            await db.Database.MigrateAsync();
+            
+            Log.Information("Seeding database...");
+            await SeedData.SeedAsync(db, passwordHasher);
+            
+            Log.Information("Database initialization complete");
+        }
+        catch (Exception dbEx)
+        {
+            Log.Fatal(dbEx, "Database migration failed: {ErrorMessage}", dbEx.Message);
+            throw; // Re-throw to prevent app from starting with broken DB
+        }
     }
 
     Log.Information("ACI CRM API started successfully");
