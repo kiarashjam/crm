@@ -9,7 +9,15 @@ public class AppDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
-    public DbSet<CrmConnection> CrmConnections => Set<CrmConnection>();
+    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<OrganizationMember> OrganizationMembers => Set<OrganizationMember>();
+    public DbSet<OrgSettings> OrgSettings => Set<OrgSettings>();
+    public DbSet<Invite> Invites => Set<Invite>();
+    public DbSet<JoinRequest> JoinRequests => Set<JoinRequest>();
+    public DbSet<Pipeline> Pipelines => Set<Pipeline>();
+    public DbSet<DealStage> DealStages => Set<DealStage>();
+    public DbSet<LeadStatus> LeadStatuses => Set<LeadStatus>();
+    public DbSet<LeadSource> LeadSources => Set<LeadSource>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<Deal> Deals => Set<Deal>();
@@ -18,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<CopyHistoryItem> CopyHistoryItems => Set<CopyHistoryItem>();
+    public DbSet<EmailSequence> EmailSequences => Set<EmailSequence>();
+    public DbSet<EmailSequenceEnrollment> EmailSequenceEnrollments => Set<EmailSequenceEnrollment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

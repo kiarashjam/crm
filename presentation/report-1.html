@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How the System Works &amp; How Sales Will Use It — Cadence Cloud CRM</title>
+  <link rel="stylesheet" href="presentation.css" />
+</head>
+<body class="theme-report-1 deck-style-1">
+  <a href="index.html" class="back-link">← Back to presentation index</a>
+
+  <div class="slide-progress"><div class="slide-progress__bar"></div></div>
+
+  <div class="slide-deck">
+    <section class="slide slide--title active">
+      <div class="slide__content">
+        <span class="cloud-badge">Cloud CRM</span>
+        <h1>How the System Works &amp; How Sales Use It</h1>
+        <p class="subtitle">Report 1 — One place · your voice · cloud</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>At a glance</h2>
+        <p class="slide-intro">Cadence is the only CRM — no copy from, import to, or sync with other CRMs. Everything stays in Cadence; runs in the cloud; access from anywhere; no installs.</p>
+        <ul class="kw-list kw-pills">
+          <li><strong>What:</strong> Cloud CRM · your voice · leads · deals · contacts · tasks · activities</li>
+          <li><strong>Flow:</strong> Sign in → <strong>create or join an organization</strong> → <strong>open an organization</strong> → work in that org’s CRM (company + tone optional per org)</li>
+          <li><strong>Who:</strong> Sales · you can be in several orgs; in each org you work as one salesperson with that org’s data</li>
+          <li><strong>Best for:</strong> Teams that want one place in the cloud for copy + pipeline · no external CRM</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Intended flow (target vision)</h2>
+        <p class="slide-intro">After login you create an organization or join one (e.g. accept an invite). When you open an organization, you go to that org’s CRM — one salesperson with full access to that org’s data. Each org has an owner who can accept/reject join requests and invite others by email.</p>
+        <ul class="kw-list">
+          <li><strong>Only this system</strong> — No copy from another CRM; no import or send to another CRM. Cadence handles everything.</li>
+          <li><strong>Different orgs</strong> — You can join several organizations and switch by opening the org you want.</li>
+          <li><strong>Today (current UI)</strong> — Backend supports organizations and org-scoped data; the frontend does not yet show create/join org or org switcher, so in the UI you still see a single account and your own data. When the frontend org flow is built, the flow above will apply.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content slide__content--wide">
+        <h2>What each thing is</h2>
+        <p class="slide-intro">Every main concept in Cadence — what it is, why it exists, and exactly what you do with it. Deeper look in one place.</p>
+        <div class="table-what-is-wrap">
+        <table class="table-compact table-what-is">
+          <thead><tr><th>Term</th><th>What it is · What it’s for</th><th>What you do</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><strong>Organization</strong></td>
+              <td><strong>What:</strong> A team or workspace — e.g. your company, a client, or a division. Every record (leads, deals, contacts, tasks, activities, copy history) is scoped to one organization; nobody outside that org sees it.<br><strong>For:</strong> Letting multiple people work as one sales team on the same data, or keeping separate businesses/clients fully separate. You can belong to several orgs and switch which one you’re “in”; in each org you act as one salesperson with full access to that org’s data only.</td>
+              <td><strong>Create</strong> an org (you become owner) or <strong>join</strong> via invite or by requesting to join (owner accepts/rejects). <strong>Open</strong> the org you want to work in. As owner: <strong>invite</strong> by email, <strong>accept or reject</strong> join requests. All work (Leads, Pipeline, Send to CRM, etc.) happens inside the currently open org.</td>
+            </tr>
+            <tr>
+              <td><strong>Lead</strong></td>
+              <td><strong>What:</strong> A prospect who isn’t yet a contact or a deal. You store: name, email, phone (optional), company (from your Companies list), source (where they came from — e.g. website, referral, events, ads), and status (e.g. New, Contacted, Qualified, Lost). A lead is the first step before you decide to add them as a contact and/or create a deal.<br><strong>For:</strong> Capturing inbound or outbound interest in one place, qualifying who’s worth pursuing, and then turning the right ones into contacts and deals in one action — without re-typing names, emails, or company.</td>
+              <td><strong>Add lead</strong> (name, email, company, source, status) · <strong>Edit</strong> or <strong>Delete</strong> (with confirmation). When ready: click <strong>Convert</strong> → choose “Create contact” and/or “Create deal” → if deal, set name, value, stage → <strong>Convert</strong>. The lead’s details fill the new contact/deal automatically. Use search to filter leads by name or email.</td>
+            </tr>
+            <tr>
+              <td><strong>Contact</strong></td>
+              <td><strong>What:</strong> A person you sell to or communicate with — one record per person with name, email, phone, and company (from Companies). Contacts are the “who” when you send generated copy to the CRM and when you log activities (calls, meetings, emails). They’re the people attached to your pipeline and your history.<br><strong>For:</strong> Having a single, consistent record for each person so every email you send, every call you log, and every deal you associate is tied to the right contact. Avoids duplicate or scattered info.</td>
+              <td><strong>Add contact</strong> or <strong>Edit</strong> (name, email, phone, company) · <strong>Search</strong> by name, email, or phone. When you click <strong>Send to CRM</strong> after generating copy, you pick a contact (or a deal); when you <strong>Log activity</strong>, you can link it to a contact or deal. Contacts appear in dropdowns and filters across the app.</td>
+            </tr>
+            <tr>
+              <td><strong>Company</strong></td>
+              <td><strong>What:</strong> An account or business you sell to — the “account” in account-based selling. Not a person; it’s the organization (e.g. Acme Corp). You maintain a list of companies; each lead and each deal is linked to one company.<br><strong>For:</strong> Grouping leads and deals by account, seeing all activity per account, and reporting or filtering by company. Keeps “who we’re talking to” (contact) separate from “which business we’re selling to” (company).</td>
+              <td><strong>Add company</strong> or <strong>Edit</strong> (e.g. name, details) · <strong>Search</strong> the list. When you create or edit a <strong>Lead</strong> or a <strong>Deal</strong>, you choose a company from a dropdown — so every lead and deal is tied to one account. Companies are shared across Leads and Pipeline.</td>
+            </tr>
+            <tr>
+              <td><strong>Deal</strong></td>
+              <td><strong>What:</strong> A sales opportunity: a potential deal with a name, monetary value, stage in the process, and company. Each deal lives in the Pipeline and moves through stages (Qualification → Proposal → Negotiation) until it’s closed as <strong>Closed Won</strong> or <strong>Closed Lost</strong>. Deal value feeds pipeline value and won/lost counts on the Dashboard.<br><strong>For:</strong> Tracking which opportunities you’re working on, how much they’re worth, and how far along they are — and measuring revenue (won) and loss (lost) without spreadsheets.</td>
+              <td><strong>Create</strong> a deal from the Pipeline (New deal) or by <strong>converting a lead</strong> (option “Create deal”). Enter name, value, stage, optional expected close date, company. <strong>Edit</strong> or <strong>Delete</strong> (with confirmation). <strong>Move stage</strong> via dropdown on the card (e.g. Qualification → Proposal → Negotiation → Closed Won/Lost). Dashboard shows pipeline value and won/lost totals.</td>
+            </tr>
+            <tr>
+              <td><strong>Pipeline</strong></td>
+              <td><strong>What:</strong> The Kanban-style view of all your deals, grouped by stage: Qualification, Proposal, Negotiation, Closed Won, Closed Lost. Each column holds deal cards (name, value, stage). It’s the same data as “Deals” but presented so you can see and move opportunities at a glance.<br><strong>For:</strong> Visual pipeline management — see what’s in each stage, move deals forward (or mark lost), and understand total pipeline value and win/loss without opening each deal. Dashboard summarizes the same numbers.</td>
+              <td>Open <strong>Pipeline</strong> (Deals). View columns and cards · <strong>New deal</strong> to add one · <strong>Edit</strong> or <strong>Delete</strong> on a card · use the <strong>stage dropdown</strong> on a card to move it (or drag, if enabled). Pipeline value and won/lost counts are visible on the Dashboard.</td>
+            </tr>
+            <tr>
+              <td><strong>Tasks</strong></td>
+              <td><strong>What:</strong> To-dos with a title, optional description, and due date. Each task can optionally be linked to a lead or a deal so you know what follow-up belongs to whom. Tasks don’t auto-complete — you mark them done when you’ve done them.<br><strong>For:</strong> Never dropping the ball: “Call back John,” “Send proposal to Acme,” “Follow up after demo.” Filter by Pending or Overdue so you see what’s due now; link to lead/deal so context is clear.</td>
+              <td><strong>Add task</strong> (title, description, due date; optionally link to lead or deal) · <strong>Edit</strong> to change details · use the <strong>checkbox</strong> to mark complete. Filter the list: <strong>All</strong> / <strong>Pending</strong> / <strong>Overdue</strong>. Overdue highlights what’s past due so you can prioritize.</td>
+            </tr>
+            <tr>
+              <td><strong>Activities</strong></td>
+              <td><strong>What:</strong> A chronological log of what you did: calls, meetings, emails, and notes. Each activity has a type, subject, body (details), and optional link to a contact or deal. Over time this becomes the timeline of “what happened with this contact or this deal.”<br><strong>For:</strong> Keeping a clear record of every touchpoint — so you or a teammate can see the full history for a contact or deal. No more “did I already call them?” — it’s all in the activity timeline.</td>
+              <td><strong>Log activity</strong>: choose type (call, meeting, email, note), enter subject and body, optionally link to contact or deal → Save. <strong>View</strong> the list; filter by <strong>All</strong>, <strong>By contact</strong>, or <strong>By deal</strong> (then pick one) to see that contact’s or deal’s timeline. Each row shows type, subject, body, date.</td>
+            </tr>
+            <tr>
+              <td><strong>Templates</strong></td>
+              <td><strong>What:</strong> Saved combinations of copy <strong>type</strong> (e.g. Sales Email, Follow-up, Deal Message) and <strong>goal</strong> (e.g. Schedule meeting, Follow up after demo, Close the deal). Examples: “First contact email,” “Follow-up after meeting,” “Re-engagement email.” When you use a template, the Dashboard opens with that type and goal already selected.<br><strong>For:</strong> Speed: instead of picking type and goal every time, you pick a named scenario and generate in one click. Great for repeat workflows (e.g. post-demo follow-up, re-engagement campaigns).</td>
+              <td>Open <strong>Templates</strong> → choose a template (e.g. “First contact email”) → click <strong>Use template</strong>. You’re taken to the Dashboard with type and goal pre-filled. Add context (e.g. prospect name) if needed → <strong>Generate copy</strong>. Then edit, send to CRM, or save as usual.</td>
+            </tr>
+            <tr>
+              <td><strong>History</strong></td>
+              <td><strong>What:</strong> The list of every piece of copy you’ve sent to a contact or a deal — stored in Cadence, not in another CRM. Each row shows copy type, a snippet of the text, who it was sent to (contact or deal), and when. It’s the audit trail and reuse library for your generated copy.<br><strong>For:</strong> Reusing winning copy: copy to clipboard, send the same (or tweaked) message to someone else, or regenerate a new version with the same context. No re-typing or re-picking type/goal from scratch.</td>
+              <td>Open <strong>History</strong>. <strong>Search</strong> by copy text, type, or recipient name. On each row: <strong>Copy</strong> (to clipboard) · <strong>Regenerate</strong> (opens Dashboard with that copy’s context so you can create a new version) · <strong>Send again</strong> (opens Send to CRM with that copy so you can send it to another contact or deal).</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Three jobs</h2>
+        <p class="slide-intro">The system does three things for you: writes copy in your voice, stores all your sales data, and lets you attach copy to a contact or deal and reuse it from History.</p>
+        <ol class="creative-list">
+          <li>
+            <strong>Writes</strong> — Cadence generates sales copy in your voice. You pick a <strong>type</strong> (Sales Email, Follow-up, CRM Note, Deal Message, Workflow), a <strong>goal</strong> (e.g. schedule meeting, follow up after demo, close the deal), and your org’s <strong>brand tone</strong>. The built-in copy engine produces ready-to-send text so you spend less time drafting and more time selling.
+          </li>
+          <li>
+            <strong>Holds</strong> — All your sales data lives in one place. You add <strong>leads</strong> and convert them into <strong>contacts</strong> and <strong>deals</strong> without re-typing. The <strong>pipeline</strong> shows every deal by stage; <strong>tasks</strong> and <strong>activities</strong> keep follow-ups and call/meeting/email logs in order. No spreadsheets, no other CRM — everything stays in Cadence.
+          </li>
+          <li>
+            <strong>Attaches</strong> — Every piece of copy you send is linked to a contact or deal and saved in <strong>History</strong>. You can <strong>copy</strong> to clipboard, <strong>regenerate</strong> with fresh context, or <strong>send again</strong> to another contact or deal. Nothing is lost; you reuse and refine instead of starting from scratch.
+          </li>
+        </ol>
+        <p class="tagline">One CRM. Cloud. No installs.</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Under the hood</h2>
+        <p class="slide-intro">Technically: a web app (what you see), an API (auth and data), and a cloud database. Your data is tied to your account only.</p>
+        <ul class="kw-list">
+          <li><strong>Frontend</strong> — Login · Dashboard · Leads · Pipeline · Templates · History · Send to CRM · Try app (sandbox)</li>
+          <li><strong>Backend</strong> — API · auth · 2FA · copy (built-in)</li>
+          <li><strong>Data</strong> — Users · settings · companies · contacts · deals · leads · tasks · activities · history</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Homepage</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> First impression and clear entry points matter. The homepage tells visitors what Cadence is and gives one-click paths to sign in, get started, or try the app — so prospects and returning users know where to go without confusion.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Value message</strong> — What the product is: cloud CRM, your voice, one place for copy and pipeline.</li>
+          <li><strong>Sign In / Get started</strong> — Direct link to Login for returning users or new sign-ups.</li>
+          <li><strong>Try the app</strong> — Sandbox access so anyone can explore without creating an account.</li>
+          <li><strong>Help, Privacy, Terms</strong> — Links for support and legal pages.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Login</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Secure access is the foundation of trust. Sales teams need a single sign-in that works from any device, protects company data, and lets new users try the product without committing. Login is the gate to the only CRM they use — no separate tools or credentials.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Sign up</strong> — Create account (name, email, password) so new reps can join the org or start their own.</li>
+          <li><strong>Sign in</strong> — Email + password; optional 2FA (6-digit code) for extra security on shared devices.</li>
+          <li><strong>Try the app</strong> — Sandbox mode with sample data so prospects can explore the CRM and copy flow without saving anything to an account.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Organizations</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Real sales happens in teams and per client or division. Organizations let one person belong to multiple workspaces (e.g. “Acme Corp” and “Client X”) and switch context without mixing data. Owners control who joins and who gets invited — so pipeline and copy stay scoped to the right team.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Create organization</strong> — Start a new team workspace (company or client); you become the owner.</li>
+          <li><strong>Join organization</strong> — Accept an invite or have a join request accepted; then you see that org’s data when you open it.</li>
+          <li><strong>Open organization</strong> — Switch into an org to work in its CRM (leads, deals, contacts, copy) as one salesperson with full access to that org’s data only.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Onboarding</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Generated copy must sound like the company, not generic. One-time setup of company name and brand tone (Professional / Friendly / Persuasive) ensures every email, follow-up, and deal message is on-brand from day one — no per-rep guesswork.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Company name</strong> — Used in generated copy (e.g. “how [Your Company] can help…”). Set once per org.</li>
+          <li><strong>Brand tone</strong> — Professional (formal, concise), Friendly (warm, approachable), or Persuasive (confident, action-oriented). Applied to all generated copy.</li>
+          <li><strong>Save &amp; Continue</strong> — Lands you on the Dashboard; you can change these later in Settings.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Dashboard</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Sales reps need one place to start their day: see pipeline health, then generate the right message without jumping between tools. The Dashboard is the hub — copy creation and key metrics in one view so time goes to selling, not searching.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Generate copy</strong> — Pick type (Sales Email, Follow-up, CRM Note, Deal Message, Workflow), goal (e.g. schedule meeting, close the deal), optional context and length → Generate copy → Generated Copy page.</li>
+          <li><strong>Stats</strong> — Generated this week, Templates count, Sent to CRM; active leads, active deals, pipeline value, deals won/lost.</li>
+          <li><strong>Recent activity</strong> — Last 5 items sent to CRM; “View full history” goes to History.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Generated Copy</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> First drafts are rarely perfect. This page is where copy becomes send-ready: edit, tweak tone or length, or regenerate without losing context. It bridges “created” and “sent” so reps stay in flow and don’t paste into external tools.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Edit</strong> — Read and change the draft before sending.</li>
+          <li><strong>Copy</strong> — Copy full text to clipboard for use in email clients or other apps.</li>
+          <li><strong>Adjust Copy</strong> — Make shorter, friendlier, or more persuasive without regenerating from scratch.</li>
+          <li><strong>Regenerate</strong> — New draft with same type/goal/context.</li>
+          <li><strong>Send to CRM</strong> — Attach this copy to a contact or deal and save it in History.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Send to CRM</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Copy only creates value when it’s tied to the right person or deal. “Send to CRM” means “save and attach in Cadence” — no export to another CRM. Every sent piece is stored and reusable, so follow-ups and reuse are one click away.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Contact or Deal</strong> — Choose whether this copy is for a person (contact) or an opportunity (deal).</li>
+          <li><strong>Search and select</strong> — Find the contact or deal by name; one selection per send.</li>
+          <li><strong>Confirm &amp; Send</strong> — Saves the copy in History linked to that contact or deal.</li>
+          <li><strong>After send</strong> — Create Another (back to Dashboard) or View History.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Leads</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> New interest (website, referral, event) must be captured before it goes cold. Leads are the funnel before pipeline: one place to add, qualify, and convert into contacts and deals without re-typing. Conversion in one step keeps data clean and saves time.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>List and search</strong> — Name, email, company, status (New, Contacted, etc.), source (website, referral, etc.).</li>
+          <li><strong>Add lead</strong> — Enter name, email, phone (optional), company (dropdown), source, status.</li>
+          <li><strong>Edit / Delete</strong> — Update or remove; delete is confirmed.</li>
+          <li><strong>Convert</strong> — Turn a lead into a contact and/or a deal in one step; name, email, phone, company are carried over so you don’t re-enter data.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Pipeline (Deals)</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Revenue is forecast by stage. A visual pipeline (Kanban) shows every opportunity, its value, and stage so reps and managers can prioritize and move deals toward close. Won/Lost is clear so the Dashboard and reporting stay accurate.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Kanban view</strong> — Columns: Qualification → Proposal → Negotiation → Closed Won / Closed Lost; each deal is a card with name, value, stage dropdown.</li>
+          <li><strong>New deal</strong> — Name, value, stage, expected close date (optional), company.</li>
+          <li><strong>Move stage</strong> — Use dropdown on card; moving to Closed Won or Closed Lost marks the deal accordingly (counts on Dashboard).</li>
+          <li><strong>Edit / Delete</strong> — Update details or remove; delete is confirmed.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Tasks</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Follow-ups and next steps get dropped when they’re only in email or memory. Tasks give reps a single list with due dates and optional link to a lead or deal, so nothing slips and activity stays tied to the right opportunity.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>List</strong> — Title, due date, optional link to lead or deal; checkbox to mark complete.</li>
+          <li><strong>Filter</strong> — All / Pending / Overdue so reps can focus on what’s due.</li>
+          <li><strong>Add task</strong> — Title, description, due date; optionally link to lead or deal.</li>
+          <li><strong>Edit / Complete</strong> — Change details or check off when done.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Activities</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Calls, meetings, and emails need a shared record so the team and future-you know what happened with whom and on which deal. Activities are the timeline — no scattered notes or separate tools.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Log activity</strong> — Type (call, meeting, email, note), subject, body; optionally link to a contact or deal.</li>
+          <li><strong>View and filter</strong> — All, or by contact, or by deal — so you see a full timeline per person or per opportunity.</li>
+          <li><strong>List</strong> — Type, subject, body, date for every logged item.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Contacts</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> People are the unit of outreach and relationship. Contacts are the single record per person: used when sending copy to CRM and when logging activities, so every message and call is attached to the right name and company.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>List and search</strong> — Name, email, phone, company; search by name, email, or phone.</li>
+          <li><strong>Add contact</strong> — Name, email, phone, company (dropdown).</li>
+          <li><strong>Edit</strong> — Update any field. Contacts appear in Send to CRM and in activity filters.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Companies</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Deals and leads belong to accounts, not just people. Companies are the account list — one place to maintain account names so leads and deals can be linked consistently for reporting and filtering (e.g. “all deals at Acme”).</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>List and search</strong> — All companies (accounts) you sell to.</li>
+          <li><strong>Add company</strong> — Create a new account name.</li>
+          <li><strong>Edit</strong> — Update name. Companies appear in the company dropdown when creating or editing leads and deals.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Templates</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Repeating situations (first contact, post-demo follow-up, closing) should not mean re-picking type and goal every time. Templates are pre-set type + goal combos so reps go from “I need a follow-up after demo” to one click and generate — less friction, more consistency.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Template list</strong> — e.g. “First contact email”, “Follow-up after meeting”, “Demo reminder”, “Closing deal message”, “Re-engagement email”.</li>
+          <li><strong>Use template</strong> — Opens the Dashboard with that template’s type and goal already selected so you can add context and generate immediately.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>History</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Sent copy is an asset. History keeps every piece linked to a contact or deal so reps can reuse, tweak, or send again to someone else without re-generating. No copy is lost; everything is searchable and actionable.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>List</strong> — Type, copy snippet, recipient name, recipient type (contact/deal), date.</li>
+          <li><strong>Search</strong> — Filter by copy text, type, or recipient name.</li>
+          <li><strong>Copy</strong> — Copy full text to clipboard.</li>
+          <li><strong>Regenerate</strong> — Go to Dashboard with that copy’s context to create a fresh version.</li>
+          <li><strong>Send again</strong> — Go to Send to CRM with that copy to send it to another contact or deal.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Settings</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Brand and security must be manageable without leaving the app. Settings centralize company name and tone, org switching, (for owners) invites and join requests, 2FA, and account actions so the team stays in control of identity and safety.</p>
+        <p><strong>What this page offers:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Brand</strong> — Change company name and brand tone; Save Changes.</li>
+          <li><strong>Organization</strong> — Switch current org; manage organizations. Owner: invite by email, accept/reject join requests.</li>
+          <li><strong>2FA</strong> — Enable (QR or secret + 6-digit code) or disable (password + code).</li>
+          <li><strong>Logout / Delete account</strong> — Sign out or permanently delete account (with confirmation).</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Help · Privacy · Terms</h2>
+        <p class="slide-intro"><strong>Business reason:</strong> Users need quick guidance and clear legal and privacy information without leaving the product. Help reduces support load; Privacy and Terms build trust and meet compliance expectations.</p>
+        <p><strong>What these pages offer:</strong></p>
+        <ul class="kw-list">
+          <li><strong>Help</strong> — How to use the app, links to Dashboard, copy flow, Leads, Pipeline, History; accessible from the header so reps stay unblocked.</li>
+          <li><strong>Privacy</strong> — What data is collected and how it’s used; important for prospects and compliance.</li>
+          <li><strong>Terms</strong> — Terms of service; linked from sign-up and footer for legal clarity.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Copy: type, goal, tone</h2>
+        <table>
+          <thead><tr><th>Type</th><th>For</th></tr></thead>
+          <tbody>
+            <tr><td>Sales Email</td><td>Outreach · first contact</td></tr>
+            <tr><td>Follow-up</td><td>After call or demo</td></tr>
+            <tr><td>CRM Note</td><td>Calls, meetings, emails</td></tr>
+            <tr><td>Deal Message</td><td>Stakeholder updates</td></tr>
+            <tr><td>Workflow</td><td>Sequences · automation</td></tr>
+          </tbody>
+        </table>
+        <p><strong>Goals:</strong> Schedule meeting · Follow up after demo · Request feedback · Share resources · Check in · Close the deal.</p>
+        <p><strong>Tone:</strong> Professional / Friendly / Persuasive. Set once. Templates = type + goal pre-set.</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>First-time (one-time)</h2>
+        <ol>
+          <li>Open app → Sign In or Get started</li>
+          <li>Create account or Sign in · or Try the app</li>
+          <li>Organizations (create/join/open) → Onboarding → Dashboard</li>
+          <li>Onboarding: Company name + Brand tone → Save &amp; Continue</li>
+          <li>Dashboard. All in the cloud.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Main workflow — Copy &amp; send</h2>
+        <p class="slide-intro">Daily flow: choose type and goal on the Dashboard, generate copy, edit if needed, then send it to a contact or deal; it is saved in History so you can reuse or send again.</p>
+        <ol>
+          <li>Dashboard: type, goal, context, length → Generate copy</li>
+          <li>Generated Copy: edit · Copy · Adjust · Regenerate → Send to CRM</li>
+          <li>Send to CRM: Contact or Deal → search → Confirm &amp; Send</li>
+          <li>History: Copy · Regenerate · Send again</li>
+        </ol>
+        <p class="tagline">Tip: Templates → Use template → Dashboard pre-filled.</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Leads · Pipeline · Rest</h2>
+        <ul class="kw-list">
+          <li><strong>Leads:</strong> List · Add · Edit · <strong>Convert</strong> → contact/deal</li>
+          <li><strong>Pipeline:</strong> Kanban · stages · value · New · Edit · move · Dashboard</li>
+          <li><strong>Tasks:</strong> Due · lead/deal · All / Pending / Overdue · complete</li>
+          <li><strong>Activities:</strong> Log call · meeting · email · note · filter</li>
+          <li><strong>Contacts · Companies:</strong> People + accounts · Send to CRM · leads/deals</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content slide__content--wide">
+        <h2>Scenarios</h2>
+        <table class="table-compact">
+          <thead><tr><th>When</th><th>Do</th></tr></thead>
+          <tbody>
+            <tr><td>Monday AM</td><td>Stats → Tasks → Leads/Pipeline → Templates → generate → send</td></tr>
+            <tr><td>After demo</td><td>Follow-up + goal → generate → Send to CRM → Log meeting</td></tr>
+            <tr><td>Closing</td><td>Pipeline → Deal Message “Close” → send → Closed Won</td></tr>
+            <tr><td>New lead</td><td>Leads → Add (source) → Convert → contact + deal</td></tr>
+            <tr><td>Re-engage</td><td>Templates → Re-engagement → send · History → Send again</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Summary</h2>
+        <p class="slide-intro">Cadence is the only CRM: after login you create or join an organization, open an org, then work in that org’s CRM. Everything stays in Cadence; no copy from or import to other CRMs.</p>
+        <ul class="kw-list kw-pills">
+          <li><strong>Only this system</strong> — Not based on or connected to other CRMs. Cadence handles everything.</li>
+          <li><strong>Organizations</strong> — Create or join org → open org → work as one salesperson with that org’s data. Owner can accept/reject requests and invite others.</li>
+          <li><strong>Cloud</strong> — Sign in from any browser; data stored in Cadence only.</li>
+          <li><strong>Copy &amp; data</strong> — Generate (Dashboard + Templates) → edit → send to contact/deal · History. Leads, Pipeline, Tasks, Activities, Contacts, Companies — all per org when org is open.</li>
+          <li><strong>Today (current UI)</strong> — One user = one account in the UI; org flow (create/join, switcher) not yet in the UI — backend supports it.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <nav class="slide-nav" aria-label="Slide navigation">
+    <button type="button" class="slide-nav__btn slide-nav__prev" aria-label="Previous slide">←</button>
+    <span class="slide-nav__counter"></span>
+    <button type="button" class="slide-nav__btn slide-nav__next" aria-label="Next slide">→</button>
+  </nav>
+
+  <script src="presentation.js"></script>
+</body>
+</html>

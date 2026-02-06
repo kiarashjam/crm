@@ -4,7 +4,7 @@ import { ArrowLeft, Sparkles, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { login, loginWithTwoFactor, register, messages } from '@/app/api';
 import { setSession, setDemoUser } from '@/app/lib/auth';
-import { getApiBaseUrl } from '@/app/api/apiClient';
+import { isUsingRealApi } from '@/app/api/apiClient';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/app/components/ui/input-otp';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 
@@ -19,7 +19,7 @@ export default function Login() {
   const [requires2fa, setRequires2fa] = useState(false);
   const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
-  const [lastError, setLastError] = useState<string | null>(null);
+  const [_lastError, setLastError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => {
     if (requires2fa) return code.replace(/\D/g, '').length === 6 && !!twoFactorToken;
@@ -57,7 +57,7 @@ export default function Login() {
       if (!res.token || !res.user) throw new Error('Login failed');
       setSession(res.token, res.user);
       toast.success(mode === 'register' ? messages.auth.accountCreated : messages.auth.signedIn);
-      navigate('/dashboard', { replace: true });
+      navigate(isUsingRealApi() ? '/organizations' : '/dashboard', { replace: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : messages.errors.generic;
       setLastError(msg);
@@ -68,7 +68,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/80 to-slate-50 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-b from-orange-50/80 to-slate-50 dark:from-slate-900 dark:to-slate-950 flex flex-col">
       <header className="w-full px-[var(--page-padding)] py-[var(--header-block-padding-y)]" role="banner">
         <Link to="/" className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 rounded-lg" aria-label="Back to home">
           <ArrowLeft className="w-5 h-5" aria-hidden />
@@ -79,12 +79,12 @@ export default function Login() {
       <main id={MAIN_CONTENT_ID} className="flex-1 flex items-center justify-center px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
         <div className="w-full max-w-md">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg" aria-hidden>
+            <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-500/25 ring-1 ring-orange-400/20" aria-hidden>
               <Sparkles className="w-10 h-10 text-white" />
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-2">Welcome back</h1>
             <p className="text-slate-600">
-              {requires2fa ? 'Enter your 2FA code to continue' : 'Sign in to Cadence and start creating AI-powered copy'}
+              {requires2fa ? 'Enter your 2FA code to continue' : 'Sign in to Cadence and start using Intelligent Sales Writer'}
             </p>
           </div>
 
@@ -163,27 +163,24 @@ export default function Login() {
                   </Link>
                 </p>
 
-                {!getApiBaseUrl() && (
-                  <>
-                    <div className="flex items-center gap-4 my-6" role="presentation" aria-hidden>
-                      <div className="flex-1 border-t border-slate-200" />
-                      <span className="text-slate-500 text-sm">or</span>
-                      <div className="flex-1 border-t border-slate-200" />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDemoUser({ name: 'Demo User', email: 'demo@example.com' });
-                        toast.success(messages.auth.demoMode);
-                        navigate('/dashboard', { replace: true });
-                      }}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
-                    >
-                      <Play className="w-5 h-5" aria-hidden />
-                      Try demo (no backend)
-                    </button>
-                  </>
-                )}
+                <div className="flex items-center gap-4 my-6" role="presentation" aria-hidden>
+                  <div className="flex-1 border-t border-slate-200" />
+                  <span className="text-slate-500 text-sm">or</span>
+                  <div className="flex-1 border-t border-slate-200" />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDemoUser({ name: 'Demo User', email: 'demo@example.com' });
+                    toast.success(messages.auth.demoMode);
+                    navigate('/organizations', { replace: true });
+                  }}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-4 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                >
+                  <Play className="w-5 h-5" aria-hidden />
+                  Try Demo
+                </button>
               </>
             ) : (
               <>
@@ -222,7 +219,7 @@ export default function Login() {
             )}
 
             <p className="text-center text-sm text-slate-500 mt-6">
-              Connect your CRM in one click after you sign in
+              Optional: connect integrations after you sign in
             </p>
 
             <nav className="flex justify-center gap-4 mt-6 text-sm" aria-label="Legal links">

@@ -15,5 +15,7 @@ internal sealed class CopyHistoryItemConfiguration : IEntityTypeConfiguration<Co
         builder.Property(e => e.RecipientName).HasMaxLength(256).IsRequired();
         builder.Property(e => e.RecipientId).HasMaxLength(128).IsRequired();
         builder.HasOne(e => e.User).WithMany(u => u.CopyHistory).HasForeignKey(e => e.UserId);
+        builder.HasOne(e => e.Organization).WithMany().HasForeignKey(e => e.OrganizationId).IsRequired(false);
+        builder.HasIndex(e => e.OrganizationId);
     }
 }

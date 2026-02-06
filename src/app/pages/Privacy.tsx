@@ -5,7 +5,7 @@ import DemoBanner from '@/app/components/DemoBanner';
 
 export default function Privacy() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-gradient-calm">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm" role="banner">
         <div className="w-full px-[var(--page-padding)] py-4 flex justify-between items-center">
           <Link to="/" className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 rounded-lg min-h-[44px] min-w-[44px] items-center justify-center" aria-label="Back to home">
@@ -22,7 +22,7 @@ export default function Privacy() {
       </header>
       <DemoBanner />
 
-      <main id={MAIN_CONTENT_ID} className="w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+      <main id={MAIN_CONTENT_ID} className="w-full max-w-4xl mx-auto px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
         <div className="w-full">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 md:p-12">
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-4">Privacy Policy</h1>
@@ -52,7 +52,7 @@ export default function Privacy() {
                 <h2 className="text-2xl font-bold text-slate-900 mb-4">How We Use Your Information</h2>
                 <p className="text-slate-700 mb-4">We use your information to:</p>
                 <ul className="list-disc list-inside space-y-2 text-slate-700 mb-4">
-                  <li>Provide and improve our AI copywriting services</li>
+                  <li>Provide and improve our Intelligent Sales Writer services</li>
                   <li>Generate personalized copy based on your CRM data</li>
                   <li>Send service updates and important notifications</li>
                   <li>Analyze usage patterns to enhance our product</li>
@@ -70,7 +70,7 @@ export default function Privacy() {
                   <li>Data at rest is encrypted using AES-256 encryption</li>
                   <li>Regular security audits and penetration testing</li>
                   <li>Strict access controls and authentication requirements</li>
-                  <li>CRM connection tokens are securely stored and never exposed</li>
+                  <li>Your session token is securely stored and never exposed</li>
                 </ul>
               </section>
 
@@ -100,9 +100,9 @@ export default function Privacy() {
               </section>
 
               <section className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-900 mb-4">CRM Integration</h2>
+                <h2 className="text-2xl font-bold text-slate-900 mb-4">Cadence as your CRM</h2>
                 <p className="text-slate-700 mb-4">
-                  When you connect your CRM account, we use secure OAuth protocol. We only request the minimum permissions necessary to provide our service. You can disconnect your CRM account at any time from the Settings page.
+                  Cadence is the only CRM you need for this app. All your data stays in Cadence; no external CRM is required. If we add an optional integration in the future (e.g. sync with another tool), we would use secure protocols and you could disconnect at any time from Settings.
                 </p>
               </section>
 

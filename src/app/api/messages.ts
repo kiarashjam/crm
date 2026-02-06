@@ -1,10 +1,6 @@
 /** Centralized API / user-facing messages (for toasts and UI). */
 
 export const messages = {
-  connection: {
-    connected: 'CRM connected successfully.',
-    disconnected: 'Disconnected from CRM.',
-  },
   copy: {
     generated: 'Copy generated.',
     sentToCrm: 'Copy sent to CRM.',
@@ -24,17 +20,19 @@ export const messages = {
     dealMoved: 'Deal moved.',
     companyCreated: 'Company created.',
     companyUpdated: 'Company updated.',
+    companyDeleted: 'Company deleted.',
     contactCreated: 'Contact created.',
     contactUpdated: 'Contact updated.',
+    contactDeleted: 'Contact deleted.',
     taskCreated: 'Task created.',
     taskUpdated: 'Task updated.',
+    taskDeleted: 'Task deleted.',
     activityLogged: 'Activity logged.',
     activityDeleted: 'Activity deleted.',
   },
   errors: {
     generic: 'Something went wrong. Please try again.',
     genericWithHelp: 'Something went wrong. Please try again. Need help?',
-    notConnected: 'Connect your CRM first.',
     loadFailed: 'Failed to load. Please try again.',
   },
   validation: {

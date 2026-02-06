@@ -2,30 +2,57 @@ using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
+using Microsoft.Extensions.Logging;
 
 namespace ACI.Application.Services;
 
+/// <summary>
+/// Service for managing copy generation history in the CRM system.
+/// </summary>
 public class CopyHistoryService : ICopyHistoryService
 {
     private readonly ICopyHistoryRepository _repository;
+    private readonly ILogger<CopyHistoryService> _logger;
 
-    public CopyHistoryService(ICopyHistoryRepository repository) => _repository = repository;
-
-    public async Task<IReadOnlyList<CopyHistoryItemDto>> GetHistoryAsync(Guid userId, CancellationToken ct = default)
+    public CopyHistoryService(ICopyHistoryRepository repository, ILogger<CopyHistoryService> logger)
     {
-        var list = await _repository.GetByUserIdAsync(userId, ct);
+        _repository = repository;
+        _logger = logger;
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CopyHistoryItemDto>> GetHistoryAsync(
+        Guid userId, 
+        Guid? organizationId, 
+        CancellationToken ct = default)
+    {
+        _logger.LogDebug("Getting copy history for user {UserId}", userId);
+        
+        var list = await _repository.GetByUserIdAsync(userId, organizationId, ct);
+        
+        _logger.LogDebug("Retrieved {Count} copy history items for user {UserId}", list.Count, userId);
+        
         return list.Select(Map).ToList();
     }
 
-    public async Task<CopyHistoryStatsDto> GetStatsAsync(Guid userId, CancellationToken ct = default)
+    /// <inheritdoc />
+    public async Task<CopyHistoryStatsDto> GetStatsAsync(
+        Guid userId, 
+        Guid? organizationId, 
+        CancellationToken ct = default)
     {
-        var total = await _repository.CountByUserIdAsync(userId, ct);
-        var sentThisWeek = await _repository.CountSentThisWeekAsync(userId, ct);
+        _logger.LogDebug("Getting copy history stats for user {UserId}", userId);
+        
+        var total = await _repository.CountByUserIdAsync(userId, organizationId, ct);
+        var sentThisWeek = await _repository.CountSentThisWeekAsync(userId, organizationId, ct);
+        
         return new CopyHistoryStatsDto(sentThisWeek, total);
     }
 
+    /// <inheritdoc />
     public async Task<CopyHistoryItemDto> AddAsync(
         Guid userId,
+        Guid? organizationId,
         string type,
         string copy,
         string recipientName,
@@ -33,11 +60,18 @@ public class CopyHistoryService : ICopyHistoryService
         string recipientId,
         CancellationToken ct = default)
     {
+        _logger.LogInformation(
+            "Adding copy history item for user {UserId}, type '{Type}', recipient '{RecipientName}'", 
+            userId, 
+            type, 
+            recipientName);
+        
         var recipientTypeEnum = ParseRecipientType(recipientType);
         var item = new CopyHistoryItem
         {
             Id = Guid.NewGuid(),
             UserId = userId,
+            OrganizationId = organizationId,
             Type = type,
             Copy = copy,
             RecipientName = recipientName,
@@ -45,7 +79,11 @@ public class CopyHistoryService : ICopyHistoryService
             RecipientId = recipientId,
             CreatedAtUtc = DateTime.UtcNow,
         };
+        
         var saved = await _repository.AddAsync(item, ct);
+        
+        _logger.LogInformation("Successfully added copy history item {ItemId}", saved.Id);
+        
         return Map(saved);
     }
 
@@ -68,5 +106,13 @@ public class CopyHistoryService : ICopyHistoryService
     };
 
     private static CopyHistoryItemDto Map(CopyHistoryItem e) =>
-        new CopyHistoryItemDto(e.Id, e.Type, e.Copy, e.RecipientName, RecipientTypeToString(e.RecipientType), e.RecipientId, e.CreatedAtUtc);
+        new CopyHistoryItemDto(
+            e.Id, 
+            e.Type, 
+            e.Copy, 
+            e.RecipientName, 
+            RecipientTypeToString(e.RecipientType), 
+            e.RecipientId, 
+            e.CreatedAtUtc
+        );
 }

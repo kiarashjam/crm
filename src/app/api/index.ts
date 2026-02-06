@@ -13,17 +13,25 @@ export {
   twoFactorDisable,
   type TwoFactorSetupResponse,
 } from './auth';
-export * from './authApi';
 export * from './contacts';
 export * from './deals';
 export * from './leads';
 export * from './companies';
+export * from './pipelines';
+export * from './dealStages';
+export * from './leadStatuses';
+export * from './leadSources';
 export * from './tasks';
 export * from './activities';
 export * from './reporting';
+export * from './search';
 export * from './templates';
 export { getCopyHistory, addToCopyHistory, getCopyHistoryStats } from './copyHistory';
-export * from './connection';
+export * from './organizations';
 export * from './settings';
 export * from './copyGenerator';
 export * from './crm';
+export * from './webhook';
+export * from './emailSequences';
+export * from './abTests';
+export * from './emailSender';

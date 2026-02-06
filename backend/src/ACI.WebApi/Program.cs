@@ -1,104 +1,248 @@
+using System.Reflection;
 using System.Text;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Infrastructure;
 using ACI.Infrastructure.Persistence;
+using ACI.WebApi.Middleware;
 using ACI.WebApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using Serilog;
+using Serilog.Events;
 
-var builder = WebApplication.CreateBuilder(args);
+// Configure Serilog early for startup logging
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithMachineName()
+    .Enrich.WithThreadId()
+    .WriteTo.Console(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File(
+        path: "logs/aci-.log",
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
 
-builder.Services.AddCors(options =>
+try
 {
-    options.AddDefaultPolicy(policy =>
+    Log.Information("Starting ACI CRM API");
+
+    var builder = WebApplication.CreateBuilder(args);
+
+    // Use Serilog for all logging
+    builder.Host.UseSerilog();
+
+    // CORS Configuration
+    builder.Services.AddCors(options =>
     {
-        policy.WithOrigins(builder.Configuration["Cors:AllowedOrigins"]?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? ["http://localhost:5173", "http://localhost:3000"])
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
-    });
-});
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new() { Title = "ACI API", Version = "v1" });
-    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-    {
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "JWT Bearer token",
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
-    });
-    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-    {
-        { new Microsoft.OpenApi.Models.OpenApiSecurityScheme { Reference = new Microsoft.OpenApi.Models.OpenApiReference { Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme, Id = "Bearer" } }, Array.Empty<string>() },
-    });
-});
-
-builder.Services.AddInfrastructure(builder.Configuration);
-
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IContactService, ContactService>();
-builder.Services.AddScoped<IDealService, DealService>();
-builder.Services.AddScoped<ILeadService, LeadService>();
-builder.Services.AddScoped<ICompanyService, CompanyService>();
-builder.Services.AddScoped<ITaskService, TaskService>();
-builder.Services.AddScoped<IActivityService, ActivityService>();
-builder.Services.AddScoped<ITemplateService, TemplateService>();
-builder.Services.AddScoped<ICopyHistoryService, CopyHistoryService>();
-builder.Services.AddScoped<ISettingsService, SettingsService>();
-builder.Services.AddScoped<IConnectionService, ConnectionService>();
-builder.Services.AddScoped<ICopyGeneratorApplicationService, CopyGeneratorService>();
-builder.Services.AddScoped<ISendToCrmService, SendToCrmService>();
-
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
-
-var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? "ACI-SuperSecretKey-ChangeInProduction-Min32Chars";
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ACI";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ACI";
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
+        options.AddDefaultPolicy(policy =>
         {
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
-            ValidIssuer = jwtIssuer,
-            ValidAudience = jwtAudience,
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-        };
+            policy.WithOrigins(builder.Configuration["Cors:AllowedOrigins"]?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"])
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        });
     });
-builder.Services.AddAuthorization();
 
-var app = builder.Build();
+    builder.Services.AddControllers();
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddProblemDetails();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
+    // Global Exception Handler
+    builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
+    // Enhanced Swagger Configuration
+    builder.Services.AddSwaggerGen(options =>
     {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "ACI API v1");
+        options.SwaggerDoc("v1", new OpenApiInfo
+        {
+            Title = "ACI CRM API",
+            Version = "v1",
+            Description = "API for the ACI Customer Relationship Management system. Provides endpoints for managing contacts, companies, leads, deals, tasks, activities, and more.",
+            Contact = new OpenApiContact
+            {
+                Name = "ACI Team",
+                Email = "support@aci-crm.com"
+            },
+            License = new OpenApiLicense
+            {
+                Name = "Proprietary"
+            }
+        });
+
+        // Include XML comments for better documentation
+        var xmlFilename = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+        var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFilename);
+        if (File.Exists(xmlPath))
+        {
+            options.IncludeXmlComments(xmlPath);
+        }
+
+        // JWT Bearer Authentication
+        options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        {
+            Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.\n\nExample: \"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"",
+            Name = "Authorization",
+            In = ParameterLocation.Header,
+            Type = SecuritySchemeType.ApiKey,
+            Scheme = "Bearer",
+            BearerFormat = "JWT"
+        });
+
+        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecurityScheme
+                {
+                    Reference = new OpenApiReference
+                    {
+                        Type = ReferenceType.SecurityScheme,
+                        Id = "Bearer"
+                    }
+                },
+                Array.Empty<string>()
+            }
+        });
+
+        // Organization Header
+        options.AddSecurityDefinition("OrganizationId", new OpenApiSecurityScheme
+        {
+            Description = "Organization ID header for multi-tenant operations",
+            Name = "X-Organization-Id",
+            In = ParameterLocation.Header,
+            Type = SecuritySchemeType.ApiKey
+        });
     });
+
+    // Infrastructure services (repositories, EF, etc.)
+    builder.Services.AddInfrastructure(builder.Configuration);
+
+    // Application services
+    builder.Services.AddScoped<IAuthService, AuthService>();
+    builder.Services.AddScoped<IContactService, ContactService>();
+    builder.Services.AddScoped<IDealService, DealService>();
+    builder.Services.AddScoped<ILeadService, LeadService>();
+    builder.Services.AddScoped<ICompanyService, CompanyService>();
+    builder.Services.AddScoped<ITaskService, TaskService>();
+    builder.Services.AddScoped<IActivityService, ActivityService>();
+    builder.Services.AddScoped<ITemplateService, TemplateService>();
+    builder.Services.AddScoped<ICopyHistoryService, CopyHistoryService>();
+    builder.Services.AddScoped<ISettingsService, SettingsService>();
+    builder.Services.AddScoped<IOrganizationService, ACI.Application.Services.OrganizationService>();
+    builder.Services.AddScoped<IInviteService, ACI.Application.Services.InviteService>();
+    builder.Services.AddScoped<IJoinRequestService, ACI.Application.Services.JoinRequestService>();
+    builder.Services.AddScoped<ICopyGeneratorApplicationService, CopyGeneratorService>();
+    builder.Services.AddScoped<ISendToCrmService, SendToCrmService>();
+    builder.Services.AddScoped<IPipelineService, PipelineService>();
+    builder.Services.AddScoped<IDealStageService, DealStageService>();
+    builder.Services.AddScoped<ILeadStatusService, LeadStatusService>();
+    builder.Services.AddScoped<ILeadSourceService, LeadSourceService>();
+    builder.Services.AddScoped<IGlobalSearchService, GlobalSearchService>();
+
+    // HTTP Context accessor for current user service
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+
+    // JWT Authentication
+    var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? "ACI-SuperSecretKey-ChangeInProduction-Min32Chars";
+    var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ACI";
+    var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ACI";
+
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+                ValidIssuer = jwtIssuer,
+                ValidAudience = jwtAudience,
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero,
+            };
+        });
+    builder.Services.AddAuthorization();
+
+    // Health Checks
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    builder.Services.AddHealthChecks()
+        .AddSqlServer(
+            connectionString ?? "Server=(localdb)\\mssqllocaldb;Database=ACI;Trusted_Connection=True;",
+            name: "database",
+            tags: ["db", "sql"]);
+
+    var app = builder.Build();
+
+    // Configure middleware pipeline
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "ACI CRM API v1");
+            c.RoutePrefix = "swagger";
+            c.DocumentTitle = "ACI CRM API Documentation";
+        });
+    }
+
+    // Global exception handler
+    app.UseExceptionHandler();
+
+    // Serilog request logging with enrichment
+    app.UseSerilogRequestLogging(options =>
+    {
+        options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+        {
+            diagnosticContext.Set("UserId", httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous");
+            diagnosticContext.Set("OrganizationId", httpContext.Request.Headers["X-Organization-Id"].FirstOrDefault() ?? "none");
+            diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+        };
+        options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+    });
+
+    app.UseHttpsRedirection();
+    app.UseCors();
+    app.UseAuthentication();
+    app.UseAuthorization();
+    
+    // Health check endpoint
+    app.MapHealthChecks("/health");
+    
+    app.MapControllers();
+
+    // Database migration and seeding
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        
+        Log.Information("Applying database migrations...");
+        await db.Database.MigrateAsync();
+        
+        Log.Information("Seeding database...");
+        await SeedData.SeedAsync(db, passwordHasher);
+    }
+
+    Log.Information("ACI CRM API started successfully");
+    app.Run();
 }
-
-app.UseHttpsRedirection();
-app.UseCors();
-app.UseAuthentication();
-app.UseAuthorization();
-app.MapControllers();
-
-using (var scope = app.Services.CreateScope())
+catch (Exception ex)
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
-    await db.Database.MigrateAsync();
-    await SeedData.SeedAsync(db, passwordHasher);
+    Log.Fatal(ex, "Application terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
 }
 
-app.Run();
+// Expose Program class for integration testing with WebApplicationFactory
+public partial class Program { }

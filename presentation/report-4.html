@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gap and Issues — Doc vs Backend vs Frontend — Cadence Cloud CRM</title>
+  <link rel="stylesheet" href="presentation.css" />
+</head>
+<body class="theme-report-4 deck-style-4">
+  <a href="index.html" class="back-link">← Back to presentation index</a>
+
+  <div class="slide-progress"><div class="slide-progress__bar"></div></div>
+
+  <div class="slide-deck">
+    <section class="slide slide--title active">
+      <div class="slide__content">
+        <span class="cloud-badge">Cloud CRM</span>
+        <h1>Gap and Issues Report</h1>
+        <p class="subtitle">Report 4 — Doc vs code · done · missing</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>At a glance</h2>
+        <p class="slide-intro">This report compares the documented vision (Report 01) with backend and frontend code: what matches, what is missing, and what is recommended.</p>
+        <ul class="kw-list badge-style">
+          <li><strong>Purpose:</strong> Doc vs backend vs frontend · gaps · recommendations</li>
+          <li><strong>Vision:</strong> Cloud CRM · no external CRM · organizations (create/join) · Connection removed</li>
+          <li><strong>Backend:</strong> Organization layer · Org APIs · no Connection API · Send to CRM = Cadence</li>
+          <li><strong>Frontend:</strong> Login → Organizations (create/join/open) → Onboarding → Dashboard </li>
+          <li><strong>Status:</strong> <span class="status-done">Route guard</span> · <span class="status-done">Copy</span> · <span class="status-planned">Org</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Target vision (doc)</h2>
+        <p class="slide-intro">From report 01: standalone CRM only; organizations (create/join, open org); owner and membership; data per org; no external CRM.</p>
+        <ul class="kw-list">
+          <li><strong>Standalone CRM only</strong> — Not based on or connected to other CRMs. No copy from, import to, or sync with Salesforce, HubSpot, or any other CRM. Cadence is the only CRM; all data stays in Cadence.</li>
+          <li><strong>Organizations</strong> — After login you create an organization or join one (request to join or accept invite). When you open an organization, you go to that org’s CRM — one salesperson with full access to that org’s data.</li>
+          <li><strong>Owner and membership</strong> — Each org has one owner. Owner can accept or reject requests to join and invite other sales agents by email.</li>
+          <li><strong>Data scope</strong> — Data is stored per organization; only members of that org see its data. You can be in several orgs and switch by opening the org you want.</li>
+          <li><strong>First-time flow</strong> — Sign in → create or join org → open org → (if new org) set company name and brand tone → Dashboard for that org.</li>
+          <li><strong>No external CRM</strong> — No “Connect your CRM” to Salesforce/HubSpot; Connection page “reserved for future use”; Settings show “Switch which org you’re working in”, not “CRM connection”.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content slide__content--wide">
+        <h2>Backend — state</h2>
+        <table>
+          <thead><tr><th>Area</th><th>State</th></tr></thead>
+          <tbody>
+            <tr><td>Data scope</td><td>UserId only · every entity per user</td></tr>
+            <tr><td>Entities</td><td>User · Settings · Organization · OrganizationMember · Invite · JoinRequest · Company · Contact · Deal · Lead · Task · Activity · Template · CopyHistory</td></tr>
+            <tr><td>Auth</td><td>JWT · login, register, 2FA · UserId only</td></tr>
+            <tr><td>Connection</td><td>Removed — no /api/connection; no CrmConnection</td></tr>
+            <tr><td>Send to CRM</td><td>CopyHistoryService only · no external push</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Backend — gaps</h2>
+        <p class="slide-intro">Doc vs backend: where they match and where backend is missing. No critical bugs; auth and UserId checks are consistent.</p>
+        <table class="table-compact">
+          <thead><tr><th>Doc says</th><th>Backend has</th><th>Gap</th></tr></thead>
+          <tbody>
+            <tr><td>Data per organization</td><td>Data scoped by UserId + OrganizationId when header set</td><td><span class="status-done">Done.</span> Org entity, OrgId on entities, org-scoped queries and create.</td></tr>
+            <tr><td>Create / join organization</td><td>Create org API; list my orgs; get by id</td><td><strong>Partial:</strong> Create and list orgs done. Join (invite/join-request) APIs not implemented.</td></tr>
+            <tr><td>Owner accepts/rejects requests, invites by email</td><td>Invite, JoinRequest entities exist</td><td><strong>Missing:</strong> No invite or join-request API endpoints.</td></tr>
+            <tr><td>No external CRM; no Connection page</td><td>CrmConnection and Connection API removed</td><td><strong>Done.</strong></td></tr>
+            <tr><td>Settings: “Switch which org”</td><td>Org list API (GET my orgs)</td><td><strong>Backend ready.</strong> Frontend needs org switcher and to send X-Organization-Id.</td></tr>
+          </tbody>
+        </table>
+        <p class="tagline">Backend — no critical bugs found. Controllers use [Authorize]; repositories filter by UserId; SendToCrmService writes to copy history only.</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content slide__content--wide">
+        <h2>Frontend — state</h2>
+        <table>
+          <thead><tr><th>Area</th><th>State</th></tr></thead>
+          <tbody>
+            <tr><td>Routes</td><td>/, login, organizations, onboarding, dashboard, … · no /connect</td></tr>
+            <tr><td>Flow</td><td>Login → Organizations (create/join/open) → Onboarding → Dashboard</td></tr>
+            <tr><td>Connection</td><td>Removed — no Connection page</td></tr>
+            <tr><td>Send to CRM</td><td>Save in Cadence</td></tr>
+            <tr><td>Auth guard</td><td>RequireAuth · unauthenticated → /login</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Frontend — gaps &amp; fixes</h2>
+        <p class="slide-intro">Doc vs frontend: create/join org and org switcher implemented; Connection removed; Settings has Organization section.</p>
+        <table class="table-compact">
+          <thead><tr><th>Doc says</th><th>Frontend has</th><th>Gap</th></tr></thead>
+          <tbody>
+            <tr><td>After login: create or join organization</td><td>/organizations page: create org, accept invite, open org</td><td><strong>Done.</strong></td></tr>
+            <tr><td>Open organization → that org’s CRM</td><td>Org switcher in Settings and AppHeader; X-Organization-Id sent</td><td><strong>Done.</strong></td></tr>
+            <tr><td>Owner invites by email, accepts/rejects requests</td><td>—</td><td><strong>Missing:</strong> No invite UI, no join-request UI, no owner actions.</td></tr>
+            <tr><td>No external CRM</td><td>Connection page and API removed; Cadence is the only CRM</td><td><strong>Done.</strong></td></tr>
+            <tr><td>Settings: Organization — switch org, view org name</td><td>Settings: “Organization” section, Cadence-only; no org switcher</td><td><strong>Partial:</strong> Copy updated; org switcher not yet in UI.</td></tr>
+            <tr><td>“Send to CRM” = save in Cadence</td><td>Label and copy updated: save to contact/deal in Cadence</td><td><strong>Addressed.</strong> Doc + Help clarify.</td></tr>
+            <tr><td>Route guard for protected routes</td><td>RequireAuth + ProtectedLayout</td><td><span class="status-done">Fixed.</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content">
+        <h2>Recommendations</h2>
+        <p class="slide-intro">To match an org-based vision: add Org/OrgId in backend and create/join org plus switcher in frontend. To keep current: doc and copy already describe single-user cloud; quick wins: route guard done, Help/Privacy can reinforce “Cadence = only CRM”.</p>
+        <ul class="kw-list">
+          <li><strong>Match org:</strong> Backend Org, OrgId · Frontend create/join, switcher</li>
+          <li><strong>Keep current:</strong> Organizations implemented · Connection removed · wording done</li>
+          <li><strong>Quick:</strong> <span class="status-done">Route guard</span> · Help/Privacy: Cadence = only CRM</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="slide__content slide__content--wide">
+        <h2>Implementation status</h2>
+        <table class="table-compact">
+          <thead><tr><th>Gap / item</th><th>Status</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td>Route guard (RequireAuth)</td><td><span class="status-done">Done</span></td><td>Protected routes redirect to /login when not authenticated.</td></tr>
+            <tr><td>Backend: Organization, OrganizationMember, Invite, JoinRequest</td><td><span class="status-done">Done</span></td><td>Entities + migration + OrganizationsController (list, create, get). Invite/JoinRequest APIs not yet implemented.</td></tr>
+            <tr><td>Backend: OrgId on data entities + backfill</td><td><span class="status-done">Done</span></td><td>Company, Contact, Deal, Lead, TaskItem, Activity, CopyHistoryItem have OrganizationId; backfill on create-org.</td></tr>
+            <tr><td>Backend: Current org (X-Organization-Id header)</td><td><span class="status-done">Done</span></td><td>ICurrentUserService exposes CurrentOrganizationId from header.</td></tr>
+            <tr><td>Backend: Data APIs scope by org</td><td><span class="status-done">Done</span></td><td>Repositories and services filter by OrganizationId when header set; controllers pass CurrentOrganizationId.</td></tr>
+            <tr><td>Frontend: Org flow (create/join, open org, switcher)</td><td><span class="status-planned">Not done</span></td><td>No org list/create/open; no org switcher; no X-Organization-Id sent on API calls.</td></tr>
+            <tr><td>Frontend: Owner invite + join requests UI</td><td><span class="status-planned">Not done</span></td><td>No invite or join-request UI in Settings.</td></tr>
+            <tr><td>Copy: Settings, Help, Privacy, Send to CRM</td><td><span class="status-done">Done</span></td><td>Connection removed; Settings “Organization”; Help/Privacy/SendToCrm clarify Cadence-only.</td></tr>
+            <tr><td>Docs 02, 03, PROJECT_ASPECTS</td><td><span class="status-done">Done</span></td><td>02, 03, and PROJECT_ASPECTS updated to align with 01 (org vision, Connection removed, org flow implemented).</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <nav class="slide-nav" aria-label="Slide navigation">
+    <button type="button" class="slide-nav__btn slide-nav__prev" aria-label="Previous slide">←</button>
+    <span class="slide-nav__counter"></span>
+    <button type="button" class="slide-nav__btn slide-nav__next" aria-label="Next slide">→</button>
+  </nav>
+
+  <script src="presentation.js"></script>
+</body>
+</html>

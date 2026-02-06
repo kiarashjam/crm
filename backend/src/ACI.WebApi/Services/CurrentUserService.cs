@@ -21,5 +21,14 @@ public sealed class CurrentUserService : ICurrentUserService
         }
     }
 
+    public Guid? CurrentOrganizationId
+    {
+        get
+        {
+            var header = _httpContextAccessor.HttpContext?.Request?.Headers["X-Organization-Id"].FirstOrDefault();
+            return Guid.TryParse(header, out var id) ? id : null;
+        }
+    }
+
     public bool IsAuthenticated => UserId.HasValue;
 }

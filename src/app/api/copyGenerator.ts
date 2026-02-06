@@ -1,6 +1,39 @@
 import type { GenerateCopyParams } from './types';
 import { isUsingRealApi, authFetchJson } from './apiClient';
 
+// Extended copy types including new ones
+export type ExtendedCopyTypeId = 
+  | 'sales-email' 
+  | 'follow-up' 
+  | 'crm-note' 
+  | 'deal-message' 
+  | 'workflow-message'
+  | 'linkedin-connect'
+  | 'linkedin-inmail'
+  | 'sms'
+  | 'call-script'
+  | 'meeting-agenda';
+
+export interface RecipientContext {
+  name?: string;
+  email?: string;
+  company?: string;
+  title?: string;
+  type?: 'lead' | 'contact' | 'deal';
+  lastActivity?: string;
+  dealStage?: string;
+  dealValue?: string;
+}
+
+export interface GenerateCopyWithRecipientParams extends GenerateCopyParams {
+  recipient?: RecipientContext;
+}
+
+export interface GenerateCopyResult {
+  body: string;
+  subject?: string;
+}
+
 const COPY_BY_TYPE_AND_GOAL: Record<string, string> = {
   'sales-email|Schedule a meeting': `Hi [First Name],
 
@@ -69,6 +102,70 @@ If there's anything we can do to support you or if you'd like to schedule a quic
 
 Best,
 [Your Name]`,
+  // LinkedIn Connect
+  'linkedin-connect|Schedule a meeting': `Hi [First Name],
+
+I noticed your work at [Company Name] and thought it would be great to connect.
+
+I'd love to share some ideas that have helped similar companies achieve impressive results.
+
+Looking forward to connecting!`,
+  'linkedin-connect|Share resources': `Hi [First Name],
+
+I came across your profile and thought you might find our recent research on [topic] valuable.
+
+Would love to connect and share!`,
+  // LinkedIn InMail
+  'linkedin-inmail|Schedule a meeting': `Hi [First Name],
+
+I hope this message finds you well. I've been following [Company Name]'s growth and believe we could add significant value to your team.
+
+Would you be open to a 15-minute call to explore how we've helped similar companies?
+
+Best regards,
+[Your Name]`,
+  // SMS
+  'sms|Schedule a meeting': `Hi [First Name], this is [Your Name]. Quick question - do you have 15 min this week to chat about [topic]? Let me know what works!`,
+  'sms|Follow up after demo': `Hi [First Name]! Thanks for the demo. Any questions I can help with? Happy to hop on a quick call.`,
+  'sms|Check in on progress': `Hey [First Name], just checking in on [topic]. Any updates on your end?`,
+  // Call Script
+  'call-script|Schedule a meeting': `CALL SCRIPT: Schedule Meeting
+
+OPENING:
+"Hi [First Name], this is [Your Name] from [Company]. Do you have a quick moment?"
+
+IF YES:
+"Great! I'm reaching out because we've helped companies like [Company Name] [key benefit]. I'd love to share how in a brief 15-minute call. Would [Day] or [Day] work better for you?"
+
+HANDLE OBJECTIONS:
+- "I'm busy" → "Totally understand. What's a better time? Even 10 minutes could be valuable."
+- "Send info" → "Happy to! What's most important for you to see - ROI data, case studies, or feature overview?"
+
+CLOSE:
+"Perfect, I'll send a calendar invite for [time]. Looking forward to it!"`,
+  // Meeting Agenda
+  'meeting-agenda|Follow up after demo': `MEETING AGENDA: Follow-up Discussion
+
+Date: [Date]
+Time: [Time]
+Attendees: [Names]
+
+OBJECTIVES:
+1. Address questions from demo
+2. Discuss implementation timeline
+3. Align on next steps
+
+AGENDA:
+1. Recap of demo highlights (5 min)
+2. Q&A and concerns (15 min)
+3. Implementation overview (10 min)
+4. Pricing and timeline discussion (10 min)
+5. Next steps and action items (5 min)
+
+PREPARATION:
+- Review demo notes
+- Prepare implementation timeline
+- Have pricing options ready`,
 };
 
 const DEFAULT_COPY = `Hi [First Name],
@@ -122,4 +219,414 @@ export async function generateCopy(params: GenerateCopyParams): Promise<string> 
     text = text + "\n\nI'm also happy to share case studies or arrange a deeper technical discussion if that would be helpful.";
   }
   return text;
+}
+
+/** Generate copy with recipient context for personalization. */
+export async function generateCopyWithRecipient(params: GenerateCopyWithRecipientParams): Promise<GenerateCopyResult> {
+  if (isUsingRealApi()) {
+    const res = await authFetchJson<{ body: string; subject?: string }>('/api/copy/generate-with-recipient', {
+      method: 'POST',
+      body: JSON.stringify({
+        copyTypeId: params.copyTypeId,
+        goal: params.goal,
+        context: params.context ?? null,
+        length: params.length ?? 'medium',
+        companyName: params.companyName ?? null,
+        brandTone: params.brandTone ?? null,
+        recipient: params.recipient ?? null,
+      }),
+    });
+    return { body: res?.body ?? '', subject: res?.subject };
+  }
+  
+  // Mock implementation
+  await delay(1500 + Math.random() * 500);
+  let text = await generateCopy(params);
+  
+  // Personalize with recipient data
+  if (params.recipient) {
+    if (params.recipient.name) {
+      const firstName = params.recipient.name.split(' ')[0] || '';
+      text = text.replace(/\[First Name\]/g, firstName);
+      text = text.replace(/\[Contact Name\]/g, params.recipient.name);
+    }
+    if (params.recipient.company) {
+      text = text.replace(/\[Company Name\]/g, params.recipient.company);
+    }
+  }
+  
+  // Generate subject for email types
+  let subject: string | undefined;
+  if (params.copyTypeId.includes('email')) {
+    const company = params.recipient?.company ?? '[Company]';
+    subject = params.goal === 'Schedule a meeting' 
+      ? `Meeting request: ${company} partnership`
+      : `Following up: ${company}`;
+  }
+  
+  return { body: text, subject };
+}
+
+/** Rewrite copy with a different tone/style. */
+export async function rewriteCopy(originalCopy: string, adjustment: 'shorter' | 'friendlier' | 'persuasive'): Promise<string> {
+  if (isUsingRealApi()) {
+    const res = await authFetchJson<{ copy: string }>('/api/copy/rewrite', {
+      method: 'POST',
+      body: JSON.stringify({
+        originalCopy,
+        adjustment,
+      }),
+    });
+    return res?.copy ?? originalCopy;
+  }
+  
+  // Mock implementation
+  await delay(1000 + Math.random() * 500);
+  
+  if (adjustment === 'shorter') {
+    return makeShorter(originalCopy);
+  } else if (adjustment === 'friendlier') {
+    return makeFriendlier(originalCopy);
+  } else if (adjustment === 'persuasive') {
+    return makePersuasive(originalCopy);
+  }
+  
+  return originalCopy;
+}
+
+function makeShorter(text: string): string {
+  const lines = text.split('\n').filter(line => {
+    const trimmed = line.trim();
+    // Skip filler phrases
+    if (trimmed.startsWith('I hope this') || trimmed.startsWith('I wanted to reach out')) {
+      return false;
+    }
+    return true;
+  });
+  
+  // Limit bullet points
+  let bulletCount = 0;
+  const result = lines.filter(line => {
+    if (line.trim().startsWith('•') || line.trim().startsWith('-')) {
+      bulletCount++;
+      return bulletCount <= 2;
+    }
+    return true;
+  });
+  
+  let final = result.join('\n').trim();
+  if (!final.includes('Best') && !final.includes('[Your Name]')) {
+    final += '\n\nBest,\n[Your Name]';
+  }
+  
+  return final;
+}
+
+function makeFriendlier(text: string): string {
+  let result = text;
+  
+  // Add greeting emoji
+  if (result.startsWith('Hi ') || result.startsWith('Hello ')) {
+    result = result.replace(/^(Hi|Hello) /, 'Hey ');
+    const firstLineEnd = result.indexOf('\n');
+    if (firstLineEnd > 0 && !result.slice(0, firstLineEnd).includes('👋')) {
+      result = result.slice(0, firstLineEnd) + ' 👋' + result.slice(firstLineEnd);
+    }
+  }
+  
+  // Replace formal phrases
+  result = result.replace(/I hope this email finds you well/gi, "Hope you're having a great day");
+  result = result.replace(/I wanted to reach out/gi, 'Wanted to connect');
+  result = result.replace(/Best regards/gi, 'Cheers');
+  result = result.replace(/Looking forward to connecting/gi, "Can't wait to chat");
+  result = result.replace(/Please let me know/gi, 'Just let me know');
+  result = result.replace(/Would you be available/gi, 'Any chance you\'re free');
+  
+  // Add emojis to bullet points
+  result = result.replace(/• Increase productivity/gi, '• 🚀 Boost productivity');
+  result = result.replace(/• Reduce operational costs/gi, '• 💰 Cut costs');
+  result = result.replace(/• Streamline workflows/gi, '• ⚡ Smoother workflows');
+  
+  return result;
+}
+
+function makePersuasive(text: string): string {
+  let result = text;
+  
+  // Strengthen opening
+  result = result.replace(
+    /I wanted to reach out to see if you'd be interested in/gi,
+    "I'm reaching out because I believe you're missing out on"
+  );
+  
+  // Add urgency
+  result = result.replace(/next week/gi, 'this week');
+  result = result.replace(/Would you be available/gi, 'Are you available');
+  
+  // Strengthen value props
+  result = result.replace(/by 40%/gi, 'by 40% within 90 days');
+  result = result.replace(/by 25%/gi, 'by 25% in the first quarter');
+  
+  // Strengthen closing
+  result = result.replace(
+    /Looking forward to connecting/gi,
+    'The sooner we connect, the sooner you\'ll see results. I look forward to your response'
+  );
+  
+  // Add FOMO
+  if (!result.includes('competitors') && result.length < 1500) {
+    const closingIndex = result.lastIndexOf('Best');
+    if (closingIndex > 0) {
+      result = result.slice(0, closingIndex) + 
+        "\nYour competitors aren't waiting. Neither should you.\n\n" + 
+        result.slice(closingIndex);
+    }
+  }
+  
+  return result;
+}
+
+// ============================================
+// MULTI-LANGUAGE SUPPORT
+// ============================================
+
+export type SupportedLanguage = 
+  | 'en' | 'es' | 'fr' | 'de' | 'it' | 'pt' | 'nl' 
+  | 'zh' | 'ja' | 'ko' | 'ar' | 'ru' | 'hi' | 'pl' 
+  | 'tr' | 'sv' | 'no' | 'da' | 'fi';
+
+export const SUPPORTED_LANGUAGES: { code: SupportedLanguage; name: string }[] = [
+  { code: 'en', name: 'English' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'fr', name: 'French' },
+  { code: 'de', name: 'German' },
+  { code: 'it', name: 'Italian' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'nl', name: 'Dutch' },
+  { code: 'zh', name: 'Chinese (Simplified)' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'ko', name: 'Korean' },
+  { code: 'ar', name: 'Arabic' },
+  { code: 'ru', name: 'Russian' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'pl', name: 'Polish' },
+  { code: 'tr', name: 'Turkish' },
+  { code: 'sv', name: 'Swedish' },
+  { code: 'no', name: 'Norwegian' },
+  { code: 'da', name: 'Danish' },
+  { code: 'fi', name: 'Finnish' },
+];
+
+export interface GenerateCopyMultiLanguageParams extends GenerateCopyWithRecipientParams {
+  targetLanguage: SupportedLanguage;
+}
+
+/** Generate copy in a specific language. */
+export async function generateCopyInLanguage(params: GenerateCopyMultiLanguageParams): Promise<GenerateCopyResult> {
+  if (isUsingRealApi()) {
+    const res = await authFetchJson<{ body: string; subject?: string }>('/api/copy/generate-multilang', {
+      method: 'POST',
+      body: JSON.stringify({
+        copyTypeId: params.copyTypeId,
+        goal: params.goal,
+        brandTone: params.brandTone ?? null,
+        length: params.length ?? 'medium',
+        targetLanguage: params.targetLanguage,
+        recipient: params.recipient ?? null,
+        crmObject: null,
+      }),
+    });
+    return { body: res?.body ?? '', subject: res?.subject };
+  }
+  
+  // Mock: return English with a note
+  const result = await generateCopyWithRecipient(params);
+  const langName = SUPPORTED_LANGUAGES.find(l => l.code === params.targetLanguage)?.name ?? params.targetLanguage;
+  return {
+    body: result.body + `\n\n[Note: Multi-language generation requires AI. Please translate to ${langName}.]`,
+    subject: result.subject,
+  };
+}
+
+// ============================================
+// SPAM CHECK
+// ============================================
+
+export interface SpamCheckResult {
+  score: number; // 0-100, lower is better
+  rating: 'Good' | 'Warning' | 'Spam Risk';
+  issues: SpamIssue[];
+}
+
+export interface SpamIssue {
+  type: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+}
+
+/** Check copy for spam score. */
+export async function checkSpamScore(subject: string, body: string): Promise<SpamCheckResult> {
+  if (isUsingRealApi()) {
+    const res = await authFetchJson<SpamCheckResult>('/api/spamcheck', {
+      method: 'POST',
+      body: JSON.stringify({ subject, body }),
+    });
+    return res;
+  }
+  
+  // Mock implementation
+  await delay(500);
+  const issues: SpamIssue[] = [];
+  let score = 0;
+  
+  const combined = `${subject} ${body}`;
+  const spamWords = ['free', 'winner', 'urgent', 'act now', 'limited time', 'click here', 'guaranteed'];
+  const foundSpam = spamWords.filter(w => combined.toLowerCase().includes(w));
+  
+  if (foundSpam.length > 0) {
+    score += foundSpam.length * 10;
+    issues.push({
+      type: 'spam_words',
+      description: `Contains spam trigger words: ${foundSpam.join(', ')}`,
+      severity: foundSpam.length > 3 ? 'high' : 'medium',
+    });
+  }
+  
+  const exclamations = (combined.match(/!/g) || []).length;
+  if (exclamations > 3) {
+    score += exclamations * 3;
+    issues.push({
+      type: 'punctuation',
+      description: `Too many exclamation marks (${exclamations})`,
+      severity: exclamations > 5 ? 'high' : 'low',
+    });
+  }
+  
+  const capsRatio = combined.replace(/[^a-zA-Z]/g, '').split('').filter(c => c === c.toUpperCase()).length / 
+    combined.replace(/[^a-zA-Z]/g, '').length || 0;
+  if (capsRatio > 0.3) {
+    score += 20;
+    issues.push({
+      type: 'caps',
+      description: `Excessive use of capital letters (${Math.round(capsRatio * 100)}%)`,
+      severity: capsRatio > 0.5 ? 'high' : 'medium',
+    });
+  }
+  
+  score = Math.min(100, Math.max(0, score));
+  
+  return {
+    score,
+    rating: score < 20 ? 'Good' : score < 50 ? 'Warning' : 'Spam Risk',
+    issues,
+  };
+}
+
+// ============================================
+// ANALYTICS
+// ============================================
+
+export interface CopyAnalyticsSummary {
+  totalGenerations: number;
+  totalRewrites: number;
+  totalCopied: number;
+  totalSent: number;
+  totalResponses: number;
+  overallResponseRate: number;
+  byType: CopyTypeAnalytics[];
+  dailyTrend: DailyAnalytics[];
+}
+
+export interface CopyTypeAnalytics {
+  copyTypeId: string;
+  generationCount: number;
+  sendCount: number;
+  responseCount: number;
+  responseRate: number;
+}
+
+export interface DailyAnalytics {
+  date: string;
+  generationCount: number;
+  sendCount: number;
+  responseCount: number;
+}
+
+export interface TrackCopyEventParams {
+  copyHistoryId?: string;
+  eventType: 'copy' | 'send' | 'response';
+  copyTypeId?: string;
+  recipientEmail?: string;
+}
+
+/** Get copy analytics summary. */
+export async function getAnalyticsSummary(from?: Date, to?: Date): Promise<CopyAnalyticsSummary> {
+  if (isUsingRealApi()) {
+    const params = new URLSearchParams();
+    if (from) params.append('from', from.toISOString());
+    if (to) params.append('to', to.toISOString());
+    const url = `/api/analytics/summary${params.toString() ? '?' + params.toString() : ''}`;
+    return await authFetchJson<CopyAnalyticsSummary>(url);
+  }
+  
+  // Mock data
+  await delay(500);
+  return {
+    totalGenerations: 127,
+    totalRewrites: 34,
+    totalCopied: 89,
+    totalSent: 56,
+    totalResponses: 12,
+    overallResponseRate: 21.4,
+    byType: [
+      { copyTypeId: 'sales-email', generationCount: 45, sendCount: 32, responseCount: 8, responseRate: 25 },
+      { copyTypeId: 'follow-up', generationCount: 38, sendCount: 15, responseCount: 3, responseRate: 20 },
+      { copyTypeId: 'linkedin-connect', generationCount: 24, sendCount: 9, responseCount: 1, responseRate: 11.1 },
+    ],
+    dailyTrend: Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      const isoString = date.toISOString();
+      const dateStr = isoString.split('T')[0]!; // toISOString() always contains 'T', so [0] is always defined
+      return {
+        date: dateStr,
+        generationCount: Math.floor(Math.random() * 20) + 5,
+        sendCount: Math.floor(Math.random() * 10) + 2,
+        responseCount: Math.floor(Math.random() * 3),
+      };
+    }),
+  };
+}
+
+/** Track a copy event (copy, send, response). */
+export async function trackCopyEvent(params: TrackCopyEventParams): Promise<void> {
+  if (isUsingRealApi()) {
+    await authFetchJson('/api/analytics/track', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    return;
+  }
+  await delay(100);
+  // Mock: no-op
+}
+
+/** Record a conversion (response/meeting/deal). */
+export async function recordConversion(params: {
+  copyHistoryId?: string;
+  copyTypeId: string;
+  recipientEmail?: string;
+  recipientName?: string;
+  conversionType: 'Replied' | 'Meeting' | 'Call' | 'Demo' | 'Deal' | 'Other';
+  notes?: string;
+}): Promise<void> {
+  if (isUsingRealApi()) {
+    await authFetchJson('/api/analytics/conversions', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    return;
+  }
+  await delay(200);
+  // Mock: no-op
 }

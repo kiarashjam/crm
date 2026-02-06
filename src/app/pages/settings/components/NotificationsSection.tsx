@@ -1,0 +1,148 @@
+import { Bell, Mail } from 'lucide-react';
+import type { UserSettings, UpdateUserSettingsRequest, EmailDigestFrequencyType } from '@/app/api/types';
+
+const EMAIL_DIGEST_OPTIONS: { value: EmailDigestFrequencyType; label: string }[] = [
+  { value: 'never', label: 'Never' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+];
+
+type ToggleSwitchProps = {
+  checked: boolean;
+  onChange: (val: boolean) => void;
+  label: string;
+  description: string;
+};
+
+function ToggleSwitch({ checked, onChange, label, description }: ToggleSwitchProps) {
+  return (
+    <label className="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+      <div>
+        <p className="font-medium text-slate-900">{label}</p>
+        <p className="text-sm text-slate-500">{description}</p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`relative w-12 h-7 rounded-full transition-colors ${checked ? 'bg-orange-600' : 'bg-slate-300'}`}
+      >
+        <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${checked ? 'translate-x-5' : ''}`} />
+      </button>
+    </label>
+  );
+}
+
+export type NotificationsSectionProps = {
+  settings: UserSettings;
+  updateSettings: (updates: UpdateUserSettingsRequest) => void;
+};
+
+export function NotificationsSection({
+  settings,
+  updateSettings,
+}: NotificationsSectionProps) {
+  return (
+    <div className="p-6 space-y-8">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+          <Bell className="w-5 h-5 text-orange-600" />
+          Notifications
+        </h2>
+        <p className="text-slate-600 text-sm mt-1">Manage how you receive notifications</p>
+      </div>
+
+      {/* Email Notifications */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <Mail className="w-5 h-5 text-slate-400" />
+          <h3 className="font-semibold text-slate-900">Email Notifications</h3>
+        </div>
+        <div className="space-y-3">
+          <ToggleSwitch
+            checked={settings.emailNotificationsEnabled}
+            onChange={(val) => updateSettings({ emailNotificationsEnabled: val })}
+            label="Enable Email Notifications"
+            description="Receive notifications via email"
+          />
+          {settings.emailNotificationsEnabled && (
+            <div className="pl-4 border-l-2 border-orange-200 space-y-3">
+              <ToggleSwitch
+                checked={settings.emailOnNewLead}
+                onChange={(val) => updateSettings({ emailOnNewLead: val })}
+                label="New Lead Alerts"
+                description="When a new lead is assigned to you"
+              />
+              <ToggleSwitch
+                checked={settings.emailOnDealUpdate}
+                onChange={(val) => updateSettings({ emailOnDealUpdate: val })}
+                label="Deal Updates"
+                description="When deals you're assigned to are updated"
+              />
+              <ToggleSwitch
+                checked={settings.emailOnTaskDue}
+                onChange={(val) => updateSettings({ emailOnTaskDue: val })}
+                label="Task Reminders"
+                description="When tasks are due soon"
+              />
+              <ToggleSwitch
+                checked={settings.emailOnTeamMention}
+                onChange={(val) => updateSettings({ emailOnTeamMention: val })}
+                label="Team Mentions"
+                description="When someone mentions you"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Email Digest */}
+      <div>
+        <label htmlFor="emailDigest" className="block text-sm font-medium text-slate-700 mb-2">
+          Email Digest Frequency
+        </label>
+        <select
+          id="emailDigest"
+          value={settings.emailDigestFrequency}
+          onChange={(e) => updateSettings({ emailDigestFrequency: e.target.value as EmailDigestFrequencyType })}
+          className="w-full sm:w-64 h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
+        >
+          {EMAIL_DIGEST_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        <p className="text-xs text-slate-500 mt-1">Receive a summary of your CRM activity</p>
+      </div>
+
+      {/* In-App Notifications */}
+      <div className="pt-6 border-t border-slate-200">
+        <div className="flex items-center gap-2 mb-4">
+          <Bell className="w-5 h-5 text-slate-400" />
+          <h3 className="font-semibold text-slate-900">In-App Notifications</h3>
+        </div>
+        <div className="space-y-3">
+          <ToggleSwitch
+            checked={settings.inAppNotificationsEnabled}
+            onChange={(val) => updateSettings({ inAppNotificationsEnabled: val })}
+            label="Enable In-App Notifications"
+            description="Show notifications within the app"
+          />
+          <ToggleSwitch
+            checked={settings.inAppSoundEnabled}
+            onChange={(val) => updateSettings({ inAppSoundEnabled: val })}
+            label="Notification Sounds"
+            description="Play a sound for new notifications"
+          />
+          <ToggleSwitch
+            checked={settings.browserNotificationsEnabled}
+            onChange={(val) => updateSettings({ browserNotificationsEnabled: val })}
+            label="Browser Notifications"
+            description="Show desktop notifications (requires permission)"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

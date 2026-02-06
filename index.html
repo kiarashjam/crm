@@ -5,20 +5,43 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cadence — Sales at the right pace</title>
-    <meta name="description" content="Full CRM and AI copy in one place. Manage leads, deals, and contacts—generate and send on-brand copy with one click. Find your rhythm." />
+    <meta name="description" content="Full CRM with Intelligent Sales Writer. Manage leads, deals, and contacts—generate and send on-brand copy with one click. Find your rhythm." />
 
     <!-- Open Graph / Facebook, LinkedIn, Slack, Discord, iMessage -->
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Cadence — Sales at the right pace" />
-    <meta property="og:description" content="Full CRM and AI copy in one place. Manage leads, deals, and contacts—generate and send on-brand copy with one click. Find your rhythm." />
+    <meta property="og:description" content="Full CRM with Intelligent Sales Writer. Manage leads, deals, and contacts—generate and send on-brand copy with one click. Find your rhythm." />
     <meta property="og:image" content="/favicon.svg" />
 
     <!-- Twitter / X -->
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="Cadence — Sales at the right pace" />
-    <meta name="twitter:description" content="Full CRM and AI copy in one place. Manage leads, deals, and contacts—generate and send on-brand copy with one click. Find your rhythm." />
+    <meta name="twitter:description" content="Full CRM with Intelligent Sales Writer. Manage leads, deals, and contacts—generate and send on-brand copy with one click. Find your rhythm." />
   </head>
   <body>
+    <!-- Prevent flash of wrong theme -->
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('crm_appearance_settings');
+          if (stored) {
+            var settings = JSON.parse(stored);
+            var mode = settings.themeMode || settings.theme || 'system';
+            var preset = settings.themePreset || 'default';
+            var forceDarkPresets = ['midnight', 'nord', 'dracula'];
+            var isDark = mode === 'dark' || 
+              (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) ||
+              forceDarkPresets.includes(preset);
+            if (isDark) {
+              document.documentElement.classList.add('dark');
+            }
+            document.documentElement.setAttribute('data-theme', preset);
+          } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

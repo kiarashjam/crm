@@ -12,9 +12,17 @@ public class Template : Common.BaseEntity
     public string Category { get; set; } = string.Empty;
     public CopyTypeId CopyTypeId { get; set; }
     public string Goal { get; set; } = string.Empty;
+    public string? Content { get; set; } // Optional: Pre-written template content
+    public string? BrandTone { get; set; } // professional, friendly, persuasive
+    public string? Length { get; set; } // short, medium, long
     public int UseCount { get; set; }
     public Guid? UserId { get; set; }
+    public Guid? OrganizationId { get; set; }
+    public bool IsSharedWithOrganization { get; set; } // Team sharing
+    public bool IsSystemTemplate { get; set; } // System default templates
     public DateTime CreatedAtUtc { get; set; }
+    public DateTime? UpdatedAtUtc { get; set; }
 
     public User? User { get; set; }
+    public Organization? Organization { get; set; }
 }

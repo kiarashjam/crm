@@ -11,6 +11,12 @@ internal sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
         builder.ToTable("Companies");
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).HasMaxLength(256).IsRequired();
+        builder.Property(e => e.Domain).HasMaxLength(256);
+        builder.Property(e => e.Industry).HasMaxLength(128);
+        builder.Property(e => e.Size).HasMaxLength(64);
         builder.HasOne(e => e.User).WithMany(u => u.Companies).HasForeignKey(e => e.UserId);
+        builder.HasOne(e => e.Organization).WithMany().HasForeignKey(e => e.OrganizationId).IsRequired(false);
+        builder.HasOne(e => e.UpdatedByUser).WithMany().HasForeignKey(e => e.UpdatedByUserId).IsRequired(false);
+        builder.HasIndex(e => e.OrganizationId);
     }
 }

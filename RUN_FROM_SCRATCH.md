@@ -13,7 +13,7 @@ This report explains how to run the CRM **from scratch** on your machine—witho
 | **Backend API** | Optional. If `VITE_API_URL` is not set, the frontend uses **demo mode**: mock data and localStorage; no backend or database needed. |
 | **Database** | Optional. Only needed when using the real backend (Option B). Default is **LocalDB** or **Docker** on your machine—no cloud DB required. |
 | **Auth** | Self-contained. **Demo mode:** frontend-only (demo user in localStorage). **Full stack:** backend issues its own JWT; no Google/OAuth or external identity provider required. |
-| **Copy generation** | Template-based in-process; no external LLM or API call required. |
+| **Intelligent Sales Writer** | Template-based in-process; no external LLM or API call required. |
 | **External CRM** | Not required. “Connect your CRM” on the Connection page is a **local setting** (connection status stored per user); no third-party CRM is required to use the app. |
 
 You can run the entire CRM **on one machine** with no internet dependency for core features (except npm/dotnet install and optional deployment).
@@ -36,7 +36,7 @@ You do **not** need to connect the CRM “from somewhere.” You can ignore `DEP
 ### Option A: Demo mode only (frontend + mock data)
 
 - **No backend, no database.**  
-- Good for: trying the UI, flows, and copy generation without setting up anything else.
+- Good for: trying the UI, flows, and Intelligent Sales Writer without setting up anything else.
 
 **Steps:**
 

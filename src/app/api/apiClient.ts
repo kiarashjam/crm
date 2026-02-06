@@ -4,7 +4,7 @@
  * when present; 401 from the backend clears session.
  */
 
-import { clearSession, getAuthToken } from '@/app/lib/auth';
+import { clearSession, getAuthToken, getCurrentOrganizationId } from '@/app/lib/auth';
 
 export function getApiBaseUrl(): string | undefined {
   const url = import.meta.env.VITE_API_URL;
@@ -31,6 +31,8 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
   if (!skipAuth) {
     const token = getAuthToken();
     if (token) headers.set('Authorization', `Bearer ${token}`);
+    const orgId = getCurrentOrganizationId();
+    if (orgId) headers.set('X-Organization-Id', orgId);
   }
   if (headers.get('Content-Type') == null && (init.body != null && typeof init.body === 'string')) {
     headers.set('Content-Type', 'application/json');

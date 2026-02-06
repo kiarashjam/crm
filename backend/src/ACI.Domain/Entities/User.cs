@@ -24,7 +24,7 @@ public class User : Common.BaseEntity
     public DateTime? LastLoginAtUtc { get; set; }
 
     public UserSettings? Settings { get; set; }
-    public CrmConnection? CrmConnection { get; set; }
+    public ICollection<OrganizationMember> OrganizationMemberships { get; set; } = new List<OrganizationMember>();
     public ICollection<Company> Companies { get; set; } = new List<Company>();
     public ICollection<Contact> Contacts { get; set; } = new List<Contact>();
     public ICollection<Deal> Deals { get; set; } = new List<Deal>();

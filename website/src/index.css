@@ -3,10 +3,15 @@
 @theme {
   --font-sans: "DM Sans", system-ui, sans-serif;
   --font-display: "Outfit", system-ui, sans-serif;
+  /* Primary Brand: Orange/Coral */
   --color-brand: #ff7a59;
   --color-brand-dark: #e85d3a;
   --color-brand-light: #ff9b80;
   --color-aci: #ff7a59;
+  /* Secondary Brand: Teal */
+  --color-brand-secondary: #14b8a6;
+  --color-brand-secondary-dark: #0d9488;
+  --color-brand-secondary-light: #5eead4;
 }
 
 body {

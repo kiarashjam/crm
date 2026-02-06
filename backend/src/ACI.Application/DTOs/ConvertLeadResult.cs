@@ -1,3 +1,3 @@
 namespace ACI.Application.DTOs;
 
-public record ConvertLeadResult(Guid? ContactId, Guid? DealId);
+public record ConvertLeadResult(Guid? CompanyId, Guid? ContactId, Guid? DealId);

@@ -71,23 +71,54 @@ Add as **Variable** (not Secret): **Settings → Secrets and variables → Actio
 
 ---
 
-## 4. Quick check
+## 4. OpenAI API Key (Optional - for Intelligent Sales Writer)
+
+The Intelligent Sales Writer works with templates by default. To enable AI-powered generation:
+
+### Local Development
+
+**Option 1: User Secrets (recommended)**
+```bash
+cd backend/src/ACI.WebApi
+dotnet user-secrets set "OpenAI:ApiKey" "sk-proj-your-key-here"
+```
+
+**Option 2: Environment Variable**
+```powershell
+$env:OpenAI__ApiKey = "sk-proj-your-key-here"
+```
+
+### Azure Deployment
+
+Add to **Azure Portal → Web Apps → \<your-backend\> → Configuration → Application settings**:
+
+| Name | Value |
+|------|-------|
+| `OpenAI__ApiKey` | Your OpenAI API key |
+| `OpenAI__Model` | `gpt-4o-mini` (or `gpt-4o` for better quality) |
+
+Or add as GitHub Secret and reference in deployment workflow.
+
+---
+
+## 5. Quick check
 
 - [ ] `AZURE_STATIC_WEB_APPS_API_TOKEN` added  
 - [ ] `AZURE_WEBAPP_NAME` added  
 - [ ] `AZURE_WEBAPP_PUBLISH_PROFILE` added (full XML)  
 - [ ] `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_SECRET` added  
 - [ ] `VITE_API_URL` added as **variable** (optional)
+- [ ] `OpenAI__ApiKey` added (optional, for Intelligent Sales Writer)
 
 ---
 
-## 5. Trigger deploy
+## 6. Trigger deploy
 
 Push to `main` or run **Actions → Build and deploy backend to Azure Web App → Run workflow**.
 
 ---
 
-## Legacy / other regions
+## 7. Legacy / other regions
 
 - **East US 2:** `./scripts/azure-create.ps1 -SqlAdminPassword '...'`
 - **Web App only** (existing RG/SQL): `./scripts/azure-create-webapp-only.ps1 -SqlAdminPassword '...' -SqlServerName "aci-sql-xxx" -WebAppName "aci-api-xxx"`

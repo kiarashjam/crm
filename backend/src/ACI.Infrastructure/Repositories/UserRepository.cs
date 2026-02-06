@@ -38,38 +38,57 @@ public sealed class UserRepository : IUserRepository
         var existing = await _db.UserSettings.FindAsync([settings.UserId], ct);
         if (existing != null)
         {
+            // Profile
             existing.CompanyName = settings.CompanyName;
+            existing.JobTitle = settings.JobTitle;
+            existing.AvatarUrl = settings.AvatarUrl;
+            existing.Phone = settings.Phone;
+            existing.Timezone = settings.Timezone;
+            existing.Language = settings.Language;
+            existing.Bio = settings.Bio;
+
+            // Brand
             existing.BrandTone = settings.BrandTone;
+            existing.EmailSignature = settings.EmailSignature;
+            existing.DefaultEmailSubjectPrefix = settings.DefaultEmailSubjectPrefix;
+
+            // Appearance
+            existing.Theme = settings.Theme;
+            existing.DataDensity = settings.DataDensity;
+            existing.SidebarCollapsed = settings.SidebarCollapsed;
+            existing.ShowWelcomeBanner = settings.ShowWelcomeBanner;
+
+            // Notifications
+            existing.EmailNotificationsEnabled = settings.EmailNotificationsEnabled;
+            existing.EmailOnNewLead = settings.EmailOnNewLead;
+            existing.EmailOnDealUpdate = settings.EmailOnDealUpdate;
+            existing.EmailOnTaskDue = settings.EmailOnTaskDue;
+            existing.EmailOnTeamMention = settings.EmailOnTeamMention;
+            existing.EmailDigestFrequency = settings.EmailDigestFrequency;
+            existing.InAppNotificationsEnabled = settings.InAppNotificationsEnabled;
+            existing.InAppSoundEnabled = settings.InAppSoundEnabled;
+            existing.BrowserNotificationsEnabled = settings.BrowserNotificationsEnabled;
+
+            // Defaults
+            existing.DefaultPipelineId = settings.DefaultPipelineId;
+            existing.DefaultLeadStatusId = settings.DefaultLeadStatusId;
+            existing.DefaultLeadSourceId = settings.DefaultLeadSourceId;
+            existing.DefaultFollowUpDays = settings.DefaultFollowUpDays;
+            existing.DefaultCurrency = settings.DefaultCurrency;
+
+            // Privacy
+            existing.ShowActivityStatus = settings.ShowActivityStatus;
+            existing.AllowAnalytics = settings.AllowAnalytics;
+
             existing.UpdatedAtUtc = settings.UpdatedAtUtc;
             _db.UserSettings.Update(existing);
         }
         else
         {
+            settings.CreatedAtUtc = DateTime.UtcNow;
             _db.UserSettings.Add(settings);
         }
         await _db.SaveChangesAsync(ct);
         return existing ?? settings;
-    }
-
-    public async Task<CrmConnection?> GetConnectionAsync(Guid userId, CancellationToken ct = default) =>
-        await _db.CrmConnections.FindAsync([userId], ct);
-
-    public async Task<CrmConnection> UpsertConnectionAsync(CrmConnection connection, CancellationToken ct = default)
-    {
-        var existing = await _db.CrmConnections.FindAsync([connection.UserId], ct);
-        if (existing != null)
-        {
-            existing.Connected = connection.Connected;
-            existing.AccountEmail = connection.AccountEmail;
-            existing.EncryptedToken = connection.EncryptedToken;
-            existing.ConnectedAtUtc = connection.ConnectedAtUtc;
-            existing.UpdatedAtUtc = connection.UpdatedAtUtc;
-            _db.CrmConnections.Update(existing);
-            await _db.SaveChangesAsync(ct);
-            return existing;
-        }
-        _db.CrmConnections.Add(connection);
-        await _db.SaveChangesAsync(ct);
-        return connection;
     }
 }

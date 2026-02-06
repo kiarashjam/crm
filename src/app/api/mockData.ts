@@ -38,12 +38,12 @@ const lastWeek = new Date(now);
 lastWeek.setDate(lastWeek.getDate() - 7);
 
 export const mockTasks: TaskItem[] = [
-  { id: '1', title: 'Follow up with Acme Corp', description: 'Send proposal and schedule call', dueDateUtc: tomorrow.toISOString(), completed: false, leadId: '1', dealId: '1' },
-  { id: '2', title: 'Prepare demo for TechStart', description: 'Custom demo deck', dueDateUtc: nextWeek.toISOString(), completed: false, dealId: '2' },
-  { id: '3', title: 'Send contract to Global Solutions', description: 'Final review', dueDateUtc: lastWeek.toISOString(), completed: true, dealId: '3' },
-  { id: '4', title: 'Call Jordan Lee', description: 'Intro call', dueDateUtc: tomorrow.toISOString(), completed: false, leadId: '2' },
-  { id: '5', title: 'Update CRM notes', description: 'Log last meeting', dueDateUtc: nextWeek.toISOString(), completed: false },
-  { id: '6', title: 'Overdue: Send follow-up email', description: 'Missed deadline', dueDateUtc: lastWeek.toISOString(), completed: false, leadId: '4' },
+  { id: '1', title: 'Follow up with Acme Corp', description: 'Send proposal and schedule call', dueDateUtc: tomorrow.toISOString(), status: 'in_progress', priority: 'high', completed: false, leadId: '1', dealId: '1' },
+  { id: '2', title: 'Prepare demo for TechStart', description: 'Custom demo deck', dueDateUtc: nextWeek.toISOString(), status: 'todo', priority: 'medium', completed: false, dealId: '2' },
+  { id: '3', title: 'Send contract to Global Solutions', description: 'Final review', dueDateUtc: lastWeek.toISOString(), status: 'completed', priority: 'high', completed: true, dealId: '3' },
+  { id: '4', title: 'Call Jordan Lee', description: 'Intro call', dueDateUtc: tomorrow.toISOString(), status: 'todo', priority: 'medium', completed: false, leadId: '2' },
+  { id: '5', title: 'Update CRM notes', description: 'Log last meeting', dueDateUtc: nextWeek.toISOString(), status: 'todo', priority: 'low', completed: false },
+  { id: '6', title: 'Overdue: Send follow-up email', description: 'Missed deadline', dueDateUtc: lastWeek.toISOString(), status: 'todo', priority: 'high', completed: false, leadId: '4' },
 ];
 
 export const mockActivities: Activity[] = [

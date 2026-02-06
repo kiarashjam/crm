@@ -28,7 +28,7 @@ export default function Onboarding() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-orange-50/80 to-slate-50 flex flex-col items-center justify-center px-[var(--page-padding)] py-12">
+    <div className="min-h-screen bg-gradient-to-b from-orange-50/80 to-slate-50 dark:from-slate-900 dark:to-slate-950 flex flex-col items-center justify-center px-[var(--page-padding)] py-12">
       <DemoBanner />
       <main id={MAIN_CONTENT_ID} className="w-full max-w-md flex-1 flex flex-col justify-center" tabIndex={-1}>
         <div className="text-center mb-8">
@@ -42,18 +42,18 @@ export default function Onboarding() {
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
           <div className="mb-6">
             <label htmlFor="company" className="block text-sm font-medium text-slate-700 mb-2">
-              Company Name
+              Brand / Company Name <span className="text-slate-400 font-normal">(for Sales Writer)</span>
             </label>
             <input
               type="text"
               id="company"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Enter your company name"
+              placeholder="e.g. Acme Inc"
               className="w-full h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-colors"
-              required
               autoComplete="organization"
             />
+            <p className="text-xs text-slate-500 mt-1.5">Used when AI generates marketing copy. You can skip this.</p>
           </div>
 
           <div className="mb-8">

@@ -1,12 +1,12 @@
 # Frontend App (Cadence)
 
-React + TypeScript SPA for **Cadence** — AI-powered copy generation for CRM (sales emails, follow-ups, CRM notes, deal messages, workflow messages).
+React + TypeScript SPA for **Cadence** — CRM with Intelligent Sales Writer (sales emails, follow-ups, CRM notes, deal messages, workflow messages).
 
 ## Structure
 
 | Folder / File | Purpose |
 |---------------|--------|
-| **`api/`** | API client: connection, contacts, copy generator, copy history, CRM, deals, messages, settings, templates, types |
+| **`api/`** | API client: connection, contacts, Intelligent Sales Writer, copy history, CRM, deals, messages, settings, templates, types |
 | **`components/`** | Shared UI: `AppHeader`, `EmptyState`, `LoadingSpinner`, `SkipLink`, `ui/` (shadcn-style primitives) |
 | **`lib/`** | Utilities (e.g. `auth.ts` for demo user) |
 | **`pages/`** | Route-level page components; see [pages/README.md](./pages/README.md) and [reports/FRONTEND_PAGES_REPORT.md](./reports/FRONTEND_PAGES_REPORT.md) |
@@ -19,7 +19,7 @@ Defined in `App.tsx` with React Router:
 - `/login` — Sign in (demo / Google)
 - `/connect` — CRM connection
 - `/onboarding` — Brand tone setup
-- `/dashboard` — Main copy generation
+- `/dashboard` — Intelligent Sales Writer
 - `/generated` — View/copy generated text
 - `/send` — Send copy to CRM (contact/deal)
 - `/templates` — Template library

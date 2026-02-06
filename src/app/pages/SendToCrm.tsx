@@ -6,11 +6,11 @@ import AppHeader from '@/app/components/AppHeader';
 import EmptyState from '@/app/components/EmptyState';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
-import { getContacts, getDeals, sendCopyToCrm } from '@/app/api';
-import type { Contact, Deal } from '@/app/api/types';
+import { getContacts, getDeals, getLeads, sendCopyToCrm } from '@/app/api';
+import type { Contact, Deal, Lead } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
 
-type ObjectType = 'contact' | 'deal' | 'workflow' | 'email';
+type ObjectType = 'contact' | 'deal' | 'lead' | 'workflow' | 'email';
 
 export default function SendToCrm() {
   const location = useLocation();
@@ -21,6 +21,7 @@ export default function SendToCrm() {
   const [objectType, setObjectType] = useState<ObjectType>('contact');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<{ id: string; name: string } | null>(null);
   const [isSent, setIsSent] = useState(false);
@@ -30,11 +31,12 @@ export default function SendToCrm() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getContacts(), getDeals()])
-      .then(([c, d]) => {
+    Promise.all([getContacts(), getDeals(), getLeads()])
+      .then(([c, d, l]) => {
         if (!cancelled) {
           setContacts(c);
           setDeals(d);
+          setLeads(l);
           setLoading(false);
         }
       })
@@ -58,6 +60,15 @@ export default function SendToCrm() {
       )
     : deals;
 
+  const filteredLeads = searchQuery.trim()
+    ? leads.filter(
+        (l) =>
+          l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          l.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (l.status && l.status.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+    : leads;
+
   const records = objectType === 'contact'
     ? filteredContacts.map((c) => ({ id: c.id, name: c.name, sub: c.email }))
     : objectType === 'deal'
@@ -66,7 +77,13 @@ export default function SendToCrm() {
           name: d.name,
           sub: d.stage ? `${d.value} · ${d.stage}` : d.value,
         }))
-      : [];
+      : objectType === 'lead'
+        ? filteredLeads.map((l) => ({
+            id: l.id,
+            name: l.name,
+            sub: l.status ? `${l.email} · ${l.status}` : l.email,
+          }))
+        : [];
 
   const handleSend = async () => {
     if (!selectedRecord || !copy.trim()) return;
@@ -90,7 +107,7 @@ export default function SendToCrm() {
 
   if (!copy.trim() && !isSent) {
     return (
-      <div className="min-h-screen flex flex-col bg-slate-50">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           <h1 className="sr-only">Send to CRM</h1>
@@ -107,7 +124,7 @@ export default function SendToCrm() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
 
       <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
@@ -116,7 +133,7 @@ export default function SendToCrm() {
             <>
               <div className="mb-8">
                 <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-2">Send to CRM</h1>
-                <p className="text-slate-600">Choose where to save your generated copy</p>
+                <p className="text-slate-600">Save your generated copy to a contact or deal in Cadence</p>
               </div>
 
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
@@ -124,8 +141,9 @@ export default function SendToCrm() {
                   <label className="block text-sm font-medium text-slate-700 mb-3">
                     Select object type
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {[
+                      { id: 'lead' as const, label: 'Lead', sub: 'Sales prospect' },
                       { id: 'contact' as const, label: 'Contact', sub: 'Individual person' },
                       { id: 'deal' as const, label: 'Deal', sub: 'Sales opportunity' },
                       { id: 'workflow' as const, label: 'Workflow', sub: 'Automation sequence' },
@@ -151,7 +169,7 @@ export default function SendToCrm() {
                   </div>
                 </div>
 
-                {(objectType === 'contact' || objectType === 'deal') && (
+                {(objectType === 'contact' || objectType === 'deal' || objectType === 'lead') && (
                   <div className="mb-8">
                     <label className="block text-sm font-medium text-slate-700 mb-3">
                       Select specific record
@@ -216,7 +234,7 @@ export default function SendToCrm() {
                 <button
                   type="button"
                   onClick={handleSend}
-                  disabled={!selectedRecord || sending || (objectType !== 'contact' && objectType !== 'deal')}
+                  disabled={!selectedRecord || sending || (objectType !== 'contact' && objectType !== 'deal' && objectType !== 'lead')}
                   className="w-full h-12 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
                 >
                   {sending ? 'Sending...' : 'Confirm & Send'}

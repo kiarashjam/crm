@@ -4,10 +4,26 @@ namespace ACI.Application.Interfaces;
 
 public interface IDealRepository
 {
-    Task<IReadOnlyList<Deal>> GetByUserIdAsync(Guid userId, CancellationToken ct = default);
-    Task<IReadOnlyList<Deal>> SearchAsync(Guid userId, string query, CancellationToken ct = default);
-    Task<Deal?> GetByIdAsync(Guid id, Guid userId, CancellationToken ct = default);
+    // Paginated methods
+    Task<(IReadOnlyList<Deal> Items, int TotalCount)> GetPagedAsync(
+        Guid userId, 
+        Guid? organizationId, 
+        int skip, 
+        int take, 
+        string? search = null,
+        CancellationToken ct = default);
+    
+    Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, CancellationToken ct = default);
+    
+    // Non-paginated methods (for backward compatibility)
+    Task<IReadOnlyList<Deal>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    Task<IReadOnlyList<Deal>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default);
+    
+    // Single item methods
+    Task<Deal?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
+    
+    // CRUD methods
     Task<Deal> AddAsync(Deal deal, CancellationToken ct = default);
-    Task<Deal?> UpdateAsync(Deal deal, Guid userId, CancellationToken ct = default);
-    Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken ct = default);
+    Task<Deal?> UpdateAsync(Deal deal, Guid userId, Guid? organizationId, CancellationToken ct = default);
+    Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

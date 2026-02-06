@@ -11,22 +11,60 @@ public sealed class DealRepository : IDealRepository
 
     public DealRepository(AppDbContext db) => _db = db;
 
-    public async Task<IReadOnlyList<Deal>> GetByUserIdAsync(Guid userId, CancellationToken ct = default) =>
-        await _db.Deals.Where(d => d.UserId == userId).OrderBy(d => d.Name).ToListAsync(ct);
+    private static IQueryable<Deal> FilterByUserAndOrg(IQueryable<Deal> q, Guid userId, Guid? organizationId) =>
+        q.Where(d => d.UserId == userId && (organizationId == null ? d.OrganizationId == null : d.OrganizationId == organizationId));
 
-    public async Task<IReadOnlyList<Deal>> SearchAsync(Guid userId, string query, CancellationToken ct = default)
+    private static IQueryable<Deal> ApplySearch(IQueryable<Deal> query, string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return query;
+        var q = search.Trim().ToLowerInvariant();
+        return query.Where(d => d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q));
+    }
+
+    public async Task<(IReadOnlyList<Deal> Items, int TotalCount)> GetPagedAsync(
+        Guid userId, 
+        Guid? organizationId, 
+        int skip, 
+        int take, 
+        string? search = null,
+        CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.Deals, userId, organizationId);
+        query = ApplySearch(query, search);
+        
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(d => d.Name)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+        
+        return (items, totalCount);
+    }
+
+    public async Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.Deals, userId, organizationId);
+        query = ApplySearch(query, search);
+        return await query.CountAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Deal>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        await FilterByUserAndOrg(_db.Deals, userId, organizationId).OrderBy(d => d.Name).ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Deal>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
-            return await GetByUserIdAsync(userId, ct);
+            return await GetByUserIdAsync(userId, organizationId, ct);
         var q = query.Trim().ToLowerInvariant();
-        return await _db.Deals
-            .Where(d => d.UserId == userId && (d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q)))
+        return await FilterByUserAndOrg(_db.Deals, userId, organizationId)
+            .Where(d => d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q))
             .OrderBy(d => d.Name)
             .ToListAsync(ct);
     }
 
-    public async Task<Deal?> GetByIdAsync(Guid id, Guid userId, CancellationToken ct = default) =>
-        await _db.Deals.FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId, ct);
+    public async Task<Deal?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        await FilterByUserAndOrg(_db.Deals, userId, organizationId).FirstOrDefaultAsync(d => d.Id == id, ct);
 
     public async Task<Deal> AddAsync(Deal deal, CancellationToken ct = default)
     {
@@ -35,24 +73,30 @@ public sealed class DealRepository : IDealRepository
         return deal;
     }
 
-    public async Task<Deal?> UpdateAsync(Deal deal, Guid userId, CancellationToken ct = default)
+    public async Task<Deal?> UpdateAsync(Deal deal, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var existing = await _db.Deals.FirstOrDefaultAsync(d => d.Id == deal.Id && d.UserId == userId, ct);
+        var existing = await FilterByUserAndOrg(_db.Deals, userId, organizationId).FirstOrDefaultAsync(d => d.Id == deal.Id, ct);
         if (existing == null) return null;
         existing.Name = deal.Name;
         existing.Value = deal.Value;
+        existing.Currency = deal.Currency;
         existing.Stage = deal.Stage;
+        existing.PipelineId = deal.PipelineId;
+        existing.DealStageId = deal.DealStageId;
         existing.CompanyId = deal.CompanyId;
         existing.ContactId = deal.ContactId;
+        existing.AssigneeId = deal.AssigneeId;
         existing.ExpectedCloseDateUtc = deal.ExpectedCloseDateUtc;
         existing.IsWon = deal.IsWon;
+        existing.UpdatedAtUtc = DateTime.UtcNow;
+        existing.UpdatedByUserId = userId;
         await _db.SaveChangesAsync(ct);
         return existing;
     }
 
-    public async Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken ct = default)
+    public async Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var existing = await _db.Deals.FirstOrDefaultAsync(d => d.Id == id && d.UserId == userId, ct);
+        var existing = await FilterByUserAndOrg(_db.Deals, userId, organizationId).FirstOrDefaultAsync(d => d.Id == id, ct);
         if (existing == null) return false;
         var linkedTasks = await _db.TaskItems.Where(t => t.DealId == id).ToListAsync(ct);
         foreach (var t in linkedTasks) t.DealId = null;

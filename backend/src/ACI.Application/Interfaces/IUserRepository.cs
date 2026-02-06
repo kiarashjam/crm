@@ -10,6 +10,4 @@ public interface IUserRepository
     Task UpdateAsync(User user, CancellationToken ct = default);
     Task<UserSettings?> GetSettingsAsync(Guid userId, CancellationToken ct = default);
     Task<UserSettings> UpsertSettingsAsync(UserSettings settings, CancellationToken ct = default);
-    Task<CrmConnection?> GetConnectionAsync(Guid userId, CancellationToken ct = default);
-    Task<CrmConnection> UpsertConnectionAsync(CrmConnection connection, CancellationToken ct = default);
 }
