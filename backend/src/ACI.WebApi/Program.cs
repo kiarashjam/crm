@@ -408,6 +408,98 @@ try
                     CREATE INDEX [IX_LeadStatuses_OrganizationId] ON [LeadStatuses] ([OrganizationId]);
                 END;
             ");
+            
+            // Fix UserSettings table columns
+            await db.Database.ExecuteSqlRawAsync(@"
+                -- Add missing columns to UserSettings
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'JobTitle')
+                    ALTER TABLE [UserSettings] ADD [JobTitle] nvarchar(128) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'AvatarUrl')
+                    ALTER TABLE [UserSettings] ADD [AvatarUrl] nvarchar(512) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'Phone')
+                    ALTER TABLE [UserSettings] ADD [Phone] nvarchar(32) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'Timezone')
+                    ALTER TABLE [UserSettings] ADD [Timezone] nvarchar(64) NOT NULL DEFAULT 'UTC';
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'Language')
+                    ALTER TABLE [UserSettings] ADD [Language] nvarchar(10) NOT NULL DEFAULT 'en';
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'Bio')
+                    ALTER TABLE [UserSettings] ADD [Bio] nvarchar(500) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'EmailSignature')
+                    ALTER TABLE [UserSettings] ADD [EmailSignature] nvarchar(2000) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultEmailSubjectPrefix')
+                    ALTER TABLE [UserSettings] ADD [DefaultEmailSubjectPrefix] nvarchar(100) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'Theme')
+                    ALTER TABLE [UserSettings] ADD [Theme] int NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DataDensity')
+                    ALTER TABLE [UserSettings] ADD [DataDensity] int NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'SidebarCollapsed')
+                    ALTER TABLE [UserSettings] ADD [SidebarCollapsed] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'ShowWelcomeBanner')
+                    ALTER TABLE [UserSettings] ADD [ShowWelcomeBanner] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'EmailNotificationsEnabled')
+                    ALTER TABLE [UserSettings] ADD [EmailNotificationsEnabled] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'EmailOnNewLead')
+                    ALTER TABLE [UserSettings] ADD [EmailOnNewLead] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'EmailOnDealUpdate')
+                    ALTER TABLE [UserSettings] ADD [EmailOnDealUpdate] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'EmailOnTaskDue')
+                    ALTER TABLE [UserSettings] ADD [EmailOnTaskDue] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'EmailOnTeamMention')
+                    ALTER TABLE [UserSettings] ADD [EmailOnTeamMention] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'EmailDigestFrequency')
+                    ALTER TABLE [UserSettings] ADD [EmailDigestFrequency] int NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'InAppNotificationsEnabled')
+                    ALTER TABLE [UserSettings] ADD [InAppNotificationsEnabled] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'InAppSoundEnabled')
+                    ALTER TABLE [UserSettings] ADD [InAppSoundEnabled] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'BrowserNotificationsEnabled')
+                    ALTER TABLE [UserSettings] ADD [BrowserNotificationsEnabled] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultPipelineId')
+                    ALTER TABLE [UserSettings] ADD [DefaultPipelineId] nvarchar(64) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultLeadStatusId')
+                    ALTER TABLE [UserSettings] ADD [DefaultLeadStatusId] nvarchar(64) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultLeadSourceId')
+                    ALTER TABLE [UserSettings] ADD [DefaultLeadSourceId] nvarchar(64) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultFollowUpDays')
+                    ALTER TABLE [UserSettings] ADD [DefaultFollowUpDays] int NOT NULL DEFAULT 3;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultCurrency')
+                    ALTER TABLE [UserSettings] ADD [DefaultCurrency] nvarchar(10) NULL DEFAULT 'USD';
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'ShowActivityStatus')
+                    ALTER TABLE [UserSettings] ADD [ShowActivityStatus] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'AllowAnalytics')
+                    ALTER TABLE [UserSettings] ADD [AllowAnalytics] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'CreatedAtUtc')
+                    ALTER TABLE [UserSettings] ADD [CreatedAtUtc] datetime2 NOT NULL DEFAULT GETUTCDATE();
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'UpdatedAtUtc')
+                    ALTER TABLE [UserSettings] ADD [UpdatedAtUtc] datetime2 NOT NULL DEFAULT GETUTCDATE();
+            ");
+            
+            // Fix Contacts table columns
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'OrganizationId')
+                BEGIN
+                    ALTER TABLE [Contacts] ADD [OrganizationId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_Contacts_OrganizationId] ON [Contacts] ([OrganizationId]);
+                END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'IsArchived')
+                BEGIN
+                    ALTER TABLE [Contacts] ADD [IsArchived] bit NOT NULL DEFAULT 0;
+                    CREATE INDEX [IX_Contacts_IsArchived] ON [Contacts] ([IsArchived]);
+                END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'ArchivedAtUtc')
+                    ALTER TABLE [Contacts] ADD [ArchivedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'ArchivedByUserId')
+                    ALTER TABLE [Contacts] ADD [ArchivedByUserId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'ConvertedFromLeadId')
+                    ALTER TABLE [Contacts] ADD [ConvertedFromLeadId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'DoNotContact')
+                BEGIN
+                    ALTER TABLE [Contacts] ADD [DoNotContact] bit NOT NULL DEFAULT 0;
+                    CREATE INDEX [IX_Contacts_DoNotContact] ON [Contacts] ([DoNotContact]);
+                END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'DoNotContactReason')
+                    ALTER TABLE [Contacts] ADD [DoNotContactReason] nvarchar(512) NULL;
+            ");
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')
