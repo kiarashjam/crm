@@ -560,6 +560,38 @@ try
             return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
         }
     });
+    
+    // Test settings service with actual user
+    app.MapGet("/db-test-settings-service", async (AppDbContext db, ISettingsService settingsService) =>
+    {
+        try
+        {
+            var firstUser = await db.Users.FirstOrDefaultAsync();
+            if (firstUser == null) return Results.Ok(new { status = "no_users", message = "No users in database" });
+            var settings = await settingsService.GetAsync(firstUser.Id);
+            return Results.Ok(new { status = "ok", userId = firstUser.Id, settings });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
+    
+    // Test contacts service with actual user
+    app.MapGet("/db-test-contacts-service", async (AppDbContext db, IContactService contactService) =>
+    {
+        try
+        {
+            var firstUser = await db.Users.FirstOrDefaultAsync();
+            if (firstUser == null) return Results.Ok(new { status = "no_users", message = "No users in database" });
+            var contacts = await contactService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            return Results.Ok(new { status = "ok", userId = firstUser.Id, totalCount = contacts.TotalCount });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
 
     Log.Information("ACI CRM API started successfully");
     app.Run();
