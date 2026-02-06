@@ -948,6 +948,38 @@ try
             return Results.Ok(new { status = "error", message = ex.Message });
         }
     });
+    
+    // Test tasks service
+    app.MapGet("/db-test-tasks-service", async (AppDbContext db, ITaskService taskService) =>
+    {
+        try
+        {
+            var firstUser = await db.Users.FirstOrDefaultAsync();
+            if (firstUser == null) return Results.Ok(new { status = "no_users" });
+            var tasks = await taskService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            return Results.Ok(new { status = "ok", totalCount = tasks.TotalCount });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message });
+        }
+    });
+    
+    // Test copy history service
+    app.MapGet("/db-test-copyhistory-service", async (AppDbContext db, ICopyHistoryService copyHistoryService) =>
+    {
+        try
+        {
+            var firstUser = await db.Users.FirstOrDefaultAsync();
+            if (firstUser == null) return Results.Ok(new { status = "no_users" });
+            var history = await copyHistoryService.GetHistoryAsync(firstUser.Id, null);
+            return Results.Ok(new { status = "ok", count = history.Count });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message });
+        }
+    });
 
     Log.Information("ACI CRM API started successfully");
     app.Run();
