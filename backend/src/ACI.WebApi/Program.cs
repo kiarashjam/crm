@@ -351,6 +351,48 @@ try
             return Results.Ok(new { status = "error", message = ex.ToString() });
         }
     });
+    
+    // Test organizations
+    app.MapGet("/db-test-orgs", async (AppDbContext db) =>
+    {
+        try
+        {
+            var count = await db.Organizations.CountAsync();
+            return Results.Ok(new { status = "ok", count });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
+    
+    // Test user settings
+    app.MapGet("/db-test-settings", async (AppDbContext db) =>
+    {
+        try
+        {
+            var count = await db.UserSettings.CountAsync();
+            return Results.Ok(new { status = "ok", count });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
+    
+    // Test contacts
+    app.MapGet("/db-test-contacts", async (AppDbContext db) =>
+    {
+        try
+        {
+            var count = await db.Contacts.CountAsync();
+            return Results.Ok(new { status = "ok", count });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
 
     Log.Information("ACI CRM API started successfully");
     app.Run();
