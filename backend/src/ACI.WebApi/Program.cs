@@ -481,6 +481,32 @@ try
                     ALTER TABLE [Leads] ADD [OrganizationId] uniqueidentifier NULL;
                     CREATE INDEX [IX_Leads_OrganizationId] ON [Leads] ([OrganizationId]);
                 END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'LeadSourceId')
+                    ALTER TABLE [Leads] ADD [LeadSourceId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'LeadStatusId')
+                    ALTER TABLE [Leads] ADD [LeadStatusId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'LeadScore')
+                    ALTER TABLE [Leads] ADD [LeadScore] int NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'LastContactedAt')
+                    ALTER TABLE [Leads] ADD [LastContactedAt] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'Description')
+                    ALTER TABLE [Leads] ADD [Description] nvarchar(2000) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'LifecycleStage')
+                    ALTER TABLE [Leads] ADD [LifecycleStage] nvarchar(64) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'IsConverted')
+                    ALTER TABLE [Leads] ADD [IsConverted] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'ConvertedAtUtc')
+                    ALTER TABLE [Leads] ADD [ConvertedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'UpdatedAtUtc')
+                    ALTER TABLE [Leads] ADD [UpdatedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'UpdatedByUserId')
+                    ALTER TABLE [Leads] ADD [UpdatedByUserId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'ConvertedToContactId')
+                    ALTER TABLE [Leads] ADD [ConvertedToContactId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'ConvertedToDealId')
+                    ALTER TABLE [Leads] ADD [ConvertedToDealId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'ConvertedToCompanyId')
+                    ALTER TABLE [Leads] ADD [ConvertedToCompanyId] uniqueidentifier NULL;
             ");
             
             // Fix Deals table columns
@@ -490,6 +516,18 @@ try
                     ALTER TABLE [Deals] ADD [OrganizationId] uniqueidentifier NULL;
                     CREATE INDEX [IX_Deals_OrganizationId] ON [Deals] ([OrganizationId]);
                 END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'Currency')
+                    ALTER TABLE [Deals] ADD [Currency] nvarchar(8) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'PipelineId')
+                    ALTER TABLE [Deals] ADD [PipelineId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'DealStageId')
+                    ALTER TABLE [Deals] ADD [DealStageId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'AssigneeId')
+                    ALTER TABLE [Deals] ADD [AssigneeId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'UpdatedAtUtc')
+                    ALTER TABLE [Deals] ADD [UpdatedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'UpdatedByUserId')
+                    ALTER TABLE [Deals] ADD [UpdatedByUserId] uniqueidentifier NULL;
             ");
             
             // Fix Companies table columns
@@ -499,6 +537,16 @@ try
                     ALTER TABLE [Companies] ADD [OrganizationId] uniqueidentifier NULL;
                     CREATE INDEX [IX_Companies_OrganizationId] ON [Companies] ([OrganizationId]);
                 END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'Domain')
+                    ALTER TABLE [Companies] ADD [Domain] nvarchar(256) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'Industry')
+                    ALTER TABLE [Companies] ADD [Industry] nvarchar(128) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'Size')
+                    ALTER TABLE [Companies] ADD [Size] nvarchar(64) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'UpdatedAtUtc')
+                    ALTER TABLE [Companies] ADD [UpdatedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'UpdatedByUserId')
+                    ALTER TABLE [Companies] ADD [UpdatedByUserId] uniqueidentifier NULL;
             ");
             
             // Fix Activities table columns
@@ -508,6 +556,14 @@ try
                     ALTER TABLE [Activities] ADD [OrganizationId] uniqueidentifier NULL;
                     CREATE INDEX [IX_Activities_OrganizationId] ON [Activities] ([OrganizationId]);
                 END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Activities') AND name = 'LeadId')
+                    ALTER TABLE [Activities] ADD [LeadId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Activities') AND name = 'Participants')
+                    ALTER TABLE [Activities] ADD [Participants] nvarchar(1024) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Activities') AND name = 'UpdatedAtUtc')
+                    ALTER TABLE [Activities] ADD [UpdatedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Activities') AND name = 'UpdatedByUserId')
+                    ALTER TABLE [Activities] ADD [UpdatedByUserId] uniqueidentifier NULL;
             ");
             
             // Fix Contacts table columns
