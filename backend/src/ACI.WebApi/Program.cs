@@ -1116,6 +1116,22 @@ try
             return Results.Ok(new { status = "error", message = ex.Message });
         }
     });
+    
+    // Test email sequences service
+    app.MapGet("/db-test-emailsequences-service", async (AppDbContext db, IEmailSequenceService emailSequenceService) =>
+    {
+        try
+        {
+            var firstUser = await db.Users.FirstOrDefaultAsync();
+            if (firstUser == null) return Results.Ok(new { status = "no_users" });
+            var sequences = await emailSequenceService.GetAllAsync(firstUser.Id, null);
+            return Results.Ok(new { status = "ok", count = sequences.Count });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message });
+        }
+    });
 
     Log.Information("ACI CRM API started successfully");
     app.Run();
