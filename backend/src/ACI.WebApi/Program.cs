@@ -584,7 +584,7 @@ try
         {
             var firstUser = await db.Users.FirstOrDefaultAsync();
             if (firstUser == null) return Results.Ok(new { status = "no_users", message = "No users in database" });
-            var contacts = await contactService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            var contacts = await contactService.GetContactsPagedAsync(firstUser.Id, null, 1, 10);
             return Results.Ok(new { status = "ok", userId = firstUser.Id, totalCount = contacts.TotalCount });
         }
         catch (Exception ex)
