@@ -566,6 +566,142 @@ try
                     ALTER TABLE [Activities] ADD [UpdatedByUserId] uniqueidentifier NULL;
             ");
             
+            // Fix TaskItems table columns
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'OrganizationId')
+                BEGIN
+                    ALTER TABLE [TaskItems] ADD [OrganizationId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_TaskItems_OrganizationId] ON [TaskItems] ([OrganizationId]);
+                END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'Description')
+                    ALTER TABLE [TaskItems] ADD [Description] nvarchar(max) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'DueDateUtc')
+                    ALTER TABLE [TaskItems] ADD [DueDateUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'ReminderDateUtc')
+                    ALTER TABLE [TaskItems] ADD [ReminderDateUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'Status')
+                    ALTER TABLE [TaskItems] ADD [Status] nvarchar(32) NOT NULL DEFAULT 'Todo';
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'Priority')
+                    ALTER TABLE [TaskItems] ADD [Priority] nvarchar(32) NOT NULL DEFAULT 'None';
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'Completed')
+                    ALTER TABLE [TaskItems] ADD [Completed] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'AssigneeId')
+                    ALTER TABLE [TaskItems] ADD [AssigneeId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'LeadId')
+                    ALTER TABLE [TaskItems] ADD [LeadId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'DealId')
+                    ALTER TABLE [TaskItems] ADD [DealId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'ContactId')
+                    ALTER TABLE [TaskItems] ADD [ContactId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'Notes')
+                    ALTER TABLE [TaskItems] ADD [Notes] nvarchar(max) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'UpdatedAtUtc')
+                    ALTER TABLE [TaskItems] ADD [UpdatedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'CompletedAtUtc')
+                    ALTER TABLE [TaskItems] ADD [CompletedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'UpdatedByUserId')
+                    ALTER TABLE [TaskItems] ADD [UpdatedByUserId] uniqueidentifier NULL;
+            ");
+            
+            // Fix CopyHistoryItems table columns
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'OrganizationId')
+                BEGIN
+                    ALTER TABLE [CopyHistoryItems] ADD [OrganizationId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_CopyHistoryItems_OrganizationId] ON [CopyHistoryItems] ([OrganizationId]);
+                END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'Subject')
+                    ALTER TABLE [CopyHistoryItems] ADD [Subject] nvarchar(max) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'RecipientEmail')
+                    ALTER TABLE [CopyHistoryItems] ADD [RecipientEmail] nvarchar(max) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'CopyTypeId')
+                    ALTER TABLE [CopyHistoryItems] ADD [CopyTypeId] int NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'Goal')
+                    ALTER TABLE [CopyHistoryItems] ADD [Goal] nvarchar(max) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'BrandTone')
+                    ALTER TABLE [CopyHistoryItems] ADD [BrandTone] nvarchar(max) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'IsRewritten')
+                    ALTER TABLE [CopyHistoryItems] ADD [IsRewritten] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'CopyCount')
+                    ALTER TABLE [CopyHistoryItems] ADD [CopyCount] int NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'SendCount')
+                    ALTER TABLE [CopyHistoryItems] ADD [SendCount] int NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'ResponseCount')
+                    ALTER TABLE [CopyHistoryItems] ADD [ResponseCount] int NOT NULL DEFAULT 0;
+            ");
+            
+            // Create EmailSequences table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EmailSequences')
+                BEGIN
+                    CREATE TABLE [EmailSequences] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [Name] nvarchar(256) NOT NULL,
+                        [Description] nvarchar(1000) NULL,
+                        [UserId] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NULL,
+                        [IsActive] bit NOT NULL DEFAULT 1,
+                        [IsSharedWithOrganization] bit NOT NULL DEFAULT 0,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        [UpdatedAtUtc] datetime2 NULL,
+                        CONSTRAINT [PK_EmailSequences] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_EmailSequences_Users_UserId] FOREIGN KEY ([UserId]) 
+                            REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                    );
+                    CREATE INDEX [IX_EmailSequences_UserId] ON [EmailSequences] ([UserId]);
+                    CREATE INDEX [IX_EmailSequences_OrganizationId] ON [EmailSequences] ([OrganizationId]);
+                    CREATE INDEX [IX_EmailSequences_IsActive] ON [EmailSequences] ([IsActive]);
+                END;
+            ");
+            
+            // Create EmailSequenceSteps table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EmailSequenceSteps')
+                BEGIN
+                    CREATE TABLE [EmailSequenceSteps] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [SequenceId] uniqueidentifier NOT NULL,
+                        [StepOrder] int NOT NULL,
+                        [DelayDays] int NOT NULL,
+                        [Subject] nvarchar(512) NOT NULL,
+                        [Body] nvarchar(max) NOT NULL,
+                        CONSTRAINT [PK_EmailSequenceSteps] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_EmailSequenceSteps_EmailSequences_SequenceId] FOREIGN KEY ([SequenceId]) 
+                            REFERENCES [EmailSequences] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_EmailSequenceSteps_SequenceId] ON [EmailSequenceSteps] ([SequenceId]);
+                END;
+            ");
+            
+            // Create EmailSequenceEnrollments table if missing
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EmailSequenceEnrollments')
+                BEGIN
+                    CREATE TABLE [EmailSequenceEnrollments] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [SequenceId] uniqueidentifier NOT NULL,
+                        [UserId] uniqueidentifier NOT NULL,
+                        [ContactId] uniqueidentifier NULL,
+                        [LeadId] uniqueidentifier NULL,
+                        [RecipientEmail] nvarchar(256) NULL,
+                        [RecipientName] nvarchar(256) NULL,
+                        [CurrentStep] int NOT NULL DEFAULT 0,
+                        [Status] nvarchar(32) NOT NULL DEFAULT 'Active',
+                        [EnrolledAtUtc] datetime2 NOT NULL,
+                        [LastSentAtUtc] datetime2 NULL,
+                        [NextSendAtUtc] datetime2 NULL,
+                        [CompletedAtUtc] datetime2 NULL,
+                        CONSTRAINT [PK_EmailSequenceEnrollments] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_EmailSequenceEnrollments_EmailSequences_SequenceId] FOREIGN KEY ([SequenceId]) 
+                            REFERENCES [EmailSequences] ([Id]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_EmailSequenceEnrollments_Users_UserId] FOREIGN KEY ([UserId]) 
+                            REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                    );
+                    CREATE INDEX [IX_EmailSequenceEnrollments_SequenceId] ON [EmailSequenceEnrollments] ([SequenceId]);
+                    CREATE INDEX [IX_EmailSequenceEnrollments_UserId] ON [EmailSequenceEnrollments] ([UserId]);
+                END;
+            ");
+            
             // Fix Contacts table columns
             await db.Database.ExecuteSqlRawAsync(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'OrganizationId')
