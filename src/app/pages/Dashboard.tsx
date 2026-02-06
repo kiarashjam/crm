@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { getCurrentUser, isDemoMode } from '@/app/lib/auth';
 import AppHeader from '@/app/components/AppHeader';
+import { PageTransition } from '@/app/components/PageTransition';
 import { cn } from '@/app/components/ui/utils';
 import {
   getTemplateById,
@@ -201,9 +202,10 @@ export default function Dashboard() {
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
       <AppHeader />
 
-      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        {/* Hero Section - Extracted Component */}
-        <DashboardHero displayName={displayName} stats={crmStats} />
+      <PageTransition>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          {/* Hero Section - Extracted Component */}
+          <DashboardHero displayName={displayName} stats={crmStats} />
 
         {/* Main Content Grid */}
         <div className="space-y-8">
@@ -518,7 +520,8 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      </main>
+        </main>
+      </PageTransition>
     </div>
   );
 }

@@ -25,6 +25,7 @@ export interface TaskGroupSectionProps {
   members: { userId: string; name: string; email: string }[];
   getInitials: (name: string) => string;
   formatDue: (iso: string | undefined) => string | null;
+  onViewDetails?: (task: TaskItem) => void;
 }
 
 export function TaskGroupSection({
@@ -42,6 +43,7 @@ export function TaskGroupSection({
   members,
   getInitials,
   formatDue,
+  onViewDetails,
 }: TaskGroupSectionProps) {
   const config = groupConfig[group];
   const Icon = config.icon;
@@ -79,6 +81,7 @@ export function TaskGroupSection({
                 members={members}
                 getInitials={getInitials}
                 formatDue={formatDue}
+                onViewDetails={onViewDetails}
               />
             ))}
           </div>

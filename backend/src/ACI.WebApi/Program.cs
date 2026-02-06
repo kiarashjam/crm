@@ -694,6 +694,62 @@ try
             return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
         }
     });
+    
+    // Test leads
+    app.MapGet("/db-test-leads", async (AppDbContext db) =>
+    {
+        try
+        {
+            var count = await db.Leads.CountAsync();
+            return Results.Ok(new { status = "ok", count });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
+    
+    // Test deals
+    app.MapGet("/db-test-deals", async (AppDbContext db) =>
+    {
+        try
+        {
+            var count = await db.Deals.CountAsync();
+            return Results.Ok(new { status = "ok", count });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
+    
+    // Test companies
+    app.MapGet("/db-test-companies", async (AppDbContext db) =>
+    {
+        try
+        {
+            var count = await db.Companies.CountAsync();
+            return Results.Ok(new { status = "ok", count });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
+    
+    // Test activities
+    app.MapGet("/db-test-activities", async (AppDbContext db) =>
+    {
+        try
+        {
+            var count = await db.Activities.CountAsync();
+            return Results.Ok(new { status = "ok", count });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
 
     Log.Information("ACI CRM API started successfully");
     app.Run();

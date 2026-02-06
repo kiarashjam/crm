@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
-import LoadingSpinner from '@/app/components/LoadingSpinner';
+import { PageTransition } from '@/app/components/PageTransition';
+import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getContactsPaged, createContact, updateContact, deleteContact, getCompanies, messages } from '@/app/api';
@@ -359,9 +360,10 @@ export default function Contacts() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
-      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        {/* Enhanced Header Section with Dark Decorative Elements */}
-        <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
+      <PageTransition>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          {/* Enhanced Header Section with Dark Decorative Elements */}
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
           {/* Decorative blur elements */}
           <div className="absolute inset-0 overflow-hidden">
             <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
@@ -746,7 +748,7 @@ export default function Contacts() {
         </div>
 
         {loading ? (
-          <LoadingSpinner />
+          <ContentSkeleton rows={6} />
         ) : contacts.length === 0 ? (
           /* Enhanced Empty State */
           <div className="w-full">
@@ -1152,7 +1154,8 @@ export default function Contacts() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </main>
+        </main>
+      </PageTransition>
     </div>
   );
 }

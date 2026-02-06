@@ -58,10 +58,10 @@ function OrganizationCard({
 }) {
   return (
     <div 
-      className={`relative overflow-hidden bg-white rounded-2xl border-2 transition-all cursor-pointer ${
+      className={`group relative overflow-hidden rounded-3xl transition-all duration-300 cursor-pointer ${
         isActive 
-          ? 'border-orange-400 shadow-lg shadow-orange-100/50 ring-2 ring-orange-100' 
-          : 'border-slate-200 hover:border-slate-300 hover:shadow-md'
+          ? 'bg-gradient-to-br from-orange-500 via-orange-500 to-amber-500 p-[2px] shadow-2xl shadow-orange-500/25' 
+          : 'bg-gradient-to-br from-slate-200 to-slate-300 p-[1px] hover:from-slate-300 hover:to-slate-400 hover:shadow-xl'
       }`}
       onClick={onNavigate}
       role="button"
@@ -73,128 +73,149 @@ function OrganizationCard({
         }
       }}
     >
-      {/* Active indicator */}
-      {isActive && (
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-orange-500 to-amber-500" />
-      )}
-      
-      <div className="p-5">
-        <div className="flex items-start gap-4">
-          {/* Logo/Avatar */}
-          <div className={`w-14 h-14 rounded-xl flex items-center justify-center shadow-lg ${
-            isActive 
-              ? 'bg-gradient-to-br from-orange-500 to-amber-500' 
-              : 'bg-gradient-to-br from-slate-400 to-slate-500'
-          }`}>
-            <Building2 className="w-7 h-7 text-white" />
+      <div className="relative bg-white rounded-[22px] overflow-hidden">
+        {/* Background Pattern for Active */}
+        {isActive && (
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute -top-20 -right-20 w-48 h-48 bg-orange-500/5 rounded-full" />
+            <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-amber-500/5 rounded-full" />
           </div>
-          
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <h3 className="font-bold text-lg text-slate-900 truncate">{org.name}</h3>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                    org.isOwner 
-                      ? 'bg-amber-100 text-amber-700' 
-                      : 'bg-slate-100 text-slate-600'
-                  }`}>
-                    {org.isOwner ? (
-                      <>
-                        <Crown className="w-3 h-3" />
-                        Owner
-                      </>
-                    ) : (
-                      <>
-                        <Users className="w-3 h-3" />
-                        Member
-                      </>
-                    )}
-                  </span>
-                  {isActive && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-                      <Check className="w-3 h-3" />
-                      Active
-                    </span>
-                  )}
+        )}
+
+        {/* Header Section */}
+        <div className={`relative px-6 pt-6 pb-5 ${isActive ? 'bg-gradient-to-r from-orange-50/80 to-amber-50/50' : 'bg-slate-50/50'}`}>
+          <div className="flex items-start gap-5">
+            {/* Logo/Avatar */}
+            <div className={`relative w-16 h-16 rounded-2xl flex items-center justify-center shadow-xl ${
+              isActive 
+                ? 'bg-gradient-to-br from-orange-500 to-amber-500 shadow-orange-500/30' 
+                : 'bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-500/20 group-hover:from-slate-600 group-hover:to-slate-700'
+            }`}>
+              <Building2 className="w-8 h-8 text-white" />
+              {isActive && (
+                <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-white shadow-lg">
+                  <Check className="w-3 h-3 text-white" />
                 </div>
-              </div>
-              
-              {/* Actions Menu */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-8 w-8 p-0"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreHorizontal className="w-4 h-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {!isActive && (
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSwitch(); }}>
-                      <ArrowRight className="w-4 h-4 mr-2" />
-                      Switch to this org
-                    </DropdownMenuItem>
-                  )}
-                  {org.isOwner && (
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSettings(); }}>
-                      <Settings className="w-4 h-4 mr-2" />
-                      Settings
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem onClick={(e) => {
-                    e.stopPropagation();
-                    navigator.clipboard.writeText(org.id);
-                    toast.success('Organization ID copied');
-                  }}>
-                    <Copy className="w-4 h-4 mr-2" />
-                    Copy ID
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              )}
             </div>
             
-            {/* Stats row */}
-            <div className="flex items-center gap-4 mt-3 text-sm text-slate-500">
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-bold text-xl text-slate-900 truncate">{org.name}</h3>
+                  <div className="flex items-center flex-wrap gap-2 mt-2">
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                      org.isOwner 
+                        ? 'bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-700 border border-amber-200' 
+                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}>
+                      {org.isOwner ? (
+                        <>
+                          <Crown className="w-3.5 h-3.5" />
+                          Owner
+                        </>
+                      ) : (
+                        <>
+                          <Users className="w-3.5 h-3.5" />
+                          Member
+                        </>
+                      )}
+                    </span>
+                    {isActive && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-emerald-100 to-green-100 text-emerald-700 border border-emerald-200">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Active
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Actions Menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-9 w-9 p-0 rounded-xl hover:bg-slate-100"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="w-5 h-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {!isActive && (
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSwitch(); }}>
+                        <ArrowRight className="w-4 h-4 mr-2" />
+                        Switch to this org
+                      </DropdownMenuItem>
+                    )}
+                    {org.isOwner && (
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSettings(); }}>
+                        <Settings className="w-4 h-4 mr-2" />
+                        Settings
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={(e) => {
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(org.id);
+                      toast.success('Organization ID copied');
+                    }}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy ID
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Section */}
+        <div className="px-6 py-4 border-t border-slate-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
               {memberCount !== undefined && (
-                <span className="flex items-center gap-1.5">
-                  <Users className="w-4 h-4" />
-                  {memberCount} member{memberCount !== 1 ? 's' : ''}
-                </span>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
+                    <Users className="w-4.5 h-4.5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-slate-900">{memberCount}</p>
+                    <p className="text-xs text-slate-500">Member{memberCount !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
               )}
             </div>
           </div>
         </div>
         
-        {/* Action Button */}
-        <div className="mt-4 pt-4 border-t border-slate-100">
+        {/* Action Footer */}
+        <div className="px-6 pb-6">
           {isActive ? (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-emerald-600 font-medium flex items-center gap-1.5">
-                <Check className="w-4 h-4" />
-                Currently active
-              </span>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 flex items-center gap-3 px-4 py-3 bg-emerald-50 rounded-2xl border border-emerald-100">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                </div>
+                <span className="text-sm font-semibold text-emerald-700">Currently Active Workspace</span>
+              </div>
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={(e) => { e.stopPropagation(); onSettings(); }}
-                className="text-slate-600"
+                className="h-11 px-4 rounded-xl border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
               >
-                <Settings className="w-4 h-4 mr-1.5" />
-                Settings
+                <Settings className="w-4 h-4" />
               </Button>
             </div>
           ) : (
             <Button 
               onClick={(e) => { e.stopPropagation(); onSwitch(); }}
-              className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-200/50"
+              className="w-full h-12 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/20 text-base font-semibold"
             >
-              Switch to this organization
-              <ArrowRight className="w-4 h-4 ml-2" />
+              Switch to this workspace
+              <ArrowRight className="w-5 h-5 ml-2" />
             </Button>
           )}
         </div>
@@ -525,64 +546,59 @@ export default function Organizations() {
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                <Building2 className="w-5 h-5 text-orange-600" />
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-10">
+          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-orange-50/30 rounded-2xl border border-orange-100 p-5 hover:shadow-lg hover:shadow-orange-100/50 transition-all duration-300">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-orange-500/5 rounded-full -mr-6 -mt-6" />
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20 mb-3">
+                <Building2 className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{organizations.length}</p>
-                <p className="text-xs text-slate-500">Organization{organizations.length !== 1 ? 's' : ''}</p>
-              </div>
+              <p className="text-3xl font-bold text-slate-900">{organizations.length}</p>
+              <p className="text-sm text-slate-500 font-medium">Total Workspaces</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                <Crown className="w-5 h-5 text-amber-600" />
+          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-amber-50/30 rounded-2xl border border-amber-100 p-5 hover:shadow-lg hover:shadow-amber-100/50 transition-all duration-300">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full -mr-6 -mt-6" />
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center shadow-lg shadow-amber-500/20 mb-3">
+                <Crown className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">
-                  {organizations.filter(o => o.isOwner).length}
-                </p>
-                <p className="text-xs text-slate-500">Owned by you</p>
-              </div>
+              <p className="text-3xl font-bold text-slate-900">
+                {organizations.filter(o => o.isOwner).length}
+              </p>
+              <p className="text-sm text-slate-500 font-medium">Owned by You</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Users className="w-5 h-5 text-blue-600" />
+          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-blue-50/30 rounded-2xl border border-blue-100 p-5 hover:shadow-lg hover:shadow-blue-100/50 transition-all duration-300">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 rounded-full -mr-6 -mt-6" />
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-3">
+                <Users className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">
-                  {organizations.filter(o => !o.isOwner).length}
-                </p>
-                <p className="text-xs text-slate-500">Member of</p>
-              </div>
+              <p className="text-3xl font-bold text-slate-900">
+                {organizations.filter(o => !o.isOwner).length}
+              </p>
+              <p className="text-sm text-slate-500 font-medium">Member Of</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                <Mail className="w-5 h-5 text-emerald-600" />
+          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-emerald-50/30 rounded-2xl border border-emerald-100 p-5 hover:shadow-lg hover:shadow-emerald-100/50 transition-all duration-300">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-full -mr-6 -mt-6" />
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20 mb-3">
+                <Mail className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{pendingInvites.length}</p>
-                <p className="text-xs text-slate-500">Pending invite{pendingInvites.length !== 1 ? 's' : ''}</p>
-              </div>
+              <p className="text-3xl font-bold text-slate-900">{pendingInvites.length}</p>
+              <p className="text-sm text-slate-500 font-medium">Pending Invites</p>
             </div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                <UserCheck className="w-5 h-5 text-purple-600" />
+          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-purple-50/30 rounded-2xl border border-purple-100 p-5 hover:shadow-lg hover:shadow-purple-100/50 transition-all duration-300">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-purple-500/5 rounded-full -mr-6 -mt-6" />
+            <div className="relative">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-lg shadow-purple-500/20 mb-3">
+                <UserCheck className="w-6 h-6 text-white" />
               </div>
-              <div>
-                <p className="text-2xl font-bold text-slate-900">{pendingJoinRequests.length}</p>
-                <p className="text-xs text-slate-500">Join request{pendingJoinRequests.length !== 1 ? 's' : ''}</p>
-              </div>
+              <p className="text-3xl font-bold text-slate-900">{pendingJoinRequests.length}</p>
+              <p className="text-sm text-slate-500 font-medium">Join Requests</p>
             </div>
           </div>
         </div>
@@ -717,31 +733,42 @@ export default function Organizations() {
         )}
 
         {/* Organizations List */}
-        <section>
-          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2 mb-4">
-            <Building2 className="w-5 h-5 text-orange-500" />
-            Your Organizations
-          </h2>
+        <section className="mb-10">
+          {/* Section Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
+                <Building2 className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Your Workspaces</h2>
+                <p className="text-sm text-slate-500">Select a workspace to manage</p>
+              </div>
+            </div>
+            <span className="text-sm font-medium text-slate-400 bg-slate-100 px-4 py-2 rounded-full">
+              {organizations.length} workspace{organizations.length !== 1 ? 's' : ''}
+            </span>
+          </div>
 
           {organizations.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-orange-100 flex items-center justify-center mb-4">
-                <Building2 className="w-8 h-8 text-orange-500" />
+            <div className="text-center py-16 bg-gradient-to-br from-white to-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+              <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-orange-100 to-amber-100 flex items-center justify-center mb-6 shadow-lg shadow-orange-100">
+                <Building2 className="w-10 h-10 text-orange-500" />
               </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">No organizations yet</h3>
-              <p className="text-slate-500 mb-6 max-w-sm mx-auto">
-                Create your first organization to get started, or wait for an invitation to join one.
+              <h3 className="text-xl font-bold text-slate-900 mb-2">No workspaces yet</h3>
+              <p className="text-slate-500 mb-8 max-w-md mx-auto">
+                Create your first workspace to start managing your team, leads, deals, and more.
               </p>
               <Button 
                 onClick={() => setCreateDialogOpen(true)}
-                className="bg-orange-600 hover:bg-orange-700"
+                className="h-12 px-8 text-base bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/25 rounded-2xl"
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Create your first organization
+                <Plus className="w-5 h-5 mr-2" />
+                Create your first workspace
               </Button>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid lg:grid-cols-2 gap-6">
               {/* Sort: active org first, then by ownership */}
               {[...organizations]
                 .sort((a, b) => {
@@ -774,37 +801,45 @@ export default function Organizations() {
         </section>
 
         {/* Quick Tips */}
-        <section className="mt-8 bg-gradient-to-r from-slate-50 to-orange-50/30 rounded-2xl p-6 border border-slate-200">
-          <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <Zap className="w-4 h-4 text-orange-500" />
-            Quick Tips
-          </h3>
-          <div className="grid sm:grid-cols-3 gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
-                <Building2 className="w-4 h-4 text-orange-600" />
+        <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-8">
+          {/* Background decorations */}
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute -top-20 -right-20 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl" />
+            <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl" />
+          </div>
+          
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
+                <Zap className="w-5 h-5 text-white" />
               </div>
               <div>
-                <p className="font-medium text-slate-800 text-sm">Multiple workspaces</p>
-                <p className="text-xs text-slate-500">Create separate organizations for different businesses or clients</p>
+                <h3 className="text-lg font-bold text-white">Pro Tips</h3>
+                <p className="text-sm text-slate-400">Get the most out of your workspaces</p>
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4 text-blue-600" />
+            
+            <div className="grid sm:grid-cols-3 gap-6">
+              <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 hover:bg-white/10 transition-colors">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center mb-4 border border-orange-500/20">
+                  <Building2 className="w-5 h-5 text-orange-400" />
+                </div>
+                <p className="font-semibold text-white mb-1">Multiple Workspaces</p>
+                <p className="text-sm text-slate-400 leading-relaxed">Create separate workspaces for different businesses, teams, or clients</p>
               </div>
-              <div>
-                <p className="font-medium text-slate-800 text-sm">Invite your team</p>
-                <p className="text-xs text-slate-500">Go to the Team page to add members to your organization</p>
+              <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 hover:bg-white/10 transition-colors">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 flex items-center justify-center mb-4 border border-blue-500/20">
+                  <Users className="w-5 h-5 text-blue-400" />
+                </div>
+                <p className="font-semibold text-white mb-1">Invite Your Team</p>
+                <p className="text-sm text-slate-400 leading-relaxed">Go to the Team page to add members and collaborate together</p>
               </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
-                <RefreshCw className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div>
-                <p className="font-medium text-slate-800 text-sm">Easy switching</p>
-                <p className="text-xs text-slate-500">Switch between organizations anytime from this page</p>
+              <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 hover:bg-white/10 transition-colors">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center mb-4 border border-emerald-500/20">
+                  <RefreshCw className="w-5 h-5 text-emerald-400" />
+                </div>
+                <p className="font-semibold text-white mb-1">Easy Switching</p>
+                <p className="text-sm text-slate-400 leading-relaxed">Switch between workspaces anytime from this page or the header</p>
               </div>
             </div>
           </div>

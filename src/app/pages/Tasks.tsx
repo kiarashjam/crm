@@ -26,7 +26,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
-import LoadingSpinner from '@/app/components/LoadingSpinner';
+import { PageTransition } from '@/app/components/PageTransition';
+import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import EmptyState from '@/app/components/EmptyState';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
@@ -44,6 +45,7 @@ import {
   getContacts,
   getOrgMembers,
   messages,
+  createActivity,
 } from '@/app/api';
 import type { TaskItem, Lead, Deal, Contact, TaskStatusType, TaskPriorityType, TaskStats } from '@/app/api/types';
 import { getCurrentOrganizationId } from '@/app/lib/auth';
@@ -83,6 +85,7 @@ import {
 import { KanbanTaskCard } from './tasks/components/KanbanTaskCard';
 import { KanbanColumnComponent } from './tasks/components/KanbanColumn';
 import { TaskGroupSection } from './tasks/components/TaskGroupSection';
+import { TaskDetailModal } from './tasks/components/TaskDetailModal';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -111,6 +114,8 @@ export default function Tasks() {
   const [saving, setSaving] = useState(false);
   const [deleteConfirmTask, setDeleteConfirmTask] = useState<TaskItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [detailTask, setDetailTask] = useState<TaskItem | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -266,6 +271,28 @@ export default function Tasks() {
     return groups;
   }, [filteredTasks, getTaskGroupMemoized]);
 
+  // Activity logging helper
+  const logTaskActivity = useCallback(async (task: TaskItem, action: string, details?: string) => {
+    try {
+      await createActivity({
+        type: 'task',
+        subject: `Task ${action}: ${task.title}`,
+        body: details || `Task "${task.title}" was ${action}`,
+        leadId: task.leadId,
+        dealId: task.dealId,
+        contactId: task.contactId,
+      });
+    } catch (error) {
+      console.error('Failed to log activity:', error);
+    }
+  }, []);
+
+  // Open task detail modal
+  const openTaskDetail = useCallback((task: TaskItem) => {
+    setDetailTask(task);
+    setDetailModalOpen(true);
+  }, []);
+
   // Handlers
   const openCreate = (initialStatus?: TaskStatusType) => {
     setEditingTask(null);
@@ -336,6 +363,18 @@ export default function Tasks() {
         });
         if (updated) {
           setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+          // Update detail modal if it's the same task
+          if (detailTask?.id === updated.id) {
+            setDetailTask(updated);
+          }
+          // Log activity
+          const changes: string[] = [];
+          if (editingTask.title !== form.title.trim()) changes.push('title');
+          if (editingTask.description !== form.description.trim()) changes.push('description');
+          if (editingTask.status !== form.status) changes.push(`status to ${statusConfig[form.status].label}`);
+          if (editingTask.priority !== form.priority) changes.push(`priority to ${priorityConfig[form.priority].label}`);
+          if (editingTask.dueDateUtc !== dueDateUtc) changes.push('due date');
+          await logTaskActivity(updated, 'updated', changes.length > 0 ? `Changed: ${changes.join(', ')}` : undefined);
           toast.success(messages.success.taskUpdated);
           setDialogOpen(false);
           getTaskStats().then(setStats);
@@ -358,6 +397,8 @@ export default function Tasks() {
         });
         if (created) {
           setTasks((prev) => [created, ...prev]);
+          // Log activity
+          await logTaskActivity(created, 'created', `New task "${created.title}" created with status ${statusConfig[created.status].label}`);
           toast.success(messages.success.taskCreated);
           setDialogOpen(false);
           getTaskStats().then(setStats);
@@ -378,7 +419,14 @@ export default function Tasks() {
     try {
       const ok = await deleteTask(deleteConfirmTask.id);
       if (ok) {
+        // Log activity before removing from state
+        await logTaskActivity(deleteConfirmTask, 'deleted', `Task "${deleteConfirmTask.title}" was permanently deleted`);
         setTasks((prev) => prev.filter((t) => t.id !== deleteConfirmTask.id));
+        // Close detail modal if it's the same task
+        if (detailTask?.id === deleteConfirmTask.id) {
+          setDetailModalOpen(false);
+          setDetailTask(null);
+        }
         toast.success(messages.success.taskDeleted);
         setDeleteConfirmTask(null);
         getTaskStats().then(setStats);
@@ -393,6 +441,7 @@ export default function Tasks() {
   };
 
   const handleStatusChange = async (task: TaskItem, newStatus: TaskStatusType) => {
+    const oldStatus = task.status;
     setTasks((prev) =>
       prev.map((t) =>
         t.id === task.id ? { ...t, status: newStatus, completed: newStatus === 'completed' } : t
@@ -402,6 +451,12 @@ export default function Tasks() {
     const updated = await updateTaskStatus(task.id, newStatus);
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      // Update detail modal if it's the same task
+      if (detailTask?.id === updated.id) {
+        setDetailTask(updated);
+      }
+      // Log activity
+      await logTaskActivity(updated, 'status changed', `Status changed from ${statusConfig[oldStatus].label} to ${statusConfig[newStatus].label}`);
       toast.success(`Task moved to ${statusConfig[newStatus].label}`);
       getTaskStats().then(setStats);
     } else {
@@ -412,6 +467,7 @@ export default function Tasks() {
 
   const handleAssigneeChange = async (task: TaskItem, newAssigneeId: string | null) => {
     const assigneeName = newAssigneeId ? orgMembers.find((m) => m.userId === newAssigneeId)?.name : undefined;
+    const oldAssigneeName = task.assigneeName;
     setTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, assigneeId: newAssigneeId ?? undefined, assigneeName } : t))
     );
@@ -419,6 +475,15 @@ export default function Tasks() {
     const updated = await assignTask(task.id, newAssigneeId);
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      // Update detail modal if it's the same task
+      if (detailTask?.id === updated.id) {
+        setDetailTask(updated);
+      }
+      // Log activity
+      const details = newAssigneeId 
+        ? `Task assigned to ${assigneeName}${oldAssigneeName ? ` (was: ${oldAssigneeName})` : ''}`
+        : `Task unassigned${oldAssigneeName ? ` (was: ${oldAssigneeName})` : ''}`;
+      await logTaskActivity(updated, newAssigneeId ? 'assigned' : 'unassigned', details);
       toast.success(newAssigneeId ? 'Task assigned' : 'Task unassigned');
     } else {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
@@ -427,11 +492,18 @@ export default function Tasks() {
   };
 
   const handlePriorityChange = async (task: TaskItem, newPriority: TaskPriorityType) => {
+    const oldPriority = task.priority;
     setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, priority: newPriority } : t)));
 
     const updated = await updateTask(task.id, { priority: newPriority });
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      // Update detail modal if it's the same task
+      if (detailTask?.id === updated.id) {
+        setDetailTask(updated);
+      }
+      // Log activity
+      await logTaskActivity(updated, 'priority changed', `Priority changed from ${priorityConfig[oldPriority].label} to ${priorityConfig[newPriority].label}`);
       toast.success(`Priority set to ${priorityConfig[newPriority].label}`);
     } else {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
@@ -441,6 +513,7 @@ export default function Tasks() {
 
   const handleLeadChange = async (task: TaskItem, newLeadId: string | null) => {
     const leadName = newLeadId ? leads.find((l) => l.id === newLeadId)?.name : undefined;
+    const oldLeadName = task.leadName;
     setTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, leadId: newLeadId ?? undefined, leadName } : t))
     );
@@ -448,6 +521,15 @@ export default function Tasks() {
     const updated = await linkTaskToLead(task.id, newLeadId);
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      // Update detail modal if it's the same task
+      if (detailTask?.id === updated.id) {
+        setDetailTask(updated);
+      }
+      // Log activity
+      const details = newLeadId 
+        ? `Task linked to lead "${leadName}"${oldLeadName ? ` (was: ${oldLeadName})` : ''}`
+        : `Task unlinked from lead${oldLeadName ? ` "${oldLeadName}"` : ''}`;
+      await logTaskActivity(updated, newLeadId ? 'linked to lead' : 'unlinked from lead', details);
       toast.success(newLeadId ? 'Task linked to lead' : 'Task unlinked from lead');
     } else {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
@@ -457,6 +539,7 @@ export default function Tasks() {
 
   const handleDealChange = async (task: TaskItem, newDealId: string | null) => {
     const dealName = newDealId ? deals.find((d) => d.id === newDealId)?.name : undefined;
+    const oldDealName = task.dealName;
     setTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, dealId: newDealId ?? undefined, dealName } : t))
     );
@@ -464,6 +547,15 @@ export default function Tasks() {
     const updated = await linkTaskToDeal(task.id, newDealId);
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      // Update detail modal if it's the same task
+      if (detailTask?.id === updated.id) {
+        setDetailTask(updated);
+      }
+      // Log activity
+      const details = newDealId 
+        ? `Task linked to deal "${dealName}"${oldDealName ? ` (was: ${oldDealName})` : ''}`
+        : `Task unlinked from deal${oldDealName ? ` "${oldDealName}"` : ''}`;
+      await logTaskActivity(updated, newDealId ? 'linked to deal' : 'unlinked from deal', details);
       toast.success(newDealId ? 'Task linked to deal' : 'Task unlinked from deal');
     } else {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
@@ -548,16 +640,42 @@ export default function Tasks() {
       getInitials={getInitials}
       formatDue={formatDueMemoized}
       taskCardType={TASK_CARD_TYPE}
+      onViewDetails={openTaskDetail}
     />
   );
+
+  // Handler for updating task from detail modal
+  const handleDetailModalUpdate = async (taskId: string, updates: Partial<TaskItem>): Promise<TaskItem | null> => {
+    const updated = await updateTask(taskId, {
+      title: updates.title,
+      description: updates.description,
+      dueDateUtc: updates.dueDateUtc,
+      reminderDateUtc: updates.reminderDateUtc,
+      status: updates.status,
+      priority: updates.priority,
+      notes: updates.notes,
+      clearDueDate: updates.dueDateUtc === undefined,
+      clearReminderDate: updates.reminderDateUtc === undefined,
+    });
+    if (updated) {
+      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      setDetailTask(updated);
+      // Log activity
+      await logTaskActivity(updated, 'updated', 'Task details were modified');
+      getTaskStats().then(setStats);
+      return updated;
+    }
+    return null;
+  };
 
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
-      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        {/* Modern Hero Header */}
-        <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
+      <PageTransition>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          {/* Modern Hero Header */}
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
           {/* Animated background elements */}
           <div className="absolute inset-0 overflow-hidden">
             <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
@@ -623,7 +741,7 @@ export default function Tasks() {
         </div>
 
         {loading ? (
-          <LoadingSpinner />
+          <KanbanSkeleton columns={4} />
         ) : (
           <>
             {/* Modern Stats Cards */}
@@ -922,6 +1040,7 @@ export default function Tasks() {
                   members={orgMembers}
                   getInitials={getInitials}
                   formatDue={formatDue}
+                  onViewDetails={openTaskDetail}
                 />
                 <TaskGroupSection 
                   group="today" 
@@ -938,6 +1057,7 @@ export default function Tasks() {
                   members={orgMembers}
                   getInitials={getInitials}
                   formatDue={formatDue}
+                  onViewDetails={openTaskDetail}
                 />
                 <TaskGroupSection 
                   group="tomorrow" 
@@ -954,6 +1074,7 @@ export default function Tasks() {
                   members={orgMembers}
                   getInitials={getInitials}
                   formatDue={formatDue}
+                  onViewDetails={openTaskDetail}
                 />
                 <TaskGroupSection 
                   group="thisWeek" 
@@ -970,6 +1091,7 @@ export default function Tasks() {
                   members={orgMembers}
                   getInitials={getInitials}
                   formatDue={formatDue}
+                  onViewDetails={openTaskDetail}
                 />
                 <TaskGroupSection 
                   group="later" 
@@ -986,6 +1108,7 @@ export default function Tasks() {
                   members={orgMembers}
                   getInitials={getInitials}
                   formatDue={formatDue}
+                  onViewDetails={openTaskDetail}
                 />
                 <TaskGroupSection 
                   group="noDue" 
@@ -1002,6 +1125,7 @@ export default function Tasks() {
                   members={orgMembers}
                   getInitials={getInitials}
                   formatDue={formatDue}
+                  onViewDetails={openTaskDetail}
                 />
                 <TaskGroupSection 
                   group="completed" 
@@ -1018,12 +1142,14 @@ export default function Tasks() {
                   members={orgMembers}
                   getInitials={getInitials}
                   formatDue={formatDue}
+                  onViewDetails={openTaskDetail}
                 />
               </div>
             )}
           </>
         )}
-      </main>
+        </main>
+      </PageTransition>
 
       {/* Create/Edit Dialog - Modern Design */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -1386,6 +1512,30 @@ export default function Tasks() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Task Detail Modal */}
+      <TaskDetailModal
+        task={detailTask}
+        open={detailModalOpen}
+        onOpenChange={(open) => {
+          setDetailModalOpen(open);
+          if (!open) setDetailTask(null);
+        }}
+        onUpdate={handleDetailModalUpdate}
+        onDelete={(t) => {
+          setDetailModalOpen(false);
+          setDeleteConfirmTask(t);
+        }}
+        onStatusChange={handleStatusChange}
+        onPriorityChange={handlePriorityChange}
+        onAssigneeChange={handleAssigneeChange}
+        onLeadChange={handleLeadChange}
+        onDealChange={handleDealChange}
+        members={orgMembers}
+        leads={leads}
+        deals={deals}
+        contacts={contacts}
+      />
     </div>
   );
 }

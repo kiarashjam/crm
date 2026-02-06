@@ -8,7 +8,8 @@ import {
   Activity, ChevronRight, Handshake
 } from 'lucide-react';
 import AppHeader from '@/app/components/AppHeader';
-import LoadingSpinner from '@/app/components/LoadingSpinner';
+import { PageTransition } from '@/app/components/PageTransition';
+import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import EmptyState from '@/app/components/EmptyState';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { useOrg } from '@/app/contexts/OrgContext';
@@ -519,9 +520,10 @@ export default function Team() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
-      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        {/* Enhanced Header Section with Dark Decorative Elements */}
-        <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
+      <PageTransition>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          {/* Enhanced Header Section with Dark Decorative Elements */}
+          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
           {/* Decorative blur elements */}
           <div className="absolute inset-0 overflow-hidden">
             <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
@@ -606,7 +608,7 @@ export default function Team() {
           )}
 
         {loading ? (
-          <LoadingSpinner />
+          <ContentSkeleton rows={5} />
         ) : (
           <div className="space-y-8">
             {/* Join Requests Alert */}
@@ -956,7 +958,8 @@ export default function Team() {
             </section>
           </div>
         )}
-      </main>
+        </main>
+      </PageTransition>
 
       {/* Member Detail Slide-over Panel */}
       {selectedMember && (

@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, MessageSquare, Calendar, Handshake, RotateCcw, Plus, Pencil, Trash2, X, Users, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
-import LoadingSpinner from '@/app/components/LoadingSpinner';
+import { PageTransition } from '@/app/components/PageTransition';
+import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { 
   getTemplates, 
@@ -191,8 +192,9 @@ export default function Templates() {
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
 
-      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        <div className="w-full">
+      <PageTransition>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <div className="w-full">
           {/* Enhanced Header Section with Dark Decorative Elements */}
           <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
             {/* Decorative blur elements */}
@@ -232,9 +234,7 @@ export default function Templates() {
           </div>
 
           {loading ? (
-            <div className="py-14 flex justify-center">
-              <LoadingSpinner size="md" />
-            </div>
+            <ContentSkeleton rows={6} />
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {templates.map((template) => {
@@ -325,7 +325,8 @@ export default function Templates() {
             </Link>
           </div>
         </div>
-      </main>
+        </main>
+      </PageTransition>
 
       {/* Create/Edit Template Modal */}
       {showModal && (

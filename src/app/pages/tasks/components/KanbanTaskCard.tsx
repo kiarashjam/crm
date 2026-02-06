@@ -41,6 +41,7 @@ export interface KanbanTaskCardProps {
   getInitials: (name: string) => string;
   formatDue: (iso: string | undefined) => string | null;
   taskCardType: string;
+  onViewDetails?: (task: TaskItem) => void;
 }
 
 export function KanbanTaskCard({
@@ -58,6 +59,7 @@ export function KanbanTaskCard({
   getInitials,
   formatDue,
   taskCardType,
+  onViewDetails,
 }: KanbanTaskCardProps) {
   const priority = priorityConfig[task.priority || 'none'];
   const now = new Date();
@@ -71,11 +73,26 @@ export function KanbanTaskCard({
     }),
   }), [task.id, task.status, taskCardType]);
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't trigger if clicking on the dropdown menu or buttons
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-radix-collection-item]') || 
+        target.closest('button') || 
+        target.closest('[role="menu"]') ||
+        target.closest('[data-state]')) {
+      return;
+    }
+    if (onViewDetails) {
+      onViewDetails(task);
+    }
+  };
+
   return (
     <div
       ref={dragRef}
-      className={`group relative bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-sm hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 cursor-grab active:cursor-grabbing overflow-hidden ${
-        isDragging ? 'opacity-60 scale-[0.98] rotate-1 shadow-2xl ring-2 ring-orange-400/50' : ''
+      onClick={handleCardClick}
+      className={`group relative bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-sm hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 cursor-pointer overflow-hidden ${
+        isDragging ? 'opacity-60 scale-[0.98] rotate-1 shadow-2xl ring-2 ring-orange-400/50 cursor-grabbing' : ''
       } ${task.status === 'completed' ? 'opacity-60' : ''}`}
     >
       {/* Priority indicator - left edge */}

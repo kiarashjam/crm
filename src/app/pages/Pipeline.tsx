@@ -38,6 +38,8 @@ import {
   Tooltip,
 } from 'recharts';
 import AppHeader from '@/app/components/AppHeader';
+import { PageTransition } from '@/app/components/PageTransition';
+import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getDeals, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
 import { getActivitiesByDeal, createActivity } from '@/app/api/activities';
@@ -467,9 +469,10 @@ export default function Pipeline() {
   return (
     <div className="min-h-screen flex flex-col overflow-hidden bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
       <AppHeader />
-      <main id={MAIN_CONTENT_ID} className="flex-1 min-h-0 flex flex-col w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        {/* Hero Section with Dark Decorative Elements */}
-        <motion.div 
+      <PageTransition>
+        <main id={MAIN_CONTENT_ID} className="flex-1 min-h-0 flex flex-col w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          {/* Hero Section with Dark Decorative Elements */}
+          <motion.div 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
@@ -809,19 +812,7 @@ export default function Pipeline() {
           )}
 
         {loading ? (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center py-20"
-          >
-            <div className="relative">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center animate-pulse">
-                <Target className="w-8 h-8 text-white" />
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-400 border-3 border-white" />
-            </div>
-            <p className="mt-4 text-slate-600 font-medium">Loading your pipeline...</p>
-          </motion.div>
+          <KanbanSkeleton columns={5} />
         ) : deals.length === 0 ? (
           /* Empty State - matching Leads page style */
           <div className="w-full">
@@ -1137,7 +1128,8 @@ export default function Pipeline() {
             )}
           </>
         )}
-      </main>
+        </main>
+      </PageTransition>
 
       {/* Deal detail sheet */}
       <Sheet open={!!detailDeal} onOpenChange={(open) => !open && setDetailDeal(null)}>

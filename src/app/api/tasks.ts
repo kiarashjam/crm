@@ -144,8 +144,16 @@ export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
     if (options?.dealId) params.set('dealId', options.dealId);
     if (options?.contactId) params.set('contactId', options.contactId);
     const q = params.toString() ? `?${params.toString()}` : '';
-    const list = await authFetchJson<TaskRaw[]>(`/api/tasks${q}`);
-    return Array.isArray(list) ? list.map(mapTask) : [];
+    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks${q}`);
+    // Handle both array response and paginated response formats
+    if (Array.isArray(response)) {
+      return response.map(mapTask);
+    }
+    // If it's a paginated response, extract items
+    if (response && 'items' in response && Array.isArray(response.items)) {
+      return response.items.map(mapTask);
+    }
+    return [];
   }
   await delay(200);
   let filtered = [...mockTasks];
@@ -165,8 +173,14 @@ export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
 /** Get tasks by lead ID. */
 export async function getTasksByLead(leadId: string): Promise<TaskItem[]> {
   if (isUsingRealApi()) {
-    const list = await authFetchJson<TaskRaw[]>(`/api/tasks/by-lead/${leadId}`);
-    return Array.isArray(list) ? list.map(mapTask) : [];
+    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/by-lead/${leadId}`);
+    if (Array.isArray(response)) {
+      return response.map(mapTask);
+    }
+    if (response && 'items' in response && Array.isArray(response.items)) {
+      return response.items.map(mapTask);
+    }
+    return [];
   }
   await delay(200);
   return mockTasks.filter((t) => t.leadId === leadId);
@@ -175,8 +189,14 @@ export async function getTasksByLead(leadId: string): Promise<TaskItem[]> {
 /** Get tasks by deal ID. */
 export async function getTasksByDeal(dealId: string): Promise<TaskItem[]> {
   if (isUsingRealApi()) {
-    const list = await authFetchJson<TaskRaw[]>(`/api/tasks/by-deal/${dealId}`);
-    return Array.isArray(list) ? list.map(mapTask) : [];
+    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/by-deal/${dealId}`);
+    if (Array.isArray(response)) {
+      return response.map(mapTask);
+    }
+    if (response && 'items' in response && Array.isArray(response.items)) {
+      return response.items.map(mapTask);
+    }
+    return [];
   }
   await delay(200);
   return mockTasks.filter((t) => t.dealId === dealId);
@@ -185,8 +205,14 @@ export async function getTasksByDeal(dealId: string): Promise<TaskItem[]> {
 /** Get tasks by contact ID. */
 export async function getTasksByContact(contactId: string): Promise<TaskItem[]> {
   if (isUsingRealApi()) {
-    const list = await authFetchJson<TaskRaw[]>(`/api/tasks/by-contact/${contactId}`);
-    return Array.isArray(list) ? list.map(mapTask) : [];
+    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/by-contact/${contactId}`);
+    if (Array.isArray(response)) {
+      return response.map(mapTask);
+    }
+    if (response && 'items' in response && Array.isArray(response.items)) {
+      return response.items.map(mapTask);
+    }
+    return [];
   }
   await delay(200);
   return [];

@@ -1,190 +1,399 @@
 # Cadence Backend
 
-ASP.NET Core 8 Web API with **Clean Architecture**: Domain, Application, Infrastructure, and WebApi layers. The database is SQL Server with Entity Framework Core 8.
+ASP.NET Core 8 Web API with Clean Architecture. SQL Server + Entity Framework Core 8.
 
-## Quality Status: 97% Production Ready ✅
+---
 
-The backend has been significantly improved with enterprise-grade patterns:
+## Quick Start (5 minutes)
 
-| Category | Score | Key Implementations |
-|----------|-------|---------------------|
-| Error Handling | 95% | Result pattern, DomainErrors, ProblemDetails, GlobalExceptionHandler |
-| Logging | 95% | Serilog with structured logging, context enrichment |
-| API Documentation | 100% | XML comments, ProducesResponseType on all 26 controllers, enhanced Swagger |
-| Architecture | 90% | Clean Architecture with proper separation |
-| Testing | 95% | 169 unit tests passing (ContactService, LeadService, AuthService, DealService, CompanyService, TaskService, ActivityService, TemplateService, OrganizationService, Result pattern) |
-| Validation | 90% | DataAnnotations on all DTOs, ValidationHelper class for service-level validation |
-
-**See full details:** `src/app/reports/BACKEND_CODE_QUALITY_AND_STANDARDS_REPORT.md`
-
-## Structure
-
-- **ACI.Domain** – Entities, enums, no dependencies
-- **ACI.Application** – Use cases, DTOs, interfaces, Result types, DomainErrors (depends on Domain)
-- **ACI.Infrastructure** – EF Core, repositories, JWT, password hashing, Intelligent Sales Writer (depends on Application, Domain)
-- **ACI.WebApi** – Controllers, auth, Swagger, GlobalExceptionHandler, ResultExtensions (depends on Application, Infrastructure)
-
-## Prerequisites
-
+### 1. Prerequisites
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- SQL Server or LocalDB (e.g. `(localdb)\mssqllocaldb`)
+- SQL Server or LocalDB (`(localdb)\mssqllocaldb`)
 
-## Configuration
-
-Edit `src/ACI.WebApi/appsettings.json` (or `appsettings.Development.json`):
-
-- **ConnectionStrings:DefaultConnection** – SQL Server connection string
-- **Jwt:SecretKey** – At least 32 characters (change in production)
-- **Jwt:Issuer**, **Jwt:Audience**, **Jwt:ExpiryMinutes** – Optional JWT settings
-
-## Run
-
-From the repo root:
-
-```bash
-cd backend
-dotnet run --project src/ACI.WebApi/ACI.WebApi.csproj
+### 2. Configure Database
+Edit `src/ACI.WebApi/appsettings.Development.json`:
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=CadenceCRM;Trusted_Connection=True;"
+  }
+}
 ```
 
-Or from the solution folder:
-
+### 3. Run
 ```bash
 cd backend
 dotnet run --project src/ACI.WebApi
 ```
 
-- API: https://localhost:7xxx (or the port in `launchSettings.json`)
-- Swagger: https://localhost:7xxx/swagger
+**That's it!** Database migrations run automatically on first start.
 
-On first run, migrations are applied and seed data (templates) is inserted.
+- **API**: https://localhost:7xxx  
+- **Swagger UI**: https://localhost:7xxx/swagger
 
-## Migrations
+---
 
-From `backend`:
+## Common Tasks
 
+### Create a New Migration
 ```bash
-# Add a new migration
-dotnet ef migrations add YourMigrationName --project src/ACI.Infrastructure/ACI.Infrastructure.csproj --startup-project src/ACI.WebApi/ACI.WebApi.csproj
-
-# Update database (optional; also done automatically on startup)
-dotnet ef database update --project src/ACI.Infrastructure/ACI.Infrastructure.csproj --startup-project src/ACI.WebApi/ACI.WebApi.csproj
+cd backend
+dotnet ef migrations add YourMigrationName \
+  --project src/ACI.Infrastructure \
+  --startup-project src/ACI.WebApi
 ```
 
-## API Overview
+### Apply Migrations Manually
+```bash
+dotnet ef database update \
+  --project src/ACI.Infrastructure \
+  --startup-project src/ACI.WebApi
+```
 
-All endpoints except auth require `Authorization: Bearer <token>`.
+### Run Tests
+```bash
+cd backend
+dotnet test
+```
 
-| Area | Endpoints |
-|------|-----------|
-| **Auth** | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/2fa` |
-| **Contacts** | `GET /api/contacts`, `GET /api/contacts/search?q=`, `GET /api/contacts/{id}` |
-| **Companies** | `GET /api/companies`, `GET /api/companies/{id}`, `POST /api/companies`, `PUT /api/companies/{id}` |
-| **Deals** | `GET /api/deals`, `GET /api/deals/search?q=`, `GET /api/deals/{id}`, `POST /api/deals`, `PUT /api/deals/{id}`, `DELETE /api/deals/{id}` |
-| **Leads** | `GET /api/leads`, `GET /api/leads/search?q=`, `GET /api/leads/{id}`, `POST /api/leads`, `PUT /api/leads/{id}`, `DELETE /api/leads/{id}` |
-| **Tasks** | `GET /api/tasks?overdueOnly=`, `GET /api/tasks/{id}`, `POST /api/tasks`, `PUT /api/tasks/{id}` |
-| **Activities** | `GET /api/activities`, `GET /api/activities/contact/{id}`, `GET /api/activities/deal/{id}`, `POST /api/activities` |
-| **Reporting** | `GET /api/reporting/dashboard` (active leads, active deals, pipeline value, won/lost) |
-| **Templates** | `GET /api/templates`, `GET /api/templates/{id}` |
-| **Copy** | `POST /api/copy/generate`, `POST /api/copy/send` |
-| **History** | `GET /api/copyhistory`, `GET /api/copyhistory/stats` |
-| **Organizations** | `GET /api/organizations`, `POST /api/organizations`, `GET /api/organizations/{id}`; set `X-Organization-Id` header for org-scoped data |
-| **Invites** | `GET /api/invites/pending`, `POST /api/invites/accept`, `POST /api/invites/{orgId}`, etc. |
-| **Join requests** | `POST /api/joinrequests/{orgId}`, `GET /api/joinrequests/organization/{orgId}`, `POST /api/joinrequests/{id}/accept`, `POST /api/joinrequests/{id}/reject` |
-| **Pipelines** | `GET /api/pipelines`, `POST /api/pipelines`, `PUT /api/pipelines/{id}`, `DELETE /api/pipelines/{id}` (Owner/Manager only) |
-| **Deal stages** | `GET /api/dealstages`, `POST /api/dealstages`, etc. (Owner/Manager only) |
-| **Lead sources / statuses** | `GET /api/leadsources`, `GET /api/leadstatuses`, etc. (Owner/Manager only) |
-| **Leads convert** | `POST /api/leads/{id}/convert` (create/attach company, contact, deal; lead set to Converted) |
-| **Settings** | `GET /api/settings`, `PUT /api/settings` |
+### Build for Production
+```bash
+dotnet publish src/ACI.WebApi -c Release -o ./publish
+```
 
-### Quick test
+---
 
-1. Register: `POST /api/auth/register` with `{ "email": "user@example.com", "password": "YourPassword123!", "name": "Test User" }`
-2. Use the returned `token` in the header: `Authorization: Bearer <token>`
-3. Call `GET /api/templates` or `GET /api/settings`
+## API Authentication
 
-## Database
+All endpoints (except `/api/auth/*`) require a JWT token.
 
-- **Users** – Auth and ownership of data
-- **UserSettings** – Company name, brand tone per user
-- **Organizations**, **OrganizationMembers**, **Invites**, **JoinRequests**, **OrgSettings** – Multi-tenant org layer; data scoped by `X-Organization-Id`
-- **Companies** – CRM accounts; optional link for contacts/deals/leads; Domain, Industry, Size; OrganizationId
-- **Contacts** – People; optional CompanyId, Phone, JobTitle; OrganizationId; delete supported
-- **Deals** – Opportunities; CompanyId, ContactId, PipelineId, DealStageId, Currency, AssigneeId, ExpectedCloseDateUtc, IsWon; OrganizationId
-- **Leads** – Potential customers; CompanyId, LeadSourceId, LeadStatusId, IsConverted, ConvertedAtUtc; convert to Company/Contact/Deal; OrganizationId
-- **Pipelines**, **DealStages** – Org-level pipeline and stages; Deal links to PipelineId, DealStageId
-- **LeadSources**, **LeadStatuses** – Org-level lead source and status config
-- **TaskItems** – Tasks; LeadId, DealId, ContactId, AssigneeId; DueDateUtc, Completed; OrganizationId
-- **Activities** – Calls, meetings, emails, notes; ContactId, DealId, LeadId, Participants; OrganizationId
-- **Templates** – Copy templates (system and user)
-- **CopyHistoryItems** – Generated/sent copy for history and stats; OrganizationId
+### Register a User
+```http
+POST /api/auth/register
+Content-Type: application/json
 
-Migrations include InitialCreate, AddOrganizationsAndOrgId, SalesCrmCore, RemoveCrmConnection, BlueprintPipelineStagesAndFields, etc. On startup, `MigrateAsync()` applies pending migrations and seed data runs.
+{
+  "email": "user@example.com",
+  "password": "YourPassword123!",
+  "name": "Test User"
+}
+```
 
-The Intelligent Sales Writer is currently template-based; you can replace `ICopyGenerator` in Infrastructure with an AI/LLM integration.
+### Login
+```http
+POST /api/auth/login
+Content-Type: application/json
 
-## Key Infrastructure Files (Quality Improvements)
+{
+  "email": "user@example.com",
+  "password": "YourPassword123!"
+}
+```
 
-| File | Purpose |
-|------|---------|
-| `ACI.Application/Common/Result.cs` | Result<T> pattern for standardized success/failure returns |
-| `ACI.Application/Common/DomainErrors.cs` | Centralized error definitions for all entities |
-| `ACI.Application/Common/ValidationHelper.cs` | Email, Phone, Domain format validation using `[GeneratedRegex]` |
-| `ACI.WebApi/Extensions/ResultExtensions.cs` | Convert Result to ActionResult with ProblemDetails |
-| `ACI.WebApi/Middleware/GlobalExceptionHandler.cs` | Global exception handling with ProblemDetails format |
+**Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "userId": "abc123..."
+}
+```
 
-### Result Pattern Example
+### Use the Token
+Add to all subsequent requests:
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+### Multi-Tenant Organization
+For org-scoped data, include:
+```
+X-Organization-Id: your-org-guid
+```
+
+---
+
+## API Endpoints Reference
+
+### Core CRM
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/contacts` | List all contacts |
+| `GET` | `/api/contacts/search?q=john` | Search contacts |
+| `GET` | `/api/contacts/{id}` | Get single contact |
+| `POST` | `/api/contacts` | Create contact |
+| `PUT` | `/api/contacts/{id}` | Update contact |
+| `DELETE` | `/api/contacts/{id}` | Delete contact |
+
+### Companies
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/companies` | List companies |
+| `GET` | `/api/companies/{id}` | Get company |
+| `POST` | `/api/companies` | Create company |
+| `PUT` | `/api/companies/{id}` | Update company |
+
+### Deals
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/deals` | List deals |
+| `GET` | `/api/deals/search?q=` | Search deals |
+| `GET` | `/api/deals/{id}` | Get deal |
+| `POST` | `/api/deals` | Create deal |
+| `PUT` | `/api/deals/{id}` | Update deal |
+| `DELETE` | `/api/deals/{id}` | Delete deal |
+
+### Leads
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/leads` | List leads |
+| `GET` | `/api/leads/search?q=` | Search leads |
+| `POST` | `/api/leads` | Create lead |
+| `PUT` | `/api/leads/{id}` | Update lead |
+| `DELETE` | `/api/leads/{id}` | Delete lead |
+| `POST` | `/api/leads/{id}/convert` | Convert to Contact/Company/Deal |
+
+### Tasks
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/tasks` | List all tasks |
+| `GET` | `/api/tasks?overdueOnly=true` | List overdue tasks only |
+| `GET` | `/api/tasks/{id}` | Get task |
+| `POST` | `/api/tasks` | Create task |
+| `PUT` | `/api/tasks/{id}` | Update task |
+
+### Activities
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/activities` | List activities |
+| `GET` | `/api/activities/contact/{id}` | Activities for a contact |
+| `GET` | `/api/activities/deal/{id}` | Activities for a deal |
+| `POST` | `/api/activities` | Log an activity |
+
+### Organizations & Team
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/organizations` | List user's orgs |
+| `POST` | `/api/organizations` | Create org |
+| `POST` | `/api/invites/{orgId}` | Invite user to org |
+| `GET` | `/api/invites/pending` | List pending invites |
+| `POST` | `/api/invites/accept` | Accept invite |
+| `POST` | `/api/joinrequests/{orgId}` | Request to join org |
+
+### Configuration (Owner/Manager only)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET/POST/PUT/DELETE` | `/api/pipelines` | Manage pipelines |
+| `GET/POST/PUT/DELETE` | `/api/dealstages` | Manage deal stages |
+| `GET/POST/PUT/DELETE` | `/api/leadsources` | Manage lead sources |
+| `GET/POST/PUT/DELETE` | `/api/leadstatuses` | Manage lead statuses |
+
+### Other
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/reporting/dashboard` | Dashboard stats |
+| `GET` | `/api/templates` | Email templates |
+| `POST` | `/api/copy/generate` | Generate sales copy |
+| `GET` | `/api/settings` | User settings |
+| `PUT` | `/api/settings` | Update settings |
+
+---
+
+## Project Structure
+
+```
+backend/
+├── src/
+│   ├── ACI.Domain/           # Entities, enums (no dependencies)
+│   ├── ACI.Application/      # Use cases, DTOs, interfaces, Result types
+│   ├── ACI.Infrastructure/   # EF Core, repositories, JWT, external services
+│   └── ACI.WebApi/           # Controllers, middleware, Swagger
+└── tests/
+    └── ACI.Application.Tests/  # Unit tests
+```
+
+### Key Files
+
+| File | What it does |
+|------|--------------|
+| `Application/Common/Result.cs` | Result<T> pattern for success/failure |
+| `Application/Common/DomainErrors.cs` | Centralized error definitions |
+| `Application/Common/ValidationHelper.cs` | Email, phone, domain validation |
+| `WebApi/Extensions/ResultExtensions.cs` | Convert Result → ActionResult |
+| `WebApi/Middleware/GlobalExceptionHandler.cs` | Global exception handling |
+
+---
+
+## Configuration Reference
+
+### appsettings.json
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=...;Database=...;..."
+  },
+  "Jwt": {
+    "SecretKey": "your-secret-key-at-least-32-characters-long",
+    "Issuer": "CadenceCRM",
+    "Audience": "CadenceCRM",
+    "ExpiryMinutes": 60
+  }
+}
+```
+
+> **Important:** Change `Jwt:SecretKey` in production. Must be at least 32 characters.
+
+---
+
+## Database Schema
+
+### Core Entities
+
+| Table | Description |
+|-------|-------------|
+| `Users` | Authentication and data ownership |
+| `UserSettings` | Per-user preferences |
+| `Organizations` | Multi-tenant organizations |
+| `OrganizationMembers` | User-org membership + roles |
+
+### CRM Entities
+
+| Table | Description |
+|-------|-------------|
+| `Companies` | Accounts/businesses |
+| `Contacts` | People (linked to companies) |
+| `Deals` | Sales opportunities |
+| `Leads` | Potential customers (convertible) |
+| `TaskItems` | To-dos linked to leads/deals/contacts |
+| `Activities` | Calls, meetings, emails, notes |
+
+### Configuration Entities
+
+| Table | Description |
+|-------|-------------|
+| `Pipelines` | Sales pipelines per org |
+| `DealStages` | Stages within pipelines |
+| `LeadSources` | Where leads come from |
+| `LeadStatuses` | Lead lifecycle statuses |
+
+---
+
+## Code Patterns
+
+### Result Pattern
+
+Services return `Result<T>` instead of throwing exceptions:
 
 ```csharp
-// Service returns Result<T>
-public async Task<Result<ContactDto>> GetByIdAsync(Guid id, ...)
+// Service
+public async Task<Result<ContactDto>> GetByIdAsync(Guid id)
 {
-    var entity = await _repository.GetByIdAsync(id, ...);
+    var entity = await _repository.GetByIdAsync(id);
     if (entity == null)
-        return DomainErrors.Contact.NotFound;  // Typed error
-    return Map(entity);  // Success with value
+        return DomainErrors.Contact.NotFound;
+    
+    return Map(entity);
 }
 
-// Controller uses ResultExtensions
-var result = await _contactService.GetByIdAsync(id, ...);
-return result.ToActionResult();  // Returns Ok(value) or ProblemDetails
+// Controller
+var result = await _contactService.GetByIdAsync(id);
+return result.ToActionResult();  // Ok(data) or ProblemDetails
 ```
 
-### Logging Example
+### Logging
 
-All major services now use Serilog with structured logging:
+Structured logging with Serilog:
 
 ```csharp
 _logger.LogDebug("Getting contact {ContactId} for user {UserId}", id, userId);
-_logger.LogWarning("Contact {ContactId} not found for user {UserId}", id, userId);
+_logger.LogWarning("Contact {ContactId} not found", id);
 _logger.LogError(ex, "Failed to create contact for user {UserId}", userId);
 ```
 
-### Validation Example
+### Validation
 
-All request DTOs use DataAnnotations for automatic model validation:
+DTOs use DataAnnotations:
 
 ```csharp
-// DTO with validation attributes
 public record CreateContactRequest
 {
     [Required(ErrorMessage = "Name is required")]
-    [StringLength(256, ErrorMessage = "Name cannot exceed 256 characters")]
+    [StringLength(256)]
     public required string Name { get; init; }
 
-    [Required(ErrorMessage = "Email is required")]
-    [EmailAddress(ErrorMessage = "Invalid email format")]
-    [StringLength(256, ErrorMessage = "Email cannot exceed 256 characters")]
+    [Required, EmailAddress]
     public required string Email { get; init; }
 
-    [Phone(ErrorMessage = "Invalid phone format")]
-    [StringLength(64, ErrorMessage = "Phone cannot exceed 64 characters")]
+    [Phone]
     public string? Phone { get; init; }
 }
 ```
 
-Service-level validation uses `ValidationHelper` for additional format checks:
+---
 
-```csharp
-if (!string.IsNullOrEmpty(request.Email) && !ValidationHelper.IsValidEmail(request.Email))
-    return DomainErrors.Contact.EmailInvalid;
+## Troubleshooting
+
+### Database connection fails
+- Check SQL Server is running
+- Verify connection string in `appsettings.Development.json`
+- For LocalDB: `sqllocaldb info mssqllocaldb`
+
+### Migrations fail
+```bash
+# Reset and recreate
+dotnet ef database drop --project src/ACI.Infrastructure --startup-project src/ACI.WebApi
+dotnet ef database update --project src/ACI.Infrastructure --startup-project src/ACI.WebApi
 ```
+
+### JWT token invalid
+- Ensure `Jwt:SecretKey` is at least 32 characters
+- Check token hasn't expired
+- Verify `Authorization: Bearer <token>` header format
+
+### Port already in use
+Edit `src/ACI.WebApi/Properties/launchSettings.json` to change the port.
+
+---
+
+## Testing
+
+169 unit tests covering:
+- ContactService, LeadService, AuthService
+- DealService, CompanyService, TaskService
+- ActivityService, TemplateService, OrganizationService
+- Result pattern
+
+```bash
+# Run all tests
+dotnet test
+
+# Run with coverage
+dotnet test --collect:"XPlat Code Coverage"
+
+# Run specific test class
+dotnet test --filter "FullyQualifiedName~ContactServiceTests"
+```
+
+---
+
+## Quality Metrics
+
+| Category | Status |
+|----------|--------|
+| Error Handling | ✅ Result pattern, DomainErrors, ProblemDetails |
+| Logging | ✅ Serilog with structured logging |
+| API Documentation | ✅ XML comments, Swagger |
+| Architecture | ✅ Clean Architecture |
+| Testing | ✅ 169 unit tests |
+| Validation | ✅ DataAnnotations + ValidationHelper |
+
+Full report: `src/app/reports/BACKEND_CODE_QUALITY_AND_STANDARDS_REPORT.md`

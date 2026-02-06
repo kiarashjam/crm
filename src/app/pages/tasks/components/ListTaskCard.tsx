@@ -36,6 +36,7 @@ export interface ListTaskCardProps {
   members: { userId: string; name: string; email: string }[];
   getInitials: (name: string) => string;
   formatDue: (iso: string | undefined) => string | null;
+  onViewDetails?: (task: TaskItem) => void;
 }
 
 export function ListTaskCard({
@@ -48,6 +49,7 @@ export function ListTaskCard({
   priorityConfig,
   getInitials,
   formatDue,
+  onViewDetails,
 }: ListTaskCardProps) {
   const priority = priorityConfig[task.priority || 'none'];
   const status = statusConfig[task.status || 'todo'];
@@ -55,10 +57,27 @@ export function ListTaskCard({
   const isOverdue = task.status !== 'completed' && task.status !== 'cancelled' && task.dueDateUtc && new Date(task.dueDateUtc) < now;
   const StatusIcon = status.icon;
 
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Don't trigger if clicking on the dropdown menu or buttons
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-radix-collection-item]') || 
+        target.closest('button') || 
+        target.closest('[role="menu"]') ||
+        target.closest('[data-state]')) {
+      return;
+    }
+    if (onViewDetails) {
+      onViewDetails(task);
+    }
+  };
+
   return (
-    <div className={`group relative bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden ${
-      task.status === 'completed' || task.status === 'cancelled' ? 'opacity-60' : ''
-    }`}>
+    <div 
+      onClick={handleCardClick}
+      className={`group relative bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden cursor-pointer ${
+        task.status === 'completed' || task.status === 'cancelled' ? 'opacity-60' : ''
+      }`}
+    >
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${priority.borderColor.replace('border-l-', 'bg-')}`} />
 
       <div className="flex items-start gap-3 p-4 pl-5">

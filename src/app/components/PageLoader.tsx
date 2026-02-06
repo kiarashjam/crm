@@ -1,23 +1,25 @@
-import LoadingSpinner from './LoadingSpinner';
+import { PageSkeleton, ContentSkeleton, CenteredLoader } from './PageSkeleton';
 
 /**
  * Full page loading state for lazy-loaded routes
+ * Shows a beautiful skeleton that matches the page layout
  */
 export function PageLoader() {
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <LoadingSpinner size="lg" label="Loading..." />
-    </div>
-  );
+  return <PageSkeleton />;
 }
 
 /**
- * Content area loading state
+ * Content area loading state with skeleton
  */
-export function ContentLoader() {
-  return (
-    <div className="flex min-h-[400px] items-center justify-center">
-      <LoadingSpinner size="md" label="Loading..." />
-    </div>
-  );
+export function ContentLoader({ rows = 5 }: { rows?: number }) {
+  return <ContentSkeleton rows={rows} />;
 }
+
+/**
+ * Simple centered spinner loader
+ */
+export function SpinnerLoader({ text = 'Loading...' }: { text?: string }) {
+  return <CenteredLoader text={text} />;
+}
+
+export { PageSkeleton, ContentSkeleton, CenteredLoader };
