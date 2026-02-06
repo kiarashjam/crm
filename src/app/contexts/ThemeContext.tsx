@@ -38,7 +38,7 @@ export interface AppearanceSettings {
 const STORAGE_KEY = 'crm_appearance_settings';
 
 const defaultAppearance: AppearanceSettings = {
-  themeMode: 'system',
+  themeMode: 'light',
   themePreset: 'default',
   dataDensity: 'comfortable',
   accentColor: 'orange',
@@ -535,7 +535,7 @@ export const THEME_INIT_SCRIPT = `
     var stored = localStorage.getItem('crm_appearance_settings');
     if (stored) {
       var settings = JSON.parse(stored);
-      var mode = settings.themeMode || settings.theme || 'system';
+      var mode = settings.themeMode || settings.theme || 'light';
       var preset = settings.themePreset || 'default';
       var isDark = mode === 'dark' || 
         (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) ||
