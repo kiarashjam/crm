@@ -758,7 +758,7 @@ try
         {
             var firstUser = await db.Users.FirstOrDefaultAsync();
             if (firstUser == null) return Results.Ok(new { status = "no_users" });
-            var leads = await leadService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            var leads = await leadService.GetLeadsPagedAsync(firstUser.Id, null, 1, 10);
             return Results.Ok(new { status = "ok", totalCount = leads.TotalCount });
         }
         catch (Exception ex)
@@ -774,7 +774,7 @@ try
         {
             var firstUser = await db.Users.FirstOrDefaultAsync();
             if (firstUser == null) return Results.Ok(new { status = "no_users" });
-            var deals = await dealService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            var deals = await dealService.GetDealsPagedAsync(firstUser.Id, null, 1, 10);
             return Results.Ok(new { status = "ok", totalCount = deals.TotalCount });
         }
         catch (Exception ex)
@@ -790,7 +790,7 @@ try
         {
             var firstUser = await db.Users.FirstOrDefaultAsync();
             if (firstUser == null) return Results.Ok(new { status = "no_users" });
-            var companies = await companyService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            var companies = await companyService.GetCompaniesPagedAsync(firstUser.Id, null, 1, 10);
             return Results.Ok(new { status = "ok", totalCount = companies.TotalCount });
         }
         catch (Exception ex)
