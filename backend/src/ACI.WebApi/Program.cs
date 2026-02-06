@@ -239,6 +239,49 @@ try
             var maskedConnStr = connStr.Length > 30 ? connStr.Substring(0, 30) + "..." : connStr;
             Log.Information("Database connection: {ConnectionString}", maskedConnStr);
             
+            // First, fix any missing columns in the Templates table (from older schema)
+            Log.Information("Checking and fixing database schema...");
+            await db.Database.ExecuteSqlRawAsync(@"
+                -- Add missing columns to Templates table if they don't exist
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')
+                BEGIN
+                    ALTER TABLE [Templates] ADD [IsSystemTemplate] bit NOT NULL DEFAULT 0;
+                    CREATE INDEX [IX_Templates_IsSystemTemplate] ON [Templates] ([IsSystemTemplate]);
+                END;
+                
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSharedWithOrganization')
+                BEGIN
+                    ALTER TABLE [Templates] ADD [IsSharedWithOrganization] bit NOT NULL DEFAULT 0;
+                END;
+                
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'OrganizationId')
+                BEGIN
+                    ALTER TABLE [Templates] ADD [OrganizationId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_Templates_OrganizationId] ON [Templates] ([OrganizationId]);
+                END;
+                
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'Content')
+                BEGIN
+                    ALTER TABLE [Templates] ADD [Content] nvarchar(4000) NULL;
+                END;
+                
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'BrandTone')
+                BEGIN
+                    ALTER TABLE [Templates] ADD [BrandTone] nvarchar(64) NULL;
+                END;
+                
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'Length')
+                BEGIN
+                    ALTER TABLE [Templates] ADD [Length] nvarchar(32) NULL;
+                END;
+                
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'UpdatedAtUtc')
+                BEGIN
+                    ALTER TABLE [Templates] ADD [UpdatedAtUtc] datetime2 NULL;
+                END;
+            ");
+            Log.Information("Schema check complete");
+            
             Log.Information("Applying database migrations...");
             try
             {
