@@ -286,6 +286,21 @@ try
     app.MapGet("/db-status", () => dbError == null 
         ? Results.Ok(new { status = "ok", message = "Database initialized successfully" }) 
         : Results.Ok(new { status = "error", message = dbError }));
+    
+    // Test templates directly
+    app.MapGet("/db-test-templates", async (AppDbContext db) =>
+    {
+        try
+        {
+            var count = await db.Templates.CountAsync();
+            var sample = await db.Templates.Select(t => new { t.Id, t.Title, t.IsSystemTemplate }).Take(3).ToListAsync();
+            return Results.Ok(new { status = "ok", count, sample });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.ToString() });
+        }
+    });
 
     Log.Information("ACI CRM API started successfully");
     app.Run();
