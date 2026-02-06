@@ -750,6 +750,70 @@ try
             return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
         }
     });
+    
+    // Test leads service
+    app.MapGet("/db-test-leads-service", async (AppDbContext db, ILeadService leadService) =>
+    {
+        try
+        {
+            var firstUser = await db.Users.FirstOrDefaultAsync();
+            if (firstUser == null) return Results.Ok(new { status = "no_users" });
+            var leads = await leadService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            return Results.Ok(new { status = "ok", totalCount = leads.TotalCount });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
+    
+    // Test deals service
+    app.MapGet("/db-test-deals-service", async (AppDbContext db, IDealService dealService) =>
+    {
+        try
+        {
+            var firstUser = await db.Users.FirstOrDefaultAsync();
+            if (firstUser == null) return Results.Ok(new { status = "no_users" });
+            var deals = await dealService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            return Results.Ok(new { status = "ok", totalCount = deals.TotalCount });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
+    
+    // Test companies service
+    app.MapGet("/db-test-companies-service", async (AppDbContext db, ICompanyService companyService) =>
+    {
+        try
+        {
+            var firstUser = await db.Users.FirstOrDefaultAsync();
+            if (firstUser == null) return Results.Ok(new { status = "no_users" });
+            var companies = await companyService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            return Results.Ok(new { status = "ok", totalCount = companies.TotalCount });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
+    
+    // Test activities service
+    app.MapGet("/db-test-activities-service", async (AppDbContext db, IActivityService activityService) =>
+    {
+        try
+        {
+            var firstUser = await db.Users.FirstOrDefaultAsync();
+            if (firstUser == null) return Results.Ok(new { status = "no_users" });
+            var activities = await activityService.GetPagedAsync(firstUser.Id, null, 1, 10);
+            return Results.Ok(new { status = "ok", totalCount = activities.TotalCount });
+        }
+        catch (Exception ex)
+        {
+            return Results.Ok(new { status = "error", message = ex.Message, detail = ex.ToString() });
+        }
+    });
 
     Log.Information("ACI CRM API started successfully");
     app.Run();
