@@ -1124,7 +1124,7 @@ try
         {
             var firstUser = await db.Users.FirstOrDefaultAsync();
             if (firstUser == null) return Results.Ok(new { status = "no_users" });
-            var sequences = await emailSequenceService.GetAllAsync(firstUser.Id, null);
+            var sequences = await emailSequenceService.GetSequencesAsync(firstUser.Id, null);
             return Results.Ok(new { status = "ok", count = sequences.Count });
         }
         catch (Exception ex)
