@@ -14,7 +14,7 @@ using Serilog;
 using Serilog.Events;
 
 // Configure Serilog early for startup logging
-Log.Logger = new LoggerConfiguration()
+var logConfig = new LoggerConfiguration()
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore", LogEventLevel.Warning)
@@ -24,13 +24,20 @@ Log.Logger = new LoggerConfiguration()
     .Enrich.WithMachineName()
     .Enrich.WithThreadId()
     .WriteTo.Console(
-        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")
-    .WriteTo.File(
+        outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
+
+// Only add file logging in Development (Azure App Service doesn't allow local file writes)
+var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+if (environment == "Development")
+{
+    logConfig.WriteTo.File(
         path: "logs/aci-.log",
         rollingInterval: RollingInterval.Day,
         retainedFileCountLimit: 30,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}")
-    .CreateLogger();
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}");
+}
+
+Log.Logger = logConfig.CreateLogger();
 
 try
 {
@@ -182,17 +189,14 @@ try
 
     var app = builder.Build();
 
-    // Configure middleware pipeline
-    if (app.Environment.IsDevelopment())
+    // Configure middleware pipeline - Enable Swagger in all environments for API documentation
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
     {
-        app.UseSwagger();
-        app.UseSwaggerUI(c =>
-        {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "ACI CRM API v1");
-            c.RoutePrefix = "swagger";
-            c.DocumentTitle = "ACI CRM API Documentation";
-        });
-    }
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "ACI CRM API v1");
+        c.RoutePrefix = "swagger";
+        c.DocumentTitle = "ACI CRM API Documentation";
+    });
 
     // Global exception handler
     app.UseExceptionHandler();
