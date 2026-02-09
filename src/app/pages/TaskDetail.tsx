@@ -113,7 +113,7 @@ export default function TaskDetail() {
         setEditTitle(t.title);
         setEditDescription(t.description || '');
         setEditNotes(t.notes || '');
-        setEditDueDate(t.dueDateUtc ? t.dueDateUtc.slice(0, 10) : '');
+        setEditDueDate(t.dueDateUtc ? t.dueDateUtc.slice(0, 16) : ''); // Preserve time for datetime-local input
       }
     } catch {
       toast.error('Failed to load task');

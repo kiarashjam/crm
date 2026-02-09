@@ -55,7 +55,7 @@ Migration file: `ACI.Infrastructure/Migrations/20260128122320_InitialCreate.cs`.
 | Table | Columns | Primary key | Foreign keys | Indexes |
 |-------|---------|-------------|--------------|---------|
 | **Users** | Id, Name (256), Email (256, unique), PasswordHash (500), TwoFactorEnabled, TwoFactorSecretProtected (2000), TwoFactorEnabledAtUtc, CreatedAtUtc, LastLoginAtUtc | Id | — | IX_Users_Email (unique) |
-| **UserSettings** | UserId, CompanyName (256), BrandTone (int), UpdatedAtUtc | UserId | FK → Users.Id (Cascade) | — |
+| **UserSettings** | UserId, BrandName (256), BrandTone (int), UpdatedAtUtc | UserId | FK → Users.Id (Cascade) | — |
 | **Companies** | Id, UserId, Name (256), CreatedAtUtc | Id | FK → Users.Id (Cascade) | IX_Companies_UserId |
 | **Contacts** | Id, UserId, Name (256), Email (256), **no Phone**, CompanyId, CreatedAtUtc | Id | FK → Users.Id (Cascade), FK → Companies.Id | IX_Contacts_UserId, IX_Contacts_CompanyId |
 | **Deals** | Id, UserId, Name (512), Value (64), Stage (128), CompanyId, CreatedAtUtc, **no ExpectedCloseDateUtc, no IsWon** | Id | FK → Users.Id (Cascade), FK → Companies.Id | IX_Deals_UserId, IX_Deals_CompanyId |
@@ -99,7 +99,7 @@ Migration file: `ACI.Infrastructure/Migrations/20260128122320_InitialCreate.cs`.
 | Entity | Table | Key properties | FKs / navigations |
 |--------|-------|----------------|-------------------|
 | **User** | Users | Id, Name, Email, PasswordHash, TwoFactorEnabled, TwoFactorSecretProtected, TwoFactorEnabledAtUtc, CreatedAtUtc, LastLoginAtUtc | Settings (1:1), Companies, Contacts, Deals, Leads, TaskItems, Activities, CopyHistory |
-| **UserSettings** | UserSettings | UserId (PK), CompanyName, BrandTone, UpdatedAtUtc | User |
+| **UserSettings** | UserSettings | UserId (PK), BrandName, BrandTone, UpdatedAtUtc | User |
 | **Company** | Companies | Id, UserId, Name, CreatedAtUtc | User; Contacts, Deals, Leads |
 | **Contact** | Contacts | Id, UserId, Name, Email, **Phone**, CompanyId, CreatedAtUtc | User, Company; Activities |
 | **Deal** | Deals | Id, UserId, Name, Value, Stage, CompanyId, **ExpectedCloseDateUtc**, **IsWon**, CreatedAtUtc | User, Company; Activities, TaskItems |
@@ -124,7 +124,7 @@ All in `ACI.Infrastructure/Persistence/Configurations/`. Applied via `ApplyConfi
 | Configuration | Table | Key mappings | Max lengths (selected) |
 |---------------|-------|--------------|------------------------|
 | UserConfiguration | (convention) | — | — |
-| UserSettingsConfiguration | UserSettings | PK UserId | CompanyName 256, BrandTone int |
+| UserSettingsConfiguration | UserSettings | PK UserId | BrandName 256, BrandTone int |
 | CompanyConfiguration | Companies | PK Id, FK UserId | Name 256 |
 | ContactConfiguration | Contacts | PK Id, FK UserId, FK CompanyId | Name 256, Email 256, **Phone 64** |
 | DealConfiguration | Deals | PK Id, FK UserId, FK CompanyId | Name 512, Value 64, Stage 128 |
@@ -152,7 +152,7 @@ Note: Lead, TaskItem, and Activity configurations are applied at build time; the
 
 | Method | Route | Request | Response | Auth |
 |--------|-------|---------|----------|------|
-| GET | /api/settings | — | UserSettingsDto (CompanyName, BrandTone) | Yes |
+| GET | /api/settings | — | UserSettingsDto (BrandName, BrandTone) | Yes |
 | PUT | /api/settings | UserSettingsDto | 200 | Yes |
 
 ### 5.3 Templates (TemplatesController)

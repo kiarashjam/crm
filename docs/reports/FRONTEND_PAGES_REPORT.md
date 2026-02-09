@@ -20,22 +20,23 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 | 1 | `/` | Homepage | No | None |
 | 2 | `/login` | Login | No | login, loginWithTwoFactor, register, setSession; demo: setDemoUser when no backend |
 | 3 | `/organizations` | Organizations | No | listMyOrganizations, createOrganization, listMyPendingInvites, acceptInvite, etc. |
-| 4 | `/onboarding` | Onboarding | No | saveUserSettings |
-| 5 | `/dashboard` | Dashboard | No | getTemplateById, getUserSettings, generateCopy, generateCopyInLanguage, getCopyHistoryStats, getCopyHistory, getTemplates, getDashboardStats |
-| 6 | `/generated` | GeneratedCopy | No | rewriteCopy, checkSpamScore, trackCopyEvent, sendEmail, getSmtpSettings |
-| 7 | `/send` | SendToCrm | No | getContacts, getDeals, getLeads, sendCopyToCrm |
+| 4 | `/dashboard` | Dashboard | No | getTemplateById, getUserSettings, generateCopy, generateCopyInLanguage, getCopyHistoryStats, getCopyHistory, getTemplates, getDashboardStats |
+| 5 | `/send` | SendToCrm | No | getContacts, getDeals, getLeads, sendCopyToCrm |
 | 8 | `/leads` | Leads | No | getLeads, searchLeads, getCompanies, createLead, updateLead, deleteLead |
+| 8a | `/leads/webhook` | LeadWebhook | No | Webhook configuration for lead capture |
+| 8b | `/leads/import` | LeadImport | No | Bulk lead import |
 | 9 | `/deals` | Pipeline | No | getDeals, updateDeal, createDeal, deleteDeal, getCompanies |
+| 9a | `/deals/:id` | DealDetail | No | Deal detail view with activities, tasks, close dialog |
 | 10 | `/tasks` | Tasks | No | getTasks (overdueOnly when filter=overdue), createTask, updateTask, getLeads, getDeals (for dialog) |
+| 10a | `/tasks/:id` | TaskDetail | No | Task detail view |
 | 11 | `/activities` | Activities | No | getActivities, getActivitiesByContact, getActivitiesByDeal, createActivity, getContacts, getDeals |
 | 12 | `/contacts` | Contacts | No | getContacts |
+| 12a | `/contacts/:id` | ContactDetail | No | Contact detail view with activities, deals, edit/delete |
 | 13 | `/companies` | Companies | No | getCompanies, createCompany, updateCompany |
+| 13a | `/companies/:id` | CompanyDetail | No | Company detail view with contacts, deals, edit/delete |
 | 14 | `/templates` | Templates | No | getTemplates, createTemplate, updateTemplate, deleteTemplate |
 | 15 | `/history` | History | No | getCopyHistory |
-| 16 | `/sequences` | EmailSequences | No | getEmailSequences, createEmailSequence, updateEmailSequence, deleteEmailSequence, getEnrollments |
-| 17 | `/ab-tests` | ABTests | No | getABTests, createABTest, updateABTest, deleteABTest, trackVariantEvent |
-| 18 | `/analytics` | CopyAnalytics | No | getAnalyticsSummary |
-| 19 | `/settings` | Settings | No | getUserSettings, saveUserSettings, twoFactorSetup, twoFactorEnable, twoFactorDisable |
+| 16 | `/settings` | Settings | No | getUserSettings, saveUserSettings, twoFactorSetup, twoFactorEnable, twoFactorDisable |
 | 20 | `/team` | Team | No | getOrgMembers, inviteUser, removeOrgMember |
 | 21 | `/help` | Help | No | None |
 | 22 | `/privacy` | Privacy | No | None |
@@ -113,14 +114,14 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 ### 4. Dashboard (`/dashboard`)
 
 - **File:** `pages/Dashboard.tsx`
-- **Purpose:** Main Intelligent Sales Writer: type, goal, context, length → generate → /generated. Pre-fill from templateId or regenerateContext in location state.
+- **Purpose:** Main Intelligent Sales Writer: type, goal, context, length → generate → displays inline. Pre-fill from templateId or regenerateContext in location state.
 - **Route state:** `location.state`: `{ templateId?: string; regenerateContext?: string }`.
 - **State:**
   - `selectedType`: `CopyTypeId | ''`.
   - `goal`, `context`, `length` ('short' | 'medium' | 'long').
   - `isGenerating`, `stats` (sentThisWeek, totalSent, templateCount), `crmStats` (activeLeadsCount, activeDealsCount, pipelineValue, dealsWonCount, dealsLostCount), `recentActivity` (CopyHistoryItem[]).
 - **Effects:** On mount: getCopyHistoryStats, getTemplates, getCopyHistory (slice 0–5 → recentActivity), getDashboardStats → crmStats. When templateId: getTemplateById → setSelectedType, setGoal. When regenerateContext: setContext.
-- **Handlers:** `handleGenerate`: getUserSettings, then generateCopy with type, goal, context, length, companyName, brandTone → navigate `/generated` with `{ copy, copyTypeLabel }`.
+- **Handlers:** `handleGenerate`: getUserSettings, then generateCopy with type, goal, context, length, brandName, brandTone → setGeneratedCopy state with `{ subject, body, copyTypeLabel, copyTypeId }`.
 - **API:** getTemplateById, getUserSettings, generateCopy, getCopyHistoryStats, getCopyHistory, getTemplates, getDashboardStats.
 - **Layout:**
   - AppHeader.
@@ -149,7 +150,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 7. Send to CRM (`/send`)
+### 5. Send to CRM (`/send`)
 
 - **File:** `pages/SendToCrm.tsx`
 - **Purpose:** Attach copy to a contact or deal (workflow/email show demo notice). Success → Create Another / View History.
@@ -166,7 +167,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 8. Leads (`/leads`)
+### 6. Leads (`/leads`)
 
 - **File:** `pages/Leads.tsx`
 - **Purpose:** List, search, create, edit, delete, and convert leads; company, source, status.
@@ -179,7 +180,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 9. Pipeline (`/deals`)
+### 7. Pipeline (`/deals`)
 
 - **File:** `pages/Pipeline.tsx`
 - **Purpose:** Kanban of deals by stage; move stage, create, edit, delete deal.
@@ -192,7 +193,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 10. Tasks (`/tasks`)
+### 8. Tasks (`/tasks`)
 
 - **File:** `pages/Tasks.tsx`
 - **Purpose:** List tasks; filter All/Pending/Overdue; create, edit, toggle complete; optional link to lead/deal.
@@ -205,7 +206,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 11. Activities (`/activities`)
+### 9. Activities (`/activities`)
 
 - **File:** `pages/Activities.tsx`
 - **Purpose:** List activities; filter All / By contact / By deal; log activity (call/meeting/email/note) with optional contact/deal.
@@ -218,7 +219,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 12. Contacts (`/contacts`)
+### 10. Contacts (`/contacts`)
 
 - **File:** `pages/Contacts.tsx`
 - **Purpose:** List, search, create, edit contacts; used for Send to CRM and Activities filter.
@@ -231,7 +232,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 13. Companies (`/companies`)
+### 11. Companies (`/companies`)
 
 - **File:** `pages/Companies.tsx`
 - **Purpose:** List, search, create, edit companies; used when creating leads and linking deals.
@@ -244,7 +245,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 14. Templates (`/templates`) - **UPDATED**
+### 12. Templates (`/templates`) - **UPDATED**
 
 - **File:** `pages/Templates.tsx` (489 lines)
 - **Purpose:** Full CRUD template management; browse, create, edit, delete templates; use template to pre-fill dashboard.
@@ -255,7 +256,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 - **Layout:** AppHeader; "Templates" + "Create Template" button; grid of cards with category icons, Team/System badges, Edit/Delete hover buttons, "Use template" link; modal for create/edit with Title, Description, Category, Copy Type, Goal, Brand Tone, Length, Content, "Share with team" checkbox.
 ---
 
-### 15. History (`/history`)
+### 13. History (`/history`)
 
 - **File:** `pages/History.tsx`
 - **Purpose:** List copy history; search by copy/type/recipient; copy to clipboard; regenerate (→ dashboard with context); “Send again” → /send with copy.
@@ -267,44 +268,11 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 - **Layout:** AppHeader; “Copy History”; search + “X items” + no-results hint; list with Copy, Send again, Regenerate; EmptyState when no items or no results.
 - **README:** [pages/History.README.md](../pages/History.README.md)
 
----
-
-### 16. Email Sequences (`/sequences`) — **NEW**
-
-- **File:** `pages/EmailSequences.tsx`
-- **Purpose:** Create and manage multi-step email drip campaigns; enroll contacts/leads; track enrollment progress.
-- **State:** sequences (EmailSequence[]), enrollments (EmailSequenceEnrollment[]), loading, activeTab ('sequences' | 'enrollments'), showModal, editingSequence, formData.
-- **Effects:** On mount, loadData() → getEmailSequences + getEnrollments.
-- **Handlers:** openCreateModal, openEditModal, handleSave (create/update sequence), handleDelete, toggleActive, addStep, updateStep, removeStep.
-- **API:** getEmailSequences, createEmailSequence, updateEmailSequence, deleteEmailSequence, getEnrollments, enrollInSequence.
-- **Layout:** AppHeader; tabs (Sequences/Enrollments); sequence list with status badges, step count, enrollment count; enrollment table with progress; modal for sequence builder with drag-to-reorder steps.
+**Note:** Email Sequences, A/B Tests, and Copy Analytics pages have been removed (February 2026) as part of feature cleanup.
 
 ---
 
-### 17. A/B Tests (`/ab-tests`) — **NEW**
-
-- **File:** `pages/ABTests.tsx`
-- **Purpose:** Create and manage A/B tests for copy variants; track performance metrics; declare winners.
-- **State:** tests (ABTest[]), loading, showModal, selectedTest, formData (name, description, copyType, variants[]).
-- **Effects:** On mount, loadTests() → getABTests.
-- **Handlers:** openCreateModal, handleCreate, handleDelete, handleStatusChange (draft/running/paused/completed), declareWinner.
-- **API:** getABTests, createABTest, updateABTest, deleteABTest, trackVariantEvent.
-- **Layout:** AppHeader; test cards with variant metrics (sends, opens, clicks, conversions); status badges (color-coded); winner highlighting; create modal with multi-variant form; detail modal with performance breakdown.
-
----
-
-### 18. Copy Analytics (`/analytics`) — **NEW**
-
-- **File:** `pages/CopyAnalytics.tsx`
-- **Purpose:** Dashboard showing Intelligent Sales Writer analytics; track effectiveness across copy types.
-- **State:** analytics (CopyAnalyticsSummary | null), loading, dateRange (start, end).
-- **Effects:** On mount and dateRange change, loadAnalytics() → getAnalyticsSummary(start, end).
-- **API:** getAnalyticsSummary.
-- **Layout:** AppHeader; date range selector (last 7/30/90 days, custom); stat cards (Total Generations, Rewrites, Copied to Clipboard, Response Rate); daily trend chart; copy type breakdown table with open/click/response rates; quick insights panel.
-
----
-
-### 19. Settings (`/settings`)
+### 14. Settings (`/settings`)
 
 - **File:** `pages/Settings.tsx`
 - **Purpose:** Brand settings, CRM connection status, Security (2FA enable/disable), Logout, Delete account (two-click confirm → navigate `/`).
@@ -317,7 +285,7 @@ Report of all frontend routes, pages, purpose, state, API usage, and UI structur
 
 ---
 
-### 20. Help (`/help`)
+### 15. Help (`/help`)
 
 - **File:** `pages/Help.tsx`
 - **Purpose:** What Cadence does, How to Generate Copy (4 steps), Your Data in Cadence, Data & Privacy, Contact Support.

@@ -118,10 +118,15 @@ public sealed class TaskRepository : ITaskRepository
         return await OrderTasks(query).ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<TaskItem>> GetByAssigneeIdAsync(Guid assigneeId, Guid? organizationId, CancellationToken ct = default) =>
-        await OrderTasks(IncludeRelations(FilterByOrgMember(_db.TaskItems, organizationId)
-            .Where(t => t.AssigneeId == assigneeId)))
-            .ToListAsync(ct);
+    // SECURITY FIX: When in an org, allow team-wide visibility (see tasks assigned to any org member).
+    // When personal (no org), restrict to the caller's own tasks to prevent data leakage.
+    public async Task<IReadOnlyList<TaskItem>> GetByAssigneeIdAsync(Guid assigneeId, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var query = organizationId != null
+            ? FilterByOrgMember(_db.TaskItems, organizationId)
+            : FilterByUserAndOrg(_db.TaskItems, userId, null);
+        return await OrderTasks(IncludeRelations(query.Where(t => t.AssigneeId == assigneeId))).ToListAsync(ct);
+    }
 
     public async Task<IReadOnlyList<TaskItem>> GetByStatusAsync(Guid userId, Guid? organizationId, Domain.Enums.TaskStatus status, CancellationToken ct = default) =>
         await OrderTasks(IncludeRelations(FilterByUserAndOrg(_db.TaskItems, userId, organizationId)

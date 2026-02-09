@@ -35,10 +35,10 @@ public record GenerateCopyWithRecipientRequest
     public required string Length { get; init; }
 
     /// <summary>
-    /// Company name for personalization.
+    /// Brand name for personalization.
     /// </summary>
-    [StringLength(200, ErrorMessage = "Company name cannot exceed 200 characters")]
-    public string? CompanyName { get; init; }
+    [StringLength(200, ErrorMessage = "Brand name cannot exceed 200 characters")]
+    public string? BrandName { get; init; }
 
     /// <summary>
     /// Brand tone.

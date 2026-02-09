@@ -10,9 +10,6 @@ import {
   CheckSquare,
   Activity,
   Building2,
-  Mail,
-  FlaskConical,
-  BarChart3,
   LucideIcon,
 } from 'lucide-react';
 
@@ -37,9 +34,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { path: '/companies', label: 'Companies', icon: Building2 },
   { path: '/team', label: 'Team', icon: UsersRound },
   { path: '/templates', label: 'Templates', icon: LayoutTemplate },
-  { path: '/sequences', label: 'Sequences', icon: Mail },
-  { path: '/analytics', label: 'Analytics', icon: BarChart3 },
-  { path: '/ab-tests', label: 'A/B Tests', icon: FlaskConical },
   { path: '/history', label: 'History', icon: History },
   { path: '/help', label: 'Help', icon: HelpCircle },
 ] as const;

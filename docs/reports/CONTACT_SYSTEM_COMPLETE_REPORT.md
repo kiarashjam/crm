@@ -66,6 +66,7 @@ The core Contact entity representing a person in the CRM:
 | `ArchivedByUserId` | `Guid?` | FK to User who archived |
 | `DoNotContact` | `bool` | Compliance flag — do not contact |
 | `PreferredContactMethod` | `string?` | Preferred method of contact (max 32 chars) |
+| `Description` | `string?` | Contact description / notes |
 
 **Navigation Properties:**
 - `User` — Owner (required)
@@ -199,7 +200,11 @@ public record ContactDto(
     DateTime? ConvertedAtUtc = null,
     bool IsArchived = false,
     bool DoNotContact = false,
-    string? PreferredContactMethod = null
+    string? PreferredContactMethod = null,
+    string? CompanyName = null,           // Enriched from Company navigation property
+    DateTime? CreatedAtUtc = null,
+    DateTime? UpdatedAtUtc = null,
+    string? Description = null
 );
 ```
 
@@ -214,6 +219,7 @@ public record ContactDto(
 | `Phone` | `string?` | Valid phone format, max 50 chars | No |
 | `JobTitle` | `string?` | Max 100 chars | No |
 | `CompanyId` | `Guid?` | — | No |
+| `Description` | `string?` | Max 4000 chars | No |
 
 ### UpdateContactRequest (`backend/src/ACI.Application/DTOs/UpdateContactRequest.cs`)
 
@@ -228,6 +234,7 @@ All fields are optional (partial update pattern):
 | `CompanyId` | `Guid?` | — |
 | `DoNotContact` | `bool?` | — |
 | `PreferredContactMethod` | `string?` | Max 50 chars |
+| `Description` | `string?` | Max 4000 chars |
 
 ### Other DTOs referencing Contacts
 
@@ -429,7 +436,7 @@ interface ContactFormState {
 
 ## 12. Frontend — Contacts Page (Main Contact UI)
 
-**File:** `src/app/pages/Contacts.tsx` — **1162 lines**
+**File:** `src/app/pages/Contacts.tsx` — **1248 lines**
 
 ### Data Loading (lines 104-121)
 
@@ -651,12 +658,7 @@ contacts: {
 
 **Files:**
 - `backend/src/ACI.Application/DTOs/AnalyticsDto.cs` (`EnrollInSequenceRequest`, `EmailSequenceEnrollmentDto`)
-- `backend/src/ACI.Application/Services/EmailSequenceService.cs`
-- `backend/src/ACI.WebApi/Controllers/EmailSequencesController.cs`
-- `backend/src/ACI.Infrastructure/Persistence/Configurations/EmailSequenceConfiguration.cs`
-- `backend/src/ACI.Domain/Entities/EmailSequence.cs`
-- `src/app/api/emailSequences.ts`
-- `src/app/pages/EmailSequences.tsx`
+**Note:** Email Sequences feature has been removed (February 2026). These files no longer exist.
 
 ### How Contacts Participate
 
@@ -715,7 +717,7 @@ Mock enrollments include contacts:
 ```
 
 ### Gap
-- The `EmailSequences.tsx` page exists but **does not expose a "pick a contact" UI** for enrollment — enrollment is initiated from the sequence page, not the Contacts page.
+**Note:** Email Sequences feature has been removed (February 2026). This integration is no longer applicable.
 - No way to see from a contact's view which sequences they are enrolled in.
 - No visual indicator on contact cards that a contact is in an active email sequence.
 
@@ -930,10 +932,10 @@ A dedicated dialog component with:
 | **DB Config** | `ContactConfiguration.cs` |
 | **Domain Errors** | `DomainErrors.cs` (Contact section) |
 | **Tests** | `ContactServiceTests.cs` |
-| **Cross-entity (entities)** | `Deal.cs` (ContactId FK), `Activity.cs` (ContactId FK), `TaskItem.cs` (ContactId FK), `Lead.cs` (ConvertedToContactId FK), `Company.cs` (Contacts collection), `User.cs` (Contacts collection), `EmailSequence.cs` (enrollment ContactId FK) |
-| **Cross-service** | `LeadService.cs` (ConvertAsync creates/links Contact), `ActivityService.cs` (validates ContactId), `GlobalSearchService.cs` (searches contacts), `CopyHistoryService.cs` (Contact as RecipientType), `EmailSequenceService.cs` (Contact enrollment) |
-| **Cross-controller** | `ActivitiesController.cs`, `TasksController.cs`, `LeadsController.cs`, `SearchController.cs`, `CopyController.cs`, `EmailSequencesController.cs` |
-| **Cross-config** | `ActivityConfiguration.cs`, `DealConfiguration.cs`, `TaskConfiguration.cs`, `LeadConfiguration.cs`, `EmailSequenceConfiguration.cs` |
+| **Cross-entity (entities)** | `Deal.cs` (ContactId FK), `Activity.cs` (ContactId FK), `TaskItem.cs` (ContactId FK), `Lead.cs` (ConvertedToContactId FK), `Company.cs` (Contacts collection), `User.cs` (Contacts collection) |
+| **Cross-service** | `LeadService.cs` (ConvertAsync creates/links Contact), `ActivityService.cs` (validates ContactId), `GlobalSearchService.cs` (searches contacts), `CopyHistoryService.cs` (Contact as RecipientType) |
+| **Cross-controller** | `ActivitiesController.cs`, `TasksController.cs`, `LeadsController.cs`, `SearchController.cs`, `CopyController.cs` |
+| **Cross-config** | `ActivityConfiguration.cs`, `DealConfiguration.cs`, `TaskConfiguration.cs`, `LeadConfiguration.cs` |
 | **Template/AI** | `TemplateCopyGenerator.cs` (all templates target Contact as audience via `[First Name]` placeholder) |
 | **DI/Setup** | `Program.cs`, `DependencyInjection.cs`, `AppDbContext.cs` |
 
@@ -941,7 +943,7 @@ A dedicated dialog component with:
 
 | Category | Files |
 |----------|-------|
-| **API Client** | `contacts.ts`, `activities.ts`, `tasks.ts`, `leads.ts`, `search.ts`, `copyGenerator.ts`, `emailSequences.ts`, `mockData.ts`, `index.ts`, `types.ts`, `messages.ts` |
+| **API Client** | `contacts.ts`, `activities.ts`, `tasks.ts`, `leads.ts`, `search.ts`, `copyGenerator.ts`, `mockData.ts`, `index.ts`, `types.ts`, `messages.ts` |
 | **React Query** | `useContacts.ts`, `useActivities.ts`, `queryKeys.ts`, `index.ts` |
 | **Contacts UI** | `Contacts.tsx`, `contacts/types.ts`, `contacts/index.ts` |
 | **Pipeline** | `Pipeline.tsx`, `DealCard.tsx`, `DroppableStageColumn.tsx`, `pipeline/types.ts` |
@@ -950,7 +952,6 @@ A dedicated dialog component with:
 | **Leads** | `Leads.tsx`, `ConvertLeadDialog.tsx`, `LeadDetailModal.tsx`, `AddLeadDialog.tsx`, `LeadStats.tsx`, `LeadFilters.tsx`, `leads/types.ts`, `leads/config.ts` |
 | **Companies** | `Companies.tsx`, `companies/types.ts` |
 | **Dashboard** | `Dashboard.tsx`, `SalesWriter.tsx`, `dashboard/config.ts`, `dashboard/types.ts` |
-| **Email Sequences** | `EmailSequences.tsx` |
 | **SendToCrm** | `SendToCrm.tsx` |
 | **Lead Import** | `LeadImport.tsx`, `leadImport/config.tsx` |
 | **Navigation** | `AppHeader.tsx`, `App.tsx`, `navigation.ts`, `ErrorBoundary.tsx` |
@@ -1057,7 +1058,7 @@ These are bugs, data-loss issues, or fundamental CRM features that directly bloc
 
 **What exists now:** Contacts are displayed as cards in a paginated grid. The only way to see a contact's full details is through the edit dialog. There is no dedicated page showing all related information.
 
-**Source evidence:** `App.tsx` has no `/contacts/:id` route. `Contacts.tsx` has no detail sheet or detail modal (unlike Pipeline which has a deal detail sheet).
+**Source evidence:** `App.tsx` now has a `/contacts/:id` route (line 118). `ContactDetail.tsx` exists (447 lines) with a full detail view showing linked deals, activities, company, and edit/delete actions.
 
 **Why we need it:**
 1. **Deep linking**: Sales managers cannot share a link to a specific contact. "Look at the Jane Smith contact" requires verbal navigation instructions. Every CRM (Salesforce, HubSpot, Pipedrive) has contact detail pages with unique URLs.
@@ -1077,7 +1078,7 @@ These are bugs, data-loss issues, or fundamental CRM features that directly bloc
 
 **What exists now:** `Contacts.tsx` imports `getContactsPaged` and `getCompanies` only. It does NOT import `getDeals`, does NOT fetch deals, and shows ZERO deal information anywhere on the page.
 
-**Source evidence:** `Contacts.tsx` line 15: imports only `getContactsPaged, createContact, updateContact, deleteContact, getCompanies` — no deal imports. Line 16: imports `Contact, Company` types — no `Deal` type. Searching the entire file for "deal" returns zero matches.
+**Source evidence:** `Contacts.tsx` now imports `getDealsPaged` and fetches deals. Contact cards display associated deal information. Deal visibility is fully implemented.
 
 **Why we need it:**
 1. **Sales is about people AND money**: When a rep looks at a contact, the first question is: "What's the commercial relationship?" A contact linked to three $100K deals is treated very differently than a contact with no deals. Currently, there is ZERO indication of commercial importance on the Contacts page.
@@ -1097,9 +1098,9 @@ These are bugs, data-loss issues, or fundamental CRM features that directly bloc
 
 **Effort:** Low (half day) | **Impact:** High
 
-**What exists now:** `Contact.cs` has `CreatedAtUtc` and `UpdatedAtUtc` fields on the entity. But `ContactDto` does NOT include them. Frontend `Contact` type has no `createdAtUtc`.
+**What exists now:** ~~`ContactDto` does NOT include timestamps~~ **FIXED:** `ContactDto` now includes `CreatedAtUtc`, `UpdatedAtUtc`, `CompanyName`, and `Description`. Frontend `Contact` type includes `createdAtUtc` and `updatedAtUtc`.
 
-**Source evidence:** `Contacts.tsx` line: `const thisWeek = 0;` with comment "Contact type doesn't have createdAtUtc". Sort by "Newest First" falls back to `a.name.localeCompare(b.name)`.
+**Source evidence:** `ContactDto.cs` lines 15-16: `DateTime? CreatedAtUtc = null, DateTime? UpdatedAtUtc = null`. Frontend uses these for "This Week" stat and sorting.
 
 **Why we need it:**
 1. **"This Week" stat is permanently zero**: A prominent stat card shows "0" for contacts added this week — even if the user just added 10 contacts today. This is misleading and makes the UI look broken.
@@ -1119,7 +1120,6 @@ These are bugs, data-loss issues, or fundamental CRM features that directly bloc
 **What exists now:** `Contact.cs` has `DoNotContact` boolean. `UpdateContactRequest` supports it. But:
 - No UI to set or display the flag
 - `TemplateCopyGenerator` does not check it before generating copy
-- `EmailSequenceService` does not check it before enrolling contacts
 - `CopyHistoryService` does not check it before saving content
 - `ActivityService` does not check it
 
@@ -1132,7 +1132,7 @@ These are bugs, data-loss issues, or fundamental CRM features that directly bloc
 
 **How to implement:**
 - **Frontend**: Show a prominent "Do Not Contact" badge on contact cards. Add toggle in edit form. Make cards visually distinct (red border, warning icon).
-- **Backend**: Check `DoNotContact` in `TemplateCopyGenerator`, `EmailSequenceService`, and `CopyHistoryService`. Return error if flag is set.
+- **Backend**: Check `DoNotContact` in `TemplateCopyGenerator` and `CopyHistoryService`. Return error if flag is set.
 - **Frontend**: Block "Send Message" and "Enroll in Sequence" actions for DoNotContact contacts.
 
 ---
@@ -1177,20 +1177,14 @@ These are bugs, data-loss issues, or fundamental CRM features that directly bloc
 
 ---
 
-#### HP-7. Contact Notes / Description (Dead Field)
+#### HP-7. Contact Notes / Description — ⚠️ PARTIAL (Backend complete, Frontend incomplete)
 
 **Effort:** Low (half day) | **Impact:** Medium-High
 
-**What exists now:** `ContactFormState` in `contacts/types.ts` has a `description` field. But `Contacts.tsx` uses a simpler inline form state `{ name, email, phone, jobTitle, companyId }` — no description field is rendered. Even if it were, `Contact.cs` has no `Description` property on the entity.
+**What exists now:** **Backend is complete:** `Contact.cs` has a `Description` property, `ContactDto` includes it, `CreateContactRequest` and `UpdateContactRequest` accept it. **Frontend is incomplete:** `Contacts.tsx` form does not render a description input field and does not send `description` in the create/update API calls. The `ContactFormState` has a `description` field but it is unused.
 
-**Why we need it:**
-1. **Qualitative context**: Structured fields (name, email, phone) capture the "what" but not the "who". Sales reps need to record: "Prefers morning calls, very technical, reports to the CTO, attended our webinar in March, has 5-year budget authority." Without a notes/description field, this knowledge lives only in people's memories.
-2. **Team knowledge sharing**: When a contact is reassigned (territory change, rep departure), all the unwritten context is lost. A description field ensures institutional knowledge persists.
-3. **Dead code signals intent**: The `ContactFormState.description` was clearly planned. Leaving it unimplemented creates confusion for developers and lost opportunity for users.
-
-**How to implement:**
-- **Backend**: Add `Description` (string?, max 4000) to `Contact.cs`. Add to `ContactDto`, `CreateContactRequest`, `UpdateContactRequest`. Migration.
-- **Frontend**: Add `<Textarea>` for description in the contact create/edit form. Display in contact detail view.
+**Remaining work:**
+- **Frontend**: Add `<Textarea>` for description in the contact create/edit form. Include `description` in `handleSubmit` API calls. Display in contact detail view.
 
 ---
 
@@ -1387,9 +1381,7 @@ These improve the product experience and fill important gaps that affect daily u
    </Dialog>
    ```
 
-3. **Frontend — API**: Use existing `enrollContact(sequenceId, contactId)` function from `emailSequences.ts`.
-
-4. **Frontend — Load sequences**: Fetch available sequences on dialog open: `getEmailSequences().then(setSequences)`.
+**Status:** ✅ **REMOVED** — Email Sequences feature has been removed. This integration is no longer needed.
 
 5. **Test:** Click "Enroll in Sequence" on a contact. Select a sequence. Click Enroll. Navigate to Email Sequences page and verify the contact appears as enrolled.
 

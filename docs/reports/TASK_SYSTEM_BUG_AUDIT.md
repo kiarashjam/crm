@@ -8,7 +8,7 @@
 ## Summary
 
 This audit identified **8 issues** across the task repository and controller:
-- **2 Critical** security/multi-tenancy issues
+- ~~**2 Critical** security/multi-tenancy issues~~ **RESOLVED**
 - **3 Medium** performance and consistency issues  
 - **3 Low** code quality and maintainability issues
 
@@ -16,16 +16,18 @@ This audit identified **8 issues** across the task repository and controller:
 
 ## Critical Issues
 
-### 🔴 CRITICAL-1: Multi-tenancy Security Gap in `GetByAssigneeIdAsync`
+### 🔴 CRITICAL-1: Multi-tenancy Security Gap in `GetByAssigneeIdAsync` — RESOLVED
 
 **File:** `backend/src/ACI.Infrastructure/Repositories/TaskRepository.cs`  
 **Line:** 121-124  
-**Severity:** Critical
+**Severity:** ~~Critical~~ Fixed
 
-**Issue:**
-The `GetByAssigneeIdAsync` method uses `FilterByOrgMember` instead of `FilterByUserAndOrg`, which means it only filters by `organizationId` and does NOT filter by `userId`. This allows any user in the same organization to retrieve tasks assigned to other users, even if they're not the task owner.
+**Issue (was):**
+The `GetByAssigneeIdAsync` method used `FilterByOrgMember` instead of `FilterByUserAndOrg`, which meant it only filtered by `organizationId` and did NOT filter by `userId`. This allowed any user in the same organization to retrieve tasks assigned to other users, even if they're not the task owner.
 
-**Current Code:**
+**Resolution:** `GetByAssigneeIdAsync` now takes a `userId` parameter. When in an organization, it uses `FilterByOrgMember` (team visibility). When personal (no org), it uses `FilterByUserAndOrg` to prevent data leakage.
+
+**Former Code:**
 ```csharp
 public async Task<IReadOnlyList<TaskItem>> GetByAssigneeIdAsync(Guid assigneeId, Guid? organizationId, CancellationToken ct = default) =>
     await OrderTasks(IncludeRelations(FilterByOrgMember(_db.TaskItems, organizationId)
@@ -45,26 +47,28 @@ Determine the intended behavior:
 
 ---
 
-### 🔴 CRITICAL-2: Inconsistent Access Control in TaskComment Endpoints
+### 🔴 CRITICAL-2: Inconsistent Access Control in TaskComment Endpoints — RESOLVED
 
 **File:** `backend/src/ACI.WebApi/Controllers/TasksController.cs`  
 **Lines:** 524-525, 548-549, 580-581  
-**Severity:** Critical
+**Severity:** ~~Critical~~ Fixed
 
-**Issue:**
-The TaskComment endpoints (`GetComments`, `AddComment`, `DeleteComment`) use a different access control pattern than the repository layer:
+**Issue (was):**
+The TaskComment endpoints (`GetComments`, `AddComment`, `DeleteComment`) used a different access control pattern than the repository layer:
 - Repository uses: `t.UserId == userId && (organizationId == null ? t.OrganizationId == null : t.OrganizationId == organizationId)`
 - Controller uses: `t.OrganizationId == orgId || t.UserId == userId.Value`
 
-**Current Code:**
+**Resolution:** Changed `(t.OrganizationId == orgId || t.UserId == userId.Value)` to `((orgId != null && t.OrganizationId == orgId) || t.UserId == userId.Value)` across all 3 comment endpoints.
+
+**Former Code:**
 ```csharp
 // Line 524-525
 var taskExists = await _db.TaskItems.AnyAsync(
     t => t.Id == id && (t.OrganizationId == orgId || t.UserId == userId.Value), ct);
 ```
 
-**Problem:**
-- The `||` (OR) operator allows access if EITHER condition is true, meaning:
+**Problem (was):**
+- The `||` (OR) operator allowed access if EITHER condition was true, meaning:
   - A user can access tasks from their organization even if they didn't create them
   - OR a user can access tasks they created even if they're in a different organization
 - This is inconsistent with the repository's stricter `&&` (AND) pattern
@@ -271,8 +275,8 @@ return CreatedAtAction(nameof(GetComments), new { id = id }, dto);
 ## Recommendations Summary
 
 ### Immediate Actions Required:
-1. **Fix CRITICAL-1:** Review and fix `GetByAssigneeIdAsync` multi-tenancy filtering
-2. **Fix CRITICAL-2:** Align TaskComment endpoint access control with repository pattern
+1. ~~**Fix CRITICAL-1:** Review and fix `GetByAssigneeIdAsync` multi-tenancy filtering~~ **RESOLVED**
+2. ~~**Fix CRITICAL-2:** Align TaskComment endpoint access control with repository pattern~~ **RESOLVED**
 
 ### Should Fix Soon:
 3. **Fix MEDIUM-1:** Include relations in `GetByIdAsync` or document usage clearly

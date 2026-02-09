@@ -433,7 +433,7 @@ export default function Organizations() {
   const handleOrgCreated = async (org: Organization) => {
     setCurrentOrganizationId(org.id);
     await refreshOrgs();
-    navigate('/onboarding', { replace: true });
+    navigate('/settings', { replace: true });
   };
 
   const handleAcceptInvite = async (invite: InviteDto) => {

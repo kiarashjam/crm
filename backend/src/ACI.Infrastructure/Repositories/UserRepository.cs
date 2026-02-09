@@ -39,7 +39,7 @@ public sealed class UserRepository : IUserRepository
         if (existing != null)
         {
             // Profile
-            existing.CompanyName = settings.CompanyName;
+            existing.BrandName = settings.BrandName;
             existing.JobTitle = settings.JobTitle;
             existing.AvatarUrl = settings.AvatarUrl;
             existing.Phone = settings.Phone;
@@ -64,7 +64,6 @@ public sealed class UserRepository : IUserRepository
             existing.EmailOnDealUpdate = settings.EmailOnDealUpdate;
             existing.EmailOnTaskDue = settings.EmailOnTaskDue;
             existing.EmailOnTeamMention = settings.EmailOnTeamMention;
-            existing.EmailDigestFrequency = settings.EmailDigestFrequency;
             existing.InAppNotificationsEnabled = settings.InAppNotificationsEnabled;
             existing.InAppSoundEnabled = settings.InAppSoundEnabled;
             existing.BrowserNotificationsEnabled = settings.BrowserNotificationsEnabled;

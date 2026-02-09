@@ -14,7 +14,7 @@ public interface ICopyGenerator
         string goal,
         string? context,
         string length,
-        string? companyName,
+        string? brandName,
         string? brandTone,
         CancellationToken ct = default);
 
@@ -34,7 +34,7 @@ public interface ICopyGenerator
         string goal,
         string? context,
         string length,
-        string? companyName,
+        string? brandName,
         string? brandTone,
         RecipientContext? recipient,
         CancellationToken ct = default);
@@ -47,7 +47,7 @@ public interface ICopyGenerator
         string goal,
         string? context,
         string length,
-        string? companyName,
+        string? brandName,
         string? brandTone,
         RecipientContext? recipient,
         string targetLanguage,

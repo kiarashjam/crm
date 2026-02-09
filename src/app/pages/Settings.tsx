@@ -134,7 +134,7 @@ export default function Settings() {
     getUserSettings()
       .then(setSettings)
       .catch(() => setSettings({
-        companyName: 'My Company',
+        brandName: 'My Brand',
         brandTone: 'professional',
         theme: 'light',
         dataDensity: 'comfortable',
@@ -147,7 +147,6 @@ export default function Settings() {
         emailOnDealUpdate: true,
         emailOnTaskDue: true,
         emailOnTeamMention: true,
-        emailDigestFrequency: 'daily',
         inAppNotificationsEnabled: true,
         inAppSoundEnabled: true,
         browserNotificationsEnabled: false,

@@ -519,10 +519,10 @@ public class TasksController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
 
-        // Verify user has access to this task (same org)
+        // Verify user has access to this task: in org → same org; personal → own task only
         var orgId = _currentUser.CurrentOrganizationId;
         var taskExists = await _db.TaskItems.AnyAsync(
-            t => t.Id == id && (t.OrganizationId == orgId || t.UserId == userId.Value), ct);
+            t => t.Id == id && ((orgId != null && t.OrganizationId == orgId) || t.UserId == userId.Value), ct);
         if (!taskExists) return NotFound();
 
         var comments = await _db.TaskComments
@@ -543,10 +543,10 @@ public class TasksController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
 
-        // Verify user has access to this task (same org)
+        // Verify user has access to this task: in org → same org; personal → own task only
         var orgId = _currentUser.CurrentOrganizationId;
         var task = await _db.TaskItems.FirstOrDefaultAsync(
-            t => t.Id == id && (t.OrganizationId == orgId || t.UserId == userId.Value), ct);
+            t => t.Id == id && ((orgId != null && t.OrganizationId == orgId) || t.UserId == userId.Value), ct);
         if (task == null) return NotFound();
 
         var comment = new TaskComment
@@ -575,10 +575,10 @@ public class TasksController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
 
-        // Verify user has access to this task (same org)
+        // Verify user has access to this task: in org → same org; personal → own task only
         var orgId = _currentUser.CurrentOrganizationId;
         var taskExists = await _db.TaskItems.AnyAsync(
-            t => t.Id == taskId && (t.OrganizationId == orgId || t.UserId == userId.Value), ct);
+            t => t.Id == taskId && ((orgId != null && t.OrganizationId == orgId) || t.UserId == userId.Value), ct);
         if (!taskExists) return NotFound();
 
         var comment = await _db.TaskComments.FirstOrDefaultAsync(

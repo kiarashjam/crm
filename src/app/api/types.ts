@@ -243,7 +243,7 @@ export interface GenerateCopyParams {
   goal: string;
   context?: string;
   length: 'short' | 'medium' | 'long';
-  companyName?: string;
+  brandName?: string;
   brandTone?: string;
 }
 
@@ -258,11 +258,10 @@ export interface SendToCrmParams {
 export type ThemeType = 'light' | 'dark' | 'system';
 export type DataDensityType = 'comfortable' | 'compact' | 'spacious';
 export type BrandToneType = 'professional' | 'friendly' | 'persuasive';
-export type EmailDigestFrequencyType = 'never' | 'daily' | 'weekly' | 'monthly';
 
 export interface UserSettings {
   // Profile
-  companyName: string;
+  brandName: string;
   jobTitle?: string;
   avatarUrl?: string;
   phone?: string;
@@ -287,7 +286,6 @@ export interface UserSettings {
   emailOnDealUpdate: boolean;
   emailOnTaskDue: boolean;
   emailOnTeamMention: boolean;
-  emailDigestFrequency: EmailDigestFrequencyType;
   inAppNotificationsEnabled: boolean;
   inAppSoundEnabled: boolean;
   browserNotificationsEnabled: boolean;
@@ -310,7 +308,7 @@ export interface UserSettings {
 
 export interface UpdateUserSettingsRequest {
   // Profile
-  companyName?: string;
+  brandName?: string;
   jobTitle?: string;
   avatarUrl?: string;
   phone?: string;
@@ -335,7 +333,6 @@ export interface UpdateUserSettingsRequest {
   emailOnDealUpdate?: boolean;
   emailOnTaskDue?: boolean;
   emailOnTeamMention?: boolean;
-  emailDigestFrequency?: EmailDigestFrequencyType;
   inAppNotificationsEnabled?: boolean;
   inAppSoundEnabled?: boolean;
   browserNotificationsEnabled?: boolean;

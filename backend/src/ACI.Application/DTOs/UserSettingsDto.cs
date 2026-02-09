@@ -8,7 +8,7 @@ namespace ACI.Application.DTOs;
 public record UserSettingsDto
 {
     // Profile
-    public string CompanyName { get; init; } = string.Empty;
+    public string BrandName { get; init; } = string.Empty;
     public string? JobTitle { get; init; }
     public string? AvatarUrl { get; init; }
     public string? Phone { get; init; }
@@ -33,7 +33,6 @@ public record UserSettingsDto
     public bool EmailOnDealUpdate { get; init; } = true;
     public bool EmailOnTaskDue { get; init; } = true;
     public bool EmailOnTeamMention { get; init; } = true;
-    public string EmailDigestFrequency { get; init; } = "daily";
     public bool InAppNotificationsEnabled { get; init; } = true;
     public bool InAppSoundEnabled { get; init; } = true;
     public bool BrowserNotificationsEnabled { get; init; } = false;
@@ -60,8 +59,8 @@ public record UserSettingsDto
 public record UpdateUserSettingsRequest
 {
     // Profile
-    [StringLength(200, ErrorMessage = "Company name cannot exceed 200 characters")]
-    public string? CompanyName { get; init; }
+    [StringLength(200, ErrorMessage = "Brand name cannot exceed 200 characters")]
+    public string? BrandName { get; init; }
 
     [StringLength(100, ErrorMessage = "Job title cannot exceed 100 characters")]
     public string? JobTitle { get; init; }
@@ -111,10 +110,6 @@ public record UpdateUserSettingsRequest
     public bool? EmailOnDealUpdate { get; init; }
     public bool? EmailOnTaskDue { get; init; }
     public bool? EmailOnTeamMention { get; init; }
-
-    [StringLength(20, ErrorMessage = "Email digest frequency cannot exceed 20 characters")]
-    [RegularExpression(@"^(never|daily|weekly)$", ErrorMessage = "Email digest frequency must be one of: never, daily, weekly")]
-    public string? EmailDigestFrequency { get; init; }
 
     public bool? InAppNotificationsEnabled { get; init; }
     public bool? InAppSoundEnabled { get; init; }

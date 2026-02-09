@@ -39,16 +39,10 @@ public static class DependencyInjection
         services.AddScoped<IActivityRepository, ActivityRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICopyHistoryRepository, CopyHistoryRepository>();
-        services.AddScoped<IEmailSequenceRepository, EmailSequenceRepository>();
         services.AddScoped<IReportingService, ReportingService>();
         
         // Application services
         services.AddScoped<ITemplateService, TemplateService>();
-        services.AddScoped<IAnalyticsService, AnalyticsService>();
-        services.AddScoped<IEmailSequenceService, EmailSequenceService>();
-        services.AddSingleton<ISpamCheckService, SpamCheckService>();
-        services.AddSingleton<IABTestService, ABTestService>();
-        services.AddSingleton<IEmailSenderService, EmailSenderService>();
 
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         

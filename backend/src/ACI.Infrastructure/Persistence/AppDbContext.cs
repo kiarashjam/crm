@@ -28,8 +28,6 @@ public class AppDbContext : DbContext
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<CopyHistoryItem> CopyHistoryItems => Set<CopyHistoryItem>();
-    public DbSet<EmailSequence> EmailSequences => Set<EmailSequence>();
-    public DbSet<EmailSequenceEnrollment> EmailSequenceEnrollments => Set<EmailSequenceEnrollment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

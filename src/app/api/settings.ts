@@ -23,7 +23,7 @@ function setStored(settings: UserSettings) {
 
 const defaults: UserSettings = {
   // Profile
-  companyName: 'My Company',
+  brandName: 'My Brand',
   timezone: 'UTC',
   language: 'en',
 
@@ -42,7 +42,6 @@ const defaults: UserSettings = {
   emailOnDealUpdate: true,
   emailOnTaskDue: true,
   emailOnTeamMention: true,
-  emailDigestFrequency: 'daily',
   inAppNotificationsEnabled: true,
   inAppSoundEnabled: true,
   browserNotificationsEnabled: false,

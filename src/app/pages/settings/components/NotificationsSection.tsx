@@ -1,12 +1,5 @@
 import { Bell, Mail } from 'lucide-react';
-import type { UserSettings, UpdateUserSettingsRequest, EmailDigestFrequencyType } from '@/app/api/types';
-
-const EMAIL_DIGEST_OPTIONS: { value: EmailDigestFrequencyType; label: string }[] = [
-  { value: 'never', label: 'Never' },
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'monthly', label: 'Monthly' },
-];
+import type { UserSettings, UpdateUserSettingsRequest } from '@/app/api/types';
 
 type ToggleSwitchProps = {
   checked: boolean;
@@ -106,24 +99,6 @@ export function NotificationsSection({
             </div>
           )}
         </div>
-      </div>
-
-      {/* Email Digest */}
-      <div>
-        <label htmlFor="emailDigest" className="block text-sm font-medium text-slate-700 mb-2">
-          Email Digest Frequency
-        </label>
-        <select
-          id="emailDigest"
-          value={settings.emailDigestFrequency}
-          onChange={(e) => updateSettings({ emailDigestFrequency: e.target.value as EmailDigestFrequencyType })}
-          className="w-full sm:w-64 h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
-        >
-          {EMAIL_DIGEST_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-        <p className="text-xs text-slate-500 mt-1">Receive a summary of your CRM activity</p>
       </div>
 
       {/* In-App Notifications */}

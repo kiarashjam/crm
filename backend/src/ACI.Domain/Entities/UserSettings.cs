@@ -10,7 +10,7 @@ public class UserSettings
     public Guid UserId { get; set; }
 
     // =========== PROFILE ===========
-    public string CompanyName { get; set; } = string.Empty;
+    public string BrandName { get; set; } = string.Empty;
     public string? JobTitle { get; set; }
     public string? AvatarUrl { get; set; }
     public string? Phone { get; set; }
@@ -35,7 +35,6 @@ public class UserSettings
     public bool EmailOnDealUpdate { get; set; } = true;
     public bool EmailOnTaskDue { get; set; } = true;
     public bool EmailOnTeamMention { get; set; } = true;
-    public EmailDigestFrequency EmailDigestFrequency { get; set; } = EmailDigestFrequency.Daily;
     public bool InAppNotificationsEnabled { get; set; } = true;
     public bool InAppSoundEnabled { get; set; } = true;
     public bool BrowserNotificationsEnabled { get; set; } = false;

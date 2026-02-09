@@ -198,7 +198,7 @@ export async function generateCopy(params: GenerateCopyParams): Promise<string> 
         goal: params.goal,
         context: params.context ?? null,
         length: params.length ?? 'medium',
-        companyName: params.companyName ?? null,
+        brandName: params.brandName ?? null,
         brandTone: params.brandTone ?? null,
       }),
     });
@@ -207,8 +207,8 @@ export async function generateCopy(params: GenerateCopyParams): Promise<string> 
   await delay(1500 + Math.random() * 500);
   const key = `${params.copyTypeId}|${params.goal}`;
   let text = COPY_BY_TYPE_AND_GOAL[key] ?? DEFAULT_COPY;
-  if (params.companyName) {
-    text = text.replace(/\[Company Name\]/g, params.companyName);
+  if (params.brandName) {
+    text = text.replace(/\[Company Name\]/g, params.brandName);
   }
   if (params.context?.trim()) {
     text = text + `\n\n--- Context provided: ${params.context.trim().slice(0, 200)} ---`;
@@ -231,7 +231,7 @@ export async function generateCopyWithRecipient(params: GenerateCopyWithRecipien
         goal: params.goal,
         context: params.context ?? null,
         length: params.length ?? 'medium',
-        companyName: params.companyName ?? null,
+        brandName: params.brandName ?? null,
         brandTone: params.brandTone ?? null,
         recipient: params.recipient ?? null,
       }),
@@ -449,184 +449,6 @@ export async function generateCopyInLanguage(params: GenerateCopyMultiLanguagePa
 }
 
 // ============================================
-// SPAM CHECK
-// ============================================
-
-export interface SpamCheckResult {
-  score: number; // 0-100, lower is better
-  rating: 'Good' | 'Warning' | 'Spam Risk';
-  issues: SpamIssue[];
-}
-
-export interface SpamIssue {
-  type: string;
-  description: string;
-  severity: 'low' | 'medium' | 'high';
-}
-
-/** Check copy for spam score. */
-export async function checkSpamScore(subject: string, body: string): Promise<SpamCheckResult> {
-  if (isUsingRealApi()) {
-    const res = await authFetchJson<SpamCheckResult>('/api/spamcheck', {
-      method: 'POST',
-      body: JSON.stringify({ subject, body }),
-    });
-    return res;
-  }
-  
-  // Mock implementation
-  await delay(500);
-  const issues: SpamIssue[] = [];
-  let score = 0;
-  
-  const combined = `${subject} ${body}`;
-  const spamWords = ['free', 'winner', 'urgent', 'act now', 'limited time', 'click here', 'guaranteed'];
-  const foundSpam = spamWords.filter(w => combined.toLowerCase().includes(w));
-  
-  if (foundSpam.length > 0) {
-    score += foundSpam.length * 10;
-    issues.push({
-      type: 'spam_words',
-      description: `Contains spam trigger words: ${foundSpam.join(', ')}`,
-      severity: foundSpam.length > 3 ? 'high' : 'medium',
-    });
-  }
-  
-  const exclamations = (combined.match(/!/g) || []).length;
-  if (exclamations > 3) {
-    score += exclamations * 3;
-    issues.push({
-      type: 'punctuation',
-      description: `Too many exclamation marks (${exclamations})`,
-      severity: exclamations > 5 ? 'high' : 'low',
-    });
-  }
-  
-  const capsRatio = combined.replace(/[^a-zA-Z]/g, '').split('').filter(c => c === c.toUpperCase()).length / 
-    combined.replace(/[^a-zA-Z]/g, '').length || 0;
-  if (capsRatio > 0.3) {
-    score += 20;
-    issues.push({
-      type: 'caps',
-      description: `Excessive use of capital letters (${Math.round(capsRatio * 100)}%)`,
-      severity: capsRatio > 0.5 ? 'high' : 'medium',
-    });
-  }
-  
-  score = Math.min(100, Math.max(0, score));
-  
-  return {
-    score,
-    rating: score < 20 ? 'Good' : score < 50 ? 'Warning' : 'Spam Risk',
-    issues,
-  };
-}
-
-// ============================================
 // ANALYTICS
 // ============================================
 
-export interface CopyAnalyticsSummary {
-  totalGenerations: number;
-  totalRewrites: number;
-  totalCopied: number;
-  totalSent: number;
-  totalResponses: number;
-  overallResponseRate: number;
-  byType: CopyTypeAnalytics[];
-  dailyTrend: DailyAnalytics[];
-}
-
-export interface CopyTypeAnalytics {
-  copyTypeId: string;
-  generationCount: number;
-  sendCount: number;
-  responseCount: number;
-  responseRate: number;
-}
-
-export interface DailyAnalytics {
-  date: string;
-  generationCount: number;
-  sendCount: number;
-  responseCount: number;
-}
-
-export interface TrackCopyEventParams {
-  copyHistoryId?: string;
-  eventType: 'copy' | 'send' | 'response';
-  copyTypeId?: string;
-  recipientEmail?: string;
-}
-
-/** Get copy analytics summary. */
-export async function getAnalyticsSummary(from?: Date, to?: Date): Promise<CopyAnalyticsSummary> {
-  if (isUsingRealApi()) {
-    const params = new URLSearchParams();
-    if (from) params.append('from', from.toISOString());
-    if (to) params.append('to', to.toISOString());
-    const url = `/api/analytics/summary${params.toString() ? '?' + params.toString() : ''}`;
-    return await authFetchJson<CopyAnalyticsSummary>(url);
-  }
-  
-  // Mock data
-  await delay(500);
-  return {
-    totalGenerations: 127,
-    totalRewrites: 34,
-    totalCopied: 89,
-    totalSent: 56,
-    totalResponses: 12,
-    overallResponseRate: 21.4,
-    byType: [
-      { copyTypeId: 'sales-email', generationCount: 45, sendCount: 32, responseCount: 8, responseRate: 25 },
-      { copyTypeId: 'follow-up', generationCount: 38, sendCount: 15, responseCount: 3, responseRate: 20 },
-      { copyTypeId: 'linkedin-connect', generationCount: 24, sendCount: 9, responseCount: 1, responseRate: 11.1 },
-    ],
-    dailyTrend: Array.from({ length: 7 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (6 - i));
-      const isoString = date.toISOString();
-      const dateStr = isoString.split('T')[0]!; // toISOString() always contains 'T', so [0] is always defined
-      return {
-        date: dateStr,
-        generationCount: Math.floor(Math.random() * 20) + 5,
-        sendCount: Math.floor(Math.random() * 10) + 2,
-        responseCount: Math.floor(Math.random() * 3),
-      };
-    }),
-  };
-}
-
-/** Track a copy event (copy, send, response). */
-export async function trackCopyEvent(params: TrackCopyEventParams): Promise<void> {
-  if (isUsingRealApi()) {
-    await authFetchJson('/api/analytics/track', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-    return;
-  }
-  await delay(100);
-  // Mock: no-op
-}
-
-/** Record a conversion (response/meeting/deal). */
-export async function recordConversion(params: {
-  copyHistoryId?: string;
-  copyTypeId: string;
-  recipientEmail?: string;
-  recipientName?: string;
-  conversionType: 'Replied' | 'Meeting' | 'Call' | 'Demo' | 'Deal' | 'Other';
-  notes?: string;
-}): Promise<void> {
-  if (isUsingRealApi()) {
-    await authFetchJson('/api/analytics/conversions', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-    return;
-  }
-  await delay(200);
-  // Mock: no-op
-}

@@ -32,6 +32,3 @@ export * from './settings';
 export * from './copyGenerator';
 export * from './crm';
 export * from './webhook';
-export * from './emailSequences';
-export * from './abTests';
-export * from './emailSender';

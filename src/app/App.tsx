@@ -15,10 +15,8 @@ import Homepage from '@/app/pages/Homepage';
 import Login from '@/app/pages/Login';
 
 // Lazy-loaded pages (code splitting)
-const Onboarding = lazy(() => import('@/app/pages/Onboarding'));
 const Organizations = lazy(() => import('@/app/pages/Organizations'));
 const Dashboard = lazy(() => import('@/app/pages/Dashboard'));
-const GeneratedCopy = lazy(() => import('@/app/pages/GeneratedCopy'));
 const SendToCrm = lazy(() => import('@/app/pages/SendToCrm'));
 const Templates = lazy(() => import('@/app/pages/Templates'));
 const History = lazy(() => import('@/app/pages/History'));
@@ -39,9 +37,6 @@ const CompanyDetail = lazy(() => import('@/app/pages/CompanyDetail'));
 const Contacts = lazy(() => import('@/app/pages/Contacts'));
 const ContactDetail = lazy(() => import('@/app/pages/ContactDetail'));
 const Team = lazy(() => import('@/app/pages/Team'));
-const EmailSequences = lazy(() => import('@/app/pages/EmailSequences').then(m => ({ default: m.EmailSequences })));
-const ABTests = lazy(() => import('@/app/pages/ABTests').then(m => ({ default: m.ABTests })));
-const CopyAnalytics = lazy(() => import('@/app/pages/CopyAnalytics').then(m => ({ default: m.CopyAnalytics })));
 
 function ProtectedLayout() {
   return (
@@ -99,10 +94,9 @@ export default function App() {
                 {/* Protected routes */}
                 <Route element={<ProtectedLayout />}>
                   <Route path="/organizations" element={<Organizations />} />
-                  <Route path="/onboarding" element={<Onboarding />} />
+                  <Route path="/onboarding" element={<Navigate to="/settings" replace />} />
                   <Route element={<RequireOrgLayout />}>
                     <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/generated" element={<GeneratedCopy />} />
                     <Route path="/send" element={<SendToCrm />} />
                     <Route path="/templates" element={<Templates />} />
                     <Route path="/history" element={<History />} />
@@ -119,9 +113,6 @@ export default function App() {
                     <Route path="/companies" element={<Companies />} />
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
-                    <Route path="/sequences" element={<EmailSequences />} />
-                    <Route path="/ab-tests" element={<ABTests />} />
-                    <Route path="/analytics" element={<CopyAnalytics />} />
                     <Route path="/settings" element={<Settings />} />
                   </Route>
                 </Route>

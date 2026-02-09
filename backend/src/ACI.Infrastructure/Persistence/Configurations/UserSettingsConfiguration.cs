@@ -12,7 +12,7 @@ internal sealed class UserSettingsConfiguration : IEntityTypeConfiguration<UserS
         builder.HasKey(e => e.UserId);
 
         // Profile
-        builder.Property(e => e.CompanyName).HasMaxLength(256).IsRequired();
+        builder.Property(e => e.BrandName).HasMaxLength(256).IsRequired();
         builder.Property(e => e.JobTitle).HasMaxLength(128);
         builder.Property(e => e.AvatarUrl).HasMaxLength(512);
         builder.Property(e => e.Phone).HasMaxLength(32);

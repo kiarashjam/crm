@@ -137,11 +137,10 @@ public sealed class ContactRepository : IContactRepository
     {
         var entity = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == id, ct);
         if (entity == null) return false;
-        // Null FKs so delete does not violate referential integrity (Deals, Activities, Tasks, EmailSequences reference Contact)
+        // Null FKs so delete does not violate referential integrity (Deals, Activities, Tasks reference Contact)
         await _db.Deals.Where(d => d.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(d => d.ContactId, (Guid?)null), ct);
         await _db.Activities.Where(a => a.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(a => a.ContactId, (Guid?)null), ct);
         await _db.TaskItems.Where(t => t.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(t => t.ContactId, (Guid?)null), ct);
-        await _db.EmailSequenceEnrollments.Where(e => e.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(e => e.ContactId, (Guid?)null), ct);
         _db.Contacts.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;

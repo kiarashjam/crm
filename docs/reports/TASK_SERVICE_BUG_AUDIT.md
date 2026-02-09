@@ -8,21 +8,23 @@
 ## Summary
 
 Found **5 issues** across the TaskService implementation:
-- **2 Critical** issues that can cause runtime exceptions
-- **2 Medium** issues that can cause incorrect behavior
+- ~~**2 Critical** issues that can cause runtime exceptions~~ **RESOLVED** (both fixed)
+- ~~**2 Medium** issues that can cause incorrect behavior~~ **RESOLVED** (both fixed)
 - **1 Low** issue (design consideration)
 
 ---
 
 ## Critical Issues
 
-### 1. **NullReferenceException in UpdatePriorityAsync** 
+### 1. **~~NullReferenceException in UpdatePriorityAsync~~ — RESOLVED** 
 **File:** `TaskService.cs`  
-**Line:** 707  
-**Severity:** Critical
+**Line:** 712  
+**Severity:** ~~Critical~~ Fixed
 
-**Issue:**
-The `UpdatePriorityAsync` method uses `GetByIdAsync` instead of `GetByIdWithRelationsAsync`, which means navigation properties (`Assignee`, `Lead`, `Deal`, `Contact`) are not loaded. When `Map()` is called on line 716, it will attempt to access these navigation properties (lines 599-602), causing a `NullReferenceException`.
+**Issue (was):**
+The `UpdatePriorityAsync` method used `GetByIdAsync` instead of `GetByIdWithRelationsAsync`, which meant navigation properties were not loaded, causing `NullReferenceException` in `Map()`.
+
+**Resolution:** Line 712 now uses `GetByIdWithRelationsAsync`, ensuring navigation properties are loaded before mapping.
 
 **Current Code:**
 ```csharp
@@ -41,13 +43,15 @@ var existing = await _repository.GetByIdWithRelationsAsync(id, userId, organizat
 
 ---
 
-### 2. **Missing Title Validation in UpdateAsync**
+### 2. **~~Missing Title Validation in UpdateAsync~~ — RESOLVED**
 **File:** `TaskService.cs`  
-**Line:** 241  
-**Severity:** Critical
+**Line:** 241-245  
+**Severity:** ~~Critical~~ Fixed
 
-**Issue:**
-The `UpdateAsync` method checks if `request.Title != null` but doesn't validate that it's not empty or whitespace. This allows updating a task with an empty string title, which violates business rules (title is required).
+**Issue (was):**
+The `UpdateAsync` method checked if `request.Title != null` but didn't validate that it's not empty or whitespace.
+
+**Resolution:** Lines 241-245 now check `string.IsNullOrWhiteSpace(request.Title)` and return `DomainErrors.General.ValidationError` if empty/whitespace. Title is also trimmed before assignment.
 
 **Current Code:**
 ```csharp
@@ -74,13 +78,15 @@ if (request.Title != null)
 
 ## Medium Issues
 
-### 3. **Missing Status Validation in BulkUpdateAsync**
+### 3. **~~Missing Status Validation in BulkUpdateAsync~~ — RESOLVED**
 **File:** `TaskService.cs`  
 **Line:** 678  
-**Severity:** Medium
+**Severity:** ~~Medium~~ Fixed
 
-**Issue:**
-When `Action` is "status", the code checks `request.Status != null` but if it's null, it falls through to the default case and returns `DomainErrors.General.ValidationError`. However, this error is returned for each task individually, which means the bulk operation will report all tasks as failed even though the real issue is a missing parameter.
+**Issue (was):**
+When `Action` was "status", the code checked `request.Status != null` but if it was null, it fell through to the default case and returned `DomainErrors.General.ValidationError`. However, this error was returned for each task individually, which meant the bulk operation would report all tasks as failed even though the real issue was a missing parameter.
+
+**Resolution:** Added upfront validation for `Status` and `Priority` parameters before the loop.
 
 **Current Code:**
 ```csharp
@@ -107,13 +113,15 @@ if (request.Action.ToLowerInvariant() == "priority" && string.IsNullOrEmpty(requ
 
 ---
 
-### 4. **Potential NullReferenceException in GetTasksAsync**
+### 4. **~~Potential NullReferenceException in GetTasksAsync~~ — RESOLVED**
 **File:** `TaskService.cs`  
 **Line:** 62-100  
-**Severity:** Medium
+**Severity:** ~~Medium~~ Fixed
 
-**Issue:**
-The `GetTasksAsync` method accepts `TaskFilterParams filters` as a non-nullable parameter, but the method accesses `filters.LeadId`, `filters.DealId`, etc. without null checks. If a null value is passed (which shouldn't happen but could due to a bug elsewhere), this will throw a `NullReferenceException`.
+**Issue (was):**
+The `GetTasksAsync` method accepted `TaskFilterParams filters` as a non-nullable parameter, but the method accessed `filters.LeadId`, `filters.DealId`, etc. without null checks. If a null value was passed (which shouldn't happen but could due to a bug elsewhere), this would throw a `NullReferenceException`.
+
+**Resolution:** Added `filters ??= new TaskFilterParams()` guard at method start.
 
 **Current Code:**
 ```csharp
@@ -188,8 +196,8 @@ return !string.IsNullOrEmpty(status);  // Returns true for empty string
 
 ## Priority Fix Order
 
-1. **Fix Issue #1** (UpdatePriorityAsync) - Prevents crashes
-2. **Fix Issue #2** (Title validation) - Prevents invalid data
-3. **Fix Issue #3** (BulkUpdate validation) - Improves error reporting
-4. **Fix Issue #4** (Null check) - Defensive programming
+1. ~~**Fix Issue #1** (UpdatePriorityAsync) - Prevents crashes~~ **RESOLVED**
+2. ~~**Fix Issue #2** (Title validation) - Prevents invalid data~~ **RESOLVED**
+3. ~~**Fix Issue #3** (BulkUpdate validation) - Improves error reporting~~ **RESOLVED**
+4. ~~**Fix Issue #4** (Null check) - Defensive programming~~ **RESOLVED**
 5. **Review Issue #5** (Empty string parsing) - Document or change behavior

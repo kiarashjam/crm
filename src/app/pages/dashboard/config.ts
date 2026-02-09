@@ -9,12 +9,10 @@ import {
   Building2,
   CheckSquare,
   Activity,
-  BarChart3,
   Send,
   History,
   UsersRound,
   HelpCircle,
-  FlaskConical,
   LayoutTemplate,
   Settings,
   Zap,
@@ -51,10 +49,7 @@ export const quickNavPrimary = [
 
 // Secondary navigation - tools & analytics
 export const quickNavSecondary = [
-  { to: '/analytics', icon: BarChart3, label: 'Analytics', gradient: 'from-indigo-500 to-blue-600', bgHover: 'hover:bg-indigo-50' },
-  { to: '/sequences', icon: Send, label: 'Sequences', gradient: 'from-pink-500 to-rose-600', bgHover: 'hover:bg-pink-50' },
   { to: '/team', icon: UsersRound, label: 'Team', gradient: 'from-amber-500 to-orange-600', bgHover: 'hover:bg-amber-50' },
-  { to: '/ab-tests', icon: FlaskConical, label: 'A/B Tests', gradient: 'from-purple-500 to-violet-600', bgHover: 'hover:bg-purple-50' },
 ];
 
 // Utility navigation

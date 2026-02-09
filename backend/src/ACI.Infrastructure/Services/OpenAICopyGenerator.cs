@@ -43,20 +43,20 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
         string goal,
         string? context,
         string length,
-        string? companyName,
+        string? brandName,
         string? brandTone,
         CancellationToken ct = default)
     {
         try
         {
-            var prompt = BuildGenerationPrompt(copyTypeId, goal, context, length, companyName, brandTone);
+            var prompt = BuildGenerationPrompt(copyTypeId, goal, context, length, brandName, brandTone);
             var result = await CallOpenAIAsync(prompt, GetMaxTokensForLength(length), ct);
-            return result ?? await _fallback.GenerateAsync(copyTypeId, goal, context, length, companyName, brandTone, ct);
+            return result ?? await _fallback.GenerateAsync(copyTypeId, goal, context, length, brandName, brandTone, ct);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "OpenAI generation failed, falling back to templates");
-            return await _fallback.GenerateAsync(copyTypeId, goal, context, length, companyName, brandTone, ct);
+            return await _fallback.GenerateAsync(copyTypeId, goal, context, length, brandName, brandTone, ct);
         }
     }
     
@@ -83,21 +83,21 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
         string goal,
         string? context,
         string length,
-        string? companyName,
+        string? brandName,
         string? brandTone,
         RecipientContext? recipient,
         CancellationToken ct = default)
     {
         try
         {
-            var prompt = BuildRecipientPrompt(copyTypeId, goal, context, length, companyName, brandTone, recipient);
+            var prompt = BuildRecipientPrompt(copyTypeId, goal, context, length, brandName, brandTone, recipient);
             var includeSubject = copyTypeId.Contains("email", StringComparison.OrdinalIgnoreCase);
             
             var result = await CallOpenAIAsync(prompt, GetMaxTokensForLength(length) + (includeSubject ? 50 : 0), ct);
             
             if (string.IsNullOrWhiteSpace(result))
             {
-                return await _fallback.GenerateWithRecipientAsync(copyTypeId, goal, context, length, companyName, brandTone, recipient, ct);
+                return await _fallback.GenerateWithRecipientAsync(copyTypeId, goal, context, length, brandName, brandTone, recipient, ct);
             }
             
             // Parse subject line if included
@@ -119,7 +119,7 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "OpenAI recipient generation failed, falling back to templates");
-            return await _fallback.GenerateWithRecipientAsync(copyTypeId, goal, context, length, companyName, brandTone, recipient, ct);
+            return await _fallback.GenerateWithRecipientAsync(copyTypeId, goal, context, length, brandName, brandTone, recipient, ct);
         }
     }
 
@@ -128,7 +128,7 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
         string goal,
         string? context,
         string length,
-        string? companyName,
+        string? brandName,
         string? brandTone,
         RecipientContext? recipient,
         string targetLanguage,
@@ -136,14 +136,14 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
     {
         try
         {
-            var prompt = BuildMultiLanguagePrompt(copyTypeId, goal, context, length, companyName, brandTone, recipient, targetLanguage);
+            var prompt = BuildMultiLanguagePrompt(copyTypeId, goal, context, length, brandName, brandTone, recipient, targetLanguage);
             var includeSubject = copyTypeId.Contains("email", StringComparison.OrdinalIgnoreCase);
             
             var result = await CallOpenAIAsync(prompt, GetMaxTokensForLength(length) + (includeSubject ? 50 : 0), ct);
             
             if (string.IsNullOrWhiteSpace(result))
             {
-                return await _fallback.GenerateInLanguageAsync(copyTypeId, goal, context, length, companyName, brandTone, recipient, targetLanguage, ct);
+                return await _fallback.GenerateInLanguageAsync(copyTypeId, goal, context, length, brandName, brandTone, recipient, targetLanguage, ct);
             }
             
             // Parse subject line if included
@@ -175,7 +175,7 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "OpenAI multi-language generation failed, falling back to templates");
-            return await _fallback.GenerateInLanguageAsync(copyTypeId, goal, context, length, companyName, brandTone, recipient, targetLanguage, ct);
+            return await _fallback.GenerateInLanguageAsync(copyTypeId, goal, context, length, brandName, brandTone, recipient, targetLanguage, ct);
         }
     }
     
@@ -240,7 +240,7 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
         string goal, 
         string? context, 
         string length,
-        string? companyName,
+        string? brandName,
         string? brandTone)
     {
         var toneDescription = GetToneDescription(brandTone);
@@ -253,7 +253,7 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
             GOAL: {goal}
             TONE: {toneDescription}
             LENGTH: {lengthDescription}
-            {(string.IsNullOrWhiteSpace(companyName) ? "" : $"COMPANY: {companyName}")}
+            {(string.IsNullOrWhiteSpace(brandName) ? "" : $"YOUR BRAND: {brandName}")}
             {(string.IsNullOrWhiteSpace(context) ? "" : $"\nADDITIONAL CONTEXT:\n{context}")}
             
             Write only the message body. Do not include subject line or signature.
@@ -304,7 +304,7 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
         string goal,
         string? context,
         string length,
-        string? companyName,
+        string? brandName,
         string? brandTone,
         RecipientContext? recipient)
     {
@@ -325,7 +325,7 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
             GOAL: {goal}
             TONE: {toneDescription}
             LENGTH: {lengthDescription}
-            {(string.IsNullOrWhiteSpace(companyName) ? "" : $"YOUR COMPANY: {companyName}")}
+            {(string.IsNullOrWhiteSpace(brandName) ? "" : $"YOUR BRAND: {brandName}")}
             {recipientInfo}
             {(string.IsNullOrWhiteSpace(context) ? "" : $"\nADDITIONAL CONTEXT:\n{context}")}
             
@@ -338,7 +338,7 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
         string goal,
         string? context,
         string length,
-        string? companyName,
+        string? brandName,
         string? brandTone,
         RecipientContext? recipient,
         string targetLanguage)
@@ -364,7 +364,7 @@ public sealed class OpenAICopyGenerator : ICopyGenerator
             TONE: {toneDescription}
             LENGTH: {lengthDescription}
             LANGUAGE: {languageName}
-            {(string.IsNullOrWhiteSpace(companyName) ? "" : $"YOUR COMPANY: {companyName}")}
+            {(string.IsNullOrWhiteSpace(brandName) ? "" : $"YOUR BRAND: {brandName}")}
             {recipientInfo}
             {(string.IsNullOrWhiteSpace(context) ? "" : $"\nADDITIONAL CONTEXT:\n{context}")}
             

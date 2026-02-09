@@ -17,7 +17,7 @@ public interface ITaskRepository
         CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByUserIdAsync(Guid userId, Guid? organizationId, bool? overdueOnly, CancellationToken ct = default);
-    Task<IReadOnlyList<TaskItem>> GetByAssigneeIdAsync(Guid assigneeId, Guid? organizationId, CancellationToken ct = default);
+    Task<IReadOnlyList<TaskItem>> GetByAssigneeIdAsync(Guid assigneeId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByStatusAsync(Guid userId, Guid? organizationId, ACI.Domain.Enums.TaskStatus status, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByDealIdAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default);

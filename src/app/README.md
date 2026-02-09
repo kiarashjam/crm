@@ -18,9 +18,7 @@ Defined in `App.tsx` with React Router:
 - `/` — Homepage (landing)
 - `/login` — Sign in (demo / Google)
 - `/connect` — CRM connection
-- `/onboarding` — Brand tone setup
-- `/dashboard` — Intelligent Sales Writer
-- `/generated` — View/copy generated text
+- `/dashboard` — Intelligent Sales Writer (generates and displays copy inline)
 - `/send` — Send copy to CRM (contact/deal)
 - `/templates` — Template library
 - `/history` — Copy history

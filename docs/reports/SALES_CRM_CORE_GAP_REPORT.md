@@ -89,7 +89,7 @@ This report maps each core must-have to **what the system has** vs **what it doe
 | Mark deals as Won or Lost | ✅ **Deal.IsWon** (backend + API + frontend); reporting has dealsWonCount/dealsLostCount. |
 
 **Outcome needed:** All potential revenue visible and controlled.  
-**Current:** Deals with value, stage, expected close date, isWon; createDeal/updateDeal API; Pipeline page (`/pipeline`) — Kanban by stage, move stage (sets isWon when Closed Won/Lost), new deal (name, value, stage, expected close date, company).
+**Current:** Deals with value, stage, expected close date, isWon; createDeal/updateDeal API; Pipeline page (`/deals`) — Kanban by stage, move stage (sets isWon when Closed Won/Lost), new deal (name, value, stage, expected close date, company).
 
 ---
 
@@ -229,7 +229,7 @@ This report maps each core must-have to **what the system has** vs **what it doe
 
 ---
 
-**Verified against:** `App.tsx` routes (including /leads, /pipeline, /tasks, /activities, /companies); `src/app/api/*` (leads including searchLeads, companies, tasks, activities, reporting, deals create/update, contacts with phone); `src/app/pages/*` (Leads, Pipeline, Tasks, Activities, Companies, Dashboard with getDashboardStats); backend controllers (Leads, Deals, Tasks, Activities, Companies, Reporting, Contacts) and DTOs/entities as listed. Frontend–backend alignment checked: endpoints and payloads match.
+**Verified against:** `App.tsx` routes (including /leads, /deals, /tasks, /activities, /companies); `src/app/api/*` (leads including searchLeads, companies, tasks, activities, reporting, deals create/update, contacts with phone); `src/app/pages/*` (Leads, Pipeline, Tasks, Activities, Companies, Dashboard with getDashboardStats); backend controllers (Leads, Deals, Tasks, Activities, Companies, Reporting, Contacts) and DTOs/entities as listed. Frontend–backend alignment checked: endpoints and payloads match.
 
 **Re-verification:** Frontend and backend re-checked; all flows have matching API modules, types, and controller endpoints. See [FLOWS_BACKEND_DATABASE_VERIFICATION.md](FLOWS_BACKEND_DATABASE_VERIFICATION.md), [FRONTEND_PAGES_REPORT.md](FRONTEND_PAGES_REPORT.md), and [USER_FLOWS_REPORT.md](USER_FLOWS_REPORT.md) for full user flows. For every aspect of the project, see [PROJECT_ASPECTS.md](../../PROJECT_ASPECTS.md).
 

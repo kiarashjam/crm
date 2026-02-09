@@ -27,7 +27,7 @@ export function ProfileSection({
       {/* Avatar placeholder */}
       <div className="flex items-center gap-6">
         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center text-white text-2xl font-bold">
-          {settings.companyName?.charAt(0) || 'U'}
+          {settings.brandName?.charAt(0) || 'U'}
         </div>
         <div>
           <p className="font-medium text-slate-900">Profile Photo</p>
@@ -40,14 +40,14 @@ export function ProfileSection({
 
       <div className="grid gap-6 sm:grid-cols-2">
         <div>
-          <label htmlFor="companyName" className="block text-sm font-medium text-slate-700 mb-2">
-            Company Name
+          <label htmlFor="brandName" className="block text-sm font-medium text-slate-700 mb-2">
+            Brand Name
           </label>
           <input
             type="text"
-            id="companyName"
-            value={settings.companyName}
-            onChange={(e) => updateSettings({ companyName: e.target.value })}
+            id="brandName"
+            value={settings.brandName}
+            onChange={(e) => updateSettings({ brandName: e.target.value })}
             className="w-full h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-colors"
           />
         </div>

@@ -31,6 +31,9 @@ public static class DomainErrors
         public static readonly Error NotArchived = new(
             "Contact.NotArchived", "The contact is not archived");
         
+        public static readonly Error DoNotContact = new(
+            "Contact.DoNotContact", "This contact is marked as Do Not Contact. Remove the flag before performing this action.");
+        
         public static Error DuplicateEmailWithValue(string email) => new(
             "Contact.DuplicateEmail", $"A contact with email '{email}' already exists");
     }

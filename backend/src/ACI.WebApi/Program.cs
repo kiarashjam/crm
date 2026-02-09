@@ -422,6 +422,11 @@ try
             
             // Fix UserSettings table columns
             await db.Database.ExecuteSqlRawAsync(@"
+                -- Rename CompanyName to BrandName if column exists
+                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'CompanyName')
+                AND NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'BrandName')
+                    EXEC sp_rename 'UserSettings.CompanyName', 'BrandName', 'COLUMN';
+                
                 -- Add missing columns to UserSettings
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'JobTitle')
                     ALTER TABLE [UserSettings] ADD [JobTitle] nvarchar(128) NULL;
@@ -457,8 +462,6 @@ try
                     ALTER TABLE [UserSettings] ADD [EmailOnTaskDue] bit NOT NULL DEFAULT 1;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'EmailOnTeamMention')
                     ALTER TABLE [UserSettings] ADD [EmailOnTeamMention] bit NOT NULL DEFAULT 1;
-                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'EmailDigestFrequency')
-                    ALTER TABLE [UserSettings] ADD [EmailDigestFrequency] int NOT NULL DEFAULT 0;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'InAppNotificationsEnabled')
                     ALTER TABLE [UserSettings] ADD [InAppNotificationsEnabled] bit NOT NULL DEFAULT 1;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'InAppSoundEnabled')
@@ -665,78 +668,6 @@ try
                     ALTER TABLE [CopyHistoryItems] ADD [SendCount] int NOT NULL DEFAULT 0;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('CopyHistoryItems') AND name = 'ResponseCount')
                     ALTER TABLE [CopyHistoryItems] ADD [ResponseCount] int NOT NULL DEFAULT 0;
-            ");
-            
-            // Create EmailSequences table if missing
-            await db.Database.ExecuteSqlRawAsync(@"
-                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EmailSequences')
-                BEGIN
-                    CREATE TABLE [EmailSequences] (
-                        [Id] uniqueidentifier NOT NULL,
-                        [Name] nvarchar(256) NOT NULL,
-                        [Description] nvarchar(1000) NULL,
-                        [UserId] uniqueidentifier NOT NULL,
-                        [OrganizationId] uniqueidentifier NULL,
-                        [IsActive] bit NOT NULL DEFAULT 1,
-                        [IsSharedWithOrganization] bit NOT NULL DEFAULT 0,
-                        [CreatedAtUtc] datetime2 NOT NULL,
-                        [UpdatedAtUtc] datetime2 NULL,
-                        CONSTRAINT [PK_EmailSequences] PRIMARY KEY ([Id]),
-                        CONSTRAINT [FK_EmailSequences_Users_UserId] FOREIGN KEY ([UserId]) 
-                            REFERENCES [Users] ([Id]) ON DELETE NO ACTION
-                    );
-                    CREATE INDEX [IX_EmailSequences_UserId] ON [EmailSequences] ([UserId]);
-                    CREATE INDEX [IX_EmailSequences_OrganizationId] ON [EmailSequences] ([OrganizationId]);
-                    CREATE INDEX [IX_EmailSequences_IsActive] ON [EmailSequences] ([IsActive]);
-                END;
-            ");
-            
-            // Create EmailSequenceSteps table if missing
-            await db.Database.ExecuteSqlRawAsync(@"
-                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EmailSequenceSteps')
-                BEGIN
-                    CREATE TABLE [EmailSequenceSteps] (
-                        [Id] uniqueidentifier NOT NULL,
-                        [SequenceId] uniqueidentifier NOT NULL,
-                        [StepOrder] int NOT NULL,
-                        [DelayDays] int NOT NULL,
-                        [Subject] nvarchar(512) NOT NULL,
-                        [Body] nvarchar(max) NOT NULL,
-                        CONSTRAINT [PK_EmailSequenceSteps] PRIMARY KEY ([Id]),
-                        CONSTRAINT [FK_EmailSequenceSteps_EmailSequences_SequenceId] FOREIGN KEY ([SequenceId]) 
-                            REFERENCES [EmailSequences] ([Id]) ON DELETE CASCADE
-                    );
-                    CREATE INDEX [IX_EmailSequenceSteps_SequenceId] ON [EmailSequenceSteps] ([SequenceId]);
-                END;
-            ");
-            
-            // Create EmailSequenceEnrollments table if missing
-            await db.Database.ExecuteSqlRawAsync(@"
-                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'EmailSequenceEnrollments')
-                BEGIN
-                    CREATE TABLE [EmailSequenceEnrollments] (
-                        [Id] uniqueidentifier NOT NULL,
-                        [SequenceId] uniqueidentifier NOT NULL,
-                        [UserId] uniqueidentifier NOT NULL,
-                        [ContactId] uniqueidentifier NULL,
-                        [LeadId] uniqueidentifier NULL,
-                        [RecipientEmail] nvarchar(256) NULL,
-                        [RecipientName] nvarchar(256) NULL,
-                        [CurrentStep] int NOT NULL DEFAULT 0,
-                        [Status] nvarchar(32) NOT NULL DEFAULT 'Active',
-                        [EnrolledAtUtc] datetime2 NOT NULL,
-                        [LastSentAtUtc] datetime2 NULL,
-                        [NextSendAtUtc] datetime2 NULL,
-                        [CompletedAtUtc] datetime2 NULL,
-                        CONSTRAINT [PK_EmailSequenceEnrollments] PRIMARY KEY ([Id]),
-                        CONSTRAINT [FK_EmailSequenceEnrollments_EmailSequences_SequenceId] FOREIGN KEY ([SequenceId]) 
-                            REFERENCES [EmailSequences] ([Id]) ON DELETE CASCADE,
-                        CONSTRAINT [FK_EmailSequenceEnrollments_Users_UserId] FOREIGN KEY ([UserId]) 
-                            REFERENCES [Users] ([Id]) ON DELETE NO ACTION
-                    );
-                    CREATE INDEX [IX_EmailSequenceEnrollments_SequenceId] ON [EmailSequenceEnrollments] ([SequenceId]);
-                    CREATE INDEX [IX_EmailSequenceEnrollments_UserId] ON [EmailSequenceEnrollments] ([UserId]);
-                END;
             ");
             
             // Fix Contacts table columns
@@ -1158,19 +1089,6 @@ try
         }
     });
     
-    // Test email sequences
-    app.MapGet("/db-test-emailsequences", async (AppDbContext db) =>
-    {
-        try
-        {
-            var count = await db.EmailSequences.CountAsync();
-            return Results.Ok(new { status = "ok", count });
-        }
-        catch (Exception ex)
-        {
-            return Results.Ok(new { status = "error", message = ex.Message });
-        }
-    });
     
     // Test tasks service
     app.MapGet("/db-test-tasks-service", async (AppDbContext db, ITaskService taskService) =>
@@ -1204,21 +1122,6 @@ try
         }
     });
     
-    // Test email sequences service
-    app.MapGet("/db-test-emailsequences-service", async (AppDbContext db, IEmailSequenceService emailSequenceService) =>
-    {
-        try
-        {
-            var firstUser = await db.Users.FirstOrDefaultAsync();
-            if (firstUser == null) return Results.Ok(new { status = "no_users" });
-            var sequences = await emailSequenceService.GetSequencesAsync(firstUser.Id, null);
-            return Results.Ok(new { status = "ok", count = sequences.Count });
-        }
-        catch (Exception ex)
-        {
-            return Results.Ok(new { status = "error", message = ex.Message });
-        }
-    });
 
     Log.Information("ACI CRM API started successfully");
     app.Run();

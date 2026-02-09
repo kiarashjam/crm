@@ -166,6 +166,10 @@ export function TaskDetailModal({
         status: form.status,
         priority: form.priority,
         notes: form.notes.trim() || undefined,
+        leadId: form.leadId || undefined,
+        dealId: form.dealId || undefined,
+        contactId: form.contactId || undefined,
+        assigneeId: form.assigneeId || undefined,
       });
 
       if (updated) {

@@ -161,6 +161,12 @@ public class ActivityService : IActivityService
                     _logger.LogWarning("Contact {ContactId} not found for activity creation", request.ContactId);
                     return DomainErrors.Activity.RelatedEntityNotFound;
                 }
+                // HP-4: Enforce DoNotContact flag — prevent activities for contacts marked as do-not-contact
+                if (contact.DoNotContact)
+                {
+                    _logger.LogWarning("Activity creation blocked — contact {ContactId} is marked DoNotContact", request.ContactId);
+                    return DomainErrors.Contact.DoNotContact;
+                }
             }
 
             if (request.DealId.HasValue)

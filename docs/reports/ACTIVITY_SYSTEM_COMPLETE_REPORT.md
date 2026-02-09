@@ -51,14 +51,14 @@ Last updated: February 9, 2026 (fourth pass — ALL 6 HIGH PRIORITY items now IM
 
 **File:** `backend/src/ACI.Domain/Entities/Activity.cs`
 
-The core Activity entity representing a CRM interaction (call, meeting, email, note):
+The core Activity entity representing a CRM interaction (call, meeting, email, note, task, follow_up, deadline, video, demo):
 
 | Property | Type | Description |
 |----------|------|-------------|
 | `Id` | `Guid` | Primary key (from BaseEntity) |
 | `UserId` | `Guid` | FK to owning User (required) |
 | `OrganizationId` | `Guid?` | FK to Organization (optional) |
-| `Type` | `string` | Activity type, default `"note"`. Valid: `call`, `meeting`, `email`, `note` |
+| `Type` | `string` | Activity type, default `"note"`. Valid: `call`, `meeting`, `email`, `note`, `task`, `follow_up`, `deadline`, `video`, `demo` (9 types) |
 | `Subject` | `string?` | Activity subject/title |
 | `Body` | `string?` | Activity body/description |
 | `ContactId` | `Guid?` | FK to Contact (optional) |
@@ -140,7 +140,9 @@ Depends on: `IActivityRepository`, `ILeadRepository`, `IContactRepository`, `IDe
 | `GetByLeadIdAsync` | Activities where `LeadId` matches, filtered by **org only** (NOT user) — team-visible |
 | `GetByIdAsync` | Single activity by ID, filtered by user/org |
 | `AddAsync` | Insert new activity |
+| `UpdateAsync` | Updates activity fields, calls `SaveChangesAsync` |
 | `DeleteAsync` | Remove activity (hard delete) |
+| `GetActivityCountsByOrgAsync` | Activity counts grouped by UserId across all org members (HP-3 team stats) |
 | `GetLastActivityByContactIdsAsync` | **Batch aggregation:** Latest activity `CreatedAtUtc` per contact ID. Used by `ContactService` to enrich contacts with `LastActivityAtUtc`. |
 | `GetLastActivityByDealIdsAsync` | **Batch aggregation:** Latest activity `CreatedAtUtc` per deal ID. Used by `DealService` to enrich deals with `LastActivityAtUtc`. |
 
@@ -161,10 +163,10 @@ Depends on: `IActivityRepository`, `ILeadRepository`, `IContactRepository`, `IDe
 | DTO | File | Fields |
 |-----|------|--------|
 | `ActivityDto` | `DTOs/ActivityDto.cs` | `Id, Type, Subject?, Body?, ContactId?, DealId?, LeadId?, Participants?, CreatedAtUtc, UpdatedAtUtc?, ContactName?, DealName?, LeadName?` — Note: this is a `record` type |
-| `CreateActivityRequest` | `DTOs/CreateActivityRequest.cs` | `Type` (required, max 20, regex: `^(call\|meeting\|email\|note\|task\|follow_up\|deadline\|Call\|Meeting\|Email\|Note\|Task\|Follow_Up\|Deadline)$`), `Subject?` (max 200), `Body?` (max 5000), `ContactId?`, `DealId?`, `LeadId?`, `Participants?` (max 500) |
-| `UpdateActivityRequest` | `DTOs/UpdateActivityRequest.cs` | `Type?`, `Subject?` (max 200), `Body?` (max 5000), `ContactId?`, `DealId?`, `LeadId?`, `Participants?` (max 500) |
+| `CreateActivityRequest` | `DTOs/CreateActivityRequest.cs` | `Type` (required, max 20, regex: `^(call\|meeting\|email\|note\|task\|follow_up\|deadline\|video\|demo)$`), `Subject?` (max 200), `Body?` (max 5000), `ContactId?`, `DealId?`, `LeadId?`, `Participants?` (max 500) |
+| `UpdateActivityRequest` | `DTOs/UpdateActivityRequest.cs` | `Type?`, `Subject?` (max 200), `Body?` (max 5000), `Participants?` (max 500) — Note: ContactId, DealId, LeadId are NOT updatable |
 
-> **Notable:** `ActivityDto` now includes `UpdatedAtUtc` (set when activity is edited), `ContactName`, `DealName`, and `LeadName` (for display purposes). The `Participants` field is included in the DTO and can be stored/returned, but UI display is still incomplete.
+> **Notable:** `ActivityDto` now includes `UpdatedAtUtc` (set when activity is edited), `ContactName`, `DealName`, and `LeadName` (for display purposes). The `Participants` field is included in the DTO, stored/returned, and displayed in the UI (HP-6 implemented).
 
 ---
 
@@ -197,7 +199,7 @@ Depends on: `IActivityRepository`, `ILeadRepository`, `IContactRepository`, `IDe
 |------------|---------|
 | `Activity.NotFound` | "The activity was not found" |
 | `Activity.TypeRequired` | "Activity type is required" |
-| `Activity.InvalidType` | "The activity type is invalid. Valid types: call, meeting, email, note" |
+| `Activity.InvalidType` | "The activity type is invalid. Valid types: call, meeting, email, note, task, follow_up, deadline, video, demo" |
 | `Activity.NoRelatedEntity` | "Activity must be linked to at least one entity (contact, deal, or lead)" |
 | `Activity.RelatedEntityNotFound` | "The related entity was not found" |
 
@@ -363,16 +365,18 @@ There are **two duplicate** activity type config files:
 | `video` | Video Call | Video | purple |
 | `demo` | Demo | Presentation | rose |
 | `task` | Task Completed | CheckCircle | cyan |
+| `follow_up` | Follow-up | CalendarClock | orange |
+| `deadline` | Deadline | Clock | red |
 
-Exports: `ACTIVITY_TYPES` (readonly array), `getActivityType(id)`, `getActivityTypeIcon(id)`.
+Exports: `ACTIVITY_TYPES` (readonly array of 9 types), `getActivityType(id)`, `getActivityTypeIcon(id)`.
 
 ### `src/app/pages/activities/config.ts` (Local duplicate)
 
-Identical 7 types. Exports: `ACTIVITY_TYPES`, `ActivityTypeId` type.
+Defines 9 types. Exports: `ACTIVITY_TYPES`, `ActivityTypeId` type.
 
 ### `Activities.tsx` inline `ACTIVITY_TYPES` (Third duplicate!)
 
-The Activities page defines its own inline `ACTIVITY_TYPES` constant (line 49) with the same 7 types, NOT importing from either config file.
+The Activities page defines its own inline `ACTIVITY_TYPES` constant (line 49) with 9 types, NOT importing from either config file.
 
 > **FIXED (HP-1):** Backend now accepts all 9 types: `call`, `meeting`, `email`, `note`, `task`, `follow_up`, `deadline`, `video`, `demo`. The `ActivityService.ValidActivityTypes` and `CreateActivityRequest` regex have been expanded. No more 400 errors for Video, Demo, or Task activities.
 
@@ -380,7 +384,7 @@ The Activities page defines its own inline `ACTIVITY_TYPES` constant (line 49) w
 
 ## 14. Frontend — Activities Page (Main Activity UI)
 
-**File:** `src/app/pages/Activities.tsx` — ~1135 lines
+**File:** `src/app/pages/Activities.tsx` — ~1283 lines
 
 ### Features
 
@@ -398,21 +402,23 @@ The Activities page defines its own inline `ACTIVITY_TYPES` constant (line 49) w
 ### State Management
 
 ```
-activities: Activity[]                    // Current page of activities
-contacts: Contact[]                       // Loaded on mount for dropdowns
-deals: Deal[]                             // Loaded on mount for dropdowns
-filter: 'all' | 'contact' | 'deal'        // Filter mode
-filterContactId: string                   // Selected contact for filtering
-filterDealId: string                      // Selected deal for filtering
-filterType: string                        // Type filter ('all' or specific type)
-searchQuery: string                       // Raw search input
-debouncedSearch: string                   // Debounced search (300ms)
-page: number                              // Current page (1-based)
-pageSize: number                          // Items per page (20)
-pagedResult: PagedResult<Activity> | null  // Server pagination metadata
-dialogOpen: boolean                       // Create dialog visibility
-form: {type, subject, body, contactId, dealId}  // Create form state
-deleteConfirmActivity: Activity | null    // Activity pending deletion
+activities: Activity[]                         // Current page of activities
+contacts: Contact[]                            // Loaded on mount for dropdowns
+deals: Deal[]                                  // Loaded on mount for dropdowns
+filter: 'all' | 'contact' | 'deal' | 'lead'   // Filter mode (HP-5 added 'lead')
+filterContactId: string                        // Selected contact for filtering
+filterDealId: string                           // Selected deal for filtering
+filterLeadId: string                           // Selected lead for filtering (HP-5)
+filterType: string                             // Type filter ('all' or specific type)
+searchQuery: string                            // Raw search input
+debouncedSearch: string                        // Debounced search (300ms)
+page: number                                   // Current page (1-based)
+pageSize: number                               // Items per page (20)
+pagedResult: PagedResult<Activity> | null       // Server pagination metadata
+dialogOpen: boolean                            // Create dialog visibility
+form: {type, subject, body, contactId, dealId, participants}  // Create form state (HP-6 added participants)
+editingActivity: Activity | null               // Activity being edited (HP-2)
+deleteConfirmActivity: Activity | null         // Activity pending deletion
 ```
 
 ### Activity Card Display
@@ -453,7 +459,7 @@ Each activity card shows:
 4. **Activity Timeline**: Displays activities chronologically with type icons, subjects, bodies, and timestamps
 5. **Empty State**: "No activities yet" with a message to log the first interaction
 
-> **Note:** Pipeline uses only 4 types (Call, Email, Meeting, Note) in its activity form — correctly matching the backend. This is different from the Activities page which shows 7 types.
+> **Note:** Pipeline uses only 4 types (Call, Email, Meeting, Note) in its activity form — a subset of the 9 backend-supported types. This is different from the Activities page which shows all 9 types.
 
 ---
 

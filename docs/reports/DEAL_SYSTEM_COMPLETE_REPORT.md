@@ -66,6 +66,7 @@ The core Deal entity representing a sales opportunity:
 | `Probability` | `int?` | Win probability 0–100 |
 | `IsWon` | `bool?` | `null` = open, `true` = won, `false` = lost |
 | `ClosedReason` | `string?` | Reason the deal was closed — won or lost (max 500 chars) |
+| `ClosedReasonCategory` | `string?` | Category for close reason (e.g., "Won - Budget Approved", "Lost - Competitor") |
 | `ClosedAtUtc` | `DateTime?` | Timestamp when the deal was closed |
 | `CreatedAtUtc` | `DateTime` | Creation timestamp |
 | `UpdatedAtUtc` | `DateTime?` | Last update timestamp (nullable) |
@@ -178,7 +179,7 @@ Depends on: `IDealRepository`, `IActivityRepository` (for last activity enrichme
 
 > **Key design detail:** Every deal fetch method calls `GetLastActivityByDealIdsAsync` to enrich deals with the latest activity timestamp. This means every deal query triggers an additional aggregation query against the Activities table.
 
-> **Map method:** The private `Map(Deal, DateTime?)` method builds a `DealDto` with all enriched fields: `AssigneeName` (from `Assignee?.Name`), `CompanyName`, `ContactName`, `PipelineName`, `DealStageName` (all from eager-loaded navigation properties), plus `Description`, `Probability`, `CreatedAtUtc`, `UpdatedAtUtc`, `ClosedReason`, `ClosedAtUtc`.
+> **Map method:** The private `Map(Deal, DateTime?)` method builds a `DealDto` with all enriched fields: `AssigneeName` (from `Assignee?.Name`), `CompanyName`, `ContactName`, `PipelineName`, `DealStageName` (all from eager-loaded navigation properties), plus `Description`, `Probability`, `CreatedAtUtc`, `UpdatedAtUtc`, `ClosedReason`, `ClosedReasonCategory`, `ClosedAtUtc`.
 
 ### DealStageService (`backend/src/ACI.Application/Services/DealStageService.cs`)
 
@@ -244,7 +245,7 @@ When `existingDealId` is provided:
 | `SearchAsync` | Search by name or value. Uses `IncludeRelated`. |
 | `GetByIdAsync` | Single deal by ID, validates user/org. Uses `IncludeRelated`. |
 | `AddAsync` | Insert new deal |
-| `UpdateAsync` | Full field update including `Description`, `Probability`, `ClosedReason`, `ClosedAtUtc`. Uses `IncludeRelated` to reload from DB first. |
+| `UpdateAsync` | Full field update including `Description`, `Probability`, `ClosedReason`, `ClosedReasonCategory`, `ClosedAtUtc`. Uses `IncludeRelated` to reload from DB first. |
 | `DeleteAsync` | Deletes deal, **nullifies `DealId` on related TaskItems and Activities** before deletion |
 | `AddStageChangeAsync` | (HP-11) Records a `DealStageChange` entry for stage transition tracking |
 | `GetStageChangesAsync` | (HP-11) Returns stage change history for a deal, ordered by `ChangedAtUtc` descending, validates deal belongs to user |
@@ -272,9 +273,9 @@ When `existingDealId` is provided:
 
 | DTO | File | Deal Fields |
 |-----|------|-------------|
-| `DealDto` | `DTOs/DealDto.cs` | All deal properties + `LastActivityAtUtc`, `Description`, `Probability`, `AssigneeName`, `CompanyName`, `ContactName`, `PipelineName`, `DealStageName`, `CreatedAtUtc`, `UpdatedAtUtc`, `ClosedReason`, `ClosedAtUtc` (23 fields total) |
+| `DealDto` | `DTOs/DealDto.cs` | All deal properties + `LastActivityAtUtc`, `Description`, `Probability`, `AssigneeName`, `CompanyName`, `ContactName`, `PipelineName`, `DealStageName`, `CreatedAtUtc`, `UpdatedAtUtc`, `ClosedReason`, `ClosedReasonCategory`, `ClosedAtUtc` (25 fields total) |
 | `CreateDealRequest` | `DTOs/CreateDealRequest.cs` | `Name` (required, max 200), `Value` (regex `^-?\\d+(\\.\\d{1,2})?$`), `Currency`, `Stage`, `DealStageId`, `PipelineId`, `CompanyId`, `ContactId`, `AssigneeId`, `ExpectedCloseDateUtc`, `Description` (max 2000), `Probability` (range 0–100) |
-| `UpdateDealRequest` | `DTOs/UpdateDealRequest.cs` | All fields optional (partial update), includes `IsWon`, `Description` (max 2000), `Probability` (range 0–100), `ClosedReason` (max 500) |
+| `UpdateDealRequest` | `DTOs/UpdateDealRequest.cs` | All fields optional (partial update), includes `IsWon`, `Description` (max 2000), `Probability` (range 0–100), `ClosedReason` (max 500), `ClosedReasonCategory` (max 50) |
 | `DealStageDto` | `DTOs/DealStageDto.cs` | Id, PipelineId, Name, DisplayOrder, IsWon, IsLost |
 | `CreateDealStageRequest` | `DTOs/CreateDealStageRequest.cs` | PipelineId, Name, DisplayOrder, IsWon, IsLost |
 | `UpdateDealStageRequest` | `DTOs/UpdateDealStageRequest.cs` | Name, DisplayOrder, IsWon, IsLost |
@@ -863,7 +864,7 @@ dealStages: {
 | **Repository Interface** | `IDealRepository.cs` (updated — `AddStageChangeAsync`, `GetStageChangesAsync`), `IDealStageRepository.cs` |
 | **Repository Impl** | `DealRepository.cs` (updated — `IncludeRelated`, `AddStageChangeAsync`, `GetStageChangesAsync`), `DealStageRepository.cs` |
 | **Controller** | `DealsController.cs`, `DealStagesController.cs` |
-| **DTOs** | `DealDto.cs` (updated — 23 fields), `CreateDealRequest.cs` (updated — `Description`, `Probability`), `UpdateDealRequest.cs` (updated — `Description`, `Probability`, `ClosedReason`), `DealStageDto.cs`, `CreateDealStageRequest.cs`, `UpdateDealStageRequest.cs` |
+| **DTOs** | `DealDto.cs` (updated — 25 fields), `CreateDealRequest.cs` (updated — `Description`, `Probability`), `UpdateDealRequest.cs` (updated — `Description`, `Probability`, `ClosedReason`, `ClosedReasonCategory`), `DealStageDto.cs`, `CreateDealStageRequest.cs`, `UpdateDealStageRequest.cs` |
 | **DB Config** | `DealConfiguration.cs` (updated — `Description`, `ClosedReason` columns), `DealStageConfiguration.cs`, `DealStageChangeConfiguration.cs` (NEW — HP-11) |
 | **Tests** | `DealServiceTests.cs` |
 | **Cross-entity** | `Activity.cs`, `Lead.cs`, `TaskItem.cs`, `User.cs`, `Company.cs`, `Pipeline.cs`, `UserSettings.cs` |
@@ -1172,30 +1173,23 @@ Without this capability, a deal is just a name + dollar value with zero qualitat
 
 #### A8. Deal Stage Change History / Audit Trail — ✅ IMPLEMENTED (HP-11)
 
-**What exists now:**
-When a deal moves from one stage to another (via drag-and-drop, stage selector, or edit form), the backend's `DealService.UpdateAsync()` (lines 199-210) simply overwrites `existing.DealStageId = request.DealStageId`. No record is kept.
+**Implementation:**
+The backend now tracks all stage transitions. When `DealService.UpdateAsync()` detects a stage change (lines 203-205 capture old stage, line 244 checks if `DealStageId` changed), it creates a `DealStageChange` record via `AddStageChangeAsync` (lines 243-261).
 
 **Source evidence:**
-- `DealService.cs` line 205: `if (request.DealStageId != null) existing.DealStageId = request.DealStageId;` — direct overwrite
-- No `DealStageHistory` or `DealStageChange` entity exists anywhere in the codebase
-- No `StageChangedAtUtc` or `StageEnteredAtUtc` field on `Deal.cs`
+- `DealService.cs` lines 203-205: captures `oldStageId` and `oldStageName` before applying updates
+- `DealService.cs` line 213: `if (request.DealStageId != null) existing.DealStageId = request.DealStageId;` — applies new stage
+- `DealService.cs` lines 243-261: if stage actually changed, creates `DealStageChange` record with `FromDealStageId`, `ToDealStageId`, `FromStageName`, `ToStageName`, `ChangedByUserId`, `ChangedAtUtc`
+- `DealStageChange` entity exists with full audit fields
+- `DealRepository.AddStageChangeAsync` persists the record
+- `DealRepository.GetStageChangesAsync` returns history ordered by `ChangedAtUtc` descending
 
-**What is missing:**
-- No `DealStageHistory` table recording: DealId, FromStageId, ToStageId, ChangedByUserId, ChangedAtUtc
-- No timestamp for when a deal entered its current stage
-- No "who moved this deal" audit information
-- No stage duration calculation capability
-
-**Why we need it:**
-1. **Deal velocity calculation**: "How long does the average deal stay in Qualification before moving to Proposal?" This is one of the top 5 sales metrics (alongside win rate, average deal size, pipeline coverage ratio, and sales cycle length). Without stage change timestamps, it is mathematically impossible to compute. Sales leaders cannot answer "is our sales cycle getting faster or slower?"
-2. **Stalled deal detection**: "This deal has been in Proposal for 45 days — the average is 12 days." Only possible if you know when the deal entered Proposal. Without this, deals can silently stall for months without anyone noticing until the expected close date passes.
-3. **Stage regression tracking**: If a deal moves backwards (Negotiation -> Qualification), that's a serious warning sign — it means trust was lost, requirements changed, or the deal was prematurely advanced. Without history, this regression is invisible.
-4. **Audit and compliance**: Managers need "who marked this $500K deal as Won? Was it the rep or the manager?" In regulated industries (financial services, healthcare), deal audit trails may be legally required.
-5. **Process optimization**: Analyzing average time per stage across all deals reveals bottlenecks: "Deals spend 3x longer in Proposal than Negotiation — we need better proposal templates or faster approval workflows."
-
-**What it would take:**
-- **Backend (Medium effort)**: New `DealStageChange` entity. Detect stage changes in `UpdateAsync` and create history records. New endpoint: `GET /api/deals/{id}/stage-history`. New reporting endpoint for velocity.
-- **Frontend (Medium effort)**: Stage history timeline in deal detail view. "In this stage for X days" badges. Velocity report on Dashboard.
+**What this enables:**
+1. **Deal velocity calculation**: "How long does the average deal stay in Qualification before moving to Proposal?" — now computable from stage change timestamps.
+2. **Stalled deal detection**: Can determine when a deal entered its current stage and flag deals that have exceeded the average duration.
+3. **Stage regression tracking**: Backward movements (Negotiation → Qualification) are recorded and visible.
+4. **Audit and compliance**: Full "who changed what when" history for each deal's stage transitions.
+5. **Process optimization**: Average time per stage across all deals reveals bottlenecks.
 
 ---
 

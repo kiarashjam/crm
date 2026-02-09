@@ -4,7 +4,7 @@ import {
   Search, Plus, Pencil, Trash2, Building2, Mail, Phone, Briefcase,
   User, X, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Activity as ActivityIcon,
   MessageSquare, Clock, Users, Sparkles, Send, BarChart3, AlertCircle,
-  ExternalLink
+  ExternalLink, Archive, ArchiveRestore
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -13,6 +13,7 @@ import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getContactsPaged, createContact, updateContact, deleteContact, getCompanies, getDealsPaged, messages } from '@/app/api';
+import { archiveContact, unarchiveContact } from '@/app/api/contacts';
 import { getTasks } from '@/app/api/tasks';
 import type { Contact, Company, Deal, TaskItem } from '@/app/api/types';
 import { Input } from '@/app/components/ui/input';
@@ -299,6 +300,8 @@ export default function Contacts() {
           phone: form.phone.trim() || undefined,
           jobTitle: form.jobTitle.trim() || undefined,
           companyId: form.companyId || undefined,
+          description: form.description?.trim() || undefined,
+          doNotContact: form.doNotContact,
         });
         if (updated) {
           toast.success(messages.success.contactUpdated);
@@ -314,6 +317,7 @@ export default function Contacts() {
           phone: form.phone.trim() || undefined,
           jobTitle: form.jobTitle.trim() || undefined,
           companyId: form.companyId || undefined,
+          description: form.description?.trim() || undefined,
         });
         if (created) {
           toast.success(messages.success.contactCreated);
@@ -327,6 +331,31 @@ export default function Contacts() {
       toast.error(messages.errors.generic);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // HP-5: Archive/Unarchive contact
+  const handleArchiveToggle = async (contact: Contact) => {
+    try {
+      if (contact.isArchived) {
+        const ok = await unarchiveContact(contact.id);
+        if (ok) {
+          toast.success('Contact unarchived');
+          fetchContacts();
+        } else {
+          toast.error(messages.errors.generic);
+        }
+      } else {
+        const ok = await archiveContact(contact.id);
+        if (ok) {
+          toast.success('Contact archived');
+          fetchContacts();
+        } else {
+          toast.error(messages.errors.generic);
+        }
+      }
+    } catch {
+      toast.error(messages.errors.generic);
     }
   };
 
@@ -884,6 +913,18 @@ export default function Contacts() {
                             {contact.jobTitle}
                           </p>
                         )}
+                        {contact.doNotContact && (
+                          <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700 border border-red-200">
+                            <AlertCircle className="w-3 h-3" />
+                            Do Not Contact
+                          </span>
+                        )}
+                        {contact.isArchived && (
+                          <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                            <Archive className="w-3 h-3" />
+                            Archived
+                          </span>
+                        )}
                         {company && (
                           <p 
                             className="text-sm text-slate-500 truncate flex items-center gap-1.5 mt-0.5 hover:text-violet-600 cursor-pointer transition-colors"
@@ -916,6 +957,13 @@ export default function Contacts() {
                           <DropdownMenuItem onClick={() => navigate('/send', { state: { contactId: contact.id, contactName: contact.name } })}>
                             <Send className="w-4 h-4 mr-2" />
                             Send Message
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleArchiveToggle(contact)}>
+                            {contact.isArchived ? (
+                              <><ArchiveRestore className="w-4 h-4 mr-2" /> Unarchive</>
+                            ) : (
+                              <><Archive className="w-4 h-4 mr-2" /> Archive</>
+                            )}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
@@ -1194,6 +1242,42 @@ export default function Contacts() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Do Not Contact toggle — HP-4 */}
+              <div className="group flex items-center justify-between p-3 rounded-lg border border-slate-200 bg-slate-50/50">
+                <Label className="flex items-center gap-2 text-sm font-medium text-slate-700 cursor-pointer">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-red-100 text-red-600">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                  </div>
+                  Do Not Contact
+                </Label>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.doNotContact}
+                  onClick={() => setForm((f) => ({ ...f, doNotContact: !f.doNotContact }))}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${form.doNotContact ? 'bg-red-500' : 'bg-slate-200'}`}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${form.doNotContact ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              {/* Description / Notes — HP-7 */}
+              <div className="group">
+                <Label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 text-slate-600">
+                    <Briefcase className="w-3.5 h-3.5" />
+                  </div>
+                  Notes / Description
+                </Label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Add notes about this contact..."
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-100 focus:outline-none resize-none transition-all"
+                />
               </div>
 
               <DialogFooter className="pt-4 border-t border-slate-100">

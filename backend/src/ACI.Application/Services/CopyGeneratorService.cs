@@ -35,7 +35,7 @@ public class CopyGeneratorService : ICopyGeneratorApplicationService
             request.Goal,
             request.Context,
             request.Length ?? "medium",
-            request.CompanyName,
+            request.BrandName,
             request.BrandTone,
             ct);
         
@@ -79,7 +79,7 @@ public class CopyGeneratorService : ICopyGeneratorApplicationService
             request.Goal,
             request.Context,
             request.Length ?? "medium",
-            request.CompanyName,
+            request.BrandName,
             request.BrandTone,
             recipientContext,
             ct);
@@ -142,7 +142,7 @@ public class CopyGeneratorService : ICopyGeneratorApplicationService
             request.Goal,
             null, // context from CrmObject could be used here
             request.Length ?? "medium",
-            null, // companyName
+            null, // brandName
             request.BrandTone,
             recipientContext,
             request.TargetLanguage,

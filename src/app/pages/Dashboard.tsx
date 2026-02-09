@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Sparkles } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { Copy, Check, Send } from 'lucide-react';
 import { getCurrentUser, isDemoMode } from '@/app/lib/auth';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -16,6 +16,7 @@ import {
   getContacts,
   getDeals,
   getActivities,
+  sendCopyToCrm,
 } from '@/app/api';
 import { 
   generateCopyWithRecipient, 
@@ -79,7 +80,15 @@ export default function Dashboard() {
   } | null>(null);
   const [recipientSearch, setRecipientSearch] = useState('');
   
-  const navigate = useNavigate();
+  // Generated copy state
+  const [generatedCopy, setGeneratedCopy] = useState<{
+    subject: string;
+    body: string;
+    copyTypeLabel: string;
+    copyTypeId: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+  
   const user = getCurrentUser();
   const displayName = user?.name ?? 'there';
 
@@ -156,7 +165,7 @@ export default function Dashboard() {
             goal: goal || goals[0]!,
             context: context.trim() || undefined,
             length,
-            companyName: settings.companyName,
+            brandName: settings.brandName,
             brandTone: settings.brandTone,
             recipient,
             targetLanguage: language,
@@ -166,7 +175,7 @@ export default function Dashboard() {
             goal: goal || goals[0]!,
             context: context.trim() || undefined,
             length,
-            companyName: settings.companyName,
+            brandName: settings.brandName,
             brandTone: settings.brandTone,
             recipient,
           });
@@ -174,13 +183,11 @@ export default function Dashboard() {
       const copyTypeLabel = copyTypes.find((t) => t.id === selectedType)?.title ?? 'Copy';
       const langName = SUPPORTED_LANGUAGES.find(l => l.code === language)?.name ?? '';
       toast.success(messages.copy.generated + (language !== 'en' ? ` (${langName})` : ''));
-      navigate('/generated', { 
-        state: { 
-          copy: result.body, 
-          subject: result.subject,
-          copyTypeLabel, 
-          copyTypeId: selectedType,
-        } 
+      setGeneratedCopy({
+        subject: result.subject,
+        body: result.body,
+        copyTypeLabel,
+        copyTypeId: selectedType,
       });
     } catch {
       toast.error(messages.errors.generic);
@@ -233,6 +240,85 @@ export default function Dashboard() {
                 recipientSearch={recipientSearch}
                 setRecipientSearch={setRecipientSearch}
               />
+
+              {/* Generated Copy Display */}
+              {generatedCopy && (
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                      Generated {generatedCopy.copyTypeLabel}
+                    </h3>
+                    <button
+                      onClick={() => setGeneratedCopy(null)}
+                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                      aria-label="Close"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  
+                  {generatedCopy.subject && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                        Subject
+                      </label>
+                      <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-slate-900 dark:text-slate-100">
+                        {generatedCopy.subject}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Body
+                    </label>
+                    <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-slate-900 dark:text-slate-100 whitespace-pre-wrap">
+                      {generatedCopy.body}
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={async () => {
+                        const textToCopy = generatedCopy.subject 
+                          ? `${generatedCopy.subject}\n\n${generatedCopy.body}`
+                          : generatedCopy.body;
+                        await navigator.clipboard.writeText(textToCopy);
+                        setCopied(true);
+                        toast.success('Copied to clipboard');
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-900 dark:text-slate-100 rounded-lg transition-colors"
+                    >
+                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                    
+                    {selectedRecipient && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await sendCopyToCrm({
+                              objectType: selectedRecipient.type,
+                              recordId: selectedRecipient.id,
+                              recordName: selectedRecipient.name,
+                              copy: generatedCopy.body,
+                              copyTypeLabel: generatedCopy.copyTypeLabel,
+                            });
+                            toast.success(`Copy sent to ${selectedRecipient.name}`);
+                          } catch {
+                            toast.error('Failed to send copy to CRM');
+                          }
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg transition-colors"
+                      >
+                        <Send className="w-4 h-4" />
+                        Send to CRM
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Team Performance - Extracted Component */}
               <TeamPerformance members={pipelineByAssignee} />

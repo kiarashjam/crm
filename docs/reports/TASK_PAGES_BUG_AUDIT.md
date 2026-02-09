@@ -13,57 +13,33 @@
 
 ## Critical Issues
 
-### 1. **Stale Date Reference in Tasks.tsx**
+### 1. **~~Stale Date Reference in Tasks.tsx~~ — RESOLVED**
 **File:** `src/app/pages/Tasks.tsx`  
 **Line:** 172  
-**Severity:** Critical  
-**Issue:** `const now = useMemo(() => new Date(), []);` creates a date once and never updates. This causes stale date comparisons for overdue checks, "today", "tomorrow", etc. The date will remain fixed from when the component first mounted.
+**Severity:** ~~Critical~~ Fixed  
+**Issue (was):** `const now = useMemo(() => new Date(), []);` created a date once and never updated.
 
-**Impact:** Task grouping, overdue detection, and date-based filtering will become incorrect over time.
-
-**Fix:** Remove the memoization or update periodically:
-```typescript
-const now = useMemo(() => new Date(), []); // Remove this
-// Use: const now = new Date(); directly in functions that need current time
-```
+**Resolution:** Line 172 now uses `useMemo(() => new Date(), [tasks])` — the date recomputes whenever tasks data changes, keeping date comparisons fresh.
 
 ---
 
-### 2. **Missing Error Handling in handleDetailModalUpdate**
+### 2. **~~Missing Error Handling in handleDetailModalUpdate~~ — RESOLVED**
 **File:** `src/app/pages/Tasks.tsx`  
-**Line:** 715-736  
-**Severity:** Critical  
-**Issue:** `handleDetailModalUpdate` function has no try/catch block. If `updateTask` throws an error, it will propagate unhandled.
+**Line:** 715-741  
+**Severity:** ~~Critical~~ Fixed  
+**Issue (was):** `handleDetailModalUpdate` function had no try/catch block.
 
-**Impact:** Unhandled promise rejection, potential app crash.
-
-**Fix:** Wrap in try/catch:
-```typescript
-const handleDetailModalUpdate = async (taskId: string, updates: Partial<TaskItem>): Promise<TaskItem | null> => {
-  try {
-    const updated = await updateTask(taskId, { ... });
-    // ... rest of code
-  } catch (error) {
-    toast.error('Failed to update task');
-    return null;
-  }
-};
-```
+**Resolution:** The function (line 715+) now wraps the `updateTask` call in a `try/catch` block with `toast.error` on failure.
 
 ---
 
-### 3. **Type Safety Gap - `as any` Assertion**
+### 3. **~~Type Safety Gap - `as any` Assertion~~ — RESOLVED**
 **File:** `src/app/pages/Tasks.tsx`  
 **Line:** 663  
-**Severity:** Critical  
-**Issue:** `status: value as any` bypasses TypeScript type checking.
+**Severity:** ~~Critical~~ Fixed  
+**Issue (was):** `status: value as any` bypassed TypeScript type checking.
 
-**Impact:** Runtime errors if invalid status value is passed.
-
-**Fix:** Proper type assertion:
-```typescript
-...(action === 'status' && { status: value as TaskStatusType }),
-```
+**Resolution:** Line 663 now uses `status: value as TaskStatusType` — proper type assertion instead of `any`.
 
 ---
 
@@ -96,15 +72,15 @@ useEffect(() => { loadTask(); }, [loadTask]);
 
 ---
 
-### 6. **Date Formatting Issue in TaskDetail.tsx**
+### 6. **~~Date Formatting Issue in TaskDetail.tsx~~ — RESOLVED**
 **File:** `src/app/pages/TaskDetail.tsx`  
 **Line:** 116, 169  
-**Severity:** Medium  
-**Issue:** `editDueDate` uses `slice(0, 10)` which only gets the date portion, but the input type is `datetime-local`. This will cause time information to be lost.
+**Severity:** ~~Medium~~ Fixed  
+**Issue (was):** `editDueDate` used `slice(0, 10)` which only got the date portion, but the input type is `datetime-local`. This caused time information to be lost.
 
-**Impact:** When editing, time portion of due date is lost.
+**Resolution:** Changed to `slice(0, 16)` to preserve time for datetime-local input.
 
-**Fix:** Use `slice(0, 16)` for datetime-local inputs:
+**Former Fix Suggestion:** Use `slice(0, 16)` for datetime-local inputs:
 ```typescript
 setEditDueDate(t.dueDateUtc ? t.dueDateUtc.slice(0, 16) : '');
 ```
@@ -161,15 +137,15 @@ useEffect(() => {
 
 ---
 
-### 10. **Incomplete Field Updates in TaskDetailModal.tsx**
+### 10. **~~Incomplete Field Updates in TaskDetailModal.tsx~~ — RESOLVED**
 **File:** `src/app/pages/tasks/components/TaskDetailModal.tsx`  
 **Line:** 161-169  
-**Severity:** Medium  
-**Issue:** `handleSave` in TaskDetailModal doesn't send `leadId`, `dealId`, `contactId`, or `assigneeId` to the API, even though these fields are in the form state.
+**Severity:** ~~Medium~~ Fixed  
+**Issue (was):** `handleSave` in TaskDetailModal didn't send `leadId`, `dealId`, `contactId`, or `assigneeId` to the API, even though these fields were in the form state.
 
-**Impact:** Users can't update linked entities from the detail modal.
+**Resolution:** Added leadId, dealId, contactId, assigneeId to the onUpdate call in handleSave.
 
-**Fix:** Include all form fields in the update:
+**Former Fix Suggestion:** Include all form fields in the update:
 ```typescript
 const updated = await onUpdate(task.id, {
   title: form.title.trim(),
@@ -285,11 +261,11 @@ dueDateUtc: editDueDate ? new Date(editDueDate).toISOString() : undefined,
 - **Low:** 6
 
 **Priority Actions:**
-1. Fix stale date reference (Critical #1)
-2. Add error handling to `handleDetailModalUpdate` (Critical #2)
-3. Fix type safety issue with `as any` (Critical #3)
-4. Fix date formatting in TaskDetail.tsx (Medium #6)
-5. Complete field updates in TaskDetailModal (Medium #10)
+1. ~~Fix stale date reference (Critical #1)~~ **RESOLVED**
+2. ~~Add error handling to `handleDetailModalUpdate` (Critical #2)~~ **RESOLVED**
+3. ~~Fix type safety issue with `as any` (Critical #3)~~ **RESOLVED**
+4. ~~Fix date formatting in TaskDetail.tsx (Medium #6)~~ **RESOLVED**
+5. ~~Complete field updates in TaskDetailModal (Medium #10)~~ **RESOLVED**
 6. Add error handling and loading states throughout (Medium #5, #7)
 
 **Recommendations:**

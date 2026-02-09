@@ -41,7 +41,7 @@ Last updated: February 9, 2026 (fourth pass — every backend and frontend file 
 
 ## 1. TaskItem Entity (Backend Domain)
 
-**File:** `backend/src/ACI.Domain/Entities/TaskItem.cs` (55 lines)
+**File:** `backend/src/ACI.Domain/Entities/TaskItem.cs` (57 lines)
 
 The core TaskItem entity representing a CRM task linked to leads, deals, or contacts:
 
@@ -65,6 +65,7 @@ The core TaskItem entity representing a CRM task linked to leads, deals, or cont
 | `CreatedAtUtc` | `DateTime` | Creation timestamp |
 | `UpdatedAtUtc` | `DateTime?` | Last update timestamp |
 | `CompletedAtUtc` | `DateTime?` | Completion timestamp (set when status → Completed) |
+| `ReminderSentAtUtc` | `DateTime?` | When reminder notification was sent (prevents duplicates) |
 | `UpdatedByUserId` | `Guid?` | User who last updated |
 
 ### Navigation Properties
@@ -103,7 +104,7 @@ TaskPriority:
   High = 3   → "high"
 ```
 
-String conversion is handled in `TaskService.cs` lines 609-649 with `StatusToString`, `TryParseStatus`, `PriorityToString`, and `TryParsePriority` methods. The status parser accepts aliases: `"inprogress"`, `"done"`, `"canceled"`.
+String conversion is handled in `TaskService.cs` lines 614-655 with `StatusToString`, `TryParseStatus`, `PriorityToString`, and `TryParsePriority` methods. The status parser accepts aliases: `"inprogress"`, `"done"`, `"canceled"`.
 
 ---
 
@@ -143,7 +144,7 @@ All endpoints require `[Authorize]`. Controller uses `ICurrentUserService` for `
 
 ## 4. Backend Business Logic (TaskService)
 
-**File:** `backend/src/ACI.Application/Services/TaskService.cs` (651 lines)
+**File:** `backend/src/ACI.Application/Services/TaskService.cs` (726 lines)
 
 ### Service Interface: `ITaskService`
 
@@ -163,10 +164,14 @@ Defines all task operations + `TaskFilterParams` record + `TaskStatsDto` record.
 | `GetByIdAsync` | 149-166 | Single task with relations |
 | `CreateAsync` | 169-218 | Creates task, sets `CreatedAtUtc`, parses status/priority strings |
 | `UpdateAsync` | 221-340 | Partial update with "Clear" flags: `ClearDueDate`, `ClearReminderDate`, `ClearAssignee`, `ClearLead`, `ClearDeal`, `ClearContact`. Sets `CompletedAtUtc` on completion. |
-| `UpdateStatusAsync` | 343-397 | Status-only update, manages `Completed` flag and `CompletedAtUtc` |
-| `AssignTaskAsync` | 400-439 | Sets `AssigneeId` |
-| `LinkToLeadAsync` | 442-481 | Sets `LeadId` |
-| `LinkToDealAsync` | 484-523 | Sets `DealId` |
+| `UpdateStatusAsync` | 348-402 | Status-only update, manages `Completed` flag and `CompletedAtUtc` |
+| `AssignTaskAsync` | 405-444 | Sets `AssigneeId` |
+| `LinkToLeadAsync` | 447-486 | Sets `LeadId` |
+| `LinkToDealAsync` | 489-528 | Sets `DealId` |
+| `DeleteAsync` | 531-557 | Deletes task by ID, validates user/org ownership |
+| `GetStatsAsync` | 560-588 | Server-side stats: total, todo, in-progress, completed, cancelled, overdue, due-today, high-priority |
+| `BulkUpdateAsync` | 658-707 | Bulk operations (status, priority, assignee, delete) across multiple task IDs |
+| `UpdatePriorityAsync` | 709-725 | Priority-only update (private helper for bulk operations) |
 | `DeleteAsync` | 526-552 | Hard delete |
 | `GetStatsAsync` | 555-583 | Computes: Total, Todo, InProgress, Completed, Cancelled, Overdue, DueToday, HighPriority |
 
@@ -560,7 +565,7 @@ type KanbanColumn = 'todo' | 'in_progress' | 'completed';
 
 ## 12. Frontend — Tasks Page (Main Task UI)
 
-**File:** `src/app/pages/Tasks.tsx` (1542 lines)
+**File:** `src/app/pages/Tasks.tsx` (1559 lines)
 
 ### Data Loaded on Mount (lines 136-159)
 
@@ -977,7 +982,7 @@ Task toggle: `emailOnTaskDue` → "Task Reminders" / "When tasks are due soon". 
 | **API Client** | `tasks.ts` |
 | **Types** | `api/types.ts`, `tasks/types.ts` |
 | **React Query** | `useTasks.ts` (6 hooks — ALL dead code), `queryKeys.ts` |
-| **Main Page** | `Tasks.tsx` (1542 lines) |
+| **Main Page** | `Tasks.tsx` (1559 lines) |
 | **Components** | `TaskDetailModal.tsx`, `KanbanTaskCard.tsx`, `ListTaskCard.tsx`, `KanbanColumn.tsx`, `TaskGroupSection.tsx` |
 | **Page Config** | `tasks/config.ts` (3-col kanban), `tasks/utils.ts`, `tasks/index.ts` |
 | **Global Config** | `config/taskConfig.ts` (4-col kanban — MISMATCH) |

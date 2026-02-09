@@ -51,7 +51,7 @@ public class SettingsService : ISettingsService
 
         // Apply partial updates - only update fields that were provided
         // Profile
-        if (request.CompanyName != null) settings.CompanyName = request.CompanyName;
+        if (request.BrandName != null) settings.BrandName = request.BrandName;
         if (request.JobTitle != null) settings.JobTitle = request.JobTitle;
         if (request.AvatarUrl != null) settings.AvatarUrl = request.AvatarUrl;
         if (request.Phone != null) settings.Phone = request.Phone;
@@ -79,8 +79,6 @@ public class SettingsService : ISettingsService
         if (request.EmailOnDealUpdate.HasValue) settings.EmailOnDealUpdate = request.EmailOnDealUpdate.Value;
         if (request.EmailOnTaskDue.HasValue) settings.EmailOnTaskDue = request.EmailOnTaskDue.Value;
         if (request.EmailOnTeamMention.HasValue) settings.EmailOnTeamMention = request.EmailOnTeamMention.Value;
-        if (request.EmailDigestFrequency != null && Enum.TryParse<EmailDigestFrequency>(request.EmailDigestFrequency, true, out var freq))
-            settings.EmailDigestFrequency = freq;
         if (request.InAppNotificationsEnabled.HasValue) settings.InAppNotificationsEnabled = request.InAppNotificationsEnabled.Value;
         if (request.InAppSoundEnabled.HasValue) settings.InAppSoundEnabled = request.InAppSoundEnabled.Value;
         if (request.BrowserNotificationsEnabled.HasValue) settings.BrowserNotificationsEnabled = request.BrowserNotificationsEnabled.Value;
@@ -111,7 +109,7 @@ public class SettingsService : ISettingsService
         var settings = new UserSettings
         {
             UserId = userId,
-            CompanyName = "My Company",
+            BrandName = "My Brand",
             BrandTone = BrandTone.Professional,
             Theme = Theme.Light,
             DataDensity = DataDensity.Comfortable,
@@ -122,7 +120,6 @@ public class SettingsService : ISettingsService
             EmailOnDealUpdate = true,
             EmailOnTaskDue = true,
             EmailOnTeamMention = true,
-            EmailDigestFrequency = EmailDigestFrequency.Daily,
             InAppNotificationsEnabled = true,
             InAppSoundEnabled = true,
             DefaultFollowUpDays = 3,
@@ -142,7 +139,7 @@ public class SettingsService : ISettingsService
     private static UserSettingsDto MapToDto(UserSettings s) => new()
     {
         // Profile
-        CompanyName = s.CompanyName,
+        BrandName = s.BrandName,
         JobTitle = s.JobTitle,
         AvatarUrl = s.AvatarUrl,
         Phone = s.Phone,
@@ -167,7 +164,6 @@ public class SettingsService : ISettingsService
         EmailOnDealUpdate = s.EmailOnDealUpdate,
         EmailOnTaskDue = s.EmailOnTaskDue,
         EmailOnTeamMention = s.EmailOnTeamMention,
-        EmailDigestFrequency = s.EmailDigestFrequency.ToString().ToLowerInvariant(),
         InAppNotificationsEnabled = s.InAppNotificationsEnabled,
         InAppSoundEnabled = s.InAppSoundEnabled,
         BrowserNotificationsEnabled = s.BrowserNotificationsEnabled,
@@ -190,7 +186,7 @@ public class SettingsService : ISettingsService
 
     private static UserSettingsDto GetDefaultSettings() => new()
     {
-        CompanyName = "My Company",
+        BrandName = "My Brand",
         BrandTone = "professional",
         Theme = "light",
         DataDensity = "comfortable",
@@ -201,7 +197,6 @@ public class SettingsService : ISettingsService
         EmailOnDealUpdate = true,
         EmailOnTaskDue = true,
         EmailOnTeamMention = true,
-        EmailDigestFrequency = "daily",
         InAppNotificationsEnabled = true,
         InAppSoundEnabled = true,
         DefaultFollowUpDays = 3,

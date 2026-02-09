@@ -64,6 +64,9 @@ public class TaskService : ITaskService
     {
         _logger.LogDebug("Getting tasks for user {UserId} with filters", userId);
         
+        // Guard against null filters
+        filters ??= new TaskFilterParams();
+        
         IReadOnlyList<TaskItem> list;
         
         // Filter by lead if specified
@@ -84,7 +87,7 @@ public class TaskService : ITaskService
         // Filter by assignee if specified
         else if (!string.IsNullOrEmpty(filters.AssigneeId) && Guid.TryParse(filters.AssigneeId, out var assigneeGuid))
         {
-            list = await _repository.GetByAssigneeIdAsync(assigneeGuid, organizationId, ct);
+            list = await _repository.GetByAssigneeIdAsync(assigneeGuid, userId, organizationId, ct);
         }
         // Filter by status if specified
         else if (!string.IsNullOrEmpty(filters.Status) && TryParseStatus(filters.Status, out var taskStatus))
@@ -668,7 +671,14 @@ public class TaskService : ITaskService
             return new BulkTaskResult(0, 0, 0);
 
         var validActions = new[] { "status", "priority", "assignee", "delete" };
-        if (!validActions.Contains(request.Action.ToLowerInvariant()))
+        var action = request.Action.ToLowerInvariant();
+        if (!validActions.Contains(action))
+            return DomainErrors.General.ValidationError;
+
+        // Upfront validation: ensure required parameters are present for specific actions
+        if (action == "status" && string.IsNullOrWhiteSpace(request.Status))
+            return DomainErrors.General.ValidationError;
+        if (action == "priority" && string.IsNullOrWhiteSpace(request.Priority))
             return DomainErrors.General.ValidationError;
 
         int succeeded = 0;
