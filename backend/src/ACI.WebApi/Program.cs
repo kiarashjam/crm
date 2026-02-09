@@ -771,7 +771,10 @@ try
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'PreferredContactMethod')
                     ALTER TABLE [Contacts] ADD [PreferredContactMethod] nvarchar(32) NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'UpdatedAtUtc')
-                    ALTER TABLE [Contacts] ADD [UpdatedAtUtc] datetime2 NOT NULL DEFAULT GETUTCDATE();
+                    ALTER TABLE [Contacts] ADD [UpdatedAtUtc] datetime2 NULL;
+                -- Fix: ensure UpdatedAtUtc is nullable (was previously added as NOT NULL in error)
+                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'UpdatedAtUtc' AND is_nullable = 0)
+                    ALTER TABLE [Contacts] ALTER COLUMN [UpdatedAtUtc] datetime2 NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'UpdatedByUserId')
                     ALTER TABLE [Contacts] ADD [UpdatedByUserId] uniqueidentifier NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'Description')
