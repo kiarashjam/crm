@@ -102,6 +102,7 @@ public sealed class DealRepository : IDealRepository
         existing.Description = deal.Description;
         existing.Probability = deal.Probability;
         existing.ClosedReason = deal.ClosedReason;
+        existing.ClosedReasonCategory = deal.ClosedReasonCategory;
         existing.ClosedAtUtc = deal.ClosedAtUtc;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;

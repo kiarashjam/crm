@@ -378,6 +378,14 @@ try
                 END;
             ");
             
+            // Fix DealStages table columns (IsWon/IsLost missing from original schema fix)
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DealStages') AND name = 'IsWon')
+                    ALTER TABLE [DealStages] ADD [IsWon] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('DealStages') AND name = 'IsLost')
+                    ALTER TABLE [DealStages] ADD [IsLost] bit NOT NULL DEFAULT 0;
+            ");
+            
             // Create LeadSources table if missing
             await db.Database.ExecuteSqlRawAsync(@"
                 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'LeadSources')
@@ -531,6 +539,24 @@ try
                     ALTER TABLE [Deals] ADD [UpdatedAtUtc] datetime2 NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'UpdatedByUserId')
                     ALTER TABLE [Deals] ADD [UpdatedByUserId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'IsWon')
+                    ALTER TABLE [Deals] ADD [IsWon] bit NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'Stage')
+                    ALTER TABLE [Deals] ADD [Stage] nvarchar(128) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'ContactId')
+                    ALTER TABLE [Deals] ADD [ContactId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'ExpectedCloseDateUtc')
+                    ALTER TABLE [Deals] ADD [ExpectedCloseDateUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'Description')
+                    ALTER TABLE [Deals] ADD [Description] nvarchar(2000) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'Probability')
+                    ALTER TABLE [Deals] ADD [Probability] int NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'ClosedAtUtc')
+                    ALTER TABLE [Deals] ADD [ClosedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'ClosedReason')
+                    ALTER TABLE [Deals] ADD [ClosedReason] nvarchar(500) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Deals') AND name = 'ClosedReasonCategory')
+                    ALTER TABLE [Deals] ADD [ClosedReasonCategory] nvarchar(50) NULL;
             ");
             
             // Fix Companies table columns
@@ -550,6 +576,12 @@ try
                     ALTER TABLE [Companies] ADD [UpdatedAtUtc] datetime2 NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'UpdatedByUserId')
                     ALTER TABLE [Companies] ADD [UpdatedByUserId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'Description')
+                    ALTER TABLE [Companies] ADD [Description] nvarchar(2000) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'Location')
+                    ALTER TABLE [Companies] ADD [Location] nvarchar(300) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Companies') AND name = 'Website')
+                    ALTER TABLE [Companies] ADD [Website] nvarchar(500) NULL;
             ");
             
             // Fix Activities table columns
@@ -604,6 +636,8 @@ try
                     ALTER TABLE [TaskItems] ADD [CompletedAtUtc] datetime2 NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'UpdatedByUserId')
                     ALTER TABLE [TaskItems] ADD [UpdatedByUserId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('TaskItems') AND name = 'ReminderSentAtUtc')
+                    ALTER TABLE [TaskItems] ADD [ReminderSentAtUtc] datetime2 NULL;
             ");
             
             // Fix CopyHistoryItems table columns
@@ -740,6 +774,8 @@ try
                     ALTER TABLE [Contacts] ADD [UpdatedAtUtc] datetime2 NOT NULL DEFAULT GETUTCDATE();
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'UpdatedByUserId')
                     ALTER TABLE [Contacts] ADD [UpdatedByUserId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'Description')
+                    ALTER TABLE [Contacts] ADD [Description] nvarchar(max) NULL;
             ");
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
@@ -778,6 +814,51 @@ try
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'UpdatedAtUtc')
                 BEGIN
                     ALTER TABLE [Templates] ADD [UpdatedAtUtc] datetime2 NULL;
+                END;
+            ");
+            
+            // Create DealStageChanges table if missing (HP-11)
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'DealStageChanges')
+                BEGIN
+                    CREATE TABLE [DealStageChanges] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [DealId] uniqueidentifier NOT NULL,
+                        [FromDealStageId] uniqueidentifier NULL,
+                        [FromStageName] nvarchar(128) NULL,
+                        [ToDealStageId] uniqueidentifier NULL,
+                        [ToStageName] nvarchar(128) NULL,
+                        [ChangedByUserId] uniqueidentifier NOT NULL,
+                        [ChangedAtUtc] datetime2 NOT NULL,
+                        CONSTRAINT [PK_DealStageChanges] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_DealStageChanges_Deals_DealId] FOREIGN KEY ([DealId])
+                            REFERENCES [Deals] ([Id]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_DealStageChanges_Users_ChangedByUserId] FOREIGN KEY ([ChangedByUserId])
+                            REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                    );
+                    CREATE INDEX [IX_DealStageChanges_DealId] ON [DealStageChanges] ([DealId]);
+                    CREATE INDEX [IX_DealStageChanges_ChangedByUserId] ON [DealStageChanges] ([ChangedByUserId]);
+                END;
+            ");
+            
+            // Create TaskComments table if missing (HP-12)
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TaskComments')
+                BEGIN
+                    CREATE TABLE [TaskComments] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [TaskItemId] uniqueidentifier NOT NULL,
+                        [AuthorId] uniqueidentifier NOT NULL,
+                        [Body] nvarchar(max) NOT NULL,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        CONSTRAINT [PK_TaskComments] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_TaskComments_TaskItems_TaskItemId] FOREIGN KEY ([TaskItemId])
+                            REFERENCES [TaskItems] ([Id]) ON DELETE CASCADE,
+                        CONSTRAINT [FK_TaskComments_Users_AuthorId] FOREIGN KEY ([AuthorId])
+                            REFERENCES [Users] ([Id]) ON DELETE NO ACTION
+                    );
+                    CREATE INDEX [IX_TaskComments_TaskItemId] ON [TaskComments] ([TaskItemId]);
+                    CREATE INDEX [IX_TaskComments_AuthorId] ON [TaskComments] ([AuthorId]);
                 END;
             ");
             
