@@ -132,7 +132,7 @@ export async function getTasksPaged(options?: GetTasksPagedOptions): Promise<Pag
   };
 }
 
-/** Get all tasks with optional filters. */
+/** Get all tasks with optional filters (HP-1: uses /api/tasks/all to avoid 20-item truncation). */
 export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
   if (isUsingRealApi()) {
     const params = new URLSearchParams();
@@ -144,7 +144,8 @@ export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
     if (options?.dealId) params.set('dealId', options.dealId);
     if (options?.contactId) params.set('contactId', options.contactId);
     const q = params.toString() ? `?${params.toString()}` : '';
-    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks${q}`);
+    // HP-1: Call /api/tasks/all endpoint which returns ALL matching tasks (not paginated)
+    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/all${q}`);
     // Handle both array response and paginated response formats
     if (Array.isArray(response)) {
       return response.map(mapTask);
@@ -168,6 +169,20 @@ export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
     filtered = filtered.filter((t) => t.dealId === options.dealId);
   }
   return filtered;
+}
+
+/** Get a single task by ID. */
+export async function getTaskById(id: string): Promise<TaskItem | null> {
+  if (isUsingRealApi()) {
+    try {
+      const raw = await authFetchJson<TaskRaw>(`/api/tasks/${id}`);
+      return raw ? mapTask(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+  await delay(200);
+  return mockTasks.find((t) => t.id === id) ?? null;
 }
 
 /** Get tasks by lead ID. */
@@ -384,6 +399,80 @@ export async function linkTaskToDeal(id: string, dealId: string | null): Promise
 export async function deleteTask(id: string): Promise<boolean> {
   if (isUsingRealApi()) {
     const res = await authFetch(`/api/tasks/${id}`, { method: 'DELETE' });
+    return res.status === 204;
+  }
+  await delay(200);
+  return true;
+}
+
+// ============================================================================
+// HP-9: Bulk task operations
+// ============================================================================
+
+export interface BulkTaskRequest {
+  taskIds: string[];
+  action: 'status' | 'priority' | 'assignee' | 'delete';
+  status?: TaskStatusType;
+  priority?: TaskPriorityType;
+  assigneeId?: string | null;
+}
+
+export interface BulkTaskResult {
+  totalRequested: number;
+  succeeded: number;
+  failed: number;
+}
+
+/** Bulk update multiple tasks at once. */
+export async function bulkUpdateTasks(request: BulkTaskRequest): Promise<BulkTaskResult | null> {
+  if (isUsingRealApi()) {
+    return authFetchJson<BulkTaskResult>('/api/tasks/bulk', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+  await delay(300);
+  return { totalRequested: request.taskIds.length, succeeded: request.taskIds.length, failed: 0 };
+}
+
+// ============================================================================
+// HP-11: Task Comments
+// ============================================================================
+
+export interface TaskCommentDto {
+  id: string;
+  taskItemId: string;
+  authorId: string;
+  authorName: string;
+  body: string;
+  createdAtUtc: string;
+}
+
+/** Get all comments for a task. */
+export async function getTaskComments(taskId: string): Promise<TaskCommentDto[]> {
+  if (isUsingRealApi()) {
+    return authFetchJson<TaskCommentDto[]>(`/api/tasks/${taskId}/comments`);
+  }
+  await delay(200);
+  return [];
+}
+
+/** Add a comment to a task. */
+export async function addTaskComment(taskId: string, body: string): Promise<TaskCommentDto | null> {
+  if (isUsingRealApi()) {
+    return authFetchJson<TaskCommentDto>(`/api/tasks/${taskId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    });
+  }
+  await delay(200);
+  return { id: crypto.randomUUID(), taskItemId: taskId, authorId: '', authorName: 'You', body, createdAtUtc: new Date().toISOString() };
+}
+
+/** Delete a comment from a task. */
+export async function deleteTaskComment(taskId: string, commentId: string): Promise<boolean> {
+  if (isUsingRealApi()) {
+    const res = await authFetch(`/api/tasks/${taskId}/comments/${commentId}`, { method: 'DELETE' });
     return res.status === 204;
   }
   await delay(200);

@@ -21,10 +21,18 @@ import {
   BarChart3,
   Clock,
   Zap,
-  Building2,
   Filter,
   CheckCircle2,
   Activity as ActivityIcon,
+  Calendar,
+  CalendarClock,
+  ListTodo,
+  Phone,
+  Mail,
+  Users,
+  FileText,
+  Video,
+  Presentation,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
@@ -41,10 +49,10 @@ import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDeals, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
+import { getDealsPaged, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
 import { getActivitiesByDeal, createActivity } from '@/app/api/activities';
 import type { Deal, Company, Contact, Pipeline, Activity } from '@/app/api/types';
-import { getCurrentOrganizationId } from '@/app/lib/auth';
+import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -75,6 +83,9 @@ import { cn } from '@/app/components/ui/utils';
 import { DroppableStageColumn } from './pipeline/DroppableStageColumn';
 import { STAGE_COLORS_MAP } from './pipeline/config';
 import { getStageList, groupDealsByStage, formatValueSum, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
+import { getCurrencySymbol } from './pipeline/DealCard';
+import { getTasks, createTask } from '@/app/api/tasks';
+import type { TaskItem as TaskItemType } from '@/app/api/types';
 
 export default function Pipeline() {
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -93,17 +104,50 @@ export default function Pipeline() {
     companyId: '',
     contactId: '',
     assigneeId: '',
+    description: '',
+    probability: '',
   });
   const [companies, setCompanies] = useState<Company[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [saving, setSaving] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', value: '', currency: '', expectedCloseDate: '', companyId: '', pipelineId: '', stageId: '', assigneeId: '' });
+  const [editForm, setEditForm] = useState({ name: '', value: '', currency: '', expectedCloseDate: '', companyId: '', pipelineId: '', stageId: '', assigneeId: '', description: '', probability: '' });
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleteConfirmDeal, setDeleteConfirmDeal] = useState<Deal | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailDeal, setDetailDeal] = useState<Deal | null>(null);
   const [orgMembers, setOrgMembers] = useState<{ userId: string; name: string; email: string; role: number }[]>([]);
+  
+  // HP-8: Close deal dialog state
+  const [closeDeal, setCloseDeal] = useState<Deal | null>(null);
+  const [closeAsWon, setCloseAsWon] = useState(true);
+  const [closeReason, setCloseReason] = useState('');
+  const [savingClose, setSavingClose] = useState(false);
+  
+  // HP-7 & HP-10: Advanced filter state
+  const [filterAssignee, setFilterAssignee] = useState<string>('all');
+  const [filterMyDeals, setFilterMyDeals] = useState(false);
+  const [filterValueMin, setFilterValueMin] = useState('');
+  const [filterValueMax, setFilterValueMax] = useState('');
+  const [filterCloseDateFrom, setFilterCloseDateFrom] = useState('');
+  const [filterCloseDateTo, setFilterCloseDateTo] = useState('');
+
+  // HP-7 & HP-8: Tasks linked to deals
+  const [allTasks, setAllTasks] = useState<TaskItemType[]>([]);
+  const [addTaskDealId, setAddTaskDealId] = useState<string | null>(null);
+  const [addTaskTitle, setAddTaskTitle] = useState('');
+  const [savingTask, setSavingTask] = useState(false);
+
+  const taskCountsByDeal = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const t of allTasks) {
+      // Exclude completed and cancelled tasks from counts
+      if (t.dealId && t.status !== 'completed' && t.status !== 'cancelled') {
+        counts[t.dealId] = (counts[t.dealId] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [allTasks]);
   
   // Deal activities state
   const [dealActivities, setDealActivities] = useState<Activity[]>([]);
@@ -174,7 +218,8 @@ export default function Pipeline() {
     };
   }, [deals, stageList]);
 
-  // Filter deals
+  // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee)
+  const currentUserId = useMemo(() => getCurrentUser()?.id, []);
   const filteredDeals = useMemo(() => {
     let result = [...deals];
     
@@ -184,6 +229,9 @@ export default function Pipeline() {
       result = result.filter(d => 
         d.name.toLowerCase().includes(q) ||
         d.value.toLowerCase().includes(q) ||
+        (d.contactName?.toLowerCase().includes(q)) ||
+        (d.companyName?.toLowerCase().includes(q)) ||
+        (d.assigneeName?.toLowerCase().includes(q)) ||
         (contacts.find(c => c.id === d.contactId)?.name.toLowerCase().includes(q))
       );
     }
@@ -196,20 +244,57 @@ export default function Pipeline() {
       });
     }
     
+    // HP-7: My Deals filter
+    if (filterMyDeals && currentUserId) {
+      result = result.filter(d => d.assigneeId === currentUserId);
+    }
+    
+    // HP-10: Assignee filter
+    if (filterAssignee !== 'all') {
+      if (filterAssignee === 'unassigned') {
+        result = result.filter(d => !d.assigneeId);
+      } else {
+        result = result.filter(d => d.assigneeId === filterAssignee);
+      }
+    }
+    
+    // HP-10: Value range filter
+    if (filterValueMin) {
+      const min = parseFloat(filterValueMin);
+      if (!isNaN(min)) result = result.filter(d => (parseFloat(d.value.replace(/[^0-9.-]/g, '')) || 0) >= min);
+    }
+    if (filterValueMax) {
+      const max = parseFloat(filterValueMax);
+      if (!isNaN(max)) result = result.filter(d => (parseFloat(d.value.replace(/[^0-9.-]/g, '')) || 0) <= max);
+    }
+
+    // HP-10: Expected close date range filter
+    if (filterCloseDateFrom) {
+      const from = new Date(filterCloseDateFrom);
+      result = result.filter(d => d.expectedCloseDateUtc && new Date(d.expectedCloseDateUtc) >= from);
+    }
+    if (filterCloseDateTo) {
+      const to = new Date(filterCloseDateTo);
+      to.setHours(23, 59, 59, 999);
+      result = result.filter(d => d.expectedCloseDateUtc && new Date(d.expectedCloseDateUtc) <= to);
+    }
+    
     return result;
-  }, [deals, searchQuery, filterStage, contacts, stageList]);
+  }, [deals, searchQuery, filterStage, contacts, stageList, filterMyDeals, currentUserId, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo]);
 
   const dealsByStage = groupDealsByStage(filteredDeals, stageList);
 
+  // HP-5: Use getDealsPaged instead of getDeals (fetch all with large pageSize for kanban)
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([getDeals(), getContacts(), getPipelines()])
-      .then(([dealsData, contactsData, pipelinesData]) => {
+    Promise.all([getDealsPaged({ page: 1, pageSize: 500 }), getContacts(), getPipelines(), getTasks()])
+      .then(([pagedDeals, contactsData, pipelinesData, tasksData]) => {
         if (!cancelled) {
-          setDeals(dealsData);
+          setDeals(pagedDeals.items);
           setContacts(contactsData);
           setPipelines(pipelinesData ?? []);
+          setAllTasks(tasksData ?? []);
           if (pipelinesData?.length && !selectedPipelineId) setSelectedPipelineId(pipelinesData?.[0]?.id ?? null);
         }
       })
@@ -253,6 +338,8 @@ export default function Pipeline() {
         pipelineId: editDeal.pipelineId ?? '',
         stageId: editDeal.dealStageId ?? (editDeal.stage ?? ''),
         assigneeId: editDeal.assigneeId ?? '',
+        description: editDeal.description ?? '',
+        probability: editDeal.probability?.toString() ?? '',
       });
     }
   }, [editDeal]);
@@ -333,6 +420,8 @@ export default function Pipeline() {
         expectedCloseDateUtc,
         companyId: editForm.companyId || undefined,
         assigneeId: editForm.assigneeId || undefined,
+        description: editForm.description.trim() || undefined,
+        probability: editForm.probability ? parseInt(editForm.probability, 10) : undefined,
       });
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === editDeal.id ? updated : d)));
@@ -369,6 +458,8 @@ export default function Pipeline() {
       companyId: '',
       contactId: '',
       assigneeId: '',
+      description: '',
+      probability: '',
     });
     setCreateOpen(true);
   };
@@ -395,6 +486,8 @@ export default function Pipeline() {
         expectedCloseDateUtc,
         companyId: createForm.companyId || undefined,
         contactId: createForm.contactId || undefined,
+        description: createForm.description.trim() || undefined,
+        probability: createForm.probability ? parseInt(createForm.probability, 10) : undefined,
       });
       if (created) {
         setDeals((prev) => [created, ...prev]);
@@ -402,7 +495,7 @@ export default function Pipeline() {
         setCreateOpen(false);
         const pipelineId = selectedPipelineId ?? pipelines[0]?.id ?? '';
         const firstStage = getStageList(pipelines, pipelineId)[0];
-        setCreateForm({ name: '', value: '', currency: '', stageId: firstStage?.id ?? 'Qualification', pipelineId, expectedCloseDate: '', companyId: '', contactId: '', assigneeId: '' });
+        setCreateForm({ name: '', value: '', currency: '', stageId: firstStage?.id ?? 'Qualification', pipelineId, expectedCloseDate: '', companyId: '', contactId: '', assigneeId: '', description: '', probability: '' });
       } else {
         toast.error(messages.errors.generic);
       }
@@ -450,6 +543,50 @@ export default function Pipeline() {
       toast.error('Failed to log activity');
     } finally {
       setSavingActivity(false);
+    }
+  };
+
+  // HP-8: Close deal with reason
+  const handleCloseDeal = async () => {
+    if (!closeDeal) return;
+    setSavingClose(true);
+    try {
+      const updated = await updateDeal(closeDeal.id, {
+        isWon: closeAsWon,
+        closedReason: closeReason.trim() || undefined,
+      });
+      if (updated) {
+        setDeals((prev) => prev.map((d) => (d.id === closeDeal.id ? updated : d)));
+        toast.success(closeAsWon ? 'Deal marked as Won!' : 'Deal marked as Lost');
+        setCloseDeal(null);
+        setCloseReason('');
+        if (detailDeal?.id === closeDeal.id) setDetailDeal(updated);
+      } else {
+        toast.error(messages.errors.generic);
+      }
+    } catch {
+      toast.error(messages.errors.generic);
+    } finally {
+      setSavingClose(false);
+    }
+  };
+
+  // HP-8: Add task linked to a deal
+  const handleAddTaskToDeal = async () => {
+    if (!addTaskDealId || !addTaskTitle.trim()) return;
+    setSavingTask(true);
+    try {
+      const task = await createTask({ title: addTaskTitle.trim(), dealId: addTaskDealId });
+      if (task) {
+        setAllTasks((prev) => [...prev, task]);
+        toast.success('Task added to deal');
+        setAddTaskDealId(null);
+        setAddTaskTitle('');
+      }
+    } catch {
+      toast.error('Failed to add task');
+    } finally {
+      setSavingTask(false);
     }
   };
 
@@ -777,10 +914,84 @@ export default function Pipeline() {
                   </SelectContent>
                 </Select>
               </div>
+
+                {/* HP-7: My Deals toggle */}
+                <button
+                  type="button"
+                  onClick={() => setFilterMyDeals(!filterMyDeals)}
+                  className={cn(
+                    'relative h-11 px-4 rounded-xl border shadow-xl shadow-black/10 font-medium text-sm transition-all duration-300',
+                    filterMyDeals
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 border-emerald-400/50 text-white'
+                      : 'bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 hover:border-white/20'
+                  )}
+                >
+                  <User className="w-4 h-4 inline mr-1.5" />
+                  My Deals
+                </button>
+
+                {/* HP-10: Assignee filter */}
+                {orgMembers.length > 0 && (
+                  <Select value={filterAssignee} onValueChange={setFilterAssignee}>
+                    <SelectTrigger className="relative h-11 w-full sm:w-[180px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 transition-all duration-300">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
+                          <User className="w-3.5 h-3.5 text-slate-300" />
+                        </div>
+                        <SelectValue placeholder="Assignee" />
+                      </div>
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border border-slate-200 shadow-xl">
+                      <SelectItem value="all" className="rounded-lg">All assignees</SelectItem>
+                      <SelectItem value="unassigned" className="rounded-lg">Unassigned</SelectItem>
+                      {orgMembers.map((m) => (
+                        <SelectItem key={m.userId} value={m.userId} className="rounded-lg">{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              {/* HP-10: Value range row */}
+              <div className="relative flex flex-wrap gap-3 mt-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Value range:</span>
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    value={filterValueMin}
+                    onChange={(e) => setFilterValueMin(e.target.value)}
+                    className="w-24 h-9 rounded-lg border border-white/10 bg-white/5 text-white text-xs px-3 focus:outline-none focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/20 placeholder:text-slate-500"
+                  />
+                  <span className="text-xs text-slate-500">—</span>
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    value={filterValueMax}
+                    onChange={(e) => setFilterValueMax(e.target.value)}
+                    className="w-24 h-9 rounded-lg border border-white/10 bg-white/5 text-white text-xs px-3 focus:outline-none focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/20 placeholder:text-slate-500"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Close date:</span>
+                  <input
+                    type="date"
+                    value={filterCloseDateFrom}
+                    onChange={(e) => setFilterCloseDateFrom(e.target.value)}
+                    className="h-9 rounded-lg border border-white/10 bg-white/5 text-white text-xs px-3 focus:outline-none focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/20 [color-scheme:dark]"
+                  />
+                  <span className="text-xs text-slate-500">—</span>
+                  <input
+                    type="date"
+                    value={filterCloseDateTo}
+                    onChange={(e) => setFilterCloseDateTo(e.target.value)}
+                    className="h-9 rounded-lg border border-white/10 bg-white/5 text-white text-xs px-3 focus:outline-none focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/20 [color-scheme:dark]"
+                  />
+                </div>
               </div>
 
               {/* Active Filter Pills */}
-              {(searchQuery || filterStage !== 'all') && (
+              {(searchQuery || filterStage !== 'all' || filterMyDeals || filterAssignee !== 'all' || filterValueMin || filterValueMax || filterCloseDateFrom || filterCloseDateTo) && (
                 <div className="relative mt-4 flex flex-wrap items-center gap-2">
                   <span className="text-xs text-slate-400 font-medium">Active filters:</span>
                   {searchQuery && (
@@ -799,6 +1010,42 @@ export default function Pipeline() {
                       />
                       {filterStage}
                       <button onClick={() => setFilterStage('all')} className="ml-1 hover:text-emerald-100 transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {filterMyDeals && (
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-400/30">
+                      <User className="w-3 h-3" />
+                      My Deals
+                      <button onClick={() => setFilterMyDeals(false)} className="ml-1 hover:text-blue-100 transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {filterAssignee !== 'all' && (
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium border border-purple-400/30">
+                      <User className="w-3 h-3" />
+                      {filterAssignee === 'unassigned' ? 'Unassigned' : orgMembers.find(m => m.userId === filterAssignee)?.name}
+                      <button onClick={() => setFilterAssignee('all')} className="ml-1 hover:text-purple-100 transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {(filterValueMin || filterValueMax) && (
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-medium border border-amber-400/30">
+                      <DollarSign className="w-3 h-3" />
+                      {filterValueMin || '0'} – {filterValueMax || '∞'}
+                      <button onClick={() => { setFilterValueMin(''); setFilterValueMax(''); }} className="ml-1 hover:text-amber-100 transition-colors">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {(filterCloseDateFrom || filterCloseDateTo) && (
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-medium border border-cyan-400/30">
+                      <Calendar className="w-3 h-3" />
+                      {filterCloseDateFrom || 'any'} – {filterCloseDateTo || 'any'}
+                      <button onClick={() => { setFilterCloseDateFrom(''); setFilterCloseDateTo(''); }} className="ml-1 hover:text-cyan-100 transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -1003,6 +1250,8 @@ export default function Pipeline() {
                         onEdit={setEditDeal}
                         onDelete={setDeleteConfirmDeal}
                         onOpenDetail={setDetailDeal}
+                        taskCountsByDeal={taskCountsByDeal}
+                        onAddTask={(dealId) => setAddTaskDealId(dealId)}
                       />
                     </motion.div>
                   ))}
@@ -1051,8 +1300,8 @@ export default function Pipeline() {
                             </td>
                             <td className="py-4 px-6">
                               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-200 text-emerald-700 font-bold text-sm">
-                                <DollarSign className="w-3.5 h-3.5" />
-                                {deal.currency ? `${deal.currency} ${deal.value}` : deal.value}
+                                <span className="text-xs font-semibold">{getCurrencySymbol(deal.currency)}</span>
+                                {deal.value}
                               </span>
                             </td>
                             <td className="py-4 px-6">
@@ -1144,7 +1393,7 @@ export default function Pipeline() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Value</p>
-                    <p className="text-lg font-semibold text-emerald-700">{detailDeal.currency ? `${detailDeal.currency} ${detailDeal.value}` : detailDeal.value}</p>
+                    <p className="text-lg font-semibold text-emerald-700">{getCurrencySymbol(detailDeal.currency)} {detailDeal.value}</p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Stage</p>
@@ -1188,6 +1437,48 @@ export default function Pipeline() {
                   </div>
                 )}
 
+                {/* HP-1: Description */}
+                {detailDeal.description && (
+                  <div>
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Description</p>
+                    <p className="text-slate-700 text-sm whitespace-pre-wrap">{detailDeal.description}</p>
+                  </div>
+                )}
+                {/* HP-1: Probability & HP-7: Assignee */}
+                <div className="grid grid-cols-2 gap-4">
+                  {detailDeal.probability != null && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Win Probability</p>
+                      <p className="text-slate-900 text-sm font-semibold">{detailDeal.probability}%</p>
+                    </div>
+                  )}
+                  {detailDeal.assigneeName && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Assignee</p>
+                      <p className="text-slate-900 text-sm">{detailDeal.assigneeName}</p>
+                    </div>
+                  )}
+                </div>
+                {/* HP-8: Closed info */}
+                {detailDeal.isWon !== undefined && detailDeal.isWon !== null && (
+                  <div className={cn(
+                    'p-3 rounded-lg border',
+                    detailDeal.isWon ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'
+                  )}>
+                    <p className={cn('text-sm font-semibold', detailDeal.isWon ? 'text-emerald-700' : 'text-slate-600')}>
+                      {detailDeal.isWon ? 'Won' : 'Lost'}
+                      {detailDeal.closedAtUtc && (
+                        <span className="font-normal text-xs ml-2">
+                          on {new Date(detailDeal.closedAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      )}
+                    </p>
+                    {detailDeal.closedReason && (
+                      <p className="text-xs text-slate-600 mt-1">{detailDeal.closedReason}</p>
+                    )}
+                  </div>
+                )}
+
                 {/* Quick Actions */}
                 <div className="flex gap-2 pt-2 border-t border-slate-200">
                   <Button
@@ -1202,6 +1493,29 @@ export default function Pipeline() {
                     <Pencil className="w-3.5 h-3.5" />
                     Edit
                   </Button>
+                  {/* HP-8: Close deal buttons */}
+                  {detailDeal.isWon == null && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                        onClick={() => { setCloseDeal(detailDeal); setCloseAsWon(true); }}
+                      >
+                        <Trophy className="w-3.5 h-3.5 mr-1" />
+                        Won
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-slate-600 hover:text-slate-700 hover:bg-slate-100"
+                        onClick={() => { setCloseDeal(detailDeal); setCloseAsWon(false); }}
+                      >
+                        <X className="w-3.5 h-3.5 mr-1" />
+                        Lost
+                      </Button>
+                    </>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -1302,19 +1616,27 @@ export default function Pipeline() {
                         >
                           <div className={cn(
                             'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
-                            activity.type === 'Call' && 'bg-blue-100 text-blue-600',
-                            activity.type === 'Email' && 'bg-purple-100 text-purple-600',
-                            activity.type === 'Meeting' && 'bg-amber-100 text-amber-600',
-                            activity.type === 'Task' && 'bg-emerald-100 text-emerald-600',
-                            activity.type === 'Note' && 'bg-slate-100 text-slate-600',
-                            !['Call', 'Email', 'Meeting', 'Task', 'Note'].includes(activity.type) && 'bg-slate-100 text-slate-600'
+                            activity.type === 'call' && 'bg-emerald-100 text-emerald-600',
+                            activity.type === 'email' && 'bg-amber-100 text-amber-600',
+                            activity.type === 'meeting' && 'bg-blue-100 text-blue-600',
+                            activity.type === 'note' && 'bg-slate-100 text-slate-600',
+                            activity.type === 'video' && 'bg-purple-100 text-purple-600',
+                            activity.type === 'demo' && 'bg-rose-100 text-rose-600',
+                            activity.type === 'task' && 'bg-cyan-100 text-cyan-600',
+                            activity.type === 'follow_up' && 'bg-orange-100 text-orange-600',
+                            activity.type === 'deadline' && 'bg-red-100 text-red-600',
+                            !['call', 'email', 'meeting', 'note', 'video', 'demo', 'task', 'follow_up', 'deadline'].includes(activity.type) && 'bg-slate-100 text-slate-600'
                           )}>
-                            {activity.type === 'Call' && <Zap className="w-4 h-4" />}
-                            {activity.type === 'Email' && <Building2 className="w-4 h-4" />}
-                            {activity.type === 'Meeting' && <User className="w-4 h-4" />}
-                            {activity.type === 'Task' && <CheckCircle2 className="w-4 h-4" />}
-                            {activity.type === 'Note' && <Pencil className="w-4 h-4" />}
-                            {!['Call', 'Email', 'Meeting', 'Task', 'Note'].includes(activity.type) && <ActivityIcon className="w-4 h-4" />}
+                            {activity.type === 'call' && <Phone className="w-4 h-4" />}
+                            {activity.type === 'email' && <Mail className="w-4 h-4" />}
+                            {activity.type === 'meeting' && <Users className="w-4 h-4" />}
+                            {activity.type === 'note' && <FileText className="w-4 h-4" />}
+                            {activity.type === 'video' && <Video className="w-4 h-4" />}
+                            {activity.type === 'demo' && <Presentation className="w-4 h-4" />}
+                            {activity.type === 'task' && <CheckCircle2 className="w-4 h-4" />}
+                            {activity.type === 'follow_up' && <CalendarClock className="w-4 h-4" />}
+                            {activity.type === 'deadline' && <Clock className="w-4 h-4" />}
+                            {!['call', 'email', 'meeting', 'note', 'video', 'demo', 'task', 'follow_up', 'deadline'].includes(activity.type) && <ActivityIcon className="w-4 h-4" />}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2">
@@ -1327,6 +1649,13 @@ export default function Pipeline() {
                             </div>
                             {activity.body && (
                               <p className="text-xs text-slate-600 mt-1 line-clamp-2">{activity.body}</p>
+                            )}
+                            {/* HP-6: Show participants when present */}
+                            {activity.participants && (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <User className="w-3 h-3 text-violet-500" />
+                                <span className="text-xs text-violet-600">with {activity.participants}</span>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -1544,6 +1873,31 @@ export default function Pipeline() {
                 </Select>
               </div>
             )}
+            {/* HP-1: Description & Probability */}
+            <div>
+              <Label htmlFor="deal-description">Description</Label>
+              <textarea
+                id="deal-description"
+                value={createForm.description}
+                onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Deal notes, context, or details..."
+                className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50/50 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
+                rows={3}
+              />
+            </div>
+            <div>
+              <Label htmlFor="deal-probability">Win Probability (%)</Label>
+              <Input
+                id="deal-probability"
+                type="number"
+                min="0"
+                max="100"
+                value={createForm.probability}
+                onChange={(e) => setCreateForm((f) => ({ ...f, probability: e.target.value }))}
+                placeholder="e.g. 75"
+                className="mt-1"
+              />
+            </div>
             <DialogFooter className="pt-4 border-t border-slate-100">
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} className="h-11 px-6">
                 Cancel
@@ -1751,6 +2105,31 @@ export default function Pipeline() {
                 </Select>
               </div>
             )}
+            {/* HP-1: Description & Probability */}
+            <div>
+              <Label htmlFor="edit-deal-description">Description</Label>
+              <textarea
+                id="edit-deal-description"
+                value={editForm.description}
+                onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Deal notes, context, or details..."
+                className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50/50 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
+                rows={3}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-deal-probability">Win Probability (%)</Label>
+              <Input
+                id="edit-deal-probability"
+                type="number"
+                min="0"
+                max="100"
+                value={editForm.probability}
+                onChange={(e) => setEditForm((f) => ({ ...f, probability: e.target.value }))}
+                placeholder="e.g. 75"
+                className="mt-1"
+              />
+            </div>
             <DialogFooter className="pt-4 border-t border-slate-100">
               <Button type="button" variant="outline" onClick={() => setEditDeal(null)} className="h-11 px-6">
                 Cancel
@@ -1794,6 +2173,91 @@ export default function Pipeline() {
             </Button>
             <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
               {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* HP-8: Close Deal Dialog */}
+      <Dialog open={!!closeDeal} onOpenChange={(open) => { if (!open) { setCloseDeal(null); setCloseReason(''); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{closeAsWon ? 'Mark Deal as Won' : 'Mark Deal as Lost'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-slate-600">
+              Close <strong>{closeDeal?.name}</strong> as {closeAsWon ? 'Won' : 'Lost'}.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={closeAsWon ? 'default' : 'outline'}
+                className={closeAsWon ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}
+                onClick={() => setCloseAsWon(true)}
+              >
+                <Trophy className="w-4 h-4 mr-1" /> Won
+              </Button>
+              <Button
+                type="button"
+                variant={!closeAsWon ? 'default' : 'outline'}
+                className={!closeAsWon ? 'bg-slate-600 hover:bg-slate-700 text-white' : ''}
+                onClick={() => setCloseAsWon(false)}
+              >
+                <X className="w-4 h-4 mr-1" /> Lost
+              </Button>
+            </div>
+            <div>
+              <Label htmlFor="close-reason">Reason (optional)</Label>
+              <textarea
+                id="close-reason"
+                value={closeReason}
+                onChange={(e) => setCloseReason(e.target.value)}
+                placeholder={closeAsWon ? 'Why did we win this deal?' : 'Why was this deal lost?'}
+                className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setCloseDeal(null); setCloseReason(''); }} disabled={savingClose}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCloseDeal}
+              disabled={savingClose}
+              className={closeAsWon ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-600 hover:bg-slate-700'}
+            >
+              {savingClose ? 'Saving...' : closeAsWon ? 'Mark as Won' : 'Mark as Lost'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* HP-8: Add Task to Deal Dialog */}
+      <Dialog open={!!addTaskDealId} onOpenChange={(open) => { if (!open) { setAddTaskDealId(null); setAddTaskTitle(''); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListTodo className="w-5 h-5 text-orange-500" />
+              Add Task to Deal
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label htmlFor="task-title">Task Title</Label>
+              <Input
+                id="task-title"
+                value={addTaskTitle}
+                onChange={(e) => setAddTaskTitle(e.target.value)}
+                placeholder="e.g., Follow up with client"
+                className="mt-1"
+                onKeyDown={(e) => { if (e.key === 'Enter' && addTaskTitle.trim()) handleAddTaskToDeal(); }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAddTaskDealId(null); setAddTaskTitle(''); }}>Cancel</Button>
+            <Button onClick={handleAddTaskToDeal} disabled={savingTask || !addTaskTitle.trim()}>
+              {savingTask ? 'Adding...' : 'Add Task'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -6,6 +6,8 @@ import {
   Presentation, 
   CheckCircle, 
   Users,
+  CalendarClock,
+  Clock,
   LucideIcon
 } from 'lucide-react';
 
@@ -86,6 +88,24 @@ export const ACTIVITY_TYPES: readonly ActivityTypeConfig[] = [
     bgColor: 'bg-cyan-100', 
     textColor: 'text-cyan-600', 
     borderColor: 'border-cyan-200' 
+  },
+  { 
+    id: 'follow_up', 
+    label: 'Follow-up', 
+    icon: CalendarClock, 
+    color: 'orange', 
+    bgColor: 'bg-orange-100', 
+    textColor: 'text-orange-600', 
+    borderColor: 'border-orange-200' 
+  },
+  { 
+    id: 'deadline', 
+    label: 'Deadline', 
+    icon: Clock, 
+    color: 'red', 
+    bgColor: 'bg-red-100', 
+    textColor: 'text-red-600', 
+    borderColor: 'border-red-200' 
   },
 ] as const;
 

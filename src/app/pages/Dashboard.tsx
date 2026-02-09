@@ -8,7 +8,6 @@ import {
   getTemplateById,
   getUserSettings,
   getCopyHistoryStats,
-  getCopyHistory,
   getTemplates,
   getDashboardStats,
   getPipelineValueByStage,
@@ -16,6 +15,7 @@ import {
   getLeads,
   getContacts,
   getDeals,
+  getActivities,
 } from '@/app/api';
 import { 
   generateCopyWithRecipient, 
@@ -24,8 +24,7 @@ import {
   type SupportedLanguage,
   SUPPORTED_LANGUAGES 
 } from '@/app/api/copyGenerator';
-import type { Lead, Contact, Deal } from '@/app/api/types';
-import type { CopyHistoryItem } from '@/app/api/types';
+import type { Lead, Contact, Deal, Activity } from '@/app/api/types';
 import type { PipelineValueByAssignee } from '@/app/api/reporting';
 import { toast } from 'sonner';
 import { messages } from '@/app/api/messages';
@@ -61,7 +60,7 @@ export default function Dashboard() {
   const [crmStats, setCrmStats] = useState<DashboardStats | null>(null);
   const [pipelineByStage, setPipelineByStage] = useState<PipelineStage[]>([]);
   const [pipelineByAssignee, setPipelineByAssignee] = useState<PipelineValueByAssignee[]>([]);
-  const [recentActivity, setRecentActivity] = useState<CopyHistoryItem[]>([]);
+  const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
   
   // Recipient selection states
   const [showRecipientPicker, setShowRecipientPicker] = useState(false);
@@ -93,8 +92,8 @@ export default function Dashboard() {
     getTemplates()
       .then(guard((t) => setStats((prev) => ({ ...prev, templateCount: t.length }))))
       .catch(() => {});
-    getCopyHistory()
-      .then(guard((items) => setRecentActivity(items.slice(0, 5))))
+    getActivities()
+      .then(guard((activities) => setRecentActivity(activities.slice(0, 5))))
       .catch(() => {});
     getDashboardStats()
       .then(guard(setCrmStats))

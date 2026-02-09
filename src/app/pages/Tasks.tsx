@@ -47,6 +47,7 @@ import {
   messages,
   createActivity,
 } from '@/app/api';
+import { bulkUpdateTasks } from '@/app/api/tasks';
 import type { TaskItem, Lead, Deal, Contact, TaskStatusType, TaskPriorityType, TaskStats } from '@/app/api/types';
 import { getCurrentOrganizationId } from '@/app/lib/auth';
 import { 
@@ -117,6 +118,11 @@ export default function Tasks() {
   const [detailTask, setDetailTask] = useState<TaskItem | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
 
+  // HP-9: Bulk selection
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<TaskPriorityType | 'all'>('all');
@@ -162,8 +168,8 @@ export default function Tasks() {
     loadData();
   }, [loadData]);
 
-  // Date helpers
-  const now = useMemo(() => new Date(), []);
+  // Date helpers — recompute whenever tasks change (ensures fresh grouping after data loads)
+  const now = useMemo(() => new Date(), [tasks]);
   const today = useMemo(() => {
     const d = new Date(now);
     d.setHours(0, 0, 0, 0);
@@ -189,7 +195,8 @@ export default function Tasks() {
     return tasks.filter((task) => {
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        if (!task.title.toLowerCase().includes(q) && !task.description?.toLowerCase().includes(q)) {
+        // HP-5: Search includes title, description, AND notes
+        if (!task.title.toLowerCase().includes(q) && !task.description?.toLowerCase().includes(q) && !task.notes?.toLowerCase().includes(q)) {
           return false;
         }
       }
@@ -623,6 +630,66 @@ export default function Tasks() {
     return formatDue(iso);
   }, []);
 
+  // HP-9: Bulk operations handlers
+  const toggleTaskSelection = useCallback((taskId: string) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  }, []);
+
+  const selectAllVisible = useCallback(() => {
+    setSelectedTaskIds(new Set(filteredTasks.map(t => t.id)));
+  }, [filteredTasks]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedTaskIds(new Set());
+  }, []);
+
+  const exitBulkMode = useCallback(() => {
+    setBulkMode(false);
+    setSelectedTaskIds(new Set());
+  }, []);
+
+  const handleBulkAction = async (action: 'status' | 'priority' | 'assignee' | 'delete', value?: string) => {
+    if (selectedTaskIds.size === 0) return;
+    setBulkProcessing(true);
+    try {
+      const result = await bulkUpdateTasks({
+        taskIds: Array.from(selectedTaskIds),
+        action,
+        ...(action === 'status' && { status: value as TaskStatusType }),
+        ...(action === 'priority' && { priority: value as TaskPriorityType }),
+        ...(action === 'assignee' && { assigneeId: value || null }),
+        ...(action === 'delete' && {}),
+      });
+      if (result) {
+        toast.success(`Bulk ${action}: ${result.succeeded}/${result.totalRequested} tasks updated`);
+        await loadData();
+        exitBulkMode();
+      }
+    } catch {
+      toast.error('Bulk operation failed');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  // HP-6: Handlers for inline ListTaskCard link actions
+  const handleInlineAssigneeChange = useCallback(async (task: TaskItem, assigneeId: string | null) => {
+    await handleAssigneeChange(task, assigneeId);
+  }, [handleAssigneeChange]);
+
+  const handleInlineDealChange = useCallback(async (task: TaskItem, dealId: string | null) => {
+    await handleDealChange(task, dealId);
+  }, [handleDealChange]);
+
+  const handleInlineLeadChange = useCallback(async (task: TaskItem, leadId: string | null) => {
+    await handleLeadChange(task, leadId);
+  }, [handleLeadChange]);
+
   // Wrapper component for KanbanTaskCard that provides all required props
   const KanbanTaskCardWrapper = ({ task }: { task: TaskItem }) => (
     <KanbanTaskCard
@@ -646,26 +713,31 @@ export default function Tasks() {
 
   // Handler for updating task from detail modal
   const handleDetailModalUpdate = async (taskId: string, updates: Partial<TaskItem>): Promise<TaskItem | null> => {
-    const updated = await updateTask(taskId, {
-      title: updates.title,
-      description: updates.description,
-      dueDateUtc: updates.dueDateUtc,
-      reminderDateUtc: updates.reminderDateUtc,
-      status: updates.status,
-      priority: updates.priority,
-      notes: updates.notes,
-      clearDueDate: updates.dueDateUtc === undefined,
-      clearReminderDate: updates.reminderDateUtc === undefined,
-    });
-    if (updated) {
-      setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-      setDetailTask(updated);
-      // Log activity
-      await logTaskActivity(updated, 'updated', 'Task details were modified');
-      getTaskStats().then(setStats);
-      return updated;
+    try {
+      const updated = await updateTask(taskId, {
+        title: updates.title,
+        description: updates.description,
+        dueDateUtc: updates.dueDateUtc,
+        reminderDateUtc: updates.reminderDateUtc,
+        status: updates.status,
+        priority: updates.priority,
+        notes: updates.notes,
+        clearDueDate: updates.dueDateUtc === undefined,
+        clearReminderDate: updates.reminderDateUtc === undefined,
+      });
+      if (updated) {
+        setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        setDetailTask(updated);
+        // Log activity
+        await logTaskActivity(updated, 'updated', 'Task details were modified');
+        getTaskStats().then(setStats);
+        return updated;
+      }
+      return null;
+    } catch {
+      toast.error('Failed to update task');
+      return null;
     }
-    return null;
   };
 
 
@@ -727,6 +799,19 @@ export default function Tasks() {
                     List
                   </Button>
                 </div>
+
+                {/* HP-9: Bulk mode toggle (list view only) */}
+                {viewMode === 'list' && (
+                  <Button 
+                    variant={bulkMode ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
+                    className={`gap-2 h-10 rounded-xl ${bulkMode ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'text-white/80 border-white/30 hover:bg-white/10 hover:text-white'}`}
+                  >
+                    <CheckCheck className="w-4 h-4" />
+                    {bulkMode ? 'Exit Bulk' : 'Bulk'}
+                  </Button>
+                )}
 
                 <Button 
                   onClick={() => openCreate()} 
@@ -1025,125 +1110,58 @@ export default function Tasks() {
             ) : (
               /* List View */
               <div className="space-y-2">
-                <TaskGroupSection 
-                  group="overdue" 
-                  tasks={groupedTasks.overdue}
-                  isCollapsed={collapsedGroups.has('overdue')}
-                  onToggle={() => toggleGroupCollapse('overdue')}
-                  openEdit={openEdit}
-                  handleDelete={setDeleteConfirmTask}
-                  handleStatusChange={handleStatusChange}
-                  handlePriorityChange={handlePriorityChange}
-                  statusConfig={statusConfig}
-                  priorityConfig={priorityConfig}
-                  contacts={contacts}
-                  members={orgMembers}
-                  getInitials={getInitials}
-                  formatDue={formatDue}
-                  onViewDetails={openTaskDetail}
-                />
-                <TaskGroupSection 
-                  group="today" 
-                  tasks={groupedTasks.today}
-                  isCollapsed={collapsedGroups.has('today')}
-                  onToggle={() => toggleGroupCollapse('today')}
-                  openEdit={openEdit}
-                  handleDelete={setDeleteConfirmTask}
-                  handleStatusChange={handleStatusChange}
-                  handlePriorityChange={handlePriorityChange}
-                  statusConfig={statusConfig}
-                  priorityConfig={priorityConfig}
-                  contacts={contacts}
-                  members={orgMembers}
-                  getInitials={getInitials}
-                  formatDue={formatDue}
-                  onViewDetails={openTaskDetail}
-                />
-                <TaskGroupSection 
-                  group="tomorrow" 
-                  tasks={groupedTasks.tomorrow}
-                  isCollapsed={collapsedGroups.has('tomorrow')}
-                  onToggle={() => toggleGroupCollapse('tomorrow')}
-                  openEdit={openEdit}
-                  handleDelete={setDeleteConfirmTask}
-                  handleStatusChange={handleStatusChange}
-                  handlePriorityChange={handlePriorityChange}
-                  statusConfig={statusConfig}
-                  priorityConfig={priorityConfig}
-                  contacts={contacts}
-                  members={orgMembers}
-                  getInitials={getInitials}
-                  formatDue={formatDue}
-                  onViewDetails={openTaskDetail}
-                />
-                <TaskGroupSection 
-                  group="thisWeek" 
-                  tasks={groupedTasks.thisWeek}
-                  isCollapsed={collapsedGroups.has('thisWeek')}
-                  onToggle={() => toggleGroupCollapse('thisWeek')}
-                  openEdit={openEdit}
-                  handleDelete={setDeleteConfirmTask}
-                  handleStatusChange={handleStatusChange}
-                  handlePriorityChange={handlePriorityChange}
-                  statusConfig={statusConfig}
-                  priorityConfig={priorityConfig}
-                  contacts={contacts}
-                  members={orgMembers}
-                  getInitials={getInitials}
-                  formatDue={formatDue}
-                  onViewDetails={openTaskDetail}
-                />
-                <TaskGroupSection 
-                  group="later" 
-                  tasks={groupedTasks.later}
-                  isCollapsed={collapsedGroups.has('later')}
-                  onToggle={() => toggleGroupCollapse('later')}
-                  openEdit={openEdit}
-                  handleDelete={setDeleteConfirmTask}
-                  handleStatusChange={handleStatusChange}
-                  handlePriorityChange={handlePriorityChange}
-                  statusConfig={statusConfig}
-                  priorityConfig={priorityConfig}
-                  contacts={contacts}
-                  members={orgMembers}
-                  getInitials={getInitials}
-                  formatDue={formatDue}
-                  onViewDetails={openTaskDetail}
-                />
-                <TaskGroupSection 
-                  group="noDue" 
-                  tasks={groupedTasks.noDue}
-                  isCollapsed={collapsedGroups.has('noDue')}
-                  onToggle={() => toggleGroupCollapse('noDue')}
-                  openEdit={openEdit}
-                  handleDelete={setDeleteConfirmTask}
-                  handleStatusChange={handleStatusChange}
-                  handlePriorityChange={handlePriorityChange}
-                  statusConfig={statusConfig}
-                  priorityConfig={priorityConfig}
-                  contacts={contacts}
-                  members={orgMembers}
-                  getInitials={getInitials}
-                  formatDue={formatDue}
-                  onViewDetails={openTaskDetail}
-                />
-                <TaskGroupSection 
-                  group="completed" 
-                  tasks={groupedTasks.completed}
-                  isCollapsed={collapsedGroups.has('completed')}
-                  onToggle={() => toggleGroupCollapse('completed')}
-                  openEdit={openEdit}
-                  handleDelete={setDeleteConfirmTask}
-                  handleStatusChange={handleStatusChange}
-                  handlePriorityChange={handlePriorityChange}
-                  statusConfig={statusConfig}
-                  priorityConfig={priorityConfig}
-                  contacts={contacts}
-                  members={orgMembers}
-                  getInitials={getInitials}
-                  formatDue={formatDue}
-                  onViewDetails={openTaskDetail}
-                />
+                {/* HP-9: Bulk operations toolbar */}
+                {bulkMode && (
+                  <div className="sticky top-0 z-10 flex items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-xl shadow-sm">
+                    <span className="text-sm font-medium text-orange-800">
+                      {selectedTaskIds.size} selected
+                    </span>
+                    <Button size="sm" variant="outline" onClick={selectAllVisible} className="text-xs h-7">Select all ({filteredTasks.length})</Button>
+                    <Button size="sm" variant="outline" onClick={clearSelection} className="text-xs h-7">Clear</Button>
+                    <div className="w-px h-5 bg-orange-200" />
+                    <Button size="sm" variant="outline" onClick={() => handleBulkAction('status', 'completed')} disabled={bulkProcessing || selectedTaskIds.size === 0} className="text-xs h-7">
+                      <CheckCheck className="w-3 h-3 mr-1" /> Complete
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleBulkAction('priority', 'high')} disabled={bulkProcessing || selectedTaskIds.size === 0} className="text-xs h-7">
+                      <Flag className="w-3 h-3 mr-1" /> High Priority
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleBulkAction('delete')} disabled={bulkProcessing || selectedTaskIds.size === 0} className="text-xs h-7 text-red-600 hover:text-red-700 hover:bg-red-50">
+                      <Trash2 className="w-3 h-3 mr-1" /> Delete
+                    </Button>
+                    <div className="ml-auto">
+                      <Button size="sm" variant="ghost" onClick={exitBulkMode} className="text-xs h-7">Exit bulk mode</Button>
+                    </div>
+                  </div>
+                )}
+
+                {(['overdue', 'today', 'tomorrow', 'thisWeek', 'later', 'noDue', 'completed'] as const).map((group) => (
+                  <TaskGroupSection 
+                    key={group}
+                    group={group} 
+                    tasks={groupedTasks[group]}
+                    isCollapsed={collapsedGroups.has(group)}
+                    onToggle={() => toggleGroupCollapse(group)}
+                    openEdit={openEdit}
+                    handleDelete={setDeleteConfirmTask}
+                    handleStatusChange={handleStatusChange}
+                    handlePriorityChange={handlePriorityChange}
+                    statusConfig={statusConfig}
+                    priorityConfig={priorityConfig}
+                    contacts={contacts}
+                    members={orgMembers}
+                    getInitials={getInitials}
+                    formatDue={formatDue}
+                    onViewDetails={openTaskDetail}
+                    onAssigneeChange={handleInlineAssigneeChange}
+                    onDealChange={handleInlineDealChange}
+                    onLeadChange={handleInlineLeadChange}
+                    leads={leads}
+                    deals={deals}
+                    selectedTaskIds={selectedTaskIds}
+                    onSelectionToggle={toggleTaskSelection}
+                    bulkMode={bulkMode}
+                  />
+                ))}
               </div>
             )}
           </>

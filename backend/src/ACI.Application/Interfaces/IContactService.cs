@@ -19,7 +19,7 @@ public interface IContactService
     /// <param name="includeArchived">Whether to include archived contacts.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of contacts.</returns>
-    Task<PagedResult<ContactDto>> GetContactsPagedAsync(Guid userId, Guid? organizationId, int page = 1, int pageSize = 20, string? search = null, bool includeArchived = false, CancellationToken ct = default);
+    Task<PagedResult<ContactDto>> GetContactsPagedAsync(Guid userId, Guid? organizationId, int page = 1, int pageSize = 20, string? search = null, bool includeArchived = false, Guid? companyId = null, CancellationToken ct = default);
 
     /// <summary>
     /// Retrieves all contacts for a user within an organization.

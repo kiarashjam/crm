@@ -155,6 +155,9 @@ try
     builder.Services.AddScoped<ILeadSourceService, LeadSourceService>();
     builder.Services.AddScoped<IGlobalSearchService, GlobalSearchService>();
 
+    // Background services
+    builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
+
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();

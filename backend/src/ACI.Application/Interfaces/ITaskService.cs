@@ -92,7 +92,32 @@ public interface ITaskService
     /// Gets task statistics for the dashboard.
     /// </summary>
     Task<TaskStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Bulk updates multiple tasks (status, priority, assignee, or delete).
+    /// </summary>
+    Task<Result<BulkTaskResult>> BulkUpdateAsync(Guid userId, Guid? organizationId, BulkTaskRequest request, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Request for bulk task operations.
+/// </summary>
+public record BulkTaskRequest(
+    Guid[] TaskIds,
+    string Action, // "status", "priority", "assignee", "delete"
+    string? Status = null,
+    string? Priority = null,
+    Guid? AssigneeId = null
+);
+
+/// <summary>
+/// Result of a bulk task operation.
+/// </summary>
+public record BulkTaskResult(
+    int TotalRequested,
+    int Succeeded,
+    int Failed
+);
 
 /// <summary>
 /// Filter parameters for task queries.

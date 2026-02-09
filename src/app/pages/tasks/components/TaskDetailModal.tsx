@@ -180,28 +180,48 @@ export function TaskDetailModal({
   };
 
   const handleQuickStatusChange = async (newStatus: TaskStatusType) => {
-    await onStatusChange(task, newStatus);
-    setForm(f => ({ ...f, status: newStatus }));
+    try {
+      await onStatusChange(task, newStatus);
+      setForm(f => ({ ...f, status: newStatus }));
+    } catch {
+      toast.error('Failed to update status');
+    }
   };
 
   const handleQuickPriorityChange = async (newPriority: TaskPriorityType) => {
-    await onPriorityChange(task, newPriority);
-    setForm(f => ({ ...f, priority: newPriority }));
+    try {
+      await onPriorityChange(task, newPriority);
+      setForm(f => ({ ...f, priority: newPriority }));
+    } catch {
+      toast.error('Failed to update priority');
+    }
   };
 
   const handleQuickAssigneeChange = async (newAssigneeId: string) => {
-    await onAssigneeChange(task, newAssigneeId === 'none' ? null : newAssigneeId);
-    setForm(f => ({ ...f, assigneeId: newAssigneeId === 'none' ? '' : newAssigneeId }));
+    try {
+      await onAssigneeChange(task, newAssigneeId === 'none' ? null : newAssigneeId);
+      setForm(f => ({ ...f, assigneeId: newAssigneeId === 'none' ? '' : newAssigneeId }));
+    } catch {
+      toast.error('Failed to update assignee');
+    }
   };
 
   const handleQuickLeadChange = async (newLeadId: string) => {
-    await onLeadChange(task, newLeadId === 'none' ? null : newLeadId);
-    setForm(f => ({ ...f, leadId: newLeadId === 'none' ? '' : newLeadId }));
+    try {
+      await onLeadChange(task, newLeadId === 'none' ? null : newLeadId);
+      setForm(f => ({ ...f, leadId: newLeadId === 'none' ? '' : newLeadId }));
+    } catch {
+      toast.error('Failed to update lead');
+    }
   };
 
   const handleQuickDealChange = async (newDealId: string) => {
-    await onDealChange(task, newDealId === 'none' ? null : newDealId);
-    setForm(f => ({ ...f, dealId: newDealId === 'none' ? '' : newDealId }));
+    try {
+      await onDealChange(task, newDealId === 'none' ? null : newDealId);
+      setForm(f => ({ ...f, dealId: newDealId === 'none' ? '' : newDealId }));
+    } catch {
+      toast.error('Failed to update deal');
+    }
   };
 
   const formatDateTime = (isoString?: string) => {

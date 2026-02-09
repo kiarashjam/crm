@@ -32,15 +32,16 @@ public class ContactService : IContactService
         int page = 1, 
         int pageSize = 20, 
         string? search = null,
-        bool includeArchived = false, 
+        bool includeArchived = false,
+        Guid? companyId = null, 
         CancellationToken ct = default)
     {
         _logger.LogDebug(
-            "Getting paged contacts for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}'",
-            userId, organizationId, page, pageSize, search);
+            "Getting paged contacts for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}', companyId {CompanyId}",
+            userId, organizationId, page, pageSize, search, companyId);
 
         var skip = (page - 1) * pageSize;
-        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, includeArchived, ct);
+        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, includeArchived, companyId, ct);
         
         var lastByContact = await _activityRepository.GetLastActivityByContactIdsAsync(
             userId, organizationId, items.Select(c => c.Id), ct);
@@ -177,6 +178,7 @@ public class ContactService : IContactService
             Phone = request.Phone?.Trim(),
             JobTitle = request.JobTitle?.Trim(),
             CompanyId = request.CompanyId,
+            Description = request.Description?.Trim(),
             CreatedAtUtc = DateTime.UtcNow,
         };
 
@@ -239,6 +241,7 @@ public class ContactService : IContactService
         if (request.JobTitle != null) existing.JobTitle = request.JobTitle.Trim();
         if (request.DoNotContact.HasValue) existing.DoNotContact = request.DoNotContact.Value;
         if (request.PreferredContactMethod != null) existing.PreferredContactMethod = request.PreferredContactMethod.Trim();
+        if (request.Description != null) existing.Description = request.Description.Trim();
 
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
@@ -367,5 +370,9 @@ public class ContactService : IContactService
             e.ConvertedAtUtc,
             e.IsArchived,
             e.DoNotContact,
-            e.PreferredContactMethod);
+            e.PreferredContactMethod,
+            e.Company?.Name,
+            e.CreatedAtUtc,
+            e.UpdatedAtUtc,
+            e.Description);
 }

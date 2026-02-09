@@ -14,6 +14,10 @@ public sealed class ActivityRepository : IActivityRepository
     private static IQueryable<Activity> FilterByUserAndOrg(IQueryable<Activity> q, Guid userId, Guid? organizationId) =>
         q.Where(a => a.UserId == userId && (organizationId == null ? a.OrganizationId == null : a.OrganizationId == organizationId));
 
+    /// <summary>Include Contact, Deal, Lead nav properties so the DTO mapper can read their names.</summary>
+    private static IQueryable<Activity> IncludeRelated(IQueryable<Activity> q) =>
+        q.Include(a => a.Contact).Include(a => a.Deal).Include(a => a.Lead);
+
     private static IQueryable<Activity> ApplySearch(IQueryable<Activity> query, string? search)
     {
         if (string.IsNullOrWhiteSpace(search)) return query;
@@ -44,7 +48,7 @@ public sealed class ActivityRepository : IActivityRepository
         query = ApplyTypeFilter(query, activityType);
 
         var totalCount = await query.CountAsync(ct);
-        var items = await query
+        var items = await IncludeRelated(query)
             .OrderByDescending(a => a.CreatedAtUtc)
             .Skip(skip)
             .Take(take)
@@ -54,16 +58,16 @@ public sealed class ActivityRepository : IActivityRepository
     }
 
     public async Task<IReadOnlyList<Activity>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await FilterByUserAndOrg(_db.Activities, userId, organizationId).OrderByDescending(a => a.CreatedAtUtc).ToListAsync(ct);
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities, userId, organizationId)).OrderByDescending(a => a.CreatedAtUtc).ToListAsync(ct);
 
     public async Task<IReadOnlyList<Activity>> GetByContactIdAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await FilterByUserAndOrg(_db.Activities, userId, organizationId)
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities, userId, organizationId))
             .Where(a => a.ContactId == contactId)
             .OrderByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Activity>> GetByDealIdAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await FilterByUserAndOrg(_db.Activities, userId, organizationId)
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities, userId, organizationId))
             .Where(a => a.DealId == dealId)
             .OrderByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
@@ -71,19 +75,28 @@ public sealed class ActivityRepository : IActivityRepository
     public async Task<IReadOnlyList<Activity>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         // For lead activities, show all activities for the lead within the organization (not just current user's)
         // This allows team members to see each other's interactions with leads
-        await _db.Activities
+        await IncludeRelated(_db.Activities)
             .Where(a => a.LeadId == leadId && (organizationId == null ? a.OrganizationId == null : a.OrganizationId == organizationId))
             .OrderByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
     public async Task<Activity?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await FilterByUserAndOrg(_db.Activities, userId, organizationId).FirstOrDefaultAsync(a => a.Id == id, ct);
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities, userId, organizationId)).FirstOrDefaultAsync(a => a.Id == id, ct);
 
     public async Task<Activity> AddAsync(Activity activity, CancellationToken ct = default)
     {
         _db.Activities.Add(activity);
         await _db.SaveChangesAsync(ct);
         return activity;
+    }
+
+    public async Task<Activity?> UpdateAsync(Activity activity, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var existing = await FilterByUserAndOrg(_db.Activities, userId, organizationId).FirstOrDefaultAsync(a => a.Id == activity.Id, ct);
+        if (existing == null) return null;
+        _db.Entry(existing).CurrentValues.SetValues(activity);
+        await _db.SaveChangesAsync(ct);
+        return existing;
     }
 
     public async Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
@@ -117,5 +130,19 @@ public sealed class ActivityRepository : IActivityRepository
             .Select(g => new { DealId = g.Key, Last = g.Max(a => a.CreatedAtUtc) })
             .ToListAsync(ct);
         return list.ToDictionary(x => x.DealId, x => x.Last);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<Guid, int>> GetActivityCountsByOrgAsync(Guid? organizationId, CancellationToken ct = default)
+    {
+        var query = _db.Activities.Where(a =>
+            organizationId == null ? a.OrganizationId == null : a.OrganizationId == organizationId);
+
+        var list = await query
+            .GroupBy(a => a.UserId)
+            .Select(g => new { UserId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        return list.ToDictionary(x => x.UserId, x => x.Count);
     }
 }

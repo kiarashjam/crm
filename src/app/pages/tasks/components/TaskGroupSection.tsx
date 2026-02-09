@@ -8,7 +8,7 @@ import { Badge } from '@/app/components/ui/badge';
 import { ListTaskCard } from './ListTaskCard';
 import { groupConfig } from '../config';
 import type { TaskGroup } from '../types';
-import type { TaskItem, TaskStatusType, TaskPriorityType, Contact } from '@/app/api/types';
+import type { TaskItem, TaskStatusType, TaskPriorityType, Contact, Lead, Deal } from '@/app/api/types';
 
 export interface TaskGroupSectionProps {
   group: TaskGroup;
@@ -26,6 +26,16 @@ export interface TaskGroupSectionProps {
   getInitials: (name: string) => string;
   formatDue: (iso: string | undefined) => string | null;
   onViewDetails?: (task: TaskItem) => void;
+  // HP-6: Deal/lead/assignee change callbacks
+  onAssigneeChange?: (task: TaskItem, assigneeId: string | null) => void;
+  onDealChange?: (task: TaskItem, dealId: string | null) => void;
+  onLeadChange?: (task: TaskItem, leadId: string | null) => void;
+  leads?: Lead[];
+  deals?: Deal[];
+  // HP-9: Bulk selection
+  selectedTaskIds?: Set<string>;
+  onSelectionToggle?: (taskId: string) => void;
+  bulkMode?: boolean;
 }
 
 export function TaskGroupSection({
@@ -44,6 +54,14 @@ export function TaskGroupSection({
   getInitials,
   formatDue,
   onViewDetails,
+  onAssigneeChange,
+  onDealChange,
+  onLeadChange,
+  leads,
+  deals,
+  selectedTaskIds,
+  onSelectionToggle,
+  bulkMode,
 }: TaskGroupSectionProps) {
   const config = groupConfig[group];
   const Icon = config.icon;
@@ -82,6 +100,14 @@ export function TaskGroupSection({
                 getInitials={getInitials}
                 formatDue={formatDue}
                 onViewDetails={onViewDetails}
+                onAssigneeChange={onAssigneeChange}
+                onDealChange={onDealChange}
+                onLeadChange={onLeadChange}
+                leads={leads}
+                deals={deals}
+                isSelected={selectedTaskIds?.has(task.id)}
+                onSelectionToggle={onSelectionToggle}
+                bulkMode={bulkMode}
               />
             ))}
           </div>

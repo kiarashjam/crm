@@ -14,7 +14,13 @@ interface ActivityRaw {
   contactId?: string | null;
   dealId?: string | null;
   leadId?: string | null;
-  createdAt: string;
+  participants?: string | null;
+  createdAt?: string;
+  createdAtUtc?: string;
+  updatedAtUtc?: string | null;
+  contactName?: string | null;
+  dealName?: string | null;
+  leadName?: string | null;
 }
 
 function mapActivity(d: ActivityRaw): Activity {
@@ -26,7 +32,12 @@ function mapActivity(d: ActivityRaw): Activity {
     contactId: d.contactId ?? undefined,
     dealId: d.dealId ?? undefined,
     leadId: d.leadId ?? undefined,
-    createdAt: d.createdAt,
+    participants: d.participants ?? undefined,
+    createdAt: d.createdAt || d.createdAtUtc || new Date().toISOString(),
+    updatedAt: d.updatedAtUtc ?? undefined,
+    contactName: d.contactName ?? undefined,
+    dealName: d.dealName ?? undefined,
+    leadName: d.leadName ?? undefined,
   };
 }
 
@@ -90,7 +101,8 @@ export async function getActivitiesPaged(options?: GetActivitiesPagedOptions): P
 /** Get all activities (real API or mock). */
 export async function getActivities(): Promise<Activity[]> {
   if (isUsingRealApi()) {
-    const list = await authFetchJson<{ id: string; type: string; subject?: string | null; body?: string | null; contactId?: string | null; dealId?: string | null; createdAt: string }[]>('/api/activities');
+    // Must use /api/activities/all for a flat array; /api/activities returns PagedResult object
+    const list = await authFetchJson<ActivityRaw[]>('/api/activities/all');
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
@@ -100,7 +112,7 @@ export async function getActivities(): Promise<Activity[]> {
 /** Get activities by contact. */
 export async function getActivitiesByContact(contactId: string): Promise<Activity[]> {
   if (isUsingRealApi()) {
-    const list = await authFetchJson<{ id: string; type: string; subject?: string | null; body?: string | null; contactId?: string | null; dealId?: string | null; createdAt: string }[]>(`/api/activities/contact/${contactId}`);
+    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/contact/${contactId}`);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
@@ -110,7 +122,7 @@ export async function getActivitiesByContact(contactId: string): Promise<Activit
 /** Get activities by deal. */
 export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
   if (isUsingRealApi()) {
-    const list = await authFetchJson<{ id: string; type: string; subject?: string | null; body?: string | null; contactId?: string | null; dealId?: string | null; leadId?: string | null; createdAt: string }[]>(`/api/activities/deal/${dealId}`);
+    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/deal/${dealId}`);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
@@ -120,18 +132,40 @@ export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
 /** Get activities by lead. */
 export async function getActivitiesByLead(leadId: string): Promise<Activity[]> {
   if (isUsingRealApi()) {
-    const list = await authFetchJson<{ id: string; type: string; subject?: string | null; body?: string | null; contactId?: string | null; dealId?: string | null; leadId?: string | null; createdAt: string }[]>(`/api/activities/lead/${leadId}`);
+    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/lead/${leadId}`);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
   return mockActivities.filter((a) => a.leadId === leadId);
 }
 
-/** Create an activity. */
-export async function createActivity(params: { type: string; subject?: string; body?: string; contactId?: string; dealId?: string; leadId?: string }): Promise<Activity | null> {
+/** Get activity counts per org member (HP-3). */
+export async function getOrgMemberActivityCounts(): Promise<Record<string, number>> {
   if (isUsingRealApi()) {
-    const activity = await authFetchJson<{ id: string; type: string; subject?: string | null; body?: string | null; contactId?: string | null; dealId?: string | null; createdAt: string }>('/api/activities', {
+    const result = await authFetchJson<Record<string, number>>('/api/activities/org-member-counts');
+    return result ?? {};
+  }
+  return {};
+}
+
+/** Create an activity. */
+export async function createActivity(params: { type: string; subject?: string; body?: string; contactId?: string; dealId?: string; leadId?: string; participants?: string }): Promise<Activity | null> {
+  if (isUsingRealApi()) {
+    const activity = await authFetchJson<ActivityRaw>('/api/activities', {
       method: 'POST',
+      body: JSON.stringify(params),
+    });
+    return activity ? mapActivity(activity) : null;
+  }
+  await delay(200);
+  return null;
+}
+
+/** Update an activity. */
+export async function updateActivity(id: string, params: { type?: string; subject?: string; body?: string; participants?: string }): Promise<Activity | null> {
+  if (isUsingRealApi()) {
+    const activity = await authFetchJson<ActivityRaw>(`/api/activities/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(params),
     });
     return activity ? mapActivity(activity) : null;

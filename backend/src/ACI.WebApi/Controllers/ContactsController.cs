@@ -34,6 +34,7 @@ public class ContactsController : ControllerBase
     /// <param name="pageSize">Number of items per page. Default is 20, max 100.</param>
     /// <param name="search">Optional search query.</param>
     /// <param name="includeArchived">Whether to include archived contacts. Default is false.</param>
+    /// <param name="companyId">Optional company ID to filter contacts by.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of contacts.</returns>
     /// <response code="200">Returns the paginated list of contacts.</response>
@@ -45,11 +46,14 @@ public class ContactsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
-        [FromQuery] bool includeArchived = false, 
+        [FromQuery] bool includeArchived = false,
+        [FromQuery] Guid? companyId = null, 
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
+
+        pageSize = Math.Clamp(pageSize, 1, 100);
         
         var result = await _contactService.GetContactsPagedAsync(
             userId.Value, 
@@ -57,7 +61,8 @@ public class ContactsController : ControllerBase
             page,
             pageSize,
             search,
-            includeArchived, 
+            includeArchived,
+            companyId, 
             ct);
         
         return Ok(result);

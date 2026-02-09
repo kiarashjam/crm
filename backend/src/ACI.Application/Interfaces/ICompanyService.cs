@@ -71,6 +71,12 @@ public interface ICompanyService
     Task<Result<CompanyDto>> UpdateAsync(Guid id, Guid userId, Guid? organizationId, UpdateCompanyRequest request, CancellationToken ct = default);
 
     /// <summary>
+    /// Gets per-company statistics (contact count, deal count, total deal value).
+    /// HP-7: Server-side aggregation to avoid fetching all contacts/deals on the frontend.
+    /// </summary>
+    Task<IReadOnlyList<CompanyStatsItemDto>> GetCompanyStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
     /// Deletes a company.
     /// </summary>
     /// <param name="id">The company ID to delete.</param>

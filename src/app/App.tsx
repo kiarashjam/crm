@@ -30,10 +30,14 @@ const Leads = lazy(() => import('@/app/pages/Leads'));
 const LeadWebhook = lazy(() => import('@/app/pages/LeadWebhook'));
 const LeadImport = lazy(() => import('@/app/pages/LeadImport'));
 const Pipeline = lazy(() => import('@/app/pages/Pipeline'));
+const DealDetail = lazy(() => import('@/app/pages/DealDetail'));
 const Tasks = lazy(() => import('@/app/pages/Tasks'));
+const TaskDetail = lazy(() => import('@/app/pages/TaskDetail'));
 const Activities = lazy(() => import('@/app/pages/Activities'));
 const Companies = lazy(() => import('@/app/pages/Companies'));
+const CompanyDetail = lazy(() => import('@/app/pages/CompanyDetail'));
 const Contacts = lazy(() => import('@/app/pages/Contacts'));
+const ContactDetail = lazy(() => import('@/app/pages/ContactDetail'));
 const Team = lazy(() => import('@/app/pages/Team'));
 const EmailSequences = lazy(() => import('@/app/pages/EmailSequences').then(m => ({ default: m.EmailSequences })));
 const ABTests = lazy(() => import('@/app/pages/ABTests').then(m => ({ default: m.ABTests })));
@@ -106,10 +110,14 @@ export default function App() {
                     <Route path="/leads/webhook" element={<LeadWebhook />} />
                     <Route path="/leads/import" element={<LeadImport />} />
                     <Route path="/deals" element={<Pipeline />} />
+                    <Route path="/deals/:id" element={<DealDetail />} />
                     <Route path="/tasks" element={<Tasks />} />
+                    <Route path="/tasks/:id" element={<TaskDetail />} />
                     <Route path="/activities" element={<Activities />} />
                     <Route path="/contacts" element={<Contacts />} />
+                    <Route path="/contacts/:id" element={<ContactDetail />} />
                     <Route path="/companies" element={<Companies />} />
+                    <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
                     <Route path="/sequences" element={<EmailSequences />} />
                     <Route path="/ab-tests" element={<ABTests />} />

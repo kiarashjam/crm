@@ -14,6 +14,9 @@ internal sealed class DealConfiguration : IEntityTypeConfiguration<Deal>
         builder.Property(e => e.Value).HasMaxLength(64).IsRequired();
         builder.Property(e => e.Currency).HasMaxLength(8);
         builder.Property(e => e.Stage).HasMaxLength(128);
+        builder.Property(e => e.Description).HasMaxLength(2000);
+        builder.Property(e => e.ClosedReason).HasMaxLength(500);
+        builder.Property(e => e.ClosedReasonCategory).HasMaxLength(50);
         builder.HasOne(e => e.User).WithMany(u => u.Deals).HasForeignKey(e => e.UserId);
         builder.HasOne(e => e.Organization).WithMany().HasForeignKey(e => e.OrganizationId).IsRequired(false);
         builder.HasOne(e => e.Pipeline).WithMany(p => p.Deals).HasForeignKey(e => e.PipelineId).IsRequired(false);

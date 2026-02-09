@@ -119,17 +119,35 @@ public class CompanyService : ICompanyService
             return DomainErrors.Company.DomainInvalid;
         }
 
+        // HP-5 + HIGH-2: Check for duplicate company name using efficient single-query EXISTS
+        var nameExists = await _repository.ExistsByNameAsync(request.Name, userId, organizationId, ct);
+        if (nameExists)
+        {
+            _logger.LogWarning("Company creation failed - duplicate name '{Name}'", request.Name);
+            return DomainErrors.Company.DuplicateName;
+        }
+
         try
         {
+            // HP-10: Normalize empty/whitespace-only strings to null
+            static string? NormalizeNullable(string? value)
+            {
+                var trimmed = value?.Trim();
+                return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+            }
+
             var entity = new Company
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
                 OrganizationId = organizationId,
                 Name = request.Name.Trim(),
-                Domain = request.Domain?.Trim(),
-                Industry = request.Industry?.Trim(),
-                Size = request.Size?.Trim(),
+                Domain = NormalizeNullable(request.Domain),
+                Industry = NormalizeNullable(request.Industry),
+                Size = NormalizeNullable(request.Size),
+                Description = NormalizeNullable(request.Description),
+                Website = NormalizeNullable(request.Website),
+                Location = NormalizeNullable(request.Location),
                 CreatedAtUtc = DateTime.UtcNow,
             };
             
@@ -170,10 +188,20 @@ public class CompanyService : ICompanyService
             return DomainErrors.Company.DomainInvalid;
         }
         
+        // HP-10: Normalize empty/whitespace-only strings to null for nullable fields
+        static string? NormalizeNullable(string? value)
+        {
+            var trimmed = value?.Trim();
+            return string.IsNullOrEmpty(trimmed) ? null : trimmed;
+        }
+
         if (request.Name != null) existing.Name = request.Name.Trim();
-        if (request.Domain != null) existing.Domain = request.Domain.Trim();
-        if (request.Industry != null) existing.Industry = request.Industry.Trim();
-        if (request.Size != null) existing.Size = request.Size.Trim();
+        if (request.Domain != null) existing.Domain = NormalizeNullable(request.Domain);
+        if (request.Industry != null) existing.Industry = NormalizeNullable(request.Industry);
+        if (request.Size != null) existing.Size = NormalizeNullable(request.Size);
+        if (request.Description != null) existing.Description = NormalizeNullable(request.Description);
+        if (request.Website != null) existing.Website = NormalizeNullable(request.Website);
+        if (request.Location != null) existing.Location = NormalizeNullable(request.Location);
         
         try
         {
@@ -193,6 +221,15 @@ public class CompanyService : ICompanyService
             _logger.LogError(ex, "Error updating company {CompanyId}", id);
             return DomainErrors.General.ServerError;
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<CompanyStatsItemDto>> GetCompanyStatsAsync(
+        Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        _logger.LogDebug("Getting company stats for user {UserId}, org {OrganizationId}", userId, organizationId);
+        var raw = await _repository.GetStatsAsync(userId, organizationId, ct);
+        return raw.Select(r => new CompanyStatsItemDto(r.CompanyId, r.ContactCount, r.DealCount, r.TotalDealValue)).ToList();
     }
 
     /// <inheritdoc />
@@ -229,6 +266,11 @@ public class CompanyService : ICompanyService
         c.Name, 
         c.Domain, 
         c.Industry, 
-        c.Size
+        c.Size,
+        c.Description,
+        c.Website,
+        c.Location,
+        c.CreatedAtUtc,
+        c.UpdatedAtUtc
     );
 }

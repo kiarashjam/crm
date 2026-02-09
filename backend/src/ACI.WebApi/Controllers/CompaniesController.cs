@@ -49,6 +49,9 @@ public class CompaniesController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
         
+        // HP-11: Clamp pageSize to prevent overloading
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        
         var result = await _companyService.GetCompaniesPagedAsync(
             userId.Value, 
             _currentUser.CurrentOrganizationId, 
@@ -108,6 +111,30 @@ public class CompaniesController : ControllerBase
             ct);
         
         return Ok(list);
+    }
+
+    /// <summary>
+    /// Retrieves per-company statistics (contact count, deal count, total deal value).
+    /// HP-7: Replaces the need for the frontend to fetch all contacts and deals.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A list of stats per company.</returns>
+    /// <response code="200">Returns company statistics.</response>
+    /// <response code="401">User is not authenticated.</response>
+    [HttpGet("stats")]
+    [ProducesResponseType(typeof(IReadOnlyList<CompanyStatsItemDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<IReadOnlyList<CompanyStatsItemDto>>> GetStats(CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        
+        var stats = await _companyService.GetCompanyStatsAsync(
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
+            ct);
+        
+        return Ok(stats);
     }
 
     /// <summary>

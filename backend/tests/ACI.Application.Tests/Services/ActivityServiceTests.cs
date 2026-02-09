@@ -330,8 +330,15 @@ public class ActivityServiceTests
     [InlineData("meeting")]
     [InlineData("email")]
     [InlineData("note")]
+    [InlineData("task")]
+    [InlineData("follow_up")]
+    [InlineData("deadline")]
+    [InlineData("video")]
+    [InlineData("demo")]
     [InlineData("CALL")]
     [InlineData("Meeting")]
+    [InlineData("VIDEO")]
+    [InlineData("Demo")]
     public async Task CreateAsync_AcceptsValidActivityTypes(string activityType)
     {
         // Arrange
@@ -530,6 +537,190 @@ public class ActivityServiceTests
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.Error.Code.Should().Be("Activity.NotFound");
+    }
+
+    #endregion
+
+    #region UpdateAsync Tests
+
+    [Fact]
+    public async Task UpdateAsync_ReturnsUpdatedActivity_WhenValid()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var activityId = Guid.NewGuid();
+        var existing = new Activity
+        {
+            Id = activityId,
+            UserId = userId,
+            OrganizationId = orgId,
+            Type = "call",
+            Subject = "Old Subject",
+            Body = "Old Body",
+            ContactId = Guid.NewGuid(),
+        };
+        var request = new UpdateActivityRequest
+        {
+            Type = "meeting",
+            Subject = "New Subject",
+            Body = "New Body",
+            Participants = "Alice, Bob",
+        };
+
+        _activityRepositoryMock
+            .Setup(r => r.GetByIdAsync(activityId, userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+
+        _activityRepositoryMock
+            .Setup(r => r.UpdateAsync(It.IsAny<Activity>(), userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Activity a, Guid _, Guid? __, CancellationToken ___) => a);
+
+        // Act
+        var result = await _sut.UpdateAsync(activityId, userId, orgId, request);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Type.Should().Be("meeting");
+        result.Value.Subject.Should().Be("New Subject");
+        result.Value.Body.Should().Be("New Body");
+        result.Value.Participants.Should().Be("Alice, Bob");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ReturnsNotFound_WhenActivityDoesNotExist()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var activityId = Guid.NewGuid();
+        var request = new UpdateActivityRequest { Subject = "New Subject" };
+
+        _activityRepositoryMock
+            .Setup(r => r.GetByIdAsync(activityId, userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Activity?)null);
+
+        // Act
+        var result = await _sut.UpdateAsync(activityId, userId, orgId, request);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Code.Should().Be("Activity.NotFound");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ReturnsInvalidType_WhenTypeIsInvalid()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var activityId = Guid.NewGuid();
+        var existing = new Activity
+        {
+            Id = activityId,
+            UserId = userId,
+            OrganizationId = orgId,
+            Type = "call",
+            Subject = "Test",
+        };
+        var request = new UpdateActivityRequest { Type = "invalid_type" };
+
+        _activityRepositoryMock
+            .Setup(r => r.GetByIdAsync(activityId, userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+
+        // Act
+        var result = await _sut.UpdateAsync(activityId, userId, orgId, request);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Code.Should().Be("Activity.InvalidType");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_PartialUpdate_OnlyChangesProvidedFields()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var activityId = Guid.NewGuid();
+        var existing = new Activity
+        {
+            Id = activityId,
+            UserId = userId,
+            OrganizationId = orgId,
+            Type = "call",
+            Subject = "Original Subject",
+            Body = "Original Body",
+            Participants = "Original Participants",
+        };
+        // Only update subject, leave everything else null (unchanged)
+        var request = new UpdateActivityRequest { Subject = "Updated Subject" };
+
+        _activityRepositoryMock
+            .Setup(r => r.GetByIdAsync(activityId, userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existing);
+
+        _activityRepositoryMock
+            .Setup(r => r.UpdateAsync(It.IsAny<Activity>(), userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Activity a, Guid _, Guid? __, CancellationToken ___) => a);
+
+        // Act
+        var result = await _sut.UpdateAsync(activityId, userId, orgId, request);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Type.Should().Be("call"); // unchanged
+        result.Value.Subject.Should().Be("Updated Subject"); // changed
+        result.Value.Body.Should().Be("Original Body"); // unchanged
+        result.Value.Participants.Should().Be("Original Participants"); // unchanged
+    }
+
+    #endregion
+
+    #region GetOrgMemberActivityCountsAsync Tests
+
+    [Fact]
+    public async Task GetOrgMemberActivityCountsAsync_ReturnsCounts()
+    {
+        // Arrange
+        var orgId = Guid.NewGuid();
+        var user1 = Guid.NewGuid();
+        var user2 = Guid.NewGuid();
+        var expected = new Dictionary<Guid, int>
+        {
+            { user1, 5 },
+            { user2, 12 },
+        };
+
+        _activityRepositoryMock
+            .Setup(r => r.GetActivityCountsByOrgAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        // Act
+        var result = await _sut.GetOrgMemberActivityCountsAsync(orgId);
+
+        // Assert
+        result.Should().HaveCount(2);
+        result[user1].Should().Be(5);
+        result[user2].Should().Be(12);
+    }
+
+    [Fact]
+    public async Task GetOrgMemberActivityCountsAsync_ReturnsEmpty_WhenNoActivities()
+    {
+        // Arrange
+        var orgId = Guid.NewGuid();
+
+        _activityRepositoryMock
+            .Setup(r => r.GetActivityCountsByOrgAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int>());
+
+        // Act
+        var result = await _sut.GetOrgMemberActivityCountsAsync(orgId);
+
+        // Assert
+        result.Should().BeEmpty();
     }
 
     #endregion

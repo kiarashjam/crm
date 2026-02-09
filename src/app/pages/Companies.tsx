@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Building2, Search, Plus, Pencil, Trash2, Globe, Briefcase, Users, X,
   SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, TrendingUp,
@@ -12,8 +12,9 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getCompaniesPaged, createCompany, updateCompany, deleteCompany, getContacts, getDeals, messages } from '@/app/api';
-import type { Company, Contact, Deal } from '@/app/api/types';
+import { getCompaniesPaged, getCompanyStats, createCompany, updateCompany, deleteCompany, getDealsPaged, messages } from '@/app/api';
+import type { CompanyStatsItem } from '@/app/api/companies';
+import type { Company, Deal } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -73,6 +74,7 @@ const COMPANY_SIZES = [
 ];
 
 export default function Companies() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
   // Pagination state from URL
@@ -81,7 +83,7 @@ export default function Companies() {
   const searchFromUrl = searchParams.get('search') || '';
   
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [companyStatsMap, setCompanyStatsMap] = useState<Map<string, CompanyStatsItem>>(new Map());
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
@@ -130,16 +132,22 @@ export default function Companies() {
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
     try {
-      const [pagedResult, contactsData, dealsData] = await Promise.all([
+      // HP-7: Use server-side stats instead of fetching ALL contacts/deals
+      const [pagedResult, statsData, dealsResult] = await Promise.all([
         getCompaniesPaged({ page: currentPage, pageSize, search: debouncedSearch || undefined }),
-        getContacts(),
-        getDeals(),
+        getCompanyStats(),
+        getDealsPaged({ page: 1, pageSize: 500 }),
       ]);
       setCompanies(pagedResult.items);
       setTotalCount(pagedResult.totalCount);
       setTotalPages(pagedResult.totalPages);
-      setContacts(contactsData);
-      setDeals(dealsData);
+      // Build lookup map from stats array
+      const statsMap = new Map<string, CompanyStatsItem>();
+      for (const s of statsData) {
+        statsMap.set(s.companyId, s);
+      }
+      setCompanyStatsMap(statsMap);
+      setDeals(dealsResult.items);
     } catch {
       toast.error(messages.errors.loadFailed);
     } finally {
@@ -165,9 +173,10 @@ export default function Companies() {
     setSearchParams(params);
   };
 
-  // Calculate company statistics
+  // Calculate company statistics (HP-7: uses server-side stats)
   const companyStats = useMemo(() => {
-    const total = companies.length;
+    // BUG #3 fix: Use totalCount from pagination (all companies) instead of companies.length (current page)
+    const total = totalCount || companies.length;
     
     // Count by industry
     const byIndustry: Record<string, number> = {};
@@ -183,51 +192,31 @@ export default function Companies() {
     const withDomain = companies.filter(c => c.domain).length;
     
     // Companies added this week
-    // Note: createdAtUtc is not available on Company type, so this stat is disabled
-    const thisWeek = 0;
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const thisWeek = companies.filter(c => c.createdAtUtc && new Date(c.createdAtUtc) >= oneWeekAgo).length;
     
-    // Companies with contacts
-    const companyIds = new Set(contacts.map(c => c.companyId).filter(Boolean));
-    const withContacts = companies.filter(c => companyIds.has(c.id)).length;
-    
-    // Companies with deals
-    const dealCompanyIds = new Set(deals.map(d => d.companyId).filter(Boolean));
-    const withDeals = companies.filter(c => dealCompanyIds.has(c.id)).length;
-    
-    // Total deal value by company
-    const totalDealValue = deals
-      .filter(d => d.companyId && d.value)
-      .reduce((sum, d) => sum + (parseFloat(d.value?.replace(/[^0-9.-]/g, '') || '0') || 0), 0);
+    // HP-7: Use server-side stats — count from full stats map (all companies), not just current page
+    const allStats = Array.from(companyStatsMap.values());
+    const withContacts = allStats.filter(s => s.contactCount > 0).length;
+    const withDeals = allStats.filter(s => s.dealCount > 0).length;
+    const totalDealValue = allStats.reduce((sum, s) => sum + s.totalDealValue, 0);
     
     return { total, byIndustry, topIndustry, withDomain, thisWeek, withContacts, withDeals, totalDealValue };
-  }, [companies, contacts, deals]);
+  }, [companies, companyStatsMap, totalCount]);
 
-  // Get contact count for a company
-  const getContactCount = (companyId: string) => contacts.filter(c => c.companyId === companyId).length;
-  
-  // Get deal count for a company
-  const getDealCount = (companyId: string) => deals.filter(d => d.companyId === companyId).length;
-  
-  // Get total deal value for a company
-  const getDealValue = (companyId: string) => {
-    return deals
-      .filter(d => d.companyId === companyId && d.value)
-      .reduce((sum, d) => sum + (parseFloat(d.value?.replace(/[^0-9.-]/g, '') || '0') || 0), 0);
-  };
+  // HP-7: Get counts from server-side stats map
+  const getContactCount = (companyId: string) => companyStatsMap.get(companyId)?.contactCount ?? 0;
+  const getDealCount = (companyId: string) => companyStatsMap.get(companyId)?.dealCount ?? 0;
+  const getDealValue = (companyId: string) => companyStatsMap.get(companyId)?.totalDealValue ?? 0;
+  // HP-12: Get deals for a company (still from deals array for drill-down)
+  const getDealsForCompany = (companyId: string) => deals.filter(d => d.companyId === companyId);
 
   const filteredCompanies = useMemo(() => {
     let result = [...companies];
     
-    // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          (c.domain && c.domain.toLowerCase().includes(q)) ||
-          (c.industry && c.industry.toLowerCase().includes(q))
-      );
-    }
+    // HP-13: Removed duplicated client-side search filter.
+    // Server already filters by debouncedSearch via getCompaniesPaged.
     
     // Industry filter
     if (filterIndustry !== 'all') {
@@ -247,8 +236,7 @@ export default function Companies() {
           comparison = a.name.localeCompare(b.name);
           break;
         case 'createdAt':
-          // Note: createdAtUtc is not available on Company type, so sorting by name instead
-          comparison = a.name.localeCompare(b.name);
+          comparison = new Date(a.createdAtUtc || 0).getTime() - new Date(b.createdAtUtc || 0).getTime();
           break;
         case 'contacts':
           comparison = getContactCount(a.id) - getContactCount(b.id);
@@ -261,7 +249,7 @@ export default function Companies() {
     });
     
     return result;
-  }, [companies, searchQuery, filterIndustry, filterSize, sortField, sortDirection, contacts, deals]);
+  }, [companies, searchQuery, filterIndustry, filterSize, sortField, sortDirection, companyStatsMap]);
 
   // Count active filters
   const activeFilterCount = [
@@ -289,9 +277,9 @@ export default function Companies() {
       domain: company.domain ?? '',
       industry: company.industry ?? '',
       size: company.size ?? '',
-      description: '', // Note: description not available on Company type
-      website: '', // Note: website not available on Company type
-      location: '', // Note: location not available on Company type
+      description: company.description ?? '',
+      website: company.website ?? '',
+      location: company.location ?? '',
     });
     setDialogOpen(true);
   };
@@ -306,12 +294,16 @@ export default function Companies() {
     setSaving(true);
     try {
       if (editingCompany) {
+        // Send trimmed value (empty string clears the field via NormalizeNullable on backend).
+        // For create, || undefined avoids sending empty strings; for update, empty string = "clear this field".
         const updated = await updateCompany(editingCompany.id, {
           name,
-          domain: form.domain.trim() || undefined,
-          industry: form.industry || undefined,
-          size: form.size || undefined,
-          // Note: description, website, location are not part of Company type
+          domain: form.domain.trim(),
+          industry: form.industry.trim(),
+          size: form.size.trim(),
+          description: form.description.trim(),
+          website: form.website.trim(),
+          location: form.location.trim(),
         });
         if (updated) {
           toast.success(messages.success.companyUpdated);
@@ -326,7 +318,9 @@ export default function Companies() {
           domain: form.domain.trim() || undefined,
           industry: form.industry || undefined,
           size: form.size || undefined,
-          // Note: description, website, location are not part of Company type
+          description: form.description.trim() || undefined,
+          website: form.website.trim() || undefined,
+          location: form.location.trim() || undefined,
         });
         if (created) {
           toast.success(messages.success.companyCreated);
@@ -336,8 +330,14 @@ export default function Companies() {
           toast.error(messages.errors.generic);
         }
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (error: unknown) {
+      // HP-2: Handle duplicate company name error from backend (409 Conflict)
+      const msg = error instanceof Error ? error.message : '';
+      if (msg.includes('DuplicateName') || msg.includes('already exists')) {
+        toast.error('A company with this name already exists.');
+      } else {
+        toast.error(messages.errors.generic);
+      }
     } finally {
       setSaving(false);
     }
@@ -750,7 +750,7 @@ export default function Companies() {
                 </span>
               )}
               <span className="text-xs text-slate-400">
-                {filteredCompanies.length} of {companies.length} companies
+                {filteredCompanies.length} of {totalCount || companies.length} companies
               </span>
             </div>
           )}
@@ -850,7 +850,10 @@ export default function Companies() {
                       </div>
                       
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-slate-900 text-lg truncate group-hover:text-violet-600 transition-colors">
+                        <h3 
+                          className="font-semibold text-slate-900 text-lg truncate group-hover:text-violet-600 transition-colors cursor-pointer"
+                          onClick={() => navigate(`/companies/${company.id}`)}
+                        >
                           {company.name}
                         </h3>
                         {company.industry && (
@@ -922,36 +925,75 @@ export default function Companies() {
                         </div>
                       )}
 
-                      {/* Note: location is not available on Company type */}
-                      {form.location && editingCompany?.id === company.id && (
+                      {company.location && (
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
                             <MapPin className="w-4 h-4 text-slate-500" />
                           </div>
-                          <span className="truncate">{form.location}</span>
+                          <span className="truncate">{company.location}</span>
                         </div>
                       )}
                     </div>
 
-                    {/* Stats row */}
+                    {/* Stats row — HP-4: clickable drill-down to company detail */}
                     <div className="flex items-center gap-4 py-3 border-t border-slate-100">
-                      <div className="flex items-center gap-1.5">
+                      <div
+                        className="flex items-center gap-1.5 cursor-pointer hover:text-blue-600 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/companies/${company.id}`); }}
+                        title="View contacts"
+                      >
                         <UserCircle className="w-4 h-4 text-blue-500" />
                         <span className="text-sm font-medium text-slate-700">{contactCount}</span>
                         <span className="text-xs text-slate-400">contacts</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div
+                        className="flex items-center gap-1.5 cursor-pointer hover:text-emerald-600 transition-colors"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/companies/${company.id}`); }}
+                        title="View deals"
+                      >
                         <Target className="w-4 h-4 text-emerald-500" />
                         <span className="text-sm font-medium text-slate-700">{dealCount}</span>
                         <span className="text-xs text-slate-400">deals</span>
                       </div>
                       {dealValue > 0 && (
-                        <div className="flex items-center gap-1.5 ml-auto">
+                        <div
+                          className="flex items-center gap-1.5 ml-auto cursor-pointer hover:text-amber-700 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/companies/${company.id}`); }}
+                          title="View deal value"
+                        >
                           <DollarSign className="w-4 h-4 text-amber-500" />
                           <span className="text-sm font-bold text-amber-600">{formatCurrency(dealValue)}</span>
                         </div>
                       )}
                     </div>
+
+                    {/* HP-12: Deals drill-down */}
+                    {dealCount > 0 && (
+                      <div className="pb-1">
+                        <div className="space-y-1">
+                          {getDealsForCompany(company.id).slice(0, 3).map(deal => (
+                            <button
+                              key={deal.id}
+                              type="button"
+                              onClick={() => navigate(`/deals/${deal.id}`)}
+                              className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-left group/deal"
+                            >
+                              <span className="text-xs font-medium text-slate-700 truncate group-hover/deal:text-emerald-600 transition-colors">{deal.name}</span>
+                              <span className="text-xs text-emerald-600 font-semibold shrink-0 ml-2">{deal.currency || '$'}{deal.value}</span>
+                            </button>
+                          ))}
+                          {dealCount > 3 && (
+                            <button
+                              type="button"
+                              onClick={() => navigate('/deals')}
+                              className="text-xs text-blue-600 hover:text-blue-700 px-2"
+                            >
+                              +{dealCount - 3} more deals
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -1176,8 +1218,26 @@ export default function Companies() {
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete company?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will remove &quot;{deleteConfirmCompany?.name}&quot;. This action cannot be undone.
+              <AlertDialogDescription asChild>
+                <div className="space-y-2">
+                  <p>This will remove &quot;{deleteConfirmCompany?.name}&quot;. This action cannot be undone.</p>
+                  {deleteConfirmCompany && (getContactCount(deleteConfirmCompany.id) > 0 || getDealCount(deleteConfirmCompany.id) > 0) && (
+                    <div className="mt-2 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                      <p className="text-sm font-medium text-amber-800 flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4" />
+                        Warning: This company has linked records
+                      </p>
+                      <ul className="mt-1.5 text-sm text-amber-700 list-disc list-inside">
+                        {getContactCount(deleteConfirmCompany.id) > 0 && (
+                          <li>{getContactCount(deleteConfirmCompany.id)} contact{getContactCount(deleteConfirmCompany.id) > 1 ? 's' : ''} will be unlinked</li>
+                        )}
+                        {getDealCount(deleteConfirmCompany.id) > 0 && (
+                          <li>{getDealCount(deleteConfirmCompany.id)} deal{getDealCount(deleteConfirmCompany.id) > 1 ? 's' : ''} will be unlinked</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Search, Plus, Pencil, Trash2, Building2, Mail, Phone, Briefcase,
-  User, X, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Activity,
+  User, X, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Activity as ActivityIcon,
   MessageSquare, Clock, Users, Sparkles, Send, BarChart3, AlertCircle,
   ExternalLink
 } from 'lucide-react';
@@ -12,8 +12,9 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getContactsPaged, createContact, updateContact, deleteContact, getCompanies, messages } from '@/app/api';
-import type { Contact, Company } from '@/app/api/types';
+import { getContactsPaged, createContact, updateContact, deleteContact, getCompanies, getDealsPaged, messages } from '@/app/api';
+import { getTasks } from '@/app/api/tasks';
+import type { Contact, Company, Deal, TaskItem } from '@/app/api/types';
 import { Input } from '@/app/components/ui/input';
 import { Button } from '@/app/components/ui/button';
 import { Label } from '@/app/components/ui/label';
@@ -59,15 +60,20 @@ export default function Contacts() {
   
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  // HP-9: Deals linked to contacts
+  const [allDeals, setAllDeals] = useState<Deal[]>([]);
+  // HP-12: Task visibility on contacts
+  const [allTasks, setAllTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', jobTitle: '', companyId: '' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', jobTitle: '', companyId: '', description: '', doNotContact: false });
   const [saving, setSaving] = useState(false);
   const [deleteConfirmContact, setDeleteConfirmContact] = useState<Contact | null>(null);
   const [deleting, setDeleting] = useState(false);
+  
   
   // Pagination state
   const [totalCount, setTotalCount] = useState(0);
@@ -104,14 +110,18 @@ export default function Contacts() {
   const fetchContacts = useCallback(async () => {
     setLoading(true);
     try {
-      const [pagedResult, companiesData] = await Promise.all([
+      const [pagedResult, companiesData, dealsResult, tasksResult] = await Promise.all([
         getContactsPaged({ page: currentPage, pageSize, search: debouncedSearch || undefined }),
         getCompanies(),
+        getDealsPaged({ page: 1, pageSize: 100 }), // server clamps to max 100
+        getTasks(), // HP-12: Load all tasks for contact visibility
       ]);
       setContacts(pagedResult.items);
       setTotalCount(pagedResult.totalCount);
       setTotalPages(pagedResult.totalPages);
       setCompanies(companiesData);
+      setAllDeals(dealsResult.items);
+      setAllTasks(tasksResult);
     } catch (error) {
       console.error('Failed to fetch contacts:', error);
       toast.error('Failed to load contacts');
@@ -153,8 +163,13 @@ export default function Contacts() {
     }).length;
     
     // Calculate contacts added this week
-    // Note: Contact type doesn't have createdAtUtc, so we can't determine creation date
-    const thisWeek = 0;
+    const startOfWeek = new Date();
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const thisWeek = contacts.filter(c => {
+      if (!c.createdAtUtc) return false;
+      return new Date(c.createdAtUtc) >= startOfWeek;
+    }).length;
     
     // Inactive contacts (no activity in 90 days)
     const ninetyDaysAgo = new Date();
@@ -225,8 +240,9 @@ export default function Contacts() {
           comparison = aDate - bDate;
           break;
         case 'createdAt':
-          // Contact type doesn't have createdAtUtc, fallback to name sorting
-          comparison = a.name.localeCompare(b.name);
+          const aCreated = a.createdAtUtc ? new Date(a.createdAtUtc).getTime() : 0;
+          const bCreated = b.createdAtUtc ? new Date(b.createdAtUtc).getTime() : 0;
+          comparison = aCreated - bCreated;
           break;
       }
       return sortDirection === 'asc' ? comparison : -comparison;
@@ -250,7 +266,7 @@ export default function Contacts() {
 
   const openCreate = () => {
     setEditingContact(null);
-    setForm({ name: '', email: '', phone: '', jobTitle: '', companyId: '' });
+    setForm({ name: '', email: '', phone: '', jobTitle: '', companyId: '', description: '', doNotContact: false });
     setDialogOpen(true);
   };
 
@@ -262,6 +278,8 @@ export default function Contacts() {
       phone: contact.phone ?? '',
       jobTitle: contact.jobTitle ?? '',
       companyId: contact.companyId ?? '',
+      description: contact.description ?? '',
+      doNotContact: contact.doNotContact ?? false,
     });
     setDialogOpen(true);
   };
@@ -342,6 +360,11 @@ export default function Contacts() {
       .join('')
       .toUpperCase();
   };
+
+  // HP-9: Get deals for a contact
+  const getDealsForContact = (contactId: string) => allDeals.filter(d => d.contactId === contactId);
+  // HP-12: Get tasks for a contact
+  const getTasksForContact = (contactId: string) => allTasks.filter(t => t.contactId === contactId);
 
   // Get avatar gradient based on name
   const getAvatarGradient = (name: string) => {
@@ -434,7 +457,7 @@ export default function Contacts() {
                 <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
                 <div className="relative">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Activity className="w-5 h-5 text-emerald-600" />
+                    <ActivityIcon className="w-5 h-5 text-emerald-600" />
                   </div>
                   <p className="text-3xl font-bold text-emerald-600 tracking-tight">{contactStats.recentlyActive}</p>
                   <p className="text-xs font-medium text-emerald-600/70 mt-1">Active (30d)</p>
@@ -666,7 +689,7 @@ export default function Contacts() {
                 {/* Activity Filter */}
                 <div className="min-w-[160px]">
                   <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
-                    <Activity className="w-3.5 h-3.5" />
+                    <ActivityIcon className="w-3.5 h-3.5" />
                     Activity
                   </label>
                   <Select value={filterActivity} onValueChange={(v) => setFilterActivity(v as typeof filterActivity)}>
@@ -733,7 +756,7 @@ export default function Contacts() {
               )}
               {filterActivity !== 'all' && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-medium border border-emerald-400/30">
-                  <Activity className="w-3 h-3" />
+                  <ActivityIcon className="w-3 h-3" />
                   {filterActivity === 'recent' ? 'Recently Active' : 'Inactive'}
                   <button onClick={() => setFilterActivity('all')} className="ml-0.5 hover:text-emerald-100 transition-colors">
                     <X className="w-3 h-3" />
@@ -849,7 +872,10 @@ export default function Contacts() {
                       </div>
                       
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-slate-900 text-lg truncate group-hover:text-blue-600 transition-colors">
+                        <h3 
+                          className="font-semibold text-slate-900 text-lg truncate group-hover:text-blue-600 transition-colors cursor-pointer"
+                          onClick={() => navigate(`/contacts/${contact.id}`)}
+                        >
                           {contact.name}
                         </h3>
                         {contact.jobTitle && (
@@ -859,7 +885,13 @@ export default function Contacts() {
                           </p>
                         )}
                         {company && (
-                          <p className="text-sm text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
+                          <p 
+                            className="text-sm text-slate-500 truncate flex items-center gap-1.5 mt-0.5 hover:text-violet-600 cursor-pointer transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (contact.companyId) navigate(`/companies/${contact.companyId}`);
+                            }}
+                          >
                             <Building2 className="w-3.5 h-3.5 text-slate-400" />
                             {company}
                           </p>
@@ -923,6 +955,61 @@ export default function Contacts() {
                         </a>
                       )}
                     </div>
+
+                    {/* HP-9: Linked Deals */}
+                    {(() => {
+                      const contactDeals = getDealsForContact(contact.id);
+                      if (contactDeals.length === 0) return null;
+                      return (
+                        <div className="pt-3 border-t border-slate-100 mb-3">
+                          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                            <Briefcase className="w-3 h-3" />
+                            Deals ({contactDeals.length})
+                          </p>
+                          <div className="space-y-1.5">
+                            {contactDeals.slice(0, 3).map(deal => (
+                              <button
+                                key={deal.id}
+                                type="button"
+                                onClick={() => navigate(`/deals/${deal.id}`)}
+                                className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-left group/deal"
+                              >
+                                <span className="text-xs font-medium text-slate-700 truncate group-hover/deal:text-blue-600 transition-colors">{deal.name}</span>
+                                <span className="text-xs text-emerald-600 font-semibold shrink-0 ml-2">{deal.currency || '$'}{deal.value}</span>
+                              </button>
+                            ))}
+                            {contactDeals.length > 3 && (
+                              <p className="text-xs text-slate-400 px-2">+{contactDeals.length - 3} more</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* HP-12: Linked Tasks */}
+                    {(() => {
+                      const contactTasks = getTasksForContact(contact.id);
+                      if (contactTasks.length === 0) return null;
+                      return (
+                        <div className="pt-3 border-t border-slate-100 mb-3">
+                          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            Tasks ({contactTasks.length})
+                          </p>
+                          <div className="space-y-1.5">
+                            {contactTasks.slice(0, 3).map(task => (
+                              <div key={task.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${task.status === 'completed' ? 'bg-emerald-400' : task.status === 'in_progress' ? 'bg-blue-400' : 'bg-slate-300'}`} />
+                                <span className={`text-xs font-medium truncate ${task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{task.title}</span>
+                              </div>
+                            ))}
+                            {contactTasks.length > 3 && (
+                              <p className="text-xs text-slate-400 px-2">+{contactTasks.length - 3} more</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Footer with activity info */}
                     <div className="pt-3 border-t border-slate-100 flex items-center justify-between">

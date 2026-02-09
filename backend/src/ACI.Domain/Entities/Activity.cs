@@ -1,13 +1,13 @@
 namespace ACI.Domain.Entities;
 
 /// <summary>
-/// Activity (call, meeting, email, note) linked to contact or deal; timestamped.
+/// Activity (call, meeting, email, note, task, follow_up, deadline, video, demo) linked to contact, deal, or lead; timestamped.
 /// </summary>
 public class Activity : Common.BaseEntity
 {
     public Guid UserId { get; set; }
     public Guid? OrganizationId { get; set; }
-    /// <summary>Type: call, meeting, email, note.</summary>
+    /// <summary>Type: call, meeting, email, note, task, follow_up, deadline, video, demo.</summary>
     public string Type { get; set; } = "note";
     public string? Subject { get; set; }
     public string? Body { get; set; }

@@ -32,14 +32,16 @@ public class DealService : IDealService
         int page = 1, 
         int pageSize = 20, 
         string? search = null,
+        Guid? companyId = null,
+        Guid? contactId = null,
         CancellationToken ct = default)
     {
         _logger.LogDebug(
-            "Getting paged deals for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}'",
-            userId, organizationId, page, pageSize, search);
+            "Getting paged deals for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}', companyId {CompanyId}, contactId {ContactId}",
+            userId, organizationId, page, pageSize, search, companyId, contactId);
 
         var skip = (page - 1) * pageSize;
-        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, ct);
+        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, companyId, contactId, ct);
         
         var lastByDeal = await _activityRepository.GetLastActivityByDealIdsAsync(
             userId, organizationId, items.Select(d => d.Id), ct);
@@ -162,6 +164,8 @@ public class DealService : IDealService
             ContactId = request.ContactId,
             AssigneeId = request.AssigneeId,
             ExpectedCloseDateUtc = request.ExpectedCloseDateUtc,
+            Description = request.Description?.Trim(),
+            Probability = request.Probability,
             CreatedAtUtc = DateTime.UtcNow,
         };
 
@@ -196,6 +200,10 @@ public class DealService : IDealService
             return DomainErrors.Deal.NotFound;
         }
 
+        // Track stage change before applying update (HP-11)
+        var oldStageId = existing.DealStageId;
+        var oldStageName = existing.DealStage?.Name ?? existing.Stage;
+
         // Apply partial updates
         if (request.Name != null) existing.Name = request.Name.Trim();
         if (request.Value != null) existing.Value = request.Value.Trim();
@@ -203,11 +211,21 @@ public class DealService : IDealService
         if (request.Stage != null) existing.Stage = request.Stage.Trim();
         if (request.PipelineId != null) existing.PipelineId = request.PipelineId;
         if (request.DealStageId != null) existing.DealStageId = request.DealStageId;
-        if (request.CompanyId != null) existing.CompanyId = request.CompanyId;
-        if (request.ContactId.HasValue) existing.ContactId = request.ContactId;
+        if (request.CompanyId.HasValue) existing.CompanyId = request.CompanyId;
         if (request.AssigneeId.HasValue) existing.AssigneeId = request.AssigneeId;
         if (request.ExpectedCloseDateUtc != null) existing.ExpectedCloseDateUtc = request.ExpectedCloseDateUtc;
-        if (request.IsWon != null) existing.IsWon = request.IsWon;
+        if (request.Description != null) existing.Description = request.Description.Trim();
+        if (request.Probability.HasValue) existing.Probability = request.Probability;
+        if (request.ContactId.HasValue) existing.ContactId = request.ContactId;
+
+        // Handle close with reason (HP-8)
+        if (request.IsWon != null)
+        {
+            existing.IsWon = request.IsWon;
+            existing.ClosedAtUtc = DateTime.UtcNow;
+        }
+        if (request.ClosedReason != null) existing.ClosedReason = request.ClosedReason.Trim();
+        if (request.ClosedReasonCategory != null) existing.ClosedReasonCategory = request.ClosedReasonCategory.Trim();
 
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
@@ -220,6 +238,26 @@ public class DealService : IDealService
                 "Deal update failed unexpectedly for deal {DealId}",
                 id);
             return DomainErrors.General.ServerError;
+        }
+
+        // HP-11: Record stage change if the stage was actually changed
+        if (request.DealStageId != null && oldStageId != existing.DealStageId)
+        {
+            var stageChange = new DealStageChange
+            {
+                Id = Guid.NewGuid(),
+                DealId = id,
+                FromDealStageId = oldStageId,
+                FromStageName = oldStageName,
+                ToDealStageId = existing.DealStageId,
+                ToStageName = existing.DealStage?.Name ?? existing.Stage,
+                ChangedByUserId = userId,
+                ChangedAtUtc = DateTime.UtcNow,
+            };
+            await _repository.AddStageChangeAsync(stageChange, ct);
+            _logger.LogInformation(
+                "Stage change recorded for deal {DealId}: {From} → {To}",
+                id, oldStageName, stageChange.ToStageName);
         }
 
         _logger.LogInformation(
@@ -271,5 +309,20 @@ public class DealService : IDealService
             e.AssigneeId, 
             e.ExpectedCloseDateUtc, 
             e.IsWon, 
-            lastActivityAtUtc);
+            lastActivityAtUtc,
+            // New fields — HP-1
+            e.Description,
+            e.Probability,
+            // Enriched names — HP-4
+            e.Assignee?.Name,
+            e.Company?.Name,
+            e.Contact?.Name,
+            e.Pipeline?.Name,
+            e.DealStage?.Name,
+            e.CreatedAtUtc,
+            e.UpdatedAtUtc,
+            // Close reason — HP-8
+            e.ClosedReason,
+            e.ClosedReasonCategory,
+            e.ClosedAtUtc);
 }

@@ -12,6 +12,9 @@ public class Company : Common.BaseEntity
     public string? Domain { get; set; }
     public string? Industry { get; set; }
     public string? Size { get; set; }
+    public string? Description { get; set; }
+    public string? Website { get; set; }
+    public string? Location { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }

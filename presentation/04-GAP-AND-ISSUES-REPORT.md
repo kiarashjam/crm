@@ -20,7 +20,8 @@
 |----------|-------------------------|
 | **Docs updated** | **Doc 01** (§1.1 and §6) and **PROJECT_ASPECTS** (§8) now state that the frontend implements the full org flow. **Backend README** updated: CrmConnections removed; Organizations, Pipelines, DealStages, LeadSources, LeadStatuses, and convert added. Optional copy tweaks: Login footer, Pipeline empty state (see Minor copy). |
 | **Minor copy** | **Login** footer: "Optional: connect integrations after you sign in" — generic; could reword to "Set up your organization and brand in Settings." **Pipeline** empty state: "Create a deal or connect your CRM to see deals here" — "connect your CRM" implies external CRM; could reword to "Create a deal to see it here." Non-blocking. |
-| **Critical bugs** | None identified. Auth, org scoping, and route guards are consistent. |
+| **Critical bugs** | None identified in org infrastructure. Auth, org scoping, and route guards are consistent. |
+| **Cross-system issues** | **10 cross-cutting issues** with full step-by-step implementation plans. **🔴 CRITICAL (fix immediately):** CS-1 Global Search dead code, CS-4 Dead form fields, CS-6 Mock team stats, CS-7 Activity type mismatch. **🟠 HIGH (must do):** CS-3 No detail pages, CS-5 Missing timestamps, CS-8 No notifications, CS-10 Performance. **🟡 MEDIUM:** CS-2 Dead React Query hooks, CS-9 No soft delete. |
 
 ---
 
@@ -30,7 +31,7 @@
 2. [Backend — current state and gaps](#2-backend--current-state-and-gaps)
 3. [Frontend — current state and gaps](#3-frontend--current-state-and-gaps)
 4. [Bugs and issues in current code](#4-bugs-and-issues-in-current-code)
-5. [Recommendations](#5-recommendations)
+5. [Recommendations](#5-recommendations) (includes **Cross-System Issues** — CS-1 through CS-10)
 6. [Implementation status](#6-implementation-status)
 7. [Verification checklist](#7-verification-checklist-last-run)
 
@@ -204,6 +205,669 @@ From **01-HOW-THE-SYSTEM-WORKS-AND-SALES-USAGE.md**:
 1. **Frontend:** ~~Add route guard for protected routes~~ → **Done.** `RequireAuth` component and `ProtectedLayout` in `App.tsx` now wrap all app routes (organizations, onboarding, dashboard, send, leads, deals, tasks, activities, contacts, companies, templates, history, settings). Unauthenticated users are redirected to `/login` with `state.from` so you can redirect back after login if desired. Public routes: `/`, `/login`, `/help`, `/privacy`, `/terms`.
 2. **Frontend:** ~~In Help and Privacy, add one line about Cadence-only~~ → **Done.** Help has "Your data in Cadence"; Privacy states Cadence is the only CRM. Connection page removed; no "future integration" copy needed.
 3. **Docs:** In **02** and **03**, add a note: "Target product vision (see report 01) includes organizations and owner/invite flow; implemented in current release."
+
+### Cross-System Issues — Problems Spanning Multiple Entities
+
+The following issues are not specific to a single entity (Contact, Deal, Task, etc.) but span the entire CRM. They are discovered by reading ALL entity-specific reports side by side. Each issue references the specific entity reports where it was first identified.
+
+Each issue is classified as:
+- **🔴 CRITICAL (Must Fix Immediately)** — Production bugs, data loss, or active deception. Fix before any new feature work.
+- **🟠 HIGH PRIORITY (Must Do Before Release)** — Core CRM functionality without which the product is not competitive.
+- **🟡 MEDIUM (Should Do)** — Important improvements that enhance usability but the system functions without them.
+
+---
+
+#### CS-1. Global Search Is Dead Code 🔴 CRITICAL
+
+**Effort:** Low (1-2 days — backend already built) | **Affects:** ALL entities
+
+**What exists now:**
+- **Backend:** `GlobalSearchService.cs` searches across leads, contacts, companies, and deals in parallel. `SearchController` exposes `GET /api/search?q=`. Results are limited to 10 per entity type. **Fully functional.**
+- **Frontend:** `search.ts` defines `globalSearch(query)` that calls the endpoint. `index.ts` barrel-exports it. **No component in the entire frontend ever imports or calls this function.** `AppHeader.tsx` has no search bar. No search results dropdown exists anywhere.
+
+**Why this is critical:**
+1. **CRM unusable at scale**: With 500+ contacts, 200+ deals, 100+ companies, and 1000+ leads, users need a single search bar to find anything. Currently, they must navigate to the specific entity page and use that page's local search — 4 different places to look.
+2. **Complete implementation wasted**: Both backend (service, controller, DTOs, query logic) and frontend (API client, types) are fully built. The only missing piece is a search input in the header and a results dropdown — less than 100 lines of UI code.
+3. **Standard CRM expectation**: Every CRM (Salesforce, HubSpot, Pipedrive, Zoho) has a global search bar in the header. Its absence makes the product feel incomplete.
+
+**How to implement — step by step:**
+
+1. **Frontend — `AppHeader.tsx`**: Add a search input with debounce:
+   ```tsx
+   const [searchQuery, setSearchQuery] = useState('');
+   const [results, setResults] = useState<GlobalSearchResult | null>(null);
+   const [showDropdown, setShowDropdown] = useState(false);
+
+   const debouncedSearch = useMemo(() =>
+     debounce(async (q: string) => {
+       if (q.length < 2) { setResults(null); return; }
+       const data = await globalSearch(q);
+       setResults(data);
+       setShowDropdown(true);
+     }, 300),
+   []);
+   ```
+
+2. **Frontend — `AppHeader.tsx`**: Render search bar in the header (between logo and user menu):
+   ```tsx
+   <div className="relative flex-1 max-w-md mx-4">
+     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+     <Input
+       placeholder="Search contacts, companies, deals..."
+       value={searchQuery}
+       onChange={(e) => { setSearchQuery(e.target.value); debouncedSearch(e.target.value); }}
+       onFocus={() => results && setShowDropdown(true)}
+       className="pl-9"
+     />
+   </div>
+   ```
+
+3. **Frontend — Create `SearchResultsDropdown.tsx`**: Grouped results component:
+   ```tsx
+   <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border z-50 max-h-[400px] overflow-y-auto">
+     {results.contacts?.length > 0 && (
+       <div>
+         <h4 className="px-3 py-1.5 text-xs font-semibold text-slate-500 bg-slate-50">Contacts</h4>
+         {results.contacts.map(c => (
+           <Link key={c.id} to={`/contacts/${c.id}`} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50">
+             <User className="w-4 h-4" /><span>{c.name}</span><span className="text-xs text-slate-400">{c.email}</span>
+           </Link>
+         ))}
+       </div>
+     )}
+     {/* Repeat for Companies, Deals, Leads */}
+   </div>
+   ```
+
+4. **Frontend — Keyboard navigation**: Add `onKeyDown` handler for arrow keys + Enter to navigate results.
+
+5. **Frontend — Click outside**: Close dropdown when clicking outside using `useRef` + `useEffect` with click listener.
+
+6. **Test:** Type "Acme" in search bar. Verify dropdown shows contacts, companies, and deals matching "Acme." Click a result. Verify navigation to the correct entity page.
+
+**Referenced in:** Company report §18, Contact report §20.
+
+---
+
+#### CS-2. React Query Hooks Are Dead Code Across Multiple Entities 🟡 MEDIUM
+
+**Effort:** Medium (2-3 days per page) | **Affects:** Tasks, Companies, (partially Activities)
+
+**What exists now:**
+- `useCompanies.ts`: Defines `useCompanies()`, `useCreateCompany()`, `useUpdateCompany()`, `useDeleteCompany()` with optimistic updates. **Never imported by any component.** `Companies.tsx` uses `useState` + direct API calls.
+- `useTasks.ts`: Defines `useTasks()`, `useCreateTask()`, `useUpdateTaskStatus()` with optimistic updates. **Never imported by `Tasks.tsx`.** The main Tasks page uses `useState` + direct API calls.
+- `useActivities.ts`: Hooks are partially used by `LeadDetailModal` and `Pipeline` detail sheet, but the main `Activities.tsx` page does NOT use them.
+
+**Why this matters:**
+1. **Wasted engineering effort**: Significant work went into building optimistic update logic, cache invalidation, and error handling in these hooks. None of it runs.
+2. **Stale data across pages**: When Companies.tsx creates a company via direct API call, the `useCompanies()` cache in other components is unaware. If Contacts page uses `useCompanies()` for the company dropdown, it shows stale data until its own refetch.
+3. **Inconsistent architecture**: Some pages use React Query (standard, with caching and optimistic updates), others use raw `useState` (no caching, full re-fetch on every operation). This makes the codebase confusing for developers and creates inconsistent UX (some operations feel instant, others show loading spinners).
+
+**How to implement — step by step:**
+
+1. **Companies.tsx migration** (start here — smallest page):
+   - Replace all `useState` for companies data (`companies`, `loading`, `error`) with `const { data: companies, isLoading } = useCompanies()`
+   - Replace `createCompany()` direct call with `const createMutation = useCreateCompany()`
+   - Replace `updateCompany()` with `useUpdateCompany()` mutation
+   - Replace `deleteCompany()` with `useDeleteCompany()` mutation
+   - Remove `useEffect` that manually calls `getCompanies()` on mount
+   - Remove manual `setCompanies()` state updates after create/update/delete
+
+2. **Tasks.tsx migration** (largest page — do after Companies):
+   - Replace task loading with `useTasks()` hook
+   - Replace individual task mutations with the corresponding hooks
+   - The Kanban drag-and-drop `handleDragEnd` should use `useUpdateTaskStatus()` for optimistic reordering
+   - Test thoroughly — the Tasks page has the most complex interactions (Kanban DnD, bulk operations, context menus)
+
+3. **Activities.tsx migration:**
+   - Replace direct `getActivities()` call with `useActivities()` hook
+   - Replace `createActivity()` with `useCreateActivity()` mutation
+   - Ensure `LeadDetailModal` and `Pipeline` activity sections share the same cache via `queryKeys`
+
+4. **Verify cache consistency**: After migration, test cross-page scenarios:
+   - Create a company on Companies page → verify company dropdown on Contacts page shows it immediately
+   - Complete a task on Tasks page → verify task count on Dashboard updates
+
+5. **Cleanup**: Delete any remaining unused direct API call patterns that were replaced.
+
+6. **Test:** For each page: create, update, delete entities. Verify optimistic updates (instant UI response before server confirms). Verify error rollback (if server rejects, UI reverts).
+
+**Referenced in:** Company report §11, Task report §15, Activity report §12.
+
+---
+
+#### CS-3. No Detail Pages for Most Entities — Deep Linking Impossible 🟠 HIGH PRIORITY
+
+**Effort:** Medium (2-3 days per entity, 8-12 days total) | **Affects:** Contacts, Companies, Tasks
+
+**What exists now:**
+- **Contacts:** Grid of cards. No `/contacts/:id` route. Only way to see details is the edit dialog.
+- **Companies:** Grid of cards. No `/companies/:id` route. Company names have hover styling but no click handler.
+- **Tasks:** Kanban/List view. No `/tasks/:id` route. Only way to see details is `TaskDetailModal` (overlay, not a page).
+- **Deals:** Now has `/deals/:id` detail page (implemented in HP-6).
+
+**Why this is critical:**
+1. **Cannot share links**: Sales managers cannot send a colleague a link to a specific contact, company, deal, or task. Every reference requires verbal instructions: "Go to the Contacts page and search for Jane Smith."
+2. **Browser history useless**: Clicking back/forward never takes you to a specific record. All entity interactions happen on the same URL (`/contacts`, `/companies`, `/tasks`, `/deals`), making browser navigation useless for CRM work.
+3. **Bookmarking impossible**: Users cannot bookmark important records (key accounts, critical deals, high-priority tasks) for quick access.
+4. **Every competitor has this**: Salesforce, HubSpot, Pipedrive, Close, Zoho — all have deep-linkable detail pages for every entity. This is table-stakes CRM functionality.
+
+**How to implement — step by step:**
+
+**A. Contact Detail Page (`/contacts/:id`) — 2-3 days:**
+
+1. **Frontend — `App.tsx`**: Add route:
+   ```tsx
+   <Route path="/contacts/:id" element={<Suspense><ContactDetail /></Suspense>} />
+   ```
+
+2. **Frontend — Create `src/app/pages/ContactDetail.tsx`**:
+   - `useParams()` to get contact ID
+   - Fetch: `getContactById(id)`, `getActivitiesByContact(id)`, `getTasksByContact(id)`, `getDeals()` (filter by contactId)
+   - **Layout — Header**: Name (h1), email, phone, job title, company name (linked), DoNotContact badge
+   - **Layout — Tabs**: Overview (all fields + notes), Deals (linked deals with stage/value), Activities (timeline), Tasks (pending/completed)
+   - **Layout — Sidebar**: Company card, quick actions (Edit, Archive, Log Activity, Add Task, Enroll in Sequence)
+
+3. **Frontend — `Contacts.tsx`**: Make contact names clickable `<Link>`:
+   ```tsx
+   <Link to={`/contacts/${contact.id}`} className="font-medium hover:underline">{contact.name}</Link>
+   ```
+
+**B. Company Detail Page (`/companies/:id`) — 2-3 days:**
+
+1. **Frontend — `App.tsx`**: Add route: `<Route path="/companies/:id" element={<Suspense><CompanyDetail /></Suspense>} />`
+
+2. **Frontend — Create `src/app/pages/CompanyDetail.tsx`**:
+   - Fetch: company by ID, contacts by company, deals by company, activities (aggregated)
+   - **Layout — Header**: Company name, industry, domain, size, location
+   - **Layout — Tabs**: Overview, Contacts (list with add), Deals (list with stage/value), Activities (company-wide timeline)
+   - **Layout — Sidebar**: Company stats (total contacts, total deal value, active deals)
+
+3. **Frontend — `Companies.tsx`**: Make company names clickable `<Link>`.
+
+**C. Task Detail Page (`/tasks/:id`) — 2-3 days:**
+
+1. **Frontend — `App.tsx`**: Add route: `<Route path="/tasks/:id" element={<Suspense><TaskDetail /></Suspense>} />`
+
+2. **Frontend — Create `src/app/pages/TaskDetail.tsx`**:
+   - Fetch: task by ID, linked deal, linked contact, linked lead, assignee
+   - **Layout — Header**: Title (editable inline), status badge, priority flag, assignee avatar
+   - **Layout — Main content**: Description editor, Notes editor, Due Date + Reminder picker
+   - **Layout — Sidebar**: Linked items (deal, lead, contact — all clickable), Comments section (HP-11)
+   - **Quick actions**: Edit, Delete, Change Status, Change Priority, Assign
+
+3. **Frontend — Task cards**: Make task titles `<Link to={`/tasks/${task.id}`}>`.
+
+4. **Test for all three**: Click entity → detail page renders. Copy URL → paste in new tab → same entity loads. Click back → returns to list.
+
+**Referenced in:** Contact report HP-1, Company report HP-1, Deal report HP-6, Task report HP-10.
+
+---
+
+#### CS-4. Dead Form Fields — Data Silently Discarded 🔴 CRITICAL BUG
+
+**Effort:** Low (1-2 days total for all entities) | **Affects:** Deals, Companies, Contacts
+
+**What exists now:**
+- **Deals:** `DealFormState` has `description` and `probability` fields with full form UI. Backend `Deal.cs` has NEITHER property. User input is silently discarded.
+- **Companies:** Create/edit dialog renders Description, Website, and Location input fields. Backend `Company.cs` has none of these. User input is silently discarded.
+- **Contacts:** `ContactFormState` has `description` field. Backend `Contact.cs` has no `Description` property. UI doesn't render it (form uses inline state), but the dead type creates confusion.
+
+**Why this is critical:**
+1. **Trust destruction**: Users type into visible, active form fields, click Save, see a success message, and believe their data was stored. When they return later and find the fields empty, they lose trust in the entire system. This is the most severe category of UX failure.
+2. **Widespread**: This affects 3 of 5 core entities. It's not a one-off bug — it's a systemic pattern where frontend forms were built before backend support.
+3. **Simple to fix**: Either add the backend fields (recommended — all are valuable CRM data) or remove the frontend form fields to prevent confusion.
+
+**How to implement — step by step:**
+
+**A. Deals — Description & Probability (half day):**
+1. `Deal.cs`: Add `string? Description { get; set; }` and `int? Probability { get; set; }`
+2. `DealConfiguration.cs`: `.HasMaxLength(4000)` for Description, no config needed for Probability
+3. `DealDto.cs`: Add `Description` and `Probability` to the record
+4. `CreateDealRequest.cs` / `UpdateDealRequest.cs`: Add both fields with validation (`[StringLength(4000)]`, `[Range(0,100)]`)
+5. `DealService.cs`: Map in `CreateAsync`, `UpdateAsync`, and `Map()`
+6. EF Migration: `dotnet ef migrations add AddDealDescriptionProbability`
+7. Frontend `deals.ts`: Include `description` and `probability` in create/update API calls
+8. Test: Create deal with description + probability → refresh → verify both persist
+
+**B. Companies — Description, Website, Location (half day):**
+1. `Company.cs`: Add `string? Description`, `string? Website`, `string? Location`
+2. `CompanyConfiguration.cs`: Max lengths (4000, 500, 500 respectively)
+3. `CompanyDto.cs`: Add all three fields
+4. `CreateCompanyRequest.cs` / `UpdateCompanyRequest.cs`: Add with validation
+5. `CompanyService.cs`: Map in Create, Update, and Map()
+6. EF Migration: `dotnet ef migrations add AddCompanyDescriptionWebsiteLocation`
+7. Frontend `companies.ts`: Include in create/update API calls
+8. Test: Create company with all three fields → refresh → verify all persist
+
+**C. Contacts — Description (few hours):**
+1. `Contact.cs`: Add `string? Description { get; set; }`
+2. `ContactDto.cs`, `CreateContactRequest.cs`, `UpdateContactRequest.cs`: Add `Description`
+3. `ContactService.cs`: Map in all methods
+4. EF Migration: `dotnet ef migrations add AddContactDescription`
+5. Frontend: Add `<Textarea>` for description in contact create/edit form
+6. Test: Add description to contact → refresh → verify persists
+
+**Referenced in:** Deal report HP-1/A6/A20-A21, Company report HP-2, Contact report HP-7.
+
+---
+
+#### CS-5. `CreatedAtUtc` and `UpdatedAtUtc` Missing from DTOs 🟠 HIGH PRIORITY
+
+**Effort:** Low (half day for all entities) | **Affects:** Contacts, Companies, Deals
+
+**What exists now:**
+- All backend entities (`Contact.cs`, `Company.cs`, `Deal.cs`) have `CreatedAtUtc` and `UpdatedAtUtc` properties on the domain entity.
+- `ContactDto`, `CompanyDto`, and `DealDto` do NOT include these timestamps.
+- Frontend types have no `createdAtUtc` or `updatedAtUtc` fields.
+
+**Consequences:**
+- **"This Week" stat permanently zero**: Companies and Contacts pages have "This Week" stat cards hardcoded to `0` with code comments explaining `createdAtUtc` is unavailable.
+- **"Newest First" sort broken**: Sorting by "Newest First" on Contacts and Companies pages silently falls back to alphabetical order because there's no date to sort by.
+- **No audit visibility**: Users cannot see when a record was created or last modified. No "Added 3 days ago" or "Last updated by Sarah on March 5th."
+
+**How to implement — step by step:**
+
+1. **Backend — Update DTOs** (all three at once):
+   ```csharp
+   // ContactDto.cs — add:
+   public DateTime CreatedAtUtc { get; init; }
+   public DateTime? UpdatedAtUtc { get; init; }
+
+   // CompanyDto.cs — add:
+   public DateTime CreatedAtUtc { get; init; }
+   public DateTime? UpdatedAtUtc { get; init; }
+
+   // DealDto.cs — add (if not already done in HP-4):
+   public DateTime CreatedAtUtc { get; init; }
+   public DateTime? UpdatedAtUtc { get; init; }
+   ```
+
+2. **Backend — Update Map() functions** in `ContactService.cs`, `CompanyService.cs`, `DealService.cs`:
+   ```csharp
+   CreatedAtUtc = entity.CreatedAtUtc,
+   UpdatedAtUtc = entity.UpdatedAtUtc
+   ```
+
+3. **Frontend — Update TypeScript types** in `types.ts`:
+   ```typescript
+   // Add to Contact, Company, Deal interfaces:
+   createdAtUtc: string;
+   updatedAtUtc?: string;
+   ```
+
+4. **Frontend — Fix "This Week" stats** on Contacts and Companies pages:
+   ```typescript
+   const thisWeek = contacts.filter(c => {
+     const created = new Date(c.createdAtUtc);
+     const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+     return created >= weekAgo;
+   }).length;
+   ```
+
+5. **Frontend — Fix "Newest First" sorting**:
+   ```typescript
+   case 'newest':
+     return new Date(b.createdAtUtc).getTime() - new Date(a.createdAtUtc).getTime();
+   ```
+
+6. **Frontend — Display dates**: Show "Added {date}" or "Updated {date}" on entity cards using `formatRelativeTime()`.
+
+7. **Test:** Create a new contact. Verify "This Week" stat increments. Sort by "Newest First" — verify new contact appears first. Check card shows creation date.
+
+**Referenced in:** Contact report HP-3, Company report HP-3, Deal report HP-4.
+
+---
+
+#### CS-6. Team Member Stats Use Mock/Random Data 🔴 CRITICAL
+
+**Effort:** Low-Medium (1-2 days) | **Affects:** Team page
+
+**What exists now:**
+- `MemberDetailPanel.tsx` shows "Activities Logged" per team member as `Math.floor(Math.random() * 200) + 50` — a **random number** regenerated on every render.
+- `MemberDetailPanel.tsx` shows "Tasks Completed" as `Math.floor(Math.random() * 50) + 10` — also random.
+
+**Why this is critical:**
+1. **Active deception**: Managers making decisions based on these numbers (performance reviews, coaching sessions, workload balancing) are using **random data**. A manager might praise a rep for "187 activities" that is actually a random number.
+2. **Erodes trust in all metrics**: Once users discover any metric is fake, they question everything: "Is pipeline value real? Are deal counts accurate?"
+3. **Simple to fix**: Replace `Math.random()` with actual queries. The backend already has activity and task data that can be counted per user.
+
+**How to implement — step by step:**
+
+1. **Backend — Create `TeamStatsDto`**:
+   ```csharp
+   public record TeamMemberStatsDto(
+       Guid UserId,
+       int ActivitiesLogged,
+       int TasksCompleted,
+       int TasksPending,
+       int DealsWon,
+       int DealsActive,
+       decimal PipelineValue
+   );
+   ```
+
+2. **Backend — Add endpoint** to `TeamController.cs` (or `OrganizationController.cs`):
+   ```csharp
+   [HttpGet("{userId}/stats")]
+   public async Task<ActionResult<TeamMemberStatsDto>> GetMemberStats(Guid userId)
+   {
+       var activities = await _activityRepo.CountByUserAsync(userId, orgId);
+       var tasksCompleted = await _taskRepo.CountByStatusAndUserAsync(userId, orgId, TaskStatus.Completed);
+       var tasksPending = await _taskRepo.CountByStatusAndUserAsync(userId, orgId, TaskStatus.InProgress);
+       var dealsWon = await _dealRepo.CountWonByUserAsync(userId, orgId);
+       var dealsActive = await _dealRepo.CountActiveByUserAsync(userId, orgId);
+       var pipelineValue = await _dealRepo.SumActiveValueByUserAsync(userId, orgId);
+       return Ok(new TeamMemberStatsDto(userId, activities, tasksCompleted, tasksPending, dealsWon, dealsActive, pipelineValue));
+   }
+   ```
+
+3. **Backend — Add repository methods** for each count query (simple `COUNT(*)` / `SUM()` with `WHERE UserId = @userId AND OrganizationId = @orgId`).
+
+4. **Frontend — `MemberDetailPanel.tsx`**: Replace random numbers:
+   ```typescript
+   const [stats, setStats] = useState<TeamMemberStats | null>(null);
+   useEffect(() => {
+     getMemberStats(member.userId).then(setStats);
+   }, [member.userId]);
+
+   // Replace: Math.floor(Math.random() * 200) + 50
+   // With: stats?.activitiesLogged ?? '—'
+   ```
+
+5. **Frontend — API**: Add `getMemberStats(userId)` function in `team.ts`.
+
+6. **Interim fix (if backend takes time)**: Replace `Math.random()` with `'—'` or `'N/A'` immediately. This is a 5-minute change that stops active deception:
+   ```tsx
+   <span className="text-lg font-bold">—</span>
+   <span className="text-xs text-slate-400">Coming soon</span>
+   ```
+
+7. **Test:** View team member panel. Verify stats show real numbers matching actual activity/task counts. Have member log an activity → verify count increments.
+
+**Referenced in:** Activity report HP-3, Task report (MemberDetailPanel mock data).
+
+---
+
+#### CS-7. Activity Type Mismatch Breaks Multiple Systems 🔴 CRITICAL BUG
+
+**Effort:** 5 minutes | **Affects:** Activities page, Pipeline deal activities, Tasks activity logging
+
+**What exists now:**
+- Frontend defines 7 activity types: `call`, `meeting`, `email`, `note`, `video`, `demo`, `task`.
+- Backend only accepts 4: `call`, `meeting`, `email`, `note`.
+- **Activities page**: Users selecting "Video Call" or "Demo" get a 400 error.
+- **Tasks page**: `logTaskActivity()` creates activities with `type: 'task'`. Since `'task'` is rejected by the backend, EVERY task action that attempts to log an activity **silently fails**. The entire task activity audit trail is broken.
+- **Pipeline page**: Deal detail sheet activity form includes "Task" as a type option, which will also fail.
+
+**Impact:** This single mismatch causes failures across 3 different pages. The task activity logging failure is especially insidious because it's silent — no error shown to the user, the activity just never appears.
+
+**How to implement — step by step:**
+
+1. **Backend — `ActivityService.cs`**: Expand the `ValidActivityTypes` set (1 line change):
+   ```csharp
+   private static readonly HashSet<string> ValidActivityTypes = new(StringComparer.OrdinalIgnoreCase)
+   {
+       "call", "meeting", "email", "note", "video", "demo", "task"
+   };
+   ```
+
+2. **Backend — `CreateActivityRequest.cs`**: Update the regex validation (if present):
+   ```csharp
+   [RegularExpression("^(call|meeting|email|note|video|demo|task)$", ErrorMessage = "Invalid activity type")]
+   public string Type { get; init; } = string.Empty;
+   ```
+
+3. **Test from all three pages:**
+   - Activities page: Log a "video" activity → verify success (no 400 error)
+   - Activities page: Log a "demo" activity → verify success
+   - Pipeline deal detail: Log a "task" activity → verify success
+   - Tasks page: Complete a task → verify the auto-logged activity appears in the activities list
+
+4. **Verify**: Call `GET /api/activities` and confirm all 7 activity types are stored and returned correctly.
+
+**Referenced in:** Activity report HP-1, Deal report A18/HP-2, Task report (logTaskActivity).
+
+---
+
+#### CS-8. No Notification / Email System 🟠 HIGH PRIORITY (SYSTEMIC)
+
+**Effort:** Phase 1: 1 hour | Phase 2: 1-2 weeks | **Affects:** Tasks, Deals, Leads, Settings
+
+**What exists now:**
+- `UserSettings.cs` defines: `EmailOnTaskDue`, `EmailOnDealUpdate`, `EmailOnNewLead` — all with UI toggles in Settings.
+- **No email service exists**: No SMTP configuration, no SendGrid/Mailgun integration, no email sending code, no `IEmailService` interface.
+- **No background job**: No `BackgroundService` or Hangfire/Quartz jobs to check for due tasks, deal changes, or new leads.
+- Frontend `NotificationsSection.tsx` renders professional toggle switches that control absolutely nothing.
+
+**Impact:** The entire notification system is a **facade**. Users enable notifications expecting them to work, then miss task deadlines and deal updates because no notification is ever sent. This is one of the most fundamental CRM capabilities — without notifications, the system is purely a data entry tool, not an active sales management tool.
+
+**How to implement — step by step (phased):**
+
+**Phase 1 — Stop the Deception (1 hour):**
+
+1. **Frontend — `NotificationsSection.tsx`**: Disable all toggles and add "Coming soon" labels:
+   ```tsx
+   <div className="flex items-center gap-2 opacity-60">
+     <Switch disabled checked={false} />
+     <Label>Email when a task is due</Label>
+     <Badge variant="outline" className="text-xs">Coming soon</Badge>
+   </div>
+   ```
+
+2. Repeat for all three toggles (`EmailOnTaskDue`, `EmailOnDealUpdate`, `EmailOnNewLead`).
+
+3. Add a note at the top: "Email notifications will be available in a future release. In-app notifications coming soon."
+
+**Phase 2 — Task Reminders (1-2 weeks):**
+
+1. **Backend — Create `IEmailService` interface:**
+   ```csharp
+   public interface IEmailService
+   {
+       Task SendTaskDueReminderAsync(TaskItem task, User user);
+       Task SendTaskAssignedAsync(TaskItem task, User assignee, User assigner);
+       Task SendDealStageChangedAsync(Deal deal, string fromStage, string toStage, User assignee);
+   }
+   ```
+
+2. **Backend — Create `SmtpEmailService.cs`** implementing `IEmailService`:
+   ```csharp
+   public class SmtpEmailService : IEmailService
+   {
+       private readonly SmtpClient _client;
+       public SmtpEmailService(IOptions<EmailSettings> settings) { /* configure SMTP */ }
+
+       public async Task SendTaskDueReminderAsync(TaskItem task, User user)
+       {
+           var message = new MailMessage(
+               from: _settings.FromAddress,
+               to: user.Email,
+               subject: $"Task Due: {task.Title}",
+               body: $"Your task '{task.Title}' is due {task.DueDateUtc:MMM d}."
+           );
+           await _client.SendMailAsync(message);
+       }
+   }
+   ```
+
+3. **Backend — `appsettings.json`**: Add email configuration:
+   ```json
+   "Email": {
+     "SmtpHost": "smtp.sendgrid.net",
+     "SmtpPort": 587,
+     "FromAddress": "notifications@cadencecrm.com",
+     "FromName": "Cadence CRM",
+     "ApiKey": "SG.xxxx"
+   }
+   ```
+
+4. **Backend — Create `TaskReminderBackgroundService.cs`**: Background service that runs every 5 minutes, checks for tasks with `ReminderDateUtc <= now AND ReminderSentAtUtc IS NULL`, and sends emails.
+
+5. **Backend — `TaskItem.cs`**: Add `DateTime? ReminderSentAtUtc` to prevent duplicate sends.
+
+6. **Backend — `Program.cs`**: Register services:
+   ```csharp
+   builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("Email"));
+   builder.Services.AddSingleton<IEmailService, SmtpEmailService>();
+   builder.Services.AddHostedService<TaskReminderBackgroundService>();
+   ```
+
+7. **Frontend**: Re-enable the `EmailOnTaskDue` toggle, remove "Coming soon" badge.
+
+**Phase 3 — Full Notifications (additional 1-2 weeks):**
+
+1. Deal assignment: When `AssigneeId` changes on a deal, send email to new assignee
+2. Deal stage change: When `DealStageId` changes, notify assignee
+3. New lead: When a lead is created, notify assigned team member
+4. In-app notifications: Add `Notification` entity, notification bell icon in header, notification dropdown
+
+**Referenced in:** Task report HP-2/HP-3, Deal report (emailOnDealUpdate dead setting).
+
+---
+
+#### CS-9. No Soft Delete / Archive for Most Entities 🟡 MEDIUM
+
+**Effort:** Medium (1-2 days per entity) | **Affects:** Deals, Companies, Tasks, Activities
+
+**What exists now:**
+- **Contacts:** Full archive/unarchive support (entity fields, backend endpoints, frontend API, React Query hooks). **But:** UI buttons are missing — only hard delete exposed.
+- **Deals:** No archive. Only hard delete. `DealRepository.DeleteAsync` is permanent.
+- **Companies:** No archive. Hard delete with FK nullification on related entities.
+- **Tasks:** Has `Cancelled` status but no archive. Cancelled tasks stay visible in the main list.
+- **Activities:** Hard delete only. No archive. Deleted activities are permanently lost.
+
+**Why this matters:**
+1. **Accidental data loss**: A user accidentally deleting a deal with 50+ linked activities loses all that data permanently. No recovery, no undo, no recycle bin.
+2. **Regulatory requirements**: In some industries, records cannot be permanently deleted for compliance reasons. Soft delete / archive satisfies "mark as inactive" while preserving data.
+3. **Historical analysis**: Deleted records are lost from analytics. If a company is deleted, all historical pipeline analysis involving that company becomes incomplete.
+
+**How to implement — step by step:**
+
+1. **Backend — Add fields to each entity** (Deal, Company, TaskItem, Activity):
+   ```csharp
+   public bool IsArchived { get; set; } = false;
+   public DateTime? ArchivedAtUtc { get; set; }
+   public Guid? ArchivedByUserId { get; set; }
+   ```
+
+2. **Backend — Update repositories**: Add `IsArchived = false` filter to all default queries:
+   ```csharp
+   // In GetPagedAsync, SearchAsync, etc.:
+   .Where(e => !e.IsArchived)
+   ```
+
+3. **Backend — Add archive/unarchive endpoints** for each controller:
+   ```csharp
+   [HttpPost("{id}/archive")]
+   public async Task<ActionResult> Archive(Guid id) { /* set IsArchived = true */ }
+
+   [HttpPost("{id}/unarchive")]
+   public async Task<ActionResult> Unarchive(Guid id) { /* set IsArchived = false */ }
+
+   [HttpGet("archived")]
+   public async Task<ActionResult<List<EntityDto>>> GetArchived() { /* return where IsArchived = true */ }
+   ```
+
+4. **Backend — EF Migration**: `dotnet ef migrations add AddSoftDeleteAllEntities`
+
+5. **Frontend — Replace "Delete" with "Archive"** in dropdown menus for Deals, Companies:
+   ```tsx
+   <DropdownMenuItem onClick={() => archiveEntity(entity.id)}>
+     <Archive className="w-4 h-4 mr-2" />
+     Archive
+   </DropdownMenuItem>
+   ```
+
+6. **Frontend — Add "Show Archived" toggle** on each entity page (Contacts, Companies, Pipeline, Tasks):
+   ```tsx
+   <div className="flex items-center gap-2">
+     <Switch checked={showArchived} onCheckedChange={setShowArchived} />
+     <Label className="text-sm">Show archived</Label>
+   </div>
+   ```
+
+7. **Frontend — Archived entity styling**: Grey out archived entities, show "Archived" badge, and "Unarchive" action.
+
+8. **Frontend — Contact page**: Wire the existing `useArchiveContact` / `useUnarchiveContact` hooks to the UI dropdown (already built, just needs a button).
+
+9. **Test:** Archive a deal. Verify it disappears from Pipeline. Toggle "Show Archived." Verify it appears greyed out. Unarchive. Verify it returns to normal view.
+
+**Referenced in:** Contact report HP-5.
+
+---
+
+#### CS-10. Performance — Pages Load ALL Related Data Client-Side 🟠 HIGH PRIORITY
+
+**Effort:** Medium (2-3 days per page) | **Affects:** Companies, Pipeline, Contacts, Tasks pages
+
+**What exists now:**
+- **Companies.tsx:** Loads ALL contacts (`getContacts()`) and ALL deals (`getDeals()`) on every page load just to compute per-company counts.
+- **Pipeline.tsx:** Loads ALL deals (`getDeals()`), ALL contacts (`getContacts()`), ALL companies (`getCompanies()`) for name lookups.
+- **Tasks.tsx:** Loads ALL tasks (see Task HP-1), ALL deals, ALL leads, ALL contacts, ALL org members.
+- **Contacts.tsx:** Loads ALL contacts and ALL companies.
+
+**Why this matters:**
+1. **Won't scale past ~500 records per entity**: At 1000+ contacts, 500+ deals, and 200+ companies, these pages will download megabytes of JSON on every load. Mobile users will experience multi-second load times.
+2. **Bandwidth waste**: The Companies page downloads ALL contacts/deals just to count how many belong to each company. This could be a single SQL `COUNT(*)` aggregation on the backend.
+3. **Memory pressure**: Keeping thousands of records in React state across multiple pages causes high memory usage, especially on lower-end devices.
+
+**How to implement — step by step:**
+
+**A. Companies Page — Server-Side Stats (1 day):**
+
+1. **Backend — Create `CompanyWithStatsDto`**:
+   ```csharp
+   public record CompanyWithStatsDto(
+       Guid Id, string Name, string? Domain, string? Industry, string? Size,
+       int ContactCount, int DealCount, decimal TotalDealValue,
+       DateTime CreatedAtUtc, DateTime? UpdatedAtUtc
+   );
+   ```
+
+2. **Backend — `CompanyService.cs`**: New method with SQL aggregation:
+   ```csharp
+   public async Task<List<CompanyWithStatsDto>> GetWithStatsAsync(Guid orgId) =>
+       await _context.Companies
+           .Where(c => c.OrganizationId == orgId)
+           .Select(c => new CompanyWithStatsDto(
+               c.Id, c.Name, c.Domain, c.Industry, c.Size,
+               c.Contacts.Count(),
+               c.Deals.Count(),
+               c.Deals.Sum(d => d.Value),
+               c.CreatedAtUtc, c.UpdatedAtUtc
+           )).ToListAsync();
+   ```
+
+3. **Backend — Endpoint**: `GET /api/companies/with-stats`
+
+4. **Frontend — `Companies.tsx`**: Replace separate `getContacts()` + `getDeals()` calls with single `getCompaniesWithStats()`. Use `company.contactCount` and `company.dealCount` directly instead of filtering arrays.
+
+**B. Pipeline Page — Enriched DTOs (already done in Deal HP-4):**
+
+The `DealDto` enrichment (adding `contactName`, `companyName`, `assigneeName`) eliminates the need to load all contacts and companies. Verify `Pipeline.tsx` uses `deal.contactName` instead of `contacts.find(c => c.id === deal.contactId)?.name`.
+
+**C. Tasks Page — Server-Side Filtering (1-2 days):**
+
+1. **Frontend — `Tasks.tsx`**: Replace `getTasks()` (gets 20 items) with `getTasksAll()` or server-side filtered endpoint:
+   ```typescript
+   // Instead of loading ALL tasks and filtering client-side:
+   const tasks = await getTasksPaged({ status: statusFilter, priority: priorityFilter, search: query, pageSize: 100 });
+   ```
+
+2. **Backend**: Ensure `GET /api/tasks` supports `status`, `priority`, `search` query parameters for server-side filtering.
+
+3. **Frontend**: Remove client-side filter logic that duplicates server-side capability.
+
+**D. Contacts Page — Paginated Loading (1 day):**
+
+The Contacts page already uses `getContactsPaged()` which is correct. Verify it doesn't also load all companies unnecessarily. If companies are only needed for the dropdown, fetch lazily on dialog open rather than on page load.
+
+5. **Test per page:** With 1000+ records in the database, verify each page loads in under 2 seconds. Verify network tab shows reasonable payload sizes (< 100KB per page load).
+
+**Referenced in:** Company report HP-7, Deal report HP-4/HP-5, Task report HP-1.
+
+---
 
 ### Next: toward a production-grade team CRM
 

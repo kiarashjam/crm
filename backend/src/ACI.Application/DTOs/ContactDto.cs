@@ -12,4 +12,8 @@ public record ContactDto(
     DateTime? ConvertedAtUtc = null,
     bool IsArchived = false,
     bool DoNotContact = false,
-    string? PreferredContactMethod = null);
+    string? PreferredContactMethod = null,
+    string? CompanyName = null,
+    DateTime? CreatedAtUtc = null,
+    DateTime? UpdatedAtUtc = null,
+    string? Description = null);

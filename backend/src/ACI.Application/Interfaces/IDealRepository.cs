@@ -2,6 +2,8 @@ using ACI.Domain.Entities;
 
 namespace ACI.Application.Interfaces;
 
+// IDealRepository.cs
+
 public interface IDealRepository
 {
     // Paginated methods
@@ -11,6 +13,8 @@ public interface IDealRepository
         int skip, 
         int take, 
         string? search = null,
+        Guid? companyId = null,
+        Guid? contactId = null,
         CancellationToken ct = default);
     
     Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, CancellationToken ct = default);
@@ -26,4 +30,8 @@ public interface IDealRepository
     Task<Deal> AddAsync(Deal deal, CancellationToken ct = default);
     Task<Deal?> UpdateAsync(Deal deal, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
+    
+    // Stage change history (HP-11)
+    Task AddStageChangeAsync(DealStageChange change, CancellationToken ct = default);
+    Task<IReadOnlyList<DealStageChange>> GetStageChangesAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

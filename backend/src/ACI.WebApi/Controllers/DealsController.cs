@@ -33,6 +33,8 @@ public class DealsController : ControllerBase
     /// <param name="page">Page number (1-based). Default is 1.</param>
     /// <param name="pageSize">Number of items per page. Default is 20, max 100.</param>
     /// <param name="search">Optional search query.</param>
+    /// <param name="companyId">Optional company ID to filter deals by.</param>
+    /// <param name="contactId">Optional contact ID to filter deals by.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of deals.</returns>
     /// <response code="200">Returns the paginated list of deals.</response>
@@ -44,10 +46,14 @@ public class DealsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
+        [FromQuery] Guid? companyId = null,
+        [FromQuery] Guid? contactId = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
+
+        pageSize = Math.Clamp(pageSize, 1, 100);
         
         var result = await _dealService.GetDealsPagedAsync(
             userId.Value, 
@@ -55,6 +61,8 @@ public class DealsController : ControllerBase
             page,
             pageSize,
             search,
+            companyId,
+            contactId,
             ct);
         
         return Ok(result);

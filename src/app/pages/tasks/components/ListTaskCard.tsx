@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import {
   Calendar,
   Flag,
@@ -7,6 +8,11 @@ import {
   Pencil,
   Trash2,
   Circle,
+  User,
+  Briefcase,
+  UserX,
+  LinkIcon,
+  Unlink,
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import {
@@ -22,7 +28,7 @@ import {
   DropdownMenuRadioItem,
 } from '@/app/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
-import type { TaskItem, TaskStatusType, TaskPriorityType, Contact } from '@/app/api/types';
+import type { TaskItem, TaskStatusType, TaskPriorityType, Contact, Lead, Deal } from '@/app/api/types';
 
 export interface ListTaskCardProps {
   task: TaskItem;
@@ -37,6 +43,16 @@ export interface ListTaskCardProps {
   getInitials: (name: string) => string;
   formatDue: (iso: string | undefined) => string | null;
   onViewDetails?: (task: TaskItem) => void;
+  // HP-6: Callbacks for deal/lead/assignee actions from dropdown
+  onAssigneeChange?: (task: TaskItem, assigneeId: string | null) => void;
+  onDealChange?: (task: TaskItem, dealId: string | null) => void;
+  onLeadChange?: (task: TaskItem, leadId: string | null) => void;
+  leads?: Lead[];
+  deals?: Deal[];
+  // HP-9: Bulk selection
+  isSelected?: boolean;
+  onSelectionToggle?: (taskId: string) => void;
+  bulkMode?: boolean;
 }
 
 export function ListTaskCard({
@@ -47,10 +63,21 @@ export function ListTaskCard({
   handlePriorityChange,
   statusConfig,
   priorityConfig,
+  contacts,
+  members,
   getInitials,
   formatDue,
   onViewDetails,
+  onAssigneeChange,
+  onDealChange,
+  onLeadChange,
+  leads = [],
+  deals = [],
+  isSelected,
+  onSelectionToggle,
+  bulkMode,
 }: ListTaskCardProps) {
+  const navigate = useNavigate();
   const priority = priorityConfig[task.priority || 'none'];
   const status = statusConfig[task.status || 'todo'];
   const now = new Date();
@@ -58,12 +85,16 @@ export function ListTaskCard({
   const StatusIcon = status.icon;
 
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't trigger if clicking on the dropdown menu or buttons
     const target = e.target as HTMLElement;
     if (target.closest('[data-radix-collection-item]') || 
         target.closest('button') || 
         target.closest('[role="menu"]') ||
-        target.closest('[data-state]')) {
+        target.closest('[data-state]') ||
+        target.closest('[data-badge-link]')) {
+      return;
+    }
+    if (bulkMode && onSelectionToggle) {
+      onSelectionToggle(task.id);
       return;
     }
     if (onViewDetails) {
@@ -74,13 +105,28 @@ export function ListTaskCard({
   return (
     <div 
       onClick={handleCardClick}
-      className={`group relative bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden cursor-pointer ${
-        task.status === 'completed' || task.status === 'cancelled' ? 'opacity-60' : ''
-      }`}
+      className={`group relative bg-white rounded-xl border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden cursor-pointer ${
+        isSelected ? 'border-orange-400 ring-2 ring-orange-200 bg-orange-50/30' : 'border-slate-200'
+      } ${task.status === 'completed' || task.status === 'cancelled' ? 'opacity-60' : ''}`}
     >
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${priority.borderColor.replace('border-l-', 'bg-')}`} />
 
       <div className="flex items-start gap-3 p-4 pl-5">
+        {/* HP-9: Bulk selection checkbox */}
+        {bulkMode && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onSelectionToggle?.(task.id); }}
+            className={`mt-0.5 shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+              isSelected 
+                ? 'bg-orange-500 border-orange-500 text-white' 
+                : 'border-slate-300 hover:border-orange-400'
+            }`}
+          >
+            {isSelected && <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+          </button>
+        )}
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="mt-0.5 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 transition-transform hover:scale-110">
@@ -111,12 +157,14 @@ export function ListTaskCard({
                   <MoreHorizontal className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuItem onClick={() => openEdit(task)}>
                   <Pencil className="w-4 h-4 mr-2" />
                   Edit task
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+
+                {/* HP-6: Priority submenu */}
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
                     <Flag className="w-4 h-4 mr-2" />
@@ -131,6 +179,91 @@ export function ListTaskCard({
                     </DropdownMenuRadioGroup>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
+
+                {/* HP-6: Assignee submenu */}
+                {onAssigneeChange && members.length > 0 && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <User className="w-4 h-4 mr-2" />
+                      Assignee
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="max-h-48 overflow-y-auto">
+                      <DropdownMenuItem onClick={() => onAssigneeChange(task, null)}>
+                        <UserX className="w-4 h-4 mr-2 text-slate-400" />
+                        Unassign
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      {members.map((m) => (
+                        <DropdownMenuItem key={m.userId} onClick={() => onAssigneeChange(task, m.userId)}>
+                          <Avatar className="w-4 h-4 mr-2">
+                            <AvatarFallback className="text-[8px] bg-orange-100 text-orange-700">
+                              {getInitials(m.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="truncate">{m.name}</span>
+                          {task.assigneeId === m.userId && <span className="ml-auto text-orange-500 text-xs">current</span>}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
+
+                {/* HP-6: Deal link submenu */}
+                {onDealChange && deals.length > 0 && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Briefcase className="w-4 h-4 mr-2" />
+                      Link Deal
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="max-h-48 overflow-y-auto">
+                      {task.dealId && (
+                        <>
+                          <DropdownMenuItem onClick={() => onDealChange(task, null)}>
+                            <Unlink className="w-4 h-4 mr-2 text-slate-400" />
+                            Unlink deal
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
+                      {deals.map((d) => (
+                        <DropdownMenuItem key={d.id} onClick={() => onDealChange(task, d.id)}>
+                          <LinkIcon className="w-4 h-4 mr-2 text-teal-500" />
+                          <span className="truncate">{d.name}</span>
+                          {task.dealId === d.id && <span className="ml-auto text-teal-500 text-xs">linked</span>}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
+
+                {/* HP-6: Lead link submenu */}
+                {onLeadChange && leads.length > 0 && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Target className="w-4 h-4 mr-2" />
+                      Link Lead
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="max-h-48 overflow-y-auto">
+                      {task.leadId && (
+                        <>
+                          <DropdownMenuItem onClick={() => onLeadChange(task, null)}>
+                            <Unlink className="w-4 h-4 mr-2 text-slate-400" />
+                            Unlink lead
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
+                      {leads.map((l) => (
+                        <DropdownMenuItem key={l.id} onClick={() => onLeadChange(task, l.id)}>
+                          <LinkIcon className="w-4 h-4 mr-2 text-purple-500" />
+                          <span className="truncate">{l.name}</span>
+                          {task.leadId === l.id && <span className="ml-auto text-purple-500 text-xs">linked</span>}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
+
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
                   <Trash2 className="w-4 h-4 mr-2" />
@@ -165,18 +298,32 @@ export function ListTaskCard({
               </span>
             )}
 
+            {/* HP-7: Clickable lead badge for navigation */}
             {task.leadName && (
-              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">
+              <button
+                data-badge-link
+                type="button"
+                onClick={(e) => { e.stopPropagation(); navigate(`/leads`); }}
+                className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors cursor-pointer"
+                title={`Go to leads (${task.leadName})`}
+              >
                 <Target className="w-3 h-3" />
                 {task.leadName}
-              </span>
+              </button>
             )}
 
-            {task.dealName && (
-              <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-700">
+            {/* HP-7: Clickable deal badge — navigates to deal detail page */}
+            {task.dealName && task.dealId && (
+              <button
+                data-badge-link
+                type="button"
+                onClick={(e) => { e.stopPropagation(); navigate(`/deals/${task.dealId}`); }}
+                className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors cursor-pointer"
+                title={`Open deal: ${task.dealName}`}
+              >
                 <Link2 className="w-3 h-3" />
                 {task.dealName}
-              </span>
+              </button>
             )}
 
             {task.assigneeName && (

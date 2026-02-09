@@ -55,6 +55,10 @@ export interface Contact {
   isArchived?: boolean;
   doNotContact?: boolean;
   preferredContactMethod?: string;
+  companyName?: string;
+  description?: string;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
 }
 
 export interface Company {
@@ -63,6 +67,11 @@ export interface Company {
   domain?: string;
   industry?: string;
   size?: string;
+  description?: string;
+  website?: string;
+  location?: string;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
 }
 
 export interface Lead {
@@ -100,6 +109,21 @@ export interface Deal {
   expectedCloseDateUtc?: string;
   isWon?: boolean;
   lastActivityAtUtc?: string;
+  // HP-1: Description & Probability
+  description?: string;
+  probability?: number;
+  // HP-4: Enriched names & timestamps
+  assigneeName?: string;
+  companyName?: string;
+  contactName?: string;
+  pipelineName?: string;
+  dealStageName?: string;
+  createdAtUtc?: string;
+  updatedAtUtc?: string;
+  // HP-8: Close reason
+  closedReason?: string;
+  closedReasonCategory?: string;
+  closedAtUtc?: string;
 }
 
 export type TaskStatusType = 'todo' | 'in_progress' | 'completed' | 'cancelled';
@@ -149,6 +173,10 @@ export interface Activity {
   leadId?: string;
   participants?: string;
   createdAt: string;
+  updatedAt?: string;
+  contactName?: string;
+  dealName?: string;
+  leadName?: string;
 }
 
 export interface Pipeline {

@@ -516,7 +516,7 @@ public class DealServiceTests
         };
 
         _dealRepositoryMock
-            .Setup(r => r.GetPagedAsync(userId, orgId, 0, 10, null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetPagedAsync(userId, orgId, 0, 10, null, null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync((deals, 25)); // 25 total items
 
         _activityRepositoryMock

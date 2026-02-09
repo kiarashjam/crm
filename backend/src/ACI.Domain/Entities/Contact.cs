@@ -25,6 +25,9 @@ public class Contact : Common.BaseEntity
     public DateTime? ArchivedAtUtc { get; set; }
     public Guid? ArchivedByUserId { get; set; }
 
+    // HP-7: Contact description / notes
+    public string? Description { get; set; }
+
     // Contact preferences / compliance
     public bool DoNotContact { get; set; }
     public string? PreferredContactMethod { get; set; }

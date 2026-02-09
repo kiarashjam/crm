@@ -1,6 +1,6 @@
-import type { Activity, Contact, Deal } from '@/app/api/types';
+import type { Activity, Contact, Deal, Lead } from '@/app/api/types';
 
-export type ActivityFilter = 'all' | 'contact' | 'deal';
+export type ActivityFilter = 'all' | 'contact' | 'deal' | 'lead';
 
 export interface ActivityFormState {
   type: string;
@@ -8,6 +8,7 @@ export interface ActivityFormState {
   body: string;
   contactId: string;
   dealId: string;
+  participants: string;
 }
 
 export const DEFAULT_ACTIVITY_FORM: ActivityFormState = {
@@ -16,7 +17,8 @@ export const DEFAULT_ACTIVITY_FORM: ActivityFormState = {
   body: '',
   contactId: '',
   dealId: '',
+  participants: '',
 };
 
 // Re-export
-export type { Activity, Contact, Deal };
+export type { Activity, Contact, Deal, Lead };

@@ -1,17 +1,18 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Activity as ActivityIcon, Plus, Phone, Mail, MessageSquare, FileText, Trash2,
   Search, X, Calendar, Clock, User, Target, BarChart3, TrendingUp, Video,
-  Presentation, CheckCircle, Users, Filter, Sparkles,
-  ChevronDown, CalendarDays, Zap, AlertCircle
+  Presentation, CheckCircle, Users, Filter, Sparkles, Pencil, UserCheck,
+  ChevronDown, CalendarDays, CalendarClock, Zap, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getActivitiesPaged, createActivity, deleteActivity, getContacts, getDeals, getActivitiesByContact, getActivitiesByDeal, messages } from '@/app/api';
-import type { Activity, Contact, Deal, PagedResult } from '@/app/api/types';
+import { getActivitiesPaged, createActivity, updateActivity, deleteActivity, getContacts, getDeals, getLeads, getActivitiesByContact, getActivitiesByDeal, getActivitiesByLead, messages } from '@/app/api';
+import type { Activity, Contact, Deal, Lead, PagedResult } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -54,6 +55,8 @@ const ACTIVITY_TYPES = [
   { id: 'video', label: 'Video Call', icon: Video, color: 'purple', bgColor: 'bg-purple-100', textColor: 'text-purple-600', borderColor: 'border-purple-200' },
   { id: 'demo', label: 'Demo', icon: Presentation, color: 'rose', bgColor: 'bg-rose-100', textColor: 'text-rose-600', borderColor: 'border-rose-200' },
   { id: 'task', label: 'Task Completed', icon: CheckCircle, color: 'cyan', bgColor: 'bg-cyan-100', textColor: 'text-cyan-600', borderColor: 'border-cyan-200' },
+  { id: 'follow_up', label: 'Follow-up', icon: CalendarClock, color: 'orange', bgColor: 'bg-orange-100', textColor: 'text-orange-600', borderColor: 'border-orange-200' },
+  { id: 'deadline', label: 'Deadline', icon: Clock, color: 'red', bgColor: 'bg-red-100', textColor: 'text-red-600', borderColor: 'border-red-200' },
 ] as const;
 
 function formatDate(iso: string): string {
@@ -91,26 +94,31 @@ function getDateGroup(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
-type ActivityFilter = 'all' | 'contact' | 'deal';
+type ActivityFilter = 'all' | 'contact' | 'deal' | 'lead';
 
 export default function Activities() {
+  const navigate = useNavigate();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ActivityFilter>('all');
   const [filterContactId, setFilterContactId] = useState('');
   const [filterDealId, setFilterDealId] = useState('');
+  const [filterLeadId, setFilterLeadId] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [form, setForm] = useState({
     type: 'note',
     subject: '',
     body: '',
     contactId: '',
     dealId: '',
+    participants: '',
   });
   const [saving, setSaving] = useState(false);
   const [deleteConfirmActivity, setDeleteConfirmActivity] = useState<Activity | null>(null);
@@ -147,6 +155,14 @@ export default function Activities() {
         .finally(() => setLoading(false));
     } else if (filter === 'deal' && filterDealId) {
       getActivitiesByDeal(filterDealId)
+        .then(data => {
+          setActivities(data);
+          setPagedResult(null);
+        })
+        .catch(() => toast.error(messages.errors.loadFailed))
+        .finally(() => setLoading(false));
+    } else if (filter === 'lead' && filterLeadId) {
+      getActivitiesByLead(filterLeadId)
         .then(data => {
           setActivities(data);
           setPagedResult(null);
@@ -193,6 +209,16 @@ export default function Activities() {
         })
         .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
         .finally(() => { if (!cancelled) setLoading(false); });
+    } else if (filter === 'lead' && filterLeadId) {
+      getActivitiesByLead(filterLeadId)
+        .then((data) => { 
+          if (!cancelled) {
+            setActivities(data);
+            setPagedResult(null);
+          }
+        })
+        .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
+        .finally(() => { if (!cancelled) setLoading(false); });
     } else {
       getActivitiesPaged({ 
         page, 
@@ -211,14 +237,15 @@ export default function Activities() {
     }
     
     return () => { cancelled = true; };
-  }, [filter, filterContactId, filterDealId, page, pageSize, debouncedSearch, filterType]);
+  }, [filter, filterContactId, filterDealId, filterLeadId, page, pageSize, debouncedSearch, filterType]);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getContacts(), getDeals()]).then(([c, d]) => {
+    Promise.all([getContacts(), getDeals(), getLeads()]).then(([c, d, l]) => {
       if (!cancelled) {
         setContacts(c);
         setDeals(d);
+        setLeads(l);
       }
     });
     return () => { cancelled = true; };
@@ -304,27 +331,62 @@ export default function Activities() {
     }
     setSaving(true);
     try {
-      const created = await createActivity({
-        type: form.type,
-        subject: form.subject.trim() || undefined,
-        body: form.body.trim() || undefined,
-        contactId: form.contactId || undefined,
-        dealId: form.dealId || undefined,
-      });
-      if (created) {
-        setActivities((prev) => [created, ...prev]);
-        toast.success(messages.success.activityLogged);
-        setDialogOpen(false);
-        setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '' });
-        if (filter !== 'all') loadData();
+      // HP-2: Handle edit vs create
+      if (editingActivity) {
+        const updated = await updateActivity(editingActivity.id, {
+          type: form.type,
+          subject: form.subject.trim() || undefined,
+          body: form.body.trim() || undefined,
+          participants: form.participants.trim() || undefined,
+        });
+        if (updated) {
+          setActivities((prev) => prev.map((a) => a.id === updated.id ? updated : a));
+          toast.success('Activity updated successfully');
+          setDialogOpen(false);
+          setEditingActivity(null);
+          setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '' });
+        } else {
+          toast.error(messages.errors.generic);
+        }
       } else {
-        toast.error(messages.errors.generic);
+        const created = await createActivity({
+          type: form.type,
+          subject: form.subject.trim() || undefined,
+          body: form.body.trim() || undefined,
+          contactId: form.contactId || undefined,
+          dealId: form.dealId || undefined,
+          leadId: (filter === 'lead' && filterLeadId) ? filterLeadId : undefined,
+          participants: form.participants.trim() || undefined,
+        });
+        if (created) {
+          setActivities((prev) => [created, ...prev]);
+          toast.success(messages.success.activityLogged);
+          setDialogOpen(false);
+          setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '' });
+          if (filter !== 'all') loadData();
+        } else {
+          toast.error(messages.errors.generic);
+        }
       }
     } catch {
       toast.error(messages.errors.generic);
     } finally {
       setSaving(false);
     }
+  };
+
+  // HP-2: Open edit dialog pre-filled with activity data
+  const handleEditActivity = (activity: Activity) => {
+    setEditingActivity(activity);
+    setForm({
+      type: activity.type,
+      subject: activity.subject || '',
+      body: activity.body || '',
+      contactId: activity.contactId || '',
+      dealId: activity.dealId || '',
+      participants: activity.participants || '',
+    });
+    setDialogOpen(true);
   };
 
   const typeInfo = (type: string) => ACTIVITY_TYPES.find((t) => t.id === type) ?? { 
@@ -353,7 +415,8 @@ export default function Activities() {
 
   // Quick log activity with preset type
   const quickLogActivity = (type: string) => {
-    setForm({ type, subject: '', body: '', contactId: '', dealId: '' });
+    setEditingActivity(null);
+    setForm({ type, subject: '', body: '', contactId: '', dealId: '', participants: '' });
     setDialogOpen(true);
   };
 
@@ -361,6 +424,7 @@ export default function Activities() {
   const activeFilterCount = [
     filterType !== 'all',
     filter !== 'all',
+    filter === 'lead' && filterLeadId !== '',
   ].filter(Boolean).length;
 
   return (
@@ -417,7 +481,7 @@ export default function Activities() {
                   </DropdownMenuContent>
                 </DropdownMenu>
                 
-                <Button onClick={() => setDialogOpen(true)} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
+                <Button onClick={() => { setEditingActivity(null); setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '' }); setDialogOpen(true); }} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
                   <Plus className="w-4 h-4" />
                   Log Activity
                 </Button>
@@ -603,13 +667,14 @@ export default function Activities() {
             <div className="relative">
               <div className="absolute inset-0 bg-white/5 rounded-xl blur-lg" />
               <div className="relative flex gap-1 bg-white/5 backdrop-blur-md rounded-xl p-1 border border-white/10 shadow-xl shadow-black/10">
-                {(['all', 'contact', 'deal'] as const).map((f) => (
+                {(['all', 'contact', 'deal', 'lead'] as const).map((f) => (
                   <button
                     key={f}
                     onClick={() => {
                       setFilter(f);
                       if (f !== 'contact') setFilterContactId('');
                       if (f !== 'deal') setFilterDealId('');
+                      if (f !== 'lead') setFilterLeadId('');
                     }}
                     className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-300 ${
                       filter === f 
@@ -617,7 +682,7 @@ export default function Activities() {
                         : 'text-slate-300 hover:bg-white/10 hover:text-white'
                     }`}
                   >
-                    {f === 'all' ? 'All Activities' : f === 'contact' ? 'By Contact' : 'By Deal'}
+                    {f === 'all' ? 'All Activities' : f === 'contact' ? 'By Contact' : f === 'deal' ? 'By Deal' : 'By Lead'}
                   </button>
                 ))}
               </div>
@@ -664,6 +729,31 @@ export default function Activities() {
                     {deals.map((d) => (
                       <SelectItem key={d.id} value={d.id}>
                         {d.name} · {d.value}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* HP-5: Lead filter selector */}
+            {filter === 'lead' && (
+              <div className="relative group/lead">
+                <div className="absolute inset-0 bg-white/10 rounded-xl blur-lg opacity-0 group-hover/lead:opacity-50 transition-all duration-300" />
+                <Select value={filterLeadId || 'none'} onValueChange={(v) => setFilterLeadId(v === 'none' ? '' : v)}>
+                  <SelectTrigger className="relative w-[200px] h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl hover:bg-white/10 hover:border-white/20 transition-all duration-300">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
+                        <UserCheck className="w-3.5 h-3.5 text-slate-300" />
+                      </div>
+                      <SelectValue placeholder="Select lead" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Select lead —</SelectItem>
+                    {leads.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -789,6 +879,7 @@ export default function Activities() {
                     const { icon: Icon, label, bgColor, textColor, borderColor } = typeInfo(activity.type);
                     const contact = activity.contactId ? contacts.find((c) => c.id === activity.contactId) : null;
                     const deal = activity.dealId ? deals.find((d) => d.id === activity.dealId) : null;
+                    const lead = activity.leadId ? leads.find((l) => l.id === activity.leadId) : null;
 
                     return (
                       <div key={activity.id} className="relative group">
@@ -812,6 +903,9 @@ export default function Activities() {
                                     <Clock className="w-3 h-3" />
                                     {formatRelativeDate(activity.createdAt)}
                                   </span>
+                                  {activity.updatedAt && (
+                                    <span className="text-xs text-slate-400 italic">(edited)</span>
+                                  )}
                                 </div>
 
                                 {/* Subject */}
@@ -828,35 +922,71 @@ export default function Activities() {
                                   </p>
                                 )}
 
+                                {/* HP-6: Participants display */}
+                                {activity.participants && (
+                                  <div className="flex items-center gap-1.5 mt-2">
+                                    <Users className="w-3.5 h-3.5 text-violet-500" />
+                                    <span className="text-xs text-violet-700 font-medium">
+                                      Participants: {activity.participants}
+                                    </span>
+                                  </div>
+                                )}
+
                                 {/* Links */}
-                                {(contact || deal) && (
+                                {(contact || deal || lead) && (
                                   <div className="flex flex-wrap items-center gap-2 mt-3">
                                     {contact && (
-                                      <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-100">
+                                      <span 
+                                        className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 cursor-pointer transition-colors"
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/contacts/${contact.id}`); }}
+                                      >
                                         <User className="w-3 h-3" />
                                         {contact.name}
                                       </span>
                                     )}
                                     {deal && (
-                                      <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                      <span 
+                                        className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 cursor-pointer transition-colors"
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/deals/${deal.id}`); }}
+                                      >
                                         <Target className="w-3 h-3" />
                                         {deal.name}
+                                      </span>
+                                    )}
+                                    {lead && (
+                                      <span 
+                                        className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 cursor-pointer transition-colors"
+                                        onClick={(e) => { e.stopPropagation(); navigate(`/leads/${lead.id}`); }}
+                                      >
+                                        <UserCheck className="w-3 h-3" />
+                                        {lead.name}
                                       </span>
                                     )}
                                   </div>
                                 )}
                               </div>
 
-                              {/* Delete Button */}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setDeleteConfirmActivity(activity)}
-                                className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 hover:bg-red-50"
-                                aria-label={`Delete activity ${activity.subject || label}`}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
+                              {/* HP-2: Edit & Delete Buttons */}
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditActivity(activity)}
+                                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                  aria-label={`Edit activity ${activity.subject || label}`}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setDeleteConfirmActivity(activity)}
+                                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                  aria-label={`Delete activity ${activity.subject || label}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
                             </div>
                           </div>
 
@@ -932,7 +1062,7 @@ export default function Activities() {
       </PageTransition>
 
       {/* Enhanced Log Activity Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingActivity(null); }}>
         <DialogContent className="sm:max-w-[520px] p-0 gap-0 overflow-hidden">
           {/* Gradient Header */}
           <div className="relative overflow-hidden">
@@ -947,10 +1077,10 @@ export default function Activities() {
                 </div>
                 <div>
                   <DialogTitle className="text-xl font-bold text-white tracking-tight">
-                    Log Activity
+                    {editingActivity ? 'Edit Activity' : 'Log Activity'}
                   </DialogTitle>
                   <p className="text-white/80 text-sm mt-0.5">
-                    Record a call, meeting, email, or note
+                    {editingActivity ? 'Update the activity details' : 'Record a call, meeting, email, or note'}
                   </p>
                 </div>
               </div>
@@ -967,7 +1097,7 @@ export default function Activities() {
                 Activity Type
               </Label>
               <div className="grid grid-cols-4 gap-2">
-                {ACTIVITY_TYPES.slice(0, 4).map((type) => {
+                {ACTIVITY_TYPES.map((type) => {
                   const isSelected = form.type === type.id;
                   return (
                     <button
@@ -1027,6 +1157,25 @@ export default function Activities() {
               />
             </div>
 
+            {/* HP-6: Participants field — shown for call, meeting, video, demo */}
+            {['call', 'meeting', 'video', 'demo'].includes(form.type) && (
+              <div className="group">
+                <Label htmlFor="activity-participants" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-violet-100 text-violet-600">
+                    <Users className="w-3.5 h-3.5" />
+                  </div>
+                  Participants
+                </Label>
+                <Input
+                  id="activity-participants"
+                  value={form.participants}
+                  onChange={(e) => setForm((f) => ({ ...f, participants: e.target.value }))}
+                  placeholder="e.g. Jane Smith, Mike Johnson"
+                  className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-indigo-300 focus:ring-indigo-100 transition-all"
+                />
+              </div>
+            )}
+
             {/* Link to Contact & Deal */}
             <div className="grid grid-cols-2 gap-4">
               <div className="group">
@@ -1085,7 +1234,7 @@ export default function Activities() {
             </div>
 
             <DialogFooter className="pt-4 border-t border-slate-100">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="h-11 px-6">
+              <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditingActivity(null); }} className="h-11 px-6">
                 Cancel
               </Button>
               <Button 
@@ -1099,11 +1248,11 @@ export default function Activities() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                     </svg>
-                    Logging...
+                    {editingActivity ? 'Saving...' : 'Logging...'}
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    Log Activity
+                    {editingActivity ? 'Save Changes' : 'Log Activity'}
                     <Sparkles className="w-4 h-4" />
                   </span>
                 )}

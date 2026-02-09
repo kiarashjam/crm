@@ -171,13 +171,36 @@ public class ActivitiesController : ControllerBase
     }
 
     /// <summary>
+    /// Returns activity counts per user for all members in the current user's organization.
+    /// Used by team management pages to display real performance metrics.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A dictionary mapping user IDs to their activity counts.</returns>
+    /// <response code="200">Returns the activity counts per user.</response>
+    /// <response code="401">User is not authenticated.</response>
+    [HttpGet("org-member-counts")]
+    [ProducesResponseType(typeof(IReadOnlyDictionary<Guid, int>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<IReadOnlyDictionary<Guid, int>>> GetOrgMemberCounts(CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var counts = await _activityService.GetOrgMemberActivityCountsAsync(
+            _currentUser.CurrentOrganizationId,
+            ct);
+
+        return Ok(counts);
+    }
+
+    /// <summary>
     /// Creates a new activity.
     /// </summary>
     /// <param name="request">The activity creation request.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The created activity.</returns>
     /// <remarks>
-    /// Valid activity types: call, meeting, email, note.
+    /// Valid activity types: call, meeting, email, note, task, follow_up, deadline, video, demo.
     /// At least one of ContactId, DealId, or LeadId must be specified.
     /// </remarks>
     /// <response code="200">Activity created successfully.</response>
@@ -198,6 +221,40 @@ public class ActivitiesController : ControllerBase
             userId.Value, 
             _currentUser.CurrentOrganizationId, 
             request, 
+            ct);
+        
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Updates an existing activity.
+    /// </summary>
+    /// <param name="id">The activity ID to update.</param>
+    /// <param name="request">The activity update request.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The updated activity.</returns>
+    /// <response code="200">Activity updated successfully.</response>
+    /// <response code="400">Invalid request data.</response>
+    /// <response code="401">User is not authenticated.</response>
+    /// <response code="404">Activity not found.</response>
+    [HttpPut("{id:guid}")]
+    [ProducesResponseType(typeof(ActivityDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ActivityDto>> Update(
+        Guid id,
+        [FromBody] UpdateActivityRequest request,
+        CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        
+        var result = await _activityService.UpdateAsync(
+            id,
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
+            request,
             ct);
         
         return result.ToActionResult();

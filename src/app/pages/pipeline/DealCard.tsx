@@ -1,13 +1,14 @@
 import { useDrag } from 'react-dnd';
 import {
   GripVertical,
-  DollarSign,
   User,
   Clock,
   Pencil,
   Trash2,
   Calendar,
   AlertCircle,
+  ListTodo,
+  Plus,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/app/components/ui/button';
@@ -22,6 +23,20 @@ import { cn } from '@/app/components/ui/utils';
 import type { Deal } from './types';
 
 export const DEAL_CARD_TYPE = 'DEAL_CARD';
+
+/** Returns a currency symbol string for a given currency code. */
+export function getCurrencySymbol(code?: string): string {
+  switch (code?.toUpperCase()) {
+    case 'USD': return '$';
+    case 'EUR': return '\u20AC';
+    case 'GBP': return '\u00A3';
+    case 'CHF': return 'CHF';
+    case 'JPY': return '\u00A5';
+    case 'CAD': return 'C$';
+    case 'AUD': return 'A$';
+    default: return code || '$';
+  }
+}
 
 export const STAGE_COLORS: Record<string, { bar: string; accent: string; bg: string; border: string }> = {
   Qualification: { bar: '#3b82f6', accent: 'text-blue-600', bg: 'bg-blue-500/10', border: 'border-l-blue-500' },
@@ -90,6 +105,8 @@ export interface DealCardProps {
   onOpenDetail: () => void;
   stageList: { id: string; name: string }[];
   isDragging?: boolean;
+  taskCount?: number;
+  onAddTask?: (dealId: string) => void;
 }
 
 export function DealCard({
@@ -103,6 +120,8 @@ export function DealCard({
   onOpenDetail,
   stageList,
   isDragging,
+  taskCount,
+  onAddTask,
 }: DealCardProps) {
   const lastActivity = formatLastActivity(deal.lastActivityAtUtc);
   const daysToClose = getDaysUntilClose(deal.expectedCloseDateUtc);
@@ -159,25 +178,53 @@ export function DealCard({
               {deal.name}
             </button>
             
-            {/* Value Badge */}
+            {/* Value Badge — HP-3: correct currency symbol */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500/10 to-teal-500/10 dark:from-emerald-900/30 dark:to-teal-900/30 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 text-sm font-bold text-emerald-700 dark:text-emerald-400">
-                <DollarSign className="w-3.5 h-3.5" />
+                <span className="text-xs font-semibold">{getCurrencySymbol(deal.currency)}</span>
                 {deal.value}
               </span>
               {daysToClose !== null && <UrgencyBadge days={daysToClose} />}
             </div>
             
             {/* Contact Info */}
-            {contactName && (
+            {(contactName || deal.contactName) && (
               <div className="mt-3 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                 <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
                   <User className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
                 </div>
-                <span className="truncate font-medium" title={contactName}>{contactName}</span>
+                <span className="truncate font-medium" title={contactName || deal.contactName}>{contactName || deal.contactName}</span>
+              </div>
+            )}
+
+            {/* Assignee — HP-7 */}
+            {deal.assigneeName && (
+              <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                  <User className="w-3 h-3 text-blue-500 dark:text-blue-400" />
+                </div>
+                <span className="truncate" title={deal.assigneeName}>{deal.assigneeName}</span>
               </div>
             )}
             
+            {/* HP-7: Task count + HP-8: Add Task */}
+            {(taskCount !== undefined || onAddTask) && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+                <ListTodo className="w-3 h-3" />
+                <span>{taskCount ?? 0} task{taskCount !== 1 ? 's' : ''}</span>
+                {onAddTask && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onAddTask(deal.id); }}
+                    className="ml-auto flex items-center gap-1 text-orange-500 hover:text-orange-400 transition-colors"
+                    title="Add task to this deal"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span className="text-[10px] font-medium">Task</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Last Activity */}
             {lastActivity && (
               <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">

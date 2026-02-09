@@ -17,7 +17,8 @@ public class ActivityService : IActivityService
     private readonly IDealRepository _dealRepository;
     private readonly ILogger<ActivityService> _logger;
 
-    private static readonly string[] ValidActivityTypes = { "call", "meeting", "email", "note" };
+    // HP-1: All 9 activity types supported (matches frontend config)
+    private static readonly string[] ValidActivityTypes = { "call", "meeting", "email", "note", "task", "follow_up", "deadline", "video", "demo" };
 
     public ActivityService(
         IActivityRepository repository,
@@ -228,6 +229,64 @@ public class ActivityService : IActivityService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<Result<ActivityDto>> UpdateAsync(
+        Guid id,
+        Guid userId,
+        Guid? organizationId,
+        UpdateActivityRequest request,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation("Updating activity {ActivityId} for user {UserId}", id, userId);
+
+        var existing = await _repository.GetByIdAsync(id, userId, organizationId, ct);
+        if (existing == null)
+        {
+            _logger.LogWarning("Activity {ActivityId} not found for update", id);
+            return DomainErrors.Activity.NotFound;
+        }
+
+        try
+        {
+            if (request.Type != null)
+            {
+                var activityType = request.Type.ToLowerInvariant();
+                if (!ValidActivityTypes.Contains(activityType))
+                    return DomainErrors.Activity.InvalidType;
+                existing.Type = activityType;
+            }
+            if (request.Subject != null) existing.Subject = request.Subject;
+            if (request.Body != null) existing.Body = request.Body;
+            if (request.Participants != null) existing.Participants = request.Participants;
+            existing.UpdatedAtUtc = DateTime.UtcNow;
+            existing.UpdatedByUserId = userId;
+
+            existing = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+            if (existing == null)
+            {
+                _logger.LogWarning("Activity {ActivityId} update returned null", id);
+                return DomainErrors.General.ServerError;
+            }
+
+            _logger.LogInformation("Successfully updated activity {ActivityId}", id);
+            return Map(existing);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating activity {ActivityId}", id);
+            return DomainErrors.General.ServerError;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<Guid, int>> GetOrgMemberActivityCountsAsync(
+        Guid? organizationId,
+        CancellationToken ct = default)
+    {
+        _logger.LogDebug("Getting activity counts per org member for organization {OrganizationId}", organizationId);
+        return await _repository.GetActivityCountsByOrgAsync(organizationId, ct);
+    }
+
     private static ActivityDto Map(Activity e) =>
         new ActivityDto(
             e.Id, 
@@ -238,6 +297,10 @@ public class ActivityService : IActivityService
             e.DealId, 
             e.LeadId, 
             e.Participants, 
-            e.CreatedAtUtc
+            e.CreatedAtUtc,
+            e.UpdatedAtUtc,
+            e.Contact?.Name,
+            e.Deal?.Name,
+            e.Lead?.Name
         );
 }

@@ -66,4 +66,28 @@ public record UpdateDealRequest
     /// Whether the deal is won.
     /// </summary>
     public bool? IsWon { get; init; }
+
+    /// <summary>
+    /// Deal description / notes.
+    /// </summary>
+    [StringLength(2000, ErrorMessage = "Description cannot exceed 2000 characters")]
+    public string? Description { get; init; }
+
+    /// <summary>
+    /// Win probability (0–100).
+    /// </summary>
+    [Range(0, 100, ErrorMessage = "Probability must be between 0 and 100")]
+    public int? Probability { get; init; }
+
+    /// <summary>
+    /// Reason the deal was closed (won/lost).
+    /// </summary>
+    [StringLength(500, ErrorMessage = "Closed reason cannot exceed 500 characters")]
+    public string? ClosedReason { get; init; }
+
+    /// <summary>
+    /// Category of close reason: Price, Timing, Competitor, NoDecision, FeatureGap, ChampionLeft, Other.
+    /// </summary>
+    [StringLength(50, ErrorMessage = "Category cannot exceed 50 characters")]
+    public string? ClosedReasonCategory { get; init; }
 }

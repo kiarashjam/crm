@@ -140,7 +140,7 @@ public static class DomainErrors
             "Activity.TypeRequired", "Activity type is required");
         
         public static readonly Error InvalidType = new(
-            "Activity.InvalidType", "The activity type is invalid. Valid types: call, meeting, email, note");
+            "Activity.InvalidType", "The activity type is invalid. Valid types: call, meeting, email, note, task, follow_up, deadline, video, demo");
         
         public static readonly Error NoRelatedEntity = new(
             "Activity.NoRelatedEntity", "Activity must be linked to at least one entity (contact, deal, or lead)");
@@ -327,6 +327,9 @@ public static class DomainErrors
         
         public static readonly Error InvalidRequest = new(
             "General.InvalidRequest", "The request is invalid");
+        
+        public static readonly Error ValidationError = new(
+            "General.ValidationError", "One or more validation errors occurred");
         
         public static readonly Error OrganizationRequired = new(
             "General.OrganizationRequired", "X-Organization-Id header is required");

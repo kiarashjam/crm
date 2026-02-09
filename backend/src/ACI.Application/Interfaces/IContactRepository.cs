@@ -11,7 +11,8 @@ public interface IContactRepository
         int skip, 
         int take, 
         string? search = null,
-        bool includeArchived = false, 
+        bool includeArchived = false,
+        Guid? companyId = null, 
         CancellationToken ct = default);
     
     Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, bool includeArchived = false, CancellationToken ct = default);

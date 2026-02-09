@@ -51,6 +51,8 @@ export interface DroppableStageColumnProps {
   onEdit: (deal: Deal) => void;
   onDelete: (deal: Deal) => void;
   onOpenDetail: (deal: Deal) => void;
+  taskCountsByDeal?: Record<string, number>;
+  onAddTask?: (dealId: string) => void;
 }
 
 export function DroppableStageColumn({
@@ -63,6 +65,8 @@ export function DroppableStageColumn({
   onEdit,
   onDelete,
   onOpenDetail,
+  taskCountsByDeal,
+  onAddTask,
 }: DroppableStageColumnProps) {
   const config = STAGE_COLORS[stageName] ?? STAGE_COLORS.Qualification;
   const StageIcon = STAGE_ICONS[stageName] ?? Briefcase;
@@ -177,6 +181,8 @@ export function DroppableStageColumn({
               onDelete={() => onDelete(deal)}
               onOpenDetail={() => onOpenDetail(deal)}
               stageList={stageList}
+              taskCount={taskCountsByDeal?.[deal.id]}
+              onAddTask={onAddTask}
             />
           ))}
         </AnimatePresence>

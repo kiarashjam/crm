@@ -18,7 +18,20 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-type DealRaw = { id: string; name: string; value: string; currency?: string | null; stage?: string | null; pipelineId?: string | null; dealStageId?: string | null; companyId?: string | null; contactId?: string | null; assigneeId?: string | null; expectedCloseDateUtc?: string | null; isWon?: boolean | null; lastActivityAtUtc?: string | null };
+type DealRaw = {
+  id: string; name: string; value: string;
+  currency?: string | null; stage?: string | null;
+  pipelineId?: string | null; dealStageId?: string | null;
+  companyId?: string | null; contactId?: string | null;
+  assigneeId?: string | null; expectedCloseDateUtc?: string | null;
+  isWon?: boolean | null; lastActivityAtUtc?: string | null;
+  description?: string | null; probability?: number | null;
+  assigneeName?: string | null; companyName?: string | null;
+  contactName?: string | null; pipelineName?: string | null;
+  dealStageName?: string | null;
+  createdAtUtc?: string | null; updatedAtUtc?: string | null;
+  closedReason?: string | null; closedAtUtc?: string | null;
+};
 function mapDeal(d: DealRaw): Deal {
   return {
     id: d.id,
@@ -34,6 +47,17 @@ function mapDeal(d: DealRaw): Deal {
     expectedCloseDateUtc: d.expectedCloseDateUtc ?? undefined,
     isWon: d.isWon ?? undefined,
     lastActivityAtUtc: d.lastActivityAtUtc ?? undefined,
+    description: d.description ?? undefined,
+    probability: d.probability ?? undefined,
+    assigneeName: d.assigneeName ?? undefined,
+    companyName: d.companyName ?? undefined,
+    contactName: d.contactName ?? undefined,
+    pipelineName: d.pipelineName ?? undefined,
+    dealStageName: d.dealStageName ?? undefined,
+    createdAtUtc: d.createdAtUtc ?? undefined,
+    updatedAtUtc: d.updatedAtUtc ?? undefined,
+    closedReason: d.closedReason ?? undefined,
+    closedAtUtc: d.closedAtUtc ?? undefined,
   };
 }
 
@@ -49,9 +73,9 @@ interface ApiPagedResult<T> {
 
 /** Get deals with pagination and optional search (real API or mock). */
 export async function getDealsPaged(
-  params: PaginationParams = {}
+  params: PaginationParams & { companyId?: string; contactId?: string } = {}
 ): Promise<PagedResult<Deal>> {
-  const { page = 1, pageSize = 20, search } = params;
+  const { page = 1, pageSize = 20, search, companyId, contactId } = params;
   
   if (isUsingRealApi()) {
     const queryParams = new URLSearchParams({
@@ -60,6 +84,12 @@ export async function getDealsPaged(
     });
     if (search?.trim()) {
       queryParams.set('search', search.trim());
+    }
+    if (companyId) {
+      queryParams.set('companyId', companyId);
+    }
+    if (contactId) {
+      queryParams.set('contactId', contactId);
     }
     const result = await authFetchJson<ApiPagedResult<DealRaw>>(`/api/deals?${queryParams}`);
     return {
@@ -133,8 +163,19 @@ export async function searchDeals(query: string): Promise<Deal[]> {
   );
 }
 
+/** Get a single deal by ID. */
+export async function getDealById(id: string): Promise<Deal | null> {
+  if (isUsingRealApi()) {
+    const deal = await authFetchJson<DealRaw>(`/api/deals/${id}`);
+    return deal ? mapDeal(deal) : null;
+  }
+  await delay(200);
+  const deals = await getDeals();
+  return deals.find((d) => d.id === id) ?? null;
+}
+
 /** Create a deal. */
-export async function createDeal(params: { name: string; value: string; currency?: string; stage?: string; pipelineId?: string; dealStageId?: string; companyId?: string; contactId?: string; assigneeId?: string; expectedCloseDateUtc?: string }): Promise<Deal | null> {
+export async function createDeal(params: { name: string; value: string; currency?: string; stage?: string; pipelineId?: string; dealStageId?: string; companyId?: string; contactId?: string; assigneeId?: string; expectedCloseDateUtc?: string; description?: string; probability?: number }): Promise<Deal | null> {
   if (isUsingRealApi()) {
     const deal = await authFetchJson<DealRaw>('/api/deals', {
       method: 'POST',
@@ -146,8 +187,8 @@ export async function createDeal(params: { name: string; value: string; currency
   return null;
 }
 
-/** Update a deal (stage, value, contact, expected close date, won/lost, pipeline, assignee). */
-export async function updateDeal(id: string, params: Partial<{ name: string; value: string; currency: string; stage: string; pipelineId: string; dealStageId: string; companyId: string; contactId: string; assigneeId: string; expectedCloseDateUtc: string; isWon: boolean }>): Promise<Deal | null> {
+/** Update a deal (stage, value, contact, expected close date, won/lost, pipeline, assignee, description, probability, close reason). */
+export async function updateDeal(id: string, params: Partial<{ name: string; value: string; currency: string; stage: string; pipelineId: string; dealStageId: string; companyId: string; contactId: string; assigneeId: string; expectedCloseDateUtc: string; isWon: boolean; description: string; probability: number; closedReason: string }>): Promise<Deal | null> {
   if (isUsingRealApi()) {
     const deal = await authFetchJson<DealRaw>(`/api/deals/${id}`, {
       method: 'PUT',

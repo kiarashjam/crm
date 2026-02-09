@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
   Mail, X, Copy, BarChart3, Target, Check, Activity,
@@ -14,6 +15,7 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import type { OrgMemberDto } from '@/app/api/organizations';
+import { getOrgMemberActivityCounts } from '@/app/api/activities';
 import { getRoleInfo } from '../config';
 
 interface MemberDetailPanelProps {
@@ -34,22 +36,34 @@ export function MemberDetailPanel({
   const roleInfo = getRoleInfo(member.role);
   const RoleIcon = roleInfo.icon;
   
-  // Mock stats for demonstration
+  // HP-3 Fix: Fetch real activity counts from backend
+  const [activityCount, setActivityCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getOrgMemberActivityCounts()
+      .then((counts) => {
+        if (!cancelled) {
+          setActivityCount(counts[member.userId] ?? 0);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setActivityCount(null);
+      });
+    return () => { cancelled = true; };
+  }, [member.userId]);
+
   const mockStats = {
-    leadsAssigned: Math.floor(Math.random() * 50) + 5,
-    dealsWon: Math.floor(Math.random() * 20),
-    tasksCompleted: Math.floor(Math.random() * 100) + 20,
-    activitiesLogged: Math.floor(Math.random() * 200) + 50,
-    conversionRate: Math.floor(Math.random() * 40) + 20,
-    avgResponseTime: `${Math.floor(Math.random() * 4) + 1}h`,
+    leadsAssigned: '—' as string | number,
+    dealsWon: '—' as string | number,
+    tasksCompleted: '—' as string | number,
+    activitiesLogged: activityCount !== null ? activityCount : '—' as string | number,
+    conversionRate: '—' as string | number,
+    avgResponseTime: '—' as string,
   };
 
-  const recentActivities = [
-    { action: 'Created a new lead', time: '2 hours ago', icon: UserPlus },
-    { action: 'Closed a deal worth $5,000', time: '5 hours ago', icon: Handshake },
-    { action: 'Logged a call activity', time: 'Yesterday', icon: Phone },
-    { action: 'Completed 3 tasks', time: '2 days ago', icon: Check },
-  ];
+  // HP-3: Removed hardcoded fake recent activities. Will show empty state until real API is available.
+  const recentActivities: { action: string; time: string; icon: typeof UserPlus }[] = [];
 
   return (
     <div className="fixed inset-y-0 right-0 w-full sm:w-[420px] bg-white border-l border-slate-200 shadow-2xl z-50 overflow-y-auto">
@@ -147,7 +161,7 @@ export function MemberDetailPanel({
           <div className="space-y-3">
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
               <span className="text-sm text-slate-600">Conversion Rate</span>
-              <span className="text-sm font-bold text-emerald-600">{mockStats.conversionRate}%</span>
+              <span className="text-sm font-bold text-emerald-600">{mockStats.conversionRate === '—' ? '—' : `${mockStats.conversionRate}%`}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
               <span className="text-sm text-slate-600">Avg Response Time</span>

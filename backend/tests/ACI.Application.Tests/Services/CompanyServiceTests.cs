@@ -257,6 +257,120 @@ public class CompanyServiceTests
         result.Value.Industry.Should().Be("Tech");
     }
 
+    [Fact]
+    public async Task CreateAsync_ReturnsDuplicateNameError_WhenCompanyWithSameNameExists()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var request = new CreateCompanyRequest
+        {
+            Name = "Existing Company"
+        };
+
+        _companyRepositoryMock
+            .Setup(r => r.ExistsByNameAsync("Existing Company", userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _sut.CreateAsync(userId, orgId, request);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Code.Should().Be("Company.DuplicateName");
+    }
+
+    [Fact]
+    public async Task CreateAsync_ReturnsDuplicateNameError_WhenNameMatchesCaseInsensitive()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var request = new CreateCompanyRequest
+        {
+            Name = "ACME CORP"
+        };
+
+        _companyRepositoryMock
+            .Setup(r => r.ExistsByNameAsync("ACME CORP", userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _sut.CreateAsync(userId, orgId, request);
+
+        // Assert
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Code.Should().Be("Company.DuplicateName");
+    }
+
+    [Fact]
+    public async Task CreateAsync_MapsNewFields_WhenProvided()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var request = new CreateCompanyRequest
+        {
+            Name = "Full Company",
+            Domain = "full.com",
+            Industry = "Technology",
+            Size = "51-200",
+            Description = "A full company with all fields",
+            Website = "https://full.com",
+            Location = "San Francisco, CA"
+        };
+
+        _companyRepositoryMock
+            .Setup(r => r.GetByUserIdAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Company>());
+
+        _companyRepositoryMock
+            .Setup(r => r.AddAsync(It.IsAny<Company>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Company c, CancellationToken _) => c);
+
+        // Act
+        var result = await _sut.CreateAsync(userId, orgId, request);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Name.Should().Be("Full Company");
+        result.Value.Description.Should().Be("A full company with all fields");
+        result.Value.Website.Should().Be("https://full.com");
+        result.Value.Location.Should().Be("San Francisco, CA");
+    }
+
+    [Fact]
+    public async Task CreateAsync_NormalizesEmptyStringsToNull_ForOptionalFields()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var request = new CreateCompanyRequest
+        {
+            Name = "Minimal Company",
+            Description = "   ",
+            Website = "",
+            Location = "  "
+        };
+
+        _companyRepositoryMock
+            .Setup(r => r.GetByUserIdAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<Company>());
+
+        _companyRepositoryMock
+            .Setup(r => r.AddAsync(It.IsAny<Company>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Company c, CancellationToken _) => c);
+
+        // Act
+        var result = await _sut.CreateAsync(userId, orgId, request);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Description.Should().BeNull();
+        result.Value.Website.Should().BeNull();
+        result.Value.Location.Should().BeNull();
+    }
+
     #endregion
 
     #region UpdateAsync Tests
@@ -402,6 +516,49 @@ public class CompanyServiceTests
         result.Value.Name.Should().Be("Original Name"); // Unchanged
         result.Value.Domain.Should().Be("new.com"); // Updated
         result.Value.Industry.Should().Be("Original Industry"); // Unchanged
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UpdatesNewFields_WhenProvided()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var companyId = Guid.NewGuid();
+        var existingCompany = new Company
+        {
+            Id = companyId,
+            UserId = userId,
+            Name = "Old Company",
+            Domain = "old.com",
+            Description = "Old description",
+            Website = null,
+            Location = null
+        };
+        var request = new UpdateCompanyRequest
+        {
+            Description = "New description",
+            Website = "https://new.com",
+            Location = "New York, NY"
+        };
+
+        _companyRepositoryMock
+            .Setup(r => r.GetByIdAsync(companyId, userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingCompany);
+
+        _companyRepositoryMock
+            .Setup(r => r.UpdateAsync(It.IsAny<Company>(), userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Company c, Guid _, Guid? _, CancellationToken _) => c);
+
+        // Act
+        var result = await _sut.UpdateAsync(companyId, userId, orgId, request);
+
+        // Assert
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Description.Should().Be("New description");
+        result.Value.Website.Should().Be("https://new.com");
+        result.Value.Location.Should().Be("New York, NY");
+        result.Value.Name.Should().Be("Old Company"); // Unchanged
     }
 
     #endregion

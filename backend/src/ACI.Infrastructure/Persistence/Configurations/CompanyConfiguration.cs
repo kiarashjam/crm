@@ -14,6 +14,9 @@ internal sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
         builder.Property(e => e.Domain).HasMaxLength(256);
         builder.Property(e => e.Industry).HasMaxLength(128);
         builder.Property(e => e.Size).HasMaxLength(64);
+        builder.Property(e => e.Description).HasMaxLength(2000);
+        builder.Property(e => e.Website).HasMaxLength(500);
+        builder.Property(e => e.Location).HasMaxLength(300);
         builder.HasOne(e => e.User).WithMany(u => u.Companies).HasForeignKey(e => e.UserId);
         builder.HasOne(e => e.Organization).WithMany().HasForeignKey(e => e.OrganizationId).IsRequired(false);
         builder.HasOne(e => e.UpdatedByUser).WithMany().HasForeignKey(e => e.UpdatedByUserId).IsRequired(false);

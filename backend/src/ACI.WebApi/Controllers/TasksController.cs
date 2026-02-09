@@ -1,9 +1,12 @@
 using System.ComponentModel.DataAnnotations;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Domain.Entities;
+using ACI.Infrastructure.Persistence;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace ACI.WebApi.Controllers;
 
@@ -18,14 +21,16 @@ public class TasksController : ControllerBase
 {
     private readonly ITaskService _taskService;
     private readonly ICurrentUserService _currentUser;
+    private readonly AppDbContext _db;
 
     /// <summary>
     /// Initializes a new instance of the TasksController.
     /// </summary>
-    public TasksController(ITaskService taskService, ICurrentUserService currentUser)
+    public TasksController(ITaskService taskService, ICurrentUserService currentUser, AppDbContext db)
     {
         _taskService = taskService;
         _currentUser = currentUser;
+        _db = db;
     }
 
     /// <summary>
@@ -476,6 +481,126 @@ public class TasksController : ControllerBase
         
         return result.ToNoContentResult();
     }
+
+    /// <summary>
+    /// Bulk update multiple tasks (change status, priority, assignee, or delete).
+    /// </summary>
+    /// <param name="request">The bulk operation request.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Summary of the bulk operation.</returns>
+    /// <response code="200">Bulk operation completed.</response>
+    /// <response code="401">User is not authenticated.</response>
+    [HttpPost("bulk")]
+    [ProducesResponseType(typeof(BulkTaskResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<BulkTaskResult>> BulkUpdate(
+        [FromBody] BulkTaskRequest request,
+        CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        
+        var result = await _taskService.BulkUpdateAsync(
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
+            request,
+            ct);
+        
+        return result.ToActionResult();
+    }
+
+    // ────── Task Comments ──────
+
+    /// <summary>Get all comments for a task.</summary>
+    [HttpGet("{id:guid}/comments")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<TaskCommentDto>>> GetComments(Guid id, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        // Verify user has access to this task (same org)
+        var orgId = _currentUser.CurrentOrganizationId;
+        var taskExists = await _db.TaskItems.AnyAsync(
+            t => t.Id == id && (t.OrganizationId == orgId || t.UserId == userId.Value), ct);
+        if (!taskExists) return NotFound();
+
+        var comments = await _db.TaskComments
+            .Where(c => c.TaskItemId == id)
+            .Include(c => c.Author)
+            .OrderBy(c => c.CreatedAtUtc)
+            .Select(c => new TaskCommentDto(c.Id, c.TaskItemId, c.AuthorId, c.Author.Name ?? c.Author.Email, c.Body, c.CreatedAtUtc))
+            .ToListAsync(ct);
+
+        return Ok(comments);
+    }
+
+    /// <summary>Add a comment to a task.</summary>
+    [HttpPost("{id:guid}/comments")]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    public async Task<ActionResult<TaskCommentDto>> AddComment(Guid id, [FromBody] AddCommentRequest request, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        // Verify user has access to this task (same org)
+        var orgId = _currentUser.CurrentOrganizationId;
+        var task = await _db.TaskItems.FirstOrDefaultAsync(
+            t => t.Id == id && (t.OrganizationId == orgId || t.UserId == userId.Value), ct);
+        if (task == null) return NotFound();
+
+        var comment = new TaskComment
+        {
+            Id = Guid.NewGuid(),
+            TaskItemId = id,
+            AuthorId = userId.Value,
+            Body = request.Body.Trim(),
+            CreatedAtUtc = DateTime.UtcNow,
+        };
+
+        _db.TaskComments.Add(comment);
+        await _db.SaveChangesAsync(ct);
+
+        // Reload with Author
+        var author = await _db.Users.FindAsync(new object[] { userId.Value }, ct);
+        var dto = new TaskCommentDto(comment.Id, comment.TaskItemId, comment.AuthorId, author?.Name ?? author?.Email ?? "Unknown", comment.Body, comment.CreatedAtUtc);
+        return Created($"/api/tasks/{id}/comments/{comment.Id}", dto);
+    }
+
+    /// <summary>Delete a comment.</summary>
+    [HttpDelete("{taskId:guid}/comments/{commentId:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<ActionResult> DeleteComment(Guid taskId, Guid commentId, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        // Verify user has access to this task (same org)
+        var orgId = _currentUser.CurrentOrganizationId;
+        var taskExists = await _db.TaskItems.AnyAsync(
+            t => t.Id == taskId && (t.OrganizationId == orgId || t.UserId == userId.Value), ct);
+        if (!taskExists) return NotFound();
+
+        var comment = await _db.TaskComments.FirstOrDefaultAsync(
+            c => c.Id == commentId && c.TaskItemId == taskId, ct);
+        if (comment == null) return NotFound();
+        if (comment.AuthorId != userId.Value) return Forbid();
+
+        _db.TaskComments.Remove(comment);
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+}
+
+/// <summary>DTO for task comments.</summary>
+public record TaskCommentDto(Guid Id, Guid TaskItemId, Guid AuthorId, string AuthorName, string Body, DateTime CreatedAtUtc);
+
+/// <summary>Request to add a comment.</summary>
+public record AddCommentRequest
+{
+    [Required]
+    [StringLength(4096, MinimumLength = 1)]
+    public required string Body { get; init; }
 }
 
 /// <summary>

@@ -94,6 +94,10 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<string>("Domain")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
@@ -101,6 +105,10 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<string>("Industry")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -122,6 +130,10 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.HasKey("Id");
 
@@ -157,6 +169,9 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("DoNotContact")
                         .HasColumnType("bit");
@@ -307,6 +322,17 @@ namespace ACI.Infrastructure.Migrations
                     b.Property<Guid?>("AssigneeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ClosedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ClosedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ClosedReasonCategory")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<Guid?>("CompanyId")
                         .HasColumnType("uniqueidentifier");
 
@@ -322,6 +348,10 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<Guid?>("DealStageId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<DateTime?>("ExpectedCloseDateUtc")
                         .HasColumnType("datetime2");
@@ -339,6 +369,9 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<Guid?>("PipelineId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("Probability")
+                        .HasColumnType("int");
 
                     b.Property<string>("Stage")
                         .HasMaxLength(128)
@@ -407,6 +440,44 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("PipelineId");
 
                     b.ToTable("DealStages", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.DealStageChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ChangedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DealId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("FromDealStageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FromStageName")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<Guid?>("ToDealStageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ToStageName")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChangedByUserId");
+
+                    b.HasIndex("DealId");
+
+                    b.ToTable("DealStageChanges", (string)null);
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.EmailSequence", b =>
@@ -889,6 +960,35 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("Pipelines", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.TaskComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TaskItemId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
+
+                    b.HasIndex("TaskItemId");
+
+                    b.ToTable("TaskComments", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.TaskItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -938,6 +1038,9 @@ namespace ACI.Infrastructure.Migrations
                         .HasDefaultValue("None");
 
                     b.Property<DateTime?>("ReminderDateUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ReminderSentAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Status")
@@ -1423,6 +1526,25 @@ namespace ACI.Infrastructure.Migrations
                     b.Navigation("Pipeline");
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.DealStageChange", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.User", "ChangedByUser")
+                        .WithMany()
+                        .HasForeignKey("ChangedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ACI.Domain.Entities.Deal", "Deal")
+                        .WithMany("StageChanges")
+                        .HasForeignKey("DealId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChangedByUser");
+
+                    b.Navigation("Deal");
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.EmailSequence", b =>
                 {
                     b.HasOne("ACI.Domain.Entities.Organization", "Organization")
@@ -1636,6 +1758,25 @@ namespace ACI.Infrastructure.Migrations
                     b.Navigation("Organization");
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.TaskComment", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.User", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("ACI.Domain.Entities.TaskItem", "TaskItem")
+                        .WithMany()
+                        .HasForeignKey("TaskItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Author");
+
+                    b.Navigation("TaskItem");
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.TaskItem", b =>
                 {
                     b.HasOne("ACI.Domain.Entities.User", "Assignee")
@@ -1726,6 +1867,8 @@ namespace ACI.Infrastructure.Migrations
             modelBuilder.Entity("ACI.Domain.Entities.Deal", b =>
                 {
                     b.Navigation("Activities");
+
+                    b.Navigation("StageChanges");
 
                     b.Navigation("TaskItems");
                 });

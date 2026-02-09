@@ -21,8 +21,10 @@ public class AppDbContext : DbContext
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<Deal> Deals => Set<Deal>();
+    public DbSet<DealStageChange> DealStageChanges => Set<DealStageChange>();
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<TaskItem> TaskItems => Set<TaskItem>();
+    public DbSet<TaskComment> TaskComments => Set<TaskComment>();
     public DbSet<Activity> Activities => Set<Activity>();
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<CopyHistoryItem> CopyHistoryItems => Set<CopyHistoryItem>();

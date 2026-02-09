@@ -42,6 +42,8 @@ public class TaskItem : Common.BaseEntity
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
+    /// <summary>When the reminder notification was sent (prevents duplicates).</summary>
+    public DateTime? ReminderSentAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }
 
     // Navigation properties

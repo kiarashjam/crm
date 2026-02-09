@@ -11,7 +11,7 @@ public interface IDealService
     /// <summary>
     /// Retrieves deals with pagination and optional search.
     /// </summary>
-    Task<PagedResult<DealDto>> GetDealsPagedAsync(Guid userId, Guid? organizationId, int page = 1, int pageSize = 20, string? search = null, CancellationToken ct = default);
+    Task<PagedResult<DealDto>> GetDealsPagedAsync(Guid userId, Guid? organizationId, int page = 1, int pageSize = 20, string? search = null, Guid? companyId = null, Guid? contactId = null, CancellationToken ct = default);
 
     /// <summary>
     /// Retrieves all deals for a user within an organization.

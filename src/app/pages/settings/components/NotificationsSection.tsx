@@ -18,8 +18,14 @@ type ToggleSwitchProps = {
 function ToggleSwitch({ checked, onChange, label, description }: ToggleSwitchProps) {
   return (
     <label className="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
-      <div>
-        <p className="font-medium text-slate-900">{label}</p>
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <p className="font-medium text-slate-900">{label}</p>
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-600">
+            <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+            Coming soon
+          </span>
+        </div>
         <p className="text-sm text-slate-500">{description}</p>
       </div>
       <button
@@ -52,6 +58,10 @@ export function NotificationsSection({
           Notifications
         </h2>
         <p className="text-slate-600 text-sm mt-1">Manage how you receive notifications</p>
+        <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          Coming soon — notification delivery is being set up. Your preferences are saved and will take effect once the backend service is live.
+        </div>
       </div>
 
       {/* Email Notifications */}

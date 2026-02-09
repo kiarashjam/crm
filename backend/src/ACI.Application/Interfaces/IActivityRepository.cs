@@ -18,7 +18,14 @@ public interface IActivityRepository
     Task<IReadOnlyList<Activity>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Activity?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Activity> AddAsync(Activity activity, CancellationToken ct = default);
+    Task<Activity?> UpdateAsync(Activity activity, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyDictionary<Guid, DateTime>> GetLastActivityByContactIdsAsync(Guid userId, Guid? organizationId, IEnumerable<Guid> contactIds, CancellationToken ct = default);
     Task<IReadOnlyDictionary<Guid, DateTime>> GetLastActivityByDealIdsAsync(Guid userId, Guid? organizationId, IEnumerable<Guid> dealIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns activity counts grouped by UserId for all members in the given organization.
+    /// Used by team management to show real activity stats per member (HP-3).
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, int>> GetActivityCountsByOrgAsync(Guid? organizationId, CancellationToken ct = default);
 }

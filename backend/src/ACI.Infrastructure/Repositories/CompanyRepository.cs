@@ -56,16 +56,24 @@ public sealed class CompanyRepository : ICompanyRepository
             .OrderBy(c => c.Name)
             .ToListAsync(ct);
 
+    // HP-13: Reuse ApplySearch to avoid duplicated filter logic
     public async Task<IReadOnlyList<Company>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
             return await GetByUserIdAsync(userId, organizationId, ct);
-        var q = query.Trim().ToLowerInvariant();
-        return await FilterByUserAndOrg(_db.Companies, userId, organizationId)
-            .Where(c => c.Name.ToLower().Contains(q) || (c.Domain != null && c.Domain.ToLower().Contains(q)) || (c.Industry != null && c.Industry.ToLower().Contains(q)))
+        var baseQuery = FilterByUserAndOrg(_db.Companies, userId, organizationId);
+        return await ApplySearch(baseQuery, query)
             .OrderBy(c => c.Name)
             .Take(20)
             .ToListAsync(ct);
+    }
+
+    // HP-HIGH-2: Efficient duplicate name check — single SQL EXISTS query instead of loading all companies
+    public async Task<bool> ExistsByNameAsync(string name, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var trimmedName = name.Trim().ToLowerInvariant();
+        return await FilterByUserAndOrg(_db.Companies, userId, organizationId)
+            .AnyAsync(c => c.Name.ToLower() == trimmedName, ct);
     }
 
     public async Task<Company?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
@@ -88,10 +96,53 @@ public sealed class CompanyRepository : ICompanyRepository
         existing.Domain = company.Domain;
         existing.Industry = company.Industry;
         existing.Size = company.Size;
+        existing.Description = company.Description;
+        existing.Website = company.Website;
+        existing.Location = company.Location;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
         await _db.SaveChangesAsync(ct);
         return existing;
+    }
+
+    // HP-7: Server-side stats per company using efficient SQL aggregations
+    public async Task<IReadOnlyList<(Guid CompanyId, int ContactCount, int DealCount, decimal TotalDealValue)>> GetStatsAsync(
+        Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var companyIds = await FilterByUserAndOrg(_db.Companies, userId, organizationId)
+            .Select(c => c.Id)
+            .ToListAsync(ct);
+
+        if (companyIds.Count == 0)
+            return Array.Empty<(Guid, int, int, decimal)>();
+
+        // Contact counts via SQL GROUP BY
+        var contactCounts = await _db.Contacts
+            .Where(c => c.CompanyId != null && companyIds.Contains(c.CompanyId.Value))
+            .GroupBy(c => c.CompanyId!.Value)
+            .Select(g => new { CompanyId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.CompanyId, x => x.Count, ct);
+
+        // Deal counts and values — Deal.Value is a string, so we fetch and parse in C#
+        var dealRows = await _db.Deals
+            .Where(d => d.CompanyId != null && companyIds.Contains(d.CompanyId.Value))
+            .Select(d => new { d.CompanyId, d.Value })
+            .ToListAsync(ct);
+
+        var dealStats = dealRows
+            .GroupBy(d => d.CompanyId!.Value)
+            .ToDictionary(
+                g => g.Key,
+                g => (Count: g.Count(), TotalValue: g.Sum(d => decimal.TryParse(
+                    System.Text.RegularExpressions.Regex.Replace(d.Value ?? "0", @"[^0-9.\-]", ""),
+                    out var v) ? v : 0m)));
+
+        return companyIds.Select(id =>
+        {
+            var contacts = contactCounts.GetValueOrDefault(id, 0);
+            var hasDealStats = dealStats.TryGetValue(id, out var ds);
+            return (id, contacts, hasDealStats ? ds.Count : 0, hasDealStats ? ds.TotalValue : 0m);
+        }).ToList();
     }
 
     public async Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
@@ -103,6 +154,8 @@ public sealed class CompanyRepository : ICompanyRepository
         await _db.Contacts.Where(c => c.CompanyId == id).ExecuteUpdateAsync(s => s.SetProperty(c => c.CompanyId, (Guid?)null), ct);
         await _db.Deals.Where(d => d.CompanyId == id).ExecuteUpdateAsync(s => s.SetProperty(d => d.CompanyId, (Guid?)null), ct);
         await _db.Leads.Where(l => l.CompanyId == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.CompanyId, (Guid?)null), ct);
+        // BUG #4 fix: Also nullify ConvertedToCompanyId on leads that were converted to this company
+        await _db.Leads.Where(l => l.ConvertedToCompanyId == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.ConvertedToCompanyId, (Guid?)null), ct);
         _db.Companies.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;

@@ -6,9 +6,31 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-type CompanyRaw = { id: string; name: string; domain?: string | null; industry?: string | null; size?: string | null };
+type CompanyRaw = {
+  id: string;
+  name: string;
+  domain?: string | null;
+  industry?: string | null;
+  size?: string | null;
+  description?: string | null;
+  website?: string | null;
+  location?: string | null;
+  createdAtUtc?: string | null;
+  updatedAtUtc?: string | null;
+};
 function mapCompany(c: CompanyRaw): Company {
-  return { id: c.id, name: c.name, domain: c.domain ?? undefined, industry: c.industry ?? undefined, size: c.size ?? undefined };
+  return {
+    id: c.id,
+    name: c.name,
+    domain: c.domain ?? undefined,
+    industry: c.industry ?? undefined,
+    size: c.size ?? undefined,
+    description: c.description ?? undefined,
+    website: c.website ?? undefined,
+    location: c.location ?? undefined,
+    createdAtUtc: c.createdAtUtc ?? undefined,
+    updatedAtUtc: c.updatedAtUtc ?? undefined,
+  };
 }
 
 interface ApiPagedResult<T> {
@@ -90,7 +112,7 @@ export async function getCompanies(): Promise<Company[]> {
 }
 
 /** Create a company. */
-export async function createCompany(params: { name: string; domain?: string; industry?: string; size?: string }): Promise<Company | null> {
+export async function createCompany(params: { name: string; domain?: string; industry?: string; size?: string; description?: string; website?: string; location?: string }): Promise<Company | null> {
   if (isUsingRealApi()) {
     const company = await authFetchJson<CompanyRaw>('/api/companies', {
       method: 'POST',
@@ -103,7 +125,7 @@ export async function createCompany(params: { name: string; domain?: string; ind
 }
 
 /** Update a company. */
-export async function updateCompany(id: string, params: { name?: string; domain?: string; industry?: string; size?: string }): Promise<Company | null> {
+export async function updateCompany(id: string, params: { name?: string; domain?: string; industry?: string; size?: string; description?: string; website?: string; location?: string }): Promise<Company | null> {
   if (isUsingRealApi()) {
     const company = await authFetchJson<CompanyRaw>(`/api/companies/${id}`, {
       method: 'PUT',
@@ -113,6 +135,25 @@ export async function updateCompany(id: string, params: { name?: string; domain?
   }
   await delay(200);
   return null;
+}
+
+// HP-7: Server-side per-company statistics
+export interface CompanyStatsItem {
+  companyId: string;
+  contactCount: number;
+  dealCount: number;
+  totalDealValue: number;
+}
+
+/** Fetch per-company stats (contact count, deal count, deal value). */
+export async function getCompanyStats(): Promise<CompanyStatsItem[]> {
+  if (isUsingRealApi()) {
+    const result = await authFetchJson<CompanyStatsItem[]>('/api/companies/stats');
+    return Array.isArray(result) ? result : [];
+  }
+  // Mock: return empty array (mock companies don't have linked contacts/deals)
+  await delay(100);
+  return [];
 }
 
 /** Delete a company. */

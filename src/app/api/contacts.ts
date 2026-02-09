@@ -31,6 +31,10 @@ interface ApiContact {
   isArchived?: boolean;
   doNotContact?: boolean;
   preferredContactMethod?: string | null;
+  companyName?: string | null;
+  description?: string | null;
+  createdAtUtc?: string | null;
+  updatedAtUtc?: string | null;
 }
 
 function mapContact(d: ApiContact): Contact {
@@ -47,6 +51,10 @@ function mapContact(d: ApiContact): Contact {
     isArchived: d.isArchived ?? false,
     doNotContact: d.doNotContact ?? false,
     preferredContactMethod: d.preferredContactMethod ?? undefined,
+    companyName: d.companyName ?? undefined,
+    description: d.description ?? undefined,
+    createdAtUtc: d.createdAtUtc ?? undefined,
+    updatedAtUtc: d.updatedAtUtc ?? undefined,
   };
 }
 
@@ -62,9 +70,9 @@ interface ApiPagedResult<T> {
 
 /** Get contacts with pagination and optional search (real API or mock). */
 export async function getContactsPaged(
-  params: PaginationParams & { includeArchived?: boolean } = {}
+  params: PaginationParams & { includeArchived?: boolean; companyId?: string } = {}
 ): Promise<PagedResult<Contact>> {
-  const { page = 1, pageSize = 20, search, includeArchived = false } = params;
+  const { page = 1, pageSize = 20, search, includeArchived = false, companyId } = params;
   
   if (isUsingRealApi()) {
     const queryParams = new URLSearchParams({
@@ -74,6 +82,9 @@ export async function getContactsPaged(
     });
     if (search?.trim()) {
       queryParams.set('search', search.trim());
+    }
+    if (companyId) {
+      queryParams.set('companyId', companyId);
     }
     const result = await authFetchJson<ApiPagedResult<ApiContact>>(`/api/contacts?${queryParams}`);
     return {
@@ -154,6 +165,7 @@ export async function createContact(params: {
   phone?: string;
   jobTitle?: string;
   companyId?: string;
+  description?: string;
 }): Promise<{ contact: Contact | null; error: string | null }> {
   if (isUsingRealApi()) {
     const res = await authFetch('/api/contacts', {
@@ -184,6 +196,7 @@ export async function updateContact(
     phone: string;
     jobTitle: string;
     companyId: string;
+    description: string;
     doNotContact: boolean;
     preferredContactMethod: string;
   }>

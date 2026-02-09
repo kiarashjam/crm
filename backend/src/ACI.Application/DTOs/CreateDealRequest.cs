@@ -63,4 +63,16 @@ public record CreateDealRequest
     /// Expected close date.
     /// </summary>
     public DateTime? ExpectedCloseDateUtc { get; init; }
+
+    /// <summary>
+    /// Deal description / notes.
+    /// </summary>
+    [StringLength(2000, ErrorMessage = "Description cannot exceed 2000 characters")]
+    public string? Description { get; init; }
+
+    /// <summary>
+    /// Win probability (0–100).
+    /// </summary>
+    [Range(0, 100, ErrorMessage = "Probability must be between 0 and 100")]
+    public int? Probability { get; init; }
 }

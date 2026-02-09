@@ -237,8 +237,13 @@ public class TaskService : ITaskService
         
         try
         {
-            // Update title if provided
-            if (request.Title != null) existing.Title = request.Title;
+            // Update title if provided (reject empty/whitespace titles)
+            if (request.Title != null)
+            {
+                if (string.IsNullOrWhiteSpace(request.Title))
+                    return DomainErrors.General.ValidationError;
+                existing.Title = request.Title.Trim();
+            }
             
             // Update description if provided
             if (request.Description != null) existing.Description = request.Description;
@@ -647,5 +652,75 @@ public class TaskService : ITaskService
             _ => TaskPriority.None
         };
         return !string.IsNullOrEmpty(priority);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<BulkTaskResult>> BulkUpdateAsync(
+        Guid userId,
+        Guid? organizationId,
+        BulkTaskRequest request,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation("Bulk {Action} for {Count} tasks by user {UserId}", 
+            request.Action, request.TaskIds.Length, userId);
+
+        if (request.TaskIds.Length == 0)
+            return new BulkTaskResult(0, 0, 0);
+
+        var validActions = new[] { "status", "priority", "assignee", "delete" };
+        if (!validActions.Contains(request.Action.ToLowerInvariant()))
+            return DomainErrors.General.ValidationError;
+
+        int succeeded = 0;
+        int failed = 0;
+
+        foreach (var taskId in request.TaskIds)
+        {
+            try
+            {
+                Result result = request.Action.ToLowerInvariant() switch
+                {
+                    "status" when request.Status != null => 
+                        await UpdateStatusAsync(taskId, userId, organizationId, request.Status, ct),
+                    "priority" when request.Priority != null =>
+                        await UpdatePriorityAsync(taskId, userId, organizationId, request.Priority, ct),
+                    "assignee" =>
+                        await AssignTaskAsync(taskId, userId, organizationId, request.AssigneeId, ct),
+                    "delete" =>
+                        await DeleteAsync(taskId, userId, organizationId, ct),
+                    _ => DomainErrors.General.ValidationError
+                };
+
+                if (result.IsSuccess) succeeded++;
+                else failed++;
+            }
+            catch
+            {
+                failed++;
+            }
+        }
+
+        _logger.LogInformation("Bulk {Action} completed: {Succeeded}/{Total} succeeded", 
+            request.Action, succeeded, request.TaskIds.Length);
+
+        return new BulkTaskResult(request.TaskIds.Length, succeeded, failed);
+    }
+
+    private async Task<Result<TaskDto>> UpdatePriorityAsync(
+        Guid id, Guid userId, Guid? organizationId, string priority, CancellationToken ct)
+    {
+        var existing = await _repository.GetByIdWithRelationsAsync(id, userId, organizationId, ct);
+        if (existing == null) return DomainErrors.Task.NotFound;
+
+        if (TryParsePriority(priority, out var parsed))
+        {
+            existing.Priority = parsed;
+            existing.UpdatedAtUtc = DateTime.UtcNow;
+            existing.UpdatedByUserId = userId;
+            var updated = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+            return updated != null ? Map(updated) : DomainErrors.General.ServerError;
+        }
+
+        return DomainErrors.General.ValidationError;
     }
 }

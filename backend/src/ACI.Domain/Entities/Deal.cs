@@ -17,8 +17,16 @@ public class Deal : Common.BaseEntity
     public Guid? ContactId { get; set; }
     public Guid? AssigneeId { get; set; }
     public DateTime? ExpectedCloseDateUtc { get; set; }
+    public string? Description { get; set; }
+    /// <summary>Win probability 0–100.</summary>
+    public int? Probability { get; set; }
     /// <summary>Null = open, true = won, false = lost.</summary>
     public bool? IsWon { get; set; }
+    /// <summary>Reason the deal was closed (won/lost).</summary>
+    public string? ClosedReason { get; set; }
+    /// <summary>Category: Price, Timing, Competitor, NoDecision, FeatureGap, ChampionLeft, Other.</summary>
+    public string? ClosedReasonCategory { get; set; }
+    public DateTime? ClosedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }
@@ -33,4 +41,5 @@ public class Deal : Common.BaseEntity
     public Contact? Contact { get; set; }
     public ICollection<Activity> Activities { get; set; } = new List<Activity>();
     public ICollection<TaskItem> TaskItems { get; set; } = new List<TaskItem>();
+    public ICollection<DealStageChange> StageChanges { get; set; } = new List<DealStageChange>();
 }

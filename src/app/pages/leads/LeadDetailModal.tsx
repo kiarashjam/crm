@@ -130,9 +130,9 @@ function LeadDetailModal({
     if (!lead) return;
     setLoadingTasks(true);
     try {
-      const { getTasks } = await import('@/app/api');
-      const allTasks = await getTasks();
-      setTasks(allTasks.filter(t => t.leadId === lead.id));
+      const { getTasksByLead } = await import('@/app/api/tasks');
+      const leadTasks = await getTasksByLead(lead.id);
+      setTasks(leadTasks);
     } catch (err) {
       console.error('Failed to load tasks:', err);
     } finally {
@@ -357,11 +357,11 @@ function LeadDetailModal({
       });
       if (task) {
         setTasks(prev => [...prev, task]);
-        // Log the reminder creation
+        // Log the task creation
         const activity = await createActivity({
           type: 'system',
-          subject: 'Reminder created',
-          body: `Added reminder: "${newTask.title.trim()}"${newTask.dueDate ? ` (due ${new Date(newTask.dueDate).toLocaleDateString()})` : ''}`,
+          subject: 'Task created',
+          body: `Added task: "${newTask.title.trim()}"${newTask.dueDate ? ` (due ${new Date(newTask.dueDate).toLocaleDateString()})` : ''}`,
           leadId: lead.id,
         });
         if (activity) {
@@ -374,10 +374,10 @@ function LeadDetailModal({
         }
         setNewTask({ title: '', dueDate: '' });
         setShowAddTask(false);
-        toast.success('Reminder added');
+        toast.success('Task added');
       }
     } catch {
-      toast.error('Failed to add reminder');
+      toast.error('Failed to add task');
     } finally {
       setAddingTask(false);
     }
@@ -927,12 +927,12 @@ function LeadDetailModal({
               </div>
             </div>
 
-            {/* Reminders / Tasks */}
+            {/* Tasks */}
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                   <Clock className="w-4 h-4 text-emerald-500" />
-                  Reminders
+                  Tasks
                 </h3>
                 <Button size="sm" variant="ghost" onClick={() => setShowAddTask(!showAddTask)}>
                   <Plus className="w-4 h-4" />
@@ -944,7 +944,7 @@ function LeadDetailModal({
                   <Input
                     value={newTask.title}
                     onChange={e => setNewTask(prev => ({ ...prev, title: e.target.value }))}
-                    placeholder="Reminder title..."
+                    placeholder="Task title..."
                     className="h-9 text-sm"
                   />
                   <Input
@@ -969,7 +969,7 @@ function LeadDetailModal({
                   <LoadingSpinner size="sm" />
                 </div>
               ) : tasks.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-2">No reminders</p>
+                <p className="text-sm text-slate-400 text-center py-2">No tasks</p>
               ) : (
                 <div className="space-y-2">
                   {tasks.slice(0, 5).map(task => (

@@ -18,7 +18,11 @@ public sealed class ContactRepository : IContactRepository
     {
         if (string.IsNullOrWhiteSpace(search)) return query;
         var q = search.Trim().ToLowerInvariant();
-        return query.Where(c => c.Name.ToLower().Contains(q) || c.Email.ToLower().Contains(q));
+        return query.Where(c =>
+            c.Name.ToLower().Contains(q) ||
+            c.Email.ToLower().Contains(q) ||
+            (c.Phone != null && c.Phone.Contains(q)) ||
+            (c.JobTitle != null && c.JobTitle.ToLower().Contains(q)));
     }
 
     public async Task<(IReadOnlyList<Contact> Items, int TotalCount)> GetPagedAsync(
@@ -27,15 +31,18 @@ public sealed class ContactRepository : IContactRepository
         int skip, 
         int take, 
         string? search = null,
-        bool includeArchived = false, 
+        bool includeArchived = false,
+        Guid? companyId = null, 
         CancellationToken ct = default)
     {
         var query = FilterByUserAndOrg(_db.Contacts, userId, organizationId);
         if (!includeArchived) query = query.Where(c => !c.IsArchived);
+        if (companyId.HasValue) query = query.Where(c => c.CompanyId == companyId.Value);
         query = ApplySearch(query, search);
         
         var totalCount = await query.CountAsync(ct);
         var items = await query
+            .Include(c => c.Company)
             .OrderBy(c => c.Name)
             .Skip(skip)
             .Take(take)
@@ -56,7 +63,7 @@ public sealed class ContactRepository : IContactRepository
     {
         var query = FilterByUserAndOrg(_db.Contacts, userId, organizationId);
         if (!includeArchived) query = query.Where(c => !c.IsArchived);
-        return await query.OrderBy(c => c.Name).ToListAsync(ct);
+        return await query.Include(c => c.Company).OrderBy(c => c.Name).ToListAsync(ct);
     }
 
     public async Task<IReadOnlyList<Contact>> SearchAsync(Guid userId, Guid? organizationId, string query, bool includeArchived = false, CancellationToken ct = default)
@@ -67,13 +74,20 @@ public sealed class ContactRepository : IContactRepository
         var baseQuery = FilterByUserAndOrg(_db.Contacts, userId, organizationId);
         if (!includeArchived) baseQuery = baseQuery.Where(c => !c.IsArchived);
         return await baseQuery
-            .Where(c => c.Name.ToLower().Contains(q) || c.Email.ToLower().Contains(q))
+            .Where(c =>
+                c.Name.ToLower().Contains(q) ||
+                c.Email.ToLower().Contains(q) ||
+                (c.Phone != null && c.Phone.Contains(q)) ||
+                (c.JobTitle != null && c.JobTitle.ToLower().Contains(q)))
+            .Include(c => c.Company)
             .OrderBy(c => c.Name)
             .ToListAsync(ct);
     }
 
     public async Task<Contact?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == id, ct);
+        await FilterByUserAndOrg(_db.Contacts, userId, organizationId)
+            .Include(c => c.Company)
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
 
     public async Task<Contact?> GetByEmailAsync(string email, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
@@ -112,6 +126,7 @@ public sealed class ContactRepository : IContactRepository
         existing.JobTitle = contact.JobTitle;
         existing.DoNotContact = contact.DoNotContact;
         existing.PreferredContactMethod = contact.PreferredContactMethod;
+        existing.Description = contact.Description;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
         await _db.SaveChangesAsync(ct);
@@ -122,9 +137,11 @@ public sealed class ContactRepository : IContactRepository
     {
         var entity = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == id, ct);
         if (entity == null) return false;
-        // Null FKs so delete does not violate referential integrity (Deals, Activities reference Contact)
+        // Null FKs so delete does not violate referential integrity (Deals, Activities, Tasks, EmailSequences reference Contact)
         await _db.Deals.Where(d => d.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(d => d.ContactId, (Guid?)null), ct);
         await _db.Activities.Where(a => a.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(a => a.ContactId, (Guid?)null), ct);
+        await _db.TaskItems.Where(t => t.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(t => t.ContactId, (Guid?)null), ct);
+        await _db.EmailSequenceEnrollments.Where(e => e.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(e => e.ContactId, (Guid?)null), ct);
         _db.Contacts.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;

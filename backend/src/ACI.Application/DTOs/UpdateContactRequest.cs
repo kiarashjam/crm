@@ -48,4 +48,10 @@ public record UpdateContactRequest
     /// </summary>
     [StringLength(50, ErrorMessage = "Preferred contact method cannot exceed 50 characters")]
     public string? PreferredContactMethod { get; init; }
+
+    /// <summary>
+    /// Contact description / notes. HP-7.
+    /// </summary>
+    [StringLength(4000, ErrorMessage = "Description cannot exceed 4000 characters")]
+    public string? Description { get; init; }
 }

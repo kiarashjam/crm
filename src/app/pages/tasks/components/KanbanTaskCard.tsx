@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useDrag } from 'react-dnd';
 import {
   Calendar,
@@ -61,6 +62,7 @@ export function KanbanTaskCard({
   taskCardType,
   onViewDetails,
 }: KanbanTaskCardProps) {
+  const navigate = useNavigate();
   const priority = priorityConfig[task.priority || 'none'];
   const now = new Date();
   const isOverdue = task.status !== 'completed' && task.status !== 'cancelled' && task.dueDateUtc && new Date(task.dueDateUtc) < now;
@@ -225,8 +227,11 @@ export function KanbanTaskCard({
             </span>
           )}
 
-          {task.dealName && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800">
+          {task.dealName && task.dealId && (
+            <span
+              onClick={(e) => { e.stopPropagation(); navigate(`/deals/${task.dealId}`); }}
+              className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800 cursor-pointer hover:bg-teal-100 dark:hover:bg-teal-900/50 transition-colors"
+            >
               <Link2 className="w-3 h-3" />
               <span className="max-w-[80px] truncate">{task.dealName}</span>
             </span>

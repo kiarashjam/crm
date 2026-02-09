@@ -52,5 +52,9 @@ internal sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.HasIndex(e => e.DueDateUtc);
         builder.HasIndex(e => new { e.OrganizationId, e.Status });
         builder.HasIndex(e => new { e.UserId, e.Status });
+        
+        // HP-4: Indexes on DealId and LeadId for cross-entity queries
+        builder.HasIndex(e => e.DealId);
+        builder.HasIndex(e => e.LeadId);
     }
 }

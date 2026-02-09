@@ -1,11 +1,25 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { queryKeys } from './queryKeys';
-import { getCompanies, createCompany, updateCompany, deleteCompany } from '@/app/api/companies';
-import type { Company } from '@/app/api/types';
+import { getCompanies, getCompaniesPaged, createCompany, updateCompany, deleteCompany } from '@/app/api/companies';
+import type { Company, PaginationParams, PagedResult } from '@/app/api/types';
 
 /**
- * Hook to fetch all companies
+ * Hook to fetch companies with pagination and search (HP-8: primary data-fetching hook).
+ * Uses keepPreviousData for smooth page transitions.
+ */
+export function useCompaniesPaged(params: PaginationParams = {}) {
+  const { page = 1, pageSize = 20, search } = params;
+  return useQuery({
+    queryKey: queryKeys.companies.list({ page, pageSize, search }),
+    queryFn: () => getCompaniesPaged({ page, pageSize, search }),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000, // 30s — companies change infrequently
+  });
+}
+
+/**
+ * Hook to fetch all companies (non-paginated, for dropdowns/selects).
  */
 export function useCompanies() {
   return useQuery({
@@ -15,7 +29,8 @@ export function useCompanies() {
 }
 
 /**
- * Hook to fetch a single company by ID
+ * Hook to fetch a single company by ID.
+ * Fetches from the paginated cache first, then falls back to fetching all.
  */
 export function useCompanyById(id: string | undefined) {
   const { data: companies } = useCompanies();
@@ -28,7 +43,7 @@ export function useCompanyById(id: string | undefined) {
 }
 
 /**
- * Hook to create a new company
+ * Hook to create a new company with cache invalidation.
  */
 export function useCreateCompany() {
   const queryClient = useQueryClient();
@@ -37,10 +52,8 @@ export function useCreateCompany() {
     mutationFn: createCompany,
     onSuccess: (newCompany) => {
       if (newCompany) {
-        queryClient.setQueryData<Company[]>(
-          queryKeys.companies.lists(),
-          (old) => (old ? [...old, newCompany] : [newCompany])
-        );
+        // Invalidate all company queries to refetch fresh data
+        queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
         toast.success('Company created successfully');
       }
     },
@@ -51,7 +64,7 @@ export function useCreateCompany() {
 }
 
 /**
- * Hook to update a company
+ * Hook to update a company with cache invalidation.
  */
 export function useUpdateCompany() {
   const queryClient = useQueryClient();
@@ -61,13 +74,8 @@ export function useUpdateCompany() {
       updateCompany(id, params),
     onSuccess: (updatedCompany) => {
       if (updatedCompany) {
-        queryClient.setQueryData<Company[]>(
-          queryKeys.companies.lists(),
-          (old) =>
-            old?.map((company) =>
-              company.id === updatedCompany.id ? updatedCompany : company
-            ) ?? []
-        );
+        // Invalidate all company queries to refetch fresh data
+        queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
         toast.success('Company updated successfully');
       }
     },
@@ -78,19 +86,17 @@ export function useUpdateCompany() {
 }
 
 /**
- * Hook to delete a company
+ * Hook to delete a company with cache invalidation.
  */
 export function useDeleteCompany() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: deleteCompany,
-    onSuccess: (success, deletedId) => {
+    onSuccess: (success) => {
       if (success) {
-        queryClient.setQueryData<Company[]>(
-          queryKeys.companies.lists(),
-          (old) => old?.filter((company) => company.id !== deletedId) ?? []
-        );
+        // Invalidate all company queries to refetch fresh data
+        queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
         toast.success('Company deleted successfully');
       }
     },

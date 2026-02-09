@@ -33,4 +33,22 @@ public record CreateCompanyRequest
     /// </summary>
     [StringLength(50, ErrorMessage = "Size cannot exceed 50 characters")]
     public string? Size { get; init; }
+
+    /// <summary>
+    /// Company description (optional).
+    /// </summary>
+    [StringLength(2000, ErrorMessage = "Description cannot exceed 2000 characters")]
+    public string? Description { get; init; }
+
+    /// <summary>
+    /// Company website URL (optional).
+    /// </summary>
+    [StringLength(500, ErrorMessage = "Website cannot exceed 500 characters")]
+    public string? Website { get; init; }
+
+    /// <summary>
+    /// Company location / address (optional).
+    /// </summary>
+    [StringLength(300, ErrorMessage = "Location cannot exceed 300 characters")]
+    public string? Location { get; init; }
 }
