@@ -104,6 +104,7 @@ export const EMPTY_LEAD_FORM = {
   name: '',
   email: '',
   phone: '',
+  referredByContactId: '',
   companyId: '',
   source: 'Manual',
   status: 'New',

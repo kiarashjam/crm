@@ -8,6 +8,7 @@ export type LeadForm = {
   name: string;
   email: string;
   phone: string;
+  referredByContactId: string;
   companyId: string;
   source: string;
   status: string;
@@ -48,6 +49,7 @@ export interface AddLeadDialogProps {
   form: LeadForm;
   setForm: React.Dispatch<React.SetStateAction<LeadForm>>;
   companies: Company[];
+  contacts: Contact[];
   sourceOptions: { id: string; name: string }[];
   statusOptions: { id: string; name: string }[];
   onSubmit: (e: React.FormEvent) => void;

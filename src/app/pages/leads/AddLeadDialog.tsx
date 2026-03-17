@@ -27,6 +27,7 @@ export function AddLeadDialog({
   form,
   setForm,
   companies,
+  contacts,
   sourceOptions,
   statusOptions,
   onSubmit,
@@ -67,6 +68,15 @@ export function AddLeadDialog({
 
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === WIZARD_STEPS.length - 1;
+
+  const handleDialogSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isLastStep) {
+      goToNextStep();
+      return;
+    }
+    onSubmit(e);
+  };
 
   // Check if step is completed
   const isStepComplete = (stepId: WizardStep): boolean => {
@@ -191,7 +201,7 @@ export function AddLeadDialog({
         </div>
 
         {/* Form Content - Scrollable */}
-        <form onSubmit={onSubmit} className="flex-1 overflow-y-auto">
+        <form onSubmit={handleDialogSubmit} className="flex-1 overflow-y-auto">
           <div className="p-6">
             {/* Step 1: Contact Info Section */}
             <div className={`space-y-4 ${activeStep === 'contact' ? 'block' : 'hidden'}`}>
@@ -259,6 +269,39 @@ export function AddLeadDialog({
                   className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100 transition-all"
                 />
                 <p className="text-xs text-slate-500 mt-1.5">For direct calls or SMS follow-ups</p>
+              </div>
+
+              {/* Referred By */}
+              <div className="group">
+                <Label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-violet-100 text-violet-600">
+                    <UserPlus className="w-3.5 h-3.5" />
+                  </div>
+                  Referred By
+                  <span className="text-slate-400 text-xs font-normal ml-1">(optional)</span>
+                </Label>
+                <Select
+                  value={form.referredByContactId || 'none'}
+                  onValueChange={(v) => setForm((f) => ({ ...f, referredByContactId: v === 'none' ? '' : v }))}
+                >
+                  <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
+                    <SelectValue placeholder="Select contact (or none)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      <span className="text-slate-500">No referral</span>
+                    </SelectItem>
+                    {contacts.map((contact) => (
+                      <SelectItem key={contact.id} value={contact.id}>
+                        <span className="flex items-center gap-2">
+                          <User className="w-3.5 h-3.5 text-slate-400" />
+                          {contact.name} {contact.email ? `(${contact.email})` : ''}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500 mt-1.5">Choose which existing contact referred this lead, or leave empty</p>
               </div>
             </div>
 

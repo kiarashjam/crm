@@ -65,6 +65,67 @@ import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM } from './leads/co
 import { isValidGuid } from './leads/utils';
 import type { LeadForm } from './leads/types';
 
+const LEAD_ASSIGNMENTS_STORAGE_KEY = 'crm.leadAssignments.v1';
+const LEAD_REFERRALS_STORAGE_KEY = 'crm.leadReferrals.v1';
+const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
+
+function loadLeadAssignments(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(LEAD_ASSIGNMENTS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLeadAssignments(assignments: Record<string, string>) {
+  try {
+    localStorage.setItem(LEAD_ASSIGNMENTS_STORAGE_KEY, JSON.stringify(assignments));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function loadLeadReferrals(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(LEAD_REFERRALS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLeadReferrals(referrals: Record<string, string>) {
+  try {
+    localStorage.setItem(LEAD_REFERRALS_STORAGE_KEY, JSON.stringify(referrals));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function loadLeadCreatedAtMap(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(LEAD_CREATED_AT_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLeadCreatedAtMap(createdAtByLeadId: Record<string, string>) {
+  try {
+    localStorage.setItem(LEAD_CREATED_AT_STORAGE_KEY, JSON.stringify(createdAtByLeadId));
+  } catch {
+    // ignore storage failures
+  }
+}
+
 export default function Leads() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -76,6 +137,7 @@ export default function Leads() {
   
   const [leads, setLeads] = useState<Lead[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [leadStatuses, setLeadStatuses] = useState<LeadStatus[]>([]);
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,10 +182,14 @@ export default function Leads() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterConverted, setFilterConverted] = useState<'all' | 'converted' | 'active'>('active');
+  const [filterAssignment, setFilterAssignment] = useState<'all' | 'me' | 'unassigned'>('all');
   const [sortField, setSortField] = useState<'name' | 'email' | 'status' | 'createdAt'>('createdAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [leadAssignments, setLeadAssignments] = useState<Record<string, string>>(() => loadLeadAssignments());
+  const [leadReferrals, setLeadReferrals] = useState<Record<string, string>>(() => loadLeadReferrals());
+  const [leadCreatedAtMap, setLeadCreatedAtMap] = useState<Record<string, string>>(() => loadLeadCreatedAtMap());
 
   const statusOptions = leadStatuses.length > 0 ? leadStatuses : FALLBACK_STATUSES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
   const sourceOptions = leadSources.length > 0 ? leadSources : FALLBACK_SOURCES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
@@ -154,16 +220,44 @@ export default function Leads() {
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
-      const [pagedResult, companiesData, statuses, sources] = await Promise.all([
+      const [pagedResult, companiesData, contactsData, statuses, sources] = await Promise.all([
         getLeadsPaged({ page: currentPage, pageSize, search: debouncedSearch || undefined }),
         getCompanies(),
+        getContacts(),
         getLeadStatuses(),
         getLeadSources(),
       ]);
-      setLeads(pagedResult.items);
+      const assignments = loadLeadAssignments();
+      const referrals = loadLeadReferrals();
+      const createdAtByLeadId = loadLeadCreatedAtMap();
+      let createdAtChanged = false;
+      setLeadAssignments(assignments);
+      setLeadReferrals(referrals);
+      const contactsById = new Map((contactsData ?? []).map((c) => [c.id, c]));
+      setLeads(
+        pagedResult.items.map((lead) => {
+          const resolvedCreatedAt = lead.createdAtUtc || createdAtByLeadId[lead.id];
+          if (!resolvedCreatedAt) {
+            createdAtByLeadId[lead.id] = new Date().toISOString();
+            createdAtChanged = true;
+          }
+          return {
+            ...lead,
+            createdAtUtc: resolvedCreatedAt || createdAtByLeadId[lead.id],
+            assignedToId: assignments[lead.id] || lead.assignedToId,
+            referredByContactId: referrals[lead.id] || lead.referredByContactId,
+            referredByContactName: ((referrals[lead.id] || lead.referredByContactId) ? contactsById.get(referrals[lead.id] || lead.referredByContactId || '')?.name : undefined) || lead.referredByContactName,
+          };
+        })
+      );
+      if (createdAtChanged) {
+        saveLeadCreatedAtMap(createdAtByLeadId);
+      }
+      setLeadCreatedAtMap(createdAtByLeadId);
       setTotalCount(pagedResult.totalCount);
       setTotalPages(pagedResult.totalPages);
       setCompanies(companiesData);
+      setContacts(contactsData ?? []);
       setLeadStatuses(statuses ?? []);
       setLeadSources(sources ?? []);
     } catch {
@@ -242,35 +336,52 @@ export default function Leads() {
     } else if (filterConverted === 'active') {
       result = result.filter((l) => !l.isConverted);
     }
+
+    // Assignment filter
+    if (filterAssignment === 'me' && currentUser?.id) {
+      result = result.filter((l) => l.assignedToId === currentUser.id);
+    } else if (filterAssignment === 'unassigned') {
+      result = result.filter((l) => !l.assignedToId);
+    }
     
+    const toSortableTimestamp = (value?: string) => {
+      if (!value) return Number.NEGATIVE_INFINITY;
+      const ts = Date.parse(value);
+      return Number.isNaN(ts) ? Number.NEGATIVE_INFINITY : ts;
+    };
+
     // Sorting
     result.sort((a, b) => {
       let comparison = 0;
       switch (sortField) {
         case 'name':
-          comparison = a.name.localeCompare(b.name);
+          comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
           break;
         case 'email':
-          comparison = a.email.localeCompare(b.email);
+          comparison = a.email.localeCompare(b.email, undefined, { sensitivity: 'base' });
           break;
         case 'status':
-          comparison = a.status.localeCompare(b.status);
+          comparison = a.status.localeCompare(b.status, undefined, { sensitivity: 'base' });
           break;
         case 'createdAt':
-          comparison = new Date(a.createdAtUtc || 0).getTime() - new Date(b.createdAtUtc || 0).getTime();
+          comparison = toSortableTimestamp(a.createdAtUtc) - toSortableTimestamp(b.createdAtUtc);
           break;
+      }
+      if (comparison === 0) {
+        comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
     
     return result;
-  }, [leads, searchQuery, filterStatus, filterSource, filterConverted, sortField, sortDirection]);
+  }, [leads, searchQuery, filterStatus, filterSource, filterConverted, filterAssignment, sortField, sortDirection, currentUser?.id]);
 
   // Count active filters
   const activeFilterCount = [
     filterStatus !== 'all',
     filterSource !== 'all',
     filterConverted !== 'all',
+    filterAssignment !== 'all',
   ].filter(Boolean).length;
 
   // Clear all filters
@@ -278,6 +389,7 @@ export default function Leads() {
     setFilterStatus('all');
     setFilterSource('all');
     setFilterConverted('all');
+    setFilterAssignment('all');
     setSearchQuery('');
   };
 
@@ -310,6 +422,7 @@ export default function Leads() {
         'Name',
         'Email',
         'Phone',
+        'Referred By',
         'Company',
         'Source',
         'Status',
@@ -327,6 +440,7 @@ export default function Leads() {
         lead.name,
         lead.email,
         lead.phone ?? '',
+        lead.referredByContactName ?? (lead.referredByContactId ? contacts.find((c) => c.id === lead.referredByContactId)?.name : '') ?? '',
         lead.companyId ? companyName(lead.companyId) : '',
         lead.source ?? '',
         lead.status,
@@ -455,6 +569,7 @@ export default function Leads() {
       name: lead.name,
       email: lead.email,
       phone: lead.phone ?? '',
+        referredByContactId: lead.referredByContactId ?? '',
       companyId: lead.companyId ?? '',
       source: lead.source ?? (sourceOpt?.name ?? 'Manual'),
       status: lead.status,
@@ -473,8 +588,48 @@ export default function Leads() {
   };
 
   const handleLeadUpdate = (updatedLead: Lead) => {
-    setLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l));
-    setDetailLead(updatedLead);
+    const existingLead = leads.find((l) => l.id === updatedLead.id);
+    const resolvedReferredByContactId = updatedLead.referredByContactId ?? existingLead?.referredByContactId;
+    const resolvedReferredByContactName = resolvedReferredByContactId
+      ? (contacts.find((c) => c.id === resolvedReferredByContactId)?.name ?? existingLead?.referredByContactName)
+      : undefined;
+    const mergedLead: Lead = {
+      ...(existingLead ?? updatedLead),
+      ...updatedLead,
+      createdAtUtc: updatedLead.createdAtUtc ?? existingLead?.createdAtUtc ?? leadCreatedAtMap[updatedLead.id] ?? new Date().toISOString(),
+      assignedToId: updatedLead.assignedToId ?? existingLead?.assignedToId,
+      referredByContactId: resolvedReferredByContactId,
+      referredByContactName: resolvedReferredByContactName,
+    };
+
+    const updatedAssignments = { ...leadAssignments };
+    if (mergedLead.assignedToId) {
+      updatedAssignments[mergedLead.id] = mergedLead.assignedToId;
+    } else {
+      delete updatedAssignments[mergedLead.id];
+    }
+    setLeadAssignments(updatedAssignments);
+    saveLeadAssignments(updatedAssignments);
+    const updatedReferrals = { ...leadReferrals };
+    if (mergedLead.referredByContactId) {
+      updatedReferrals[mergedLead.id] = mergedLead.referredByContactId;
+    } else {
+      delete updatedReferrals[mergedLead.id];
+    }
+    setLeadReferrals(updatedReferrals);
+    saveLeadReferrals(updatedReferrals);
+    const updatedCreatedAtMap = {
+      ...leadCreatedAtMap,
+      [mergedLead.id]: mergedLead.createdAtUtc ?? new Date().toISOString(),
+    };
+    setLeadCreatedAtMap(updatedCreatedAtMap);
+    saveLeadCreatedAtMap(updatedCreatedAtMap);
+    setLeads((prev) => {
+      const hasLead = prev.some((l) => l.id === mergedLead.id);
+      if (!hasLead) return [mergedLead, ...prev];
+      return prev.map((l) => (l.id === mergedLead.id ? mergedLead : l));
+    });
+    setDetailLead(mergedLead);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -506,9 +661,14 @@ export default function Leads() {
           lifecycleStage: form.lifecycleStage || undefined,
         });
         if (updated) {
+          const mergedUpdatedLead: Lead = {
+            ...updated,
+            referredByContactId: form.referredByContactId || undefined,
+            referredByContactName: form.referredByContactId ? contacts.find((c) => c.id === form.referredByContactId)?.name : undefined,
+          };
+          handleLeadUpdate(mergedUpdatedLead);
           toast.success(messages.success.leadUpdated);
           setDialogOpen(false);
-          fetchLeads(); // Refresh data
         } else {
           toast.error(messages.errors.generic);
         }
@@ -527,9 +687,15 @@ export default function Leads() {
           lifecycleStage: form.lifecycleStage || undefined,
         });
         if (created) {
+          const mergedCreatedLead: Lead = {
+            ...created,
+            createdAtUtc: created.createdAtUtc ?? new Date().toISOString(),
+            referredByContactId: form.referredByContactId || undefined,
+            referredByContactName: form.referredByContactId ? contacts.find((c) => c.id === form.referredByContactId)?.name : undefined,
+          };
+          handleLeadUpdate(mergedCreatedLead);
           toast.success(messages.success.leadCreated);
           setDialogOpen(false);
-          fetchLeads(); // Refresh data
         } else {
           toast.error(messages.errors.generic);
         }
@@ -817,7 +983,7 @@ export default function Leads() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[180px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
+                  <SelectTrigger className="relative h-11 w-[200px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
                         <ArrowUpDown className="w-3.5 h-3.5 text-slate-300" />
@@ -854,6 +1020,24 @@ export default function Leads() {
                     <span className="flex items-center gap-2">
                       <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
                       Status A-Z
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="status-desc">
+                    <span className="flex items-center gap-2">
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      Status Z-A
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="email-asc">
+                    <span className="flex items-center gap-2">
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      Email A-Z
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="email-desc">
+                    <span className="flex items-center gap-2">
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      Email Z-A
                     </span>
                   </SelectItem>
                 </SelectContent>
@@ -952,6 +1136,24 @@ export default function Leads() {
                   </Select>
                 </div>
 
+                {/* Assignment Filter */}
+                <div className="min-w-[180px]">
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
+                    <User className="w-3.5 h-3.5" />
+                    Assignment
+                  </label>
+                  <Select value={filterAssignment} onValueChange={(v) => setFilterAssignment(v as typeof filterAssignment)}>
+                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                      <SelectValue placeholder="All assignments" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All assignments</SelectItem>
+                      <SelectItem value="me">Assigned to me</SelectItem>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Clear Filters */}
                 {activeFilterCount > 0 && (
                   <div className="flex items-end">
@@ -1006,6 +1208,15 @@ export default function Leads() {
                   <RefreshCw className="w-3 h-3" />
                   {filterConverted === 'converted' ? 'Converted' : 'Active'}
                   <button onClick={() => setFilterConverted('all')} className="ml-0.5 hover:text-emerald-100 transition-colors">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
+              {filterAssignment !== 'all' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-medium border border-indigo-400/30">
+                  <User className="w-3 h-3" />
+                  {filterAssignment === 'me' ? 'Assigned to me' : 'Unassigned'}
+                  <button onClick={() => setFilterAssignment('all')} className="ml-0.5 hover:text-indigo-100 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -1310,6 +1521,12 @@ export default function Leads() {
                             <span className="font-medium">{assignee.name}</span>
                           </span>
                         )}
+                        {lead.referredByContactName && (
+                          <span className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-100">
+                            <UserPlus className="w-4 h-4" />
+                            <span className="font-medium">Referred by {lead.referredByContactName}</span>
+                          </span>
+                        )}
                       </div>
 
                       {/* Tags Row */}
@@ -1349,14 +1566,12 @@ export default function Leads() {
                             <span>Last contact: <span className="font-semibold text-slate-700">{formatDateShort(lead.lastContactedAt)}</span></span>
                           </div>
                         )}
-                        {lead.createdAtUtc && (
-                          <div className="flex items-center gap-1.5 text-slate-500">
-                            <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
-                              <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                            </div>
-                            <span>Created: <span className="font-semibold text-slate-700">{formatDateShort(lead.createdAtUtc)}</span></span>
+                        <div className="flex items-center gap-1.5 text-slate-500">
+                          <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
+                            <Calendar className="w-3.5 h-3.5 text-blue-600" />
                           </div>
-                        )}
+                          <span>Added: <span className="font-semibold text-slate-700">{formatDateShort(lead.createdAtUtc) ?? 'Unknown'}</span></span>
+                        </div>
                         {lead.isConverted && lead.convertedAtUtc && (
                           <div className="flex items-center gap-1.5 text-emerald-600">
                             <div className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center">
@@ -1433,6 +1648,7 @@ export default function Leads() {
         form={form}
         setForm={setForm}
         companies={companies}
+        contacts={contacts}
         sourceOptions={sourceOptions}
         statusOptions={statusOptions}
         onSubmit={handleSubmit}

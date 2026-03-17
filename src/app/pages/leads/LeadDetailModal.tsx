@@ -72,6 +72,9 @@ function LeadDetailModal({
   const [quickLogType, setQuickLogType] = useState<string | null>(null);
   const [quickLogNote, setQuickLogNote] = useState('');
   const [loggingActivity, setLoggingActivity] = useState(false);
+  const [interactionNoteActivityId, setInteractionNoteActivityId] = useState<string | null>(null);
+  const [interactionNoteDraft, setInteractionNoteDraft] = useState('');
+  const [savingInteractionNote, setSavingInteractionNote] = useState(false);
   const [emailDraft, setEmailDraft] = useState({ subject: '', body: '' });
   const [sendingEmail, setSendingEmail] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', dueDate: '' });
@@ -405,6 +408,42 @@ function LeadDetailModal({
     }
   };
 
+  const handleSaveInteractionNote = async (activity: ActivityWithUser) => {
+    const note = interactionNoteDraft.trim();
+    if (!note) {
+      toast.error('Please add a note first');
+      return;
+    }
+
+    setSavingInteractionNote(true);
+    try {
+      const { updateActivity } = await import('@/app/api');
+      const now = new Date().toLocaleString();
+      const author = currentUser?.name || 'You';
+      const noteBlock = `[Note by ${author} - ${now}] ${note}`;
+      const mergedBody = activity.body?.trim()
+        ? `${activity.body}\n\n${noteBlock}`
+        : noteBlock;
+
+      const updated = await updateActivity(activity.id, { body: mergedBody });
+      if (!updated) {
+        toast.error('Failed to save note');
+        return;
+      }
+
+      setActivities((prev) =>
+        prev.map((item) => (item.id === activity.id ? { ...item, body: updated.body ?? mergedBody } : item))
+      );
+      setInteractionNoteActivityId(null);
+      setInteractionNoteDraft('');
+      toast.success('Interaction note saved');
+    } catch {
+      toast.error('Failed to save note');
+    } finally {
+      setSavingInteractionNote(false);
+    }
+  };
+
   const handleAddTask = async () => {
     if (!lead || !newTask.title.trim()) return;
     setAddingTask(true);
@@ -533,6 +572,10 @@ function LeadDetailModal({
     const newAssignee = orgMembers.find(m => m.userId === userId);
     
     setAssignedTo(userId);
+    onUpdate({
+      ...lead,
+      assignedToId: userId || undefined,
+    });
     
     // Log assignment change
     try {
@@ -1346,6 +1389,53 @@ function LeadDetailModal({
                             }`}>
                               {activity.body}
                             </p>
+                          )}
+
+                          {!isSystem && (
+                            <div className="mt-2">
+                              {interactionNoteActivityId === activity.id ? (
+                                <div className="space-y-2">
+                                  <textarea
+                                    value={interactionNoteDraft}
+                                    onChange={(e) => setInteractionNoteDraft(e.target.value)}
+                                    rows={2}
+                                    placeholder="Add a note to this interaction..."
+                                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                  />
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setInteractionNoteActivityId(null);
+                                        setInteractionNoteDraft('');
+                                      }}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      disabled={savingInteractionNote}
+                                      onClick={() => handleSaveInteractionNote(activityWithUser)}
+                                    >
+                                      {savingInteractionNote ? 'Saving...' : 'Save Note'}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={() => {
+                                    setInteractionNoteActivityId(activity.id);
+                                    setInteractionNoteDraft('');
+                                  }}
+                                >
+                                  Add Note
+                                </Button>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

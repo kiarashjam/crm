@@ -6,7 +6,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-type LeadRaw = { id: string; name: string; email: string; phone?: string | null; companyId?: string | null; source?: string | null; status: string; leadSourceId?: string | null; leadStatusId?: string | null; leadScore?: number | null; lastContactedAt?: string | null; description?: string | null; lifecycleStage?: string | null; isConverted?: boolean; convertedAtUtc?: string | null };
+type LeadRaw = { id: string; name: string; email: string; phone?: string | null; companyId?: string | null; source?: string | null; status: string; leadSourceId?: string | null; leadStatusId?: string | null; leadScore?: number | null; lastContactedAt?: string | null; description?: string | null; lifecycleStage?: string | null; isConverted?: boolean; convertedAtUtc?: string | null; createdAtUtc?: string | null };
 function mapLead(d: LeadRaw): Lead {
   return {
     id: d.id,
@@ -24,6 +24,7 @@ function mapLead(d: LeadRaw): Lead {
     lifecycleStage: d.lifecycleStage ?? undefined,
     isConverted: d.isConverted ?? false,
     convertedAtUtc: d.convertedAtUtc ?? undefined,
+    createdAtUtc: d.createdAtUtc ?? undefined,
   };
 }
 

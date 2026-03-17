@@ -79,6 +79,8 @@ export interface Lead {
   name: string;
   email: string;
   phone?: string;
+  referredByContactId?: string;
+  referredByContactName?: string;
   companyId?: string;
   source?: string;
   status: string;
