@@ -4,7 +4,7 @@ import {
   Search, Plus, Pencil, Trash2, Building2, User, ArrowRightCircle, Link2,
   Mail, Phone, Sparkles, Check, Tag, UserPlus, Info, CircleDot,
   Upload, RefreshCw, Users, Handshake, ArrowRight, CheckCircle2,
-  SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, X,
+  SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, X, Download,
   TrendingUp, Target, Clock, Zap, BarChart3, Calendar, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getLeadsPaged,
+  getLeads,
   createLead,
   updateLead,
   deleteLead,
@@ -122,6 +123,7 @@ export default function Leads() {
   const [sortField, setSortField] = useState<'name' | 'email' | 'status' | 'createdAt'>('createdAt');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showFilters, setShowFilters] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const statusOptions = leadStatuses.length > 0 ? leadStatuses : FALLBACK_STATUSES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
   const sourceOptions = leadSources.length > 0 ? leadSources : FALLBACK_SOURCES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
@@ -277,6 +279,88 @@ export default function Leads() {
     setFilterSource('all');
     setFilterConverted('all');
     setSearchQuery('');
+  };
+
+  const csvEscape = (value: string | number | boolean | null | undefined) => {
+    if (value === null || value === undefined) return '';
+    const str = String(value);
+    if (/[",\n]/.test(str)) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const formatIsoDate = (value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+  };
+
+  const handleExportLeads = async () => {
+    setExporting(true);
+    try {
+      const allLeads = await getLeads();
+      if (!allLeads.length) {
+        toast.info('No leads to export');
+        return;
+      }
+
+      const headers = [
+        'Id',
+        'Name',
+        'Email',
+        'Phone',
+        'Company',
+        'Source',
+        'Status',
+        'Lead Score',
+        'Lifecycle Stage',
+        'Converted',
+        'Created At',
+        'Last Contacted At',
+        'Converted At',
+        'Description',
+      ];
+
+      const rows = allLeads.map((lead) => [
+        lead.id,
+        lead.name,
+        lead.email,
+        lead.phone ?? '',
+        lead.companyId ? companyName(lead.companyId) : '',
+        lead.source ?? '',
+        lead.status,
+        lead.leadScore ?? '',
+        lead.lifecycleStage ?? '',
+        lead.isConverted ? 'Yes' : 'No',
+        formatIsoDate(lead.createdAtUtc),
+        formatIsoDate(lead.lastContactedAt),
+        formatIsoDate(lead.convertedAtUtc),
+        lead.description ?? '',
+      ]);
+
+      const csvContent = [
+        headers.map(csvEscape).join(','),
+        ...rows.map((row) => row.map(csvEscape).join(',')),
+      ].join('\n');
+
+      const csvWithBom = `\uFEFF${csvContent}`;
+      const blob = new Blob([csvWithBom], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `leads-${timestamp}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${allLeads.length} leads`);
+    } catch {
+      toast.error('Failed to export leads');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const openCreate = () => {
@@ -520,6 +604,10 @@ export default function Leads() {
                 <Button onClick={() => navigate('/leads/import')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
                   <Upload className="w-4 h-4" />
                   <span className="hidden sm:inline">Import</span>
+                </Button>
+                <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30 disabled:opacity-60">
+                  <Download className={`w-4 h-4 ${exporting ? 'animate-pulse' : ''}`} />
+                  <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export CSV'}</span>
                 </Button>
                 <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
                   <Plus className="w-4 h-4" />

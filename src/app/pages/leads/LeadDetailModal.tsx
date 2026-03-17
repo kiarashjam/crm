@@ -69,6 +69,11 @@ function LeadDetailModal({
   const [saving, setSaving] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+  const [quickLogType, setQuickLogType] = useState<string | null>(null);
+  const [quickLogNote, setQuickLogNote] = useState('');
+  const [loggingActivity, setLoggingActivity] = useState(false);
+  const [emailDraft, setEmailDraft] = useState({ subject: '', body: '' });
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', dueDate: '' });
   const [addingTask, setAddingTask] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
@@ -101,6 +106,10 @@ function LeadDetailModal({
       loadTasks();
       setTags(lead.tags || []);
       setAssignedTo(lead.assignedToId || '');
+      setEmailDraft({
+        subject: `Following up from ${currentUser?.name || 'our team'}`,
+        body: '',
+      });
       _setHasUnsavedChanges(false);
       setEditingField(null);
     }
@@ -313,8 +322,8 @@ function LeadDetailModal({
     }
   };
 
-  const handleLogActivity = async (type: string, details?: string) => {
-    if (!lead) return;
+  const handleLogActivity = async (type: string, details?: string): Promise<boolean> => {
+    if (!lead) return false;
     const subjectMap: Record<string, string> = {
       call: 'Phone Call',
       email: 'Email Sent',
@@ -339,9 +348,60 @@ function LeadDetailModal({
         };
         setActivities(prev => [activityWithUser, ...prev]);
         toast.success(`${subject} logged`);
+        return true;
       }
+      return false;
     } catch {
       toast.error('Failed to log activity');
+      return false;
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!lead?.email) {
+      toast.error('Lead email is missing');
+      return;
+    }
+
+    const subject = emailDraft.subject.trim();
+    const body = emailDraft.body.trim();
+    if (!subject && !body) {
+      toast.error('Add a subject or message before sending');
+      return;
+    }
+
+    setSendingEmail(true);
+    try {
+      const { createActivity } = await import('@/app/api');
+      const activity = await createActivity({
+        type: 'email',
+        subject: subject || 'Email sent',
+        body: body || `Sent to ${lead.email}`,
+        leadId: lead.id,
+      });
+
+      if (activity) {
+        const activityWithUser: ActivityWithUser = {
+          ...activity,
+          userName: currentUser?.name || 'You',
+          userEmail: currentUser?.email || '',
+        };
+        setActivities(prev => [activityWithUser, ...prev]);
+      }
+
+      const query = new URLSearchParams();
+      if (subject) query.set('subject', subject);
+      if (body) query.set('body', body);
+      const queryString = query.toString();
+      const mailtoUrl = `mailto:${lead.email}${queryString ? `?${queryString}` : ''}`;
+      window.location.href = mailtoUrl;
+
+      toast.success('Email composer opened and activity logged');
+      setEmailDraft(prev => ({ ...prev, body: '' }));
+    } catch {
+      toast.error('Failed to send email');
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -504,6 +564,7 @@ function LeadDetailModal({
   const companyName = companies.find(c => c.id === lead.companyId)?.name;
   const statusStyle = statusColors[lead.status] || statusColors.New || { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200', dot: 'bg-slate-400' };
   const assignee = orgMembers.find(m => m.userId === assignedTo);
+  const emailActivities = activities.filter((activity) => activity.type === 'email');
 
   // Get initials for avatar
   const initials = lead.name
@@ -1062,7 +1123,10 @@ function LeadDetailModal({
                     key={type.id}
                     size="sm"
                     variant="outline"
-                    onClick={() => handleLogActivity(type.id)}
+                    onClick={() => {
+                      setQuickLogType(type.id);
+                      setQuickLogNote('');
+                    }}
                     className="gap-1.5 h-8"
                   >
                     <type.icon className="w-3.5 h-3.5" />
@@ -1070,6 +1134,56 @@ function LeadDetailModal({
                   </Button>
                 ))}
               </div>
+
+              {quickLogType && (
+                <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-sm font-medium text-slate-700">
+                      Log {quickLogType === 'call' ? 'Phone Call' : quickLogType.charAt(0).toUpperCase() + quickLogType.slice(1)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickLogType(null);
+                        setQuickLogNote('');
+                      }}
+                      className="text-xs text-slate-500 hover:text-slate-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <textarea
+                    value={quickLogNote}
+                    onChange={(e) => setQuickLogNote(e.target.value)}
+                    placeholder={
+                      quickLogType === 'call'
+                        ? 'Add call notes (what was discussed, next step, outcome)...'
+                        : quickLogType === 'email'
+                          ? 'Add email note (summary, response needed, follow-up)...'
+                          : `Add notes for this ${quickLogType}...`
+                    }
+                    rows={3}
+                    className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      size="sm"
+                      disabled={loggingActivity}
+                      onClick={async () => {
+                        setLoggingActivity(true);
+                        const logged = await handleLogActivity(quickLogType, quickLogNote.trim() || undefined);
+                        setLoggingActivity(false);
+                        if (logged) {
+                          setQuickLogType(null);
+                          setQuickLogNote('');
+                        }
+                      }}
+                    >
+                      {loggingActivity ? 'Saving...' : 'Save Log'}
+                    </Button>
+                  </div>
+                </div>
+              )}
               
               {/* Add Note Input */}
               <div className="flex gap-2">
@@ -1084,10 +1198,72 @@ function LeadDetailModal({
                   {addingNote ? 'Adding...' : 'Add Note'}
                 </Button>
               </div>
+
+              {/* Send Email */}
+              <div className="mt-4 rounded-xl border border-purple-100 bg-purple-50/40 p-3 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <Mail className="w-4 h-4 text-purple-600" />
+                  Send Email to Lead
+                </div>
+                <Input
+                  value={emailDraft.subject}
+                  onChange={(e) => setEmailDraft(prev => ({ ...prev, subject: e.target.value }))}
+                  placeholder="Email subject"
+                  className="h-9 bg-white"
+                />
+                <textarea
+                  value={emailDraft.body}
+                  onChange={(e) => setEmailDraft(prev => ({ ...prev, body: e.target.value }))}
+                  placeholder={`Write your email to ${lead.email}...`}
+                  rows={3}
+                  className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-slate-500">
+                    Opens your default mail app and logs it in activity.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={handleSendEmail}
+                    disabled={sendingEmail || (!emailDraft.subject.trim() && !emailDraft.body.trim())}
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
+                    {sendingEmail ? 'Opening...' : 'Send Email'}
+                  </Button>
+                </div>
+              </div>
             </div>
 
             {/* Activity Timeline */}
             <div className="flex-1 overflow-y-auto p-4">
+              {/* Email Log */}
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-purple-600" />
+                    Email Log
+                  </h4>
+                  <span className="text-xs text-slate-500">{emailActivities.length} total</span>
+                </div>
+                {emailActivities.length === 0 ? (
+                  <p className="text-xs text-slate-500">No emails logged yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {emailActivities.slice(0, 3).map((activity) => (
+                      <div key={activity.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                        <p className="text-sm font-medium text-slate-800">
+                          {activity.subject || 'Email'}
+                        </p>
+                        {activity.body && (
+                          <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">{activity.body}</p>
+                        )}
+                        <p className="mt-1 text-xs text-slate-400">{formatDate(activity.createdAt)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <h3 className="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2">
                 <Activity className="w-4 h-4 text-indigo-500" />
                 Recent Interactions
