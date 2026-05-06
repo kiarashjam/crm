@@ -225,6 +225,9 @@ public static class DomainErrors
         
         public static readonly Error CannotRemoveOwner = new(
             "Organization.CannotRemoveOwner", "The organization owner cannot be removed");
+
+        public static readonly Error WebhookPasswordTooLong = new(
+            "Organization.WebhookPasswordTooLong", "Webhook password cannot exceed 256 characters");
     }
 
     /// <summary>

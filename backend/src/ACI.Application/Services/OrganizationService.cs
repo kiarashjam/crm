@@ -239,8 +239,49 @@ public sealed class OrganizationService : IOrganizationService
             WebhookUrl: webhookUrl,
             ApiKey: org.WebhookApiKey,
             ApiKeyCreatedAt: org.WebhookApiKeyCreatedAtUtc,
-            HasApiKey: !string.IsNullOrEmpty(org.WebhookApiKey)
+            HasApiKey: !string.IsNullOrEmpty(org.WebhookApiKey),
+            UsesDefaultWebhookPassword: string.IsNullOrEmpty(org.WebhookPassword),
+            PasswordWebhookUrl: string.Empty
         );
+    }
+
+    public async Task<Organization?> GetByIdUnauthenticatedAsync(Guid organizationId, CancellationToken ct = default)
+    {
+        return await _organizationRepository.GetByIdAsync(organizationId, ct);
+    }
+
+    public async Task<Result> UpdateWebhookPasswordAsync(Guid organizationId, Guid userId, string? newPassword, CancellationToken ct = default)
+    {
+        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        {
+            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, organizationId);
+            return DomainErrors.Organization.NotOwnerOrManager;
+        }
+
+        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+        if (org == null)
+        {
+            _logger.LogWarning("Organization {OrganizationId} not found", organizationId);
+            return DomainErrors.Organization.NotFound;
+        }
+
+        if (string.IsNullOrWhiteSpace(newPassword))
+        {
+            org.WebhookPassword = null;
+        }
+        else
+        {
+            var trimmed = newPassword.Trim();
+            if (trimmed.Length > 256)
+                return DomainErrors.Organization.WebhookPasswordTooLong;
+
+            org.WebhookPassword = trimmed;
+        }
+
+        await _organizationRepository.UpdateAsync(org, ct);
+        _logger.LogInformation("Webhook password updated for organization {OrganizationId}", organizationId);
+        return Result.Success();
     }
 
     public async Task<Result<string>> GenerateWebhookApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default)

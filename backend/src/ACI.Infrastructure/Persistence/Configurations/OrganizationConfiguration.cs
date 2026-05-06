@@ -13,5 +13,6 @@ internal sealed class OrganizationConfiguration : IEntityTypeConfiguration<Organ
         builder.Property(e => e.Name).HasMaxLength(256).IsRequired();
         builder.HasOne(e => e.OwnerUser).WithMany().HasForeignKey(e => e.OwnerUserId);
         builder.HasIndex(e => e.OwnerUserId);
+        builder.Property(e => e.WebhookPassword).HasMaxLength(256);
     }
 }

@@ -66,6 +66,11 @@ public interface IOrganizationService
     Task<Result> RemoveMemberAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, CancellationToken ct = default);
     
     /// <summary>
+    /// Gets an organization by id (no membership check; used for public webhook resolution).
+    /// </summary>
+    Task<Domain.Entities.Organization?> GetByIdUnauthenticatedAsync(Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
     /// Gets webhook configuration for an organization.
     /// </summary>
     /// <param name="organizationId">The organization ID.</param>
@@ -73,6 +78,11 @@ public interface IOrganizationService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Webhook info if user is a member.</returns>
     Task<Result<WebhookInfoDto>> GetWebhookInfoAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets or clears the JSON webhook password (owner/manager only). Empty clears to the app default.
+    /// </summary>
+    Task<Result> UpdateWebhookPasswordAsync(Guid organizationId, Guid userId, string? newPassword, CancellationToken ct = default);
     
     /// <summary>
     /// Generates a new webhook API key (owner/manager only).

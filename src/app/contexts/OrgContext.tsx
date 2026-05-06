@@ -13,7 +13,12 @@ import {
   type Organization,
   type InviteDto,
 } from '@/app/api/organizations';
-import { getCurrentOrganizationId, setCurrentOrganizationId, getAuthToken } from '@/app/lib/auth';
+import {
+  getCurrentOrganizationId,
+  setCurrentOrganizationId,
+  getAuthToken,
+  AUTH_SESSION_CHANGED,
+} from '@/app/lib/auth';
 import { isUsingRealApi } from '@/app/api/apiClient';
 
 const DEMO_ORGANIZATIONS: Organization[] = [
@@ -47,7 +52,15 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [hasFetched, setHasFetched] = useState(() => !isUsingRealApi());
 
   const refreshOrgs = useCallback(async () => {
-    if (!isUsingRealApi() || !getAuthToken()) {
+    if (!isUsingRealApi()) {
+      setHasFetched(true);
+      return;
+    }
+    if (!getAuthToken()) {
+      setOrganizations([]);
+      setPendingInvites([]);
+      setCurrentOrgIdState(null);
+      setLoading(false);
       setHasFetched(true);
       return;
     }
@@ -60,16 +73,22 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setOrganizations(orgs);
       setPendingInvites(invites);
       const stored = getCurrentOrganizationId();
-      if (stored && orgs.some((o) => o.id === stored)) {
+      const storedIsValid = Boolean(stored && orgs.some((o) => o.id === stored));
+      if (storedIsValid) {
         setCurrentOrgIdState(stored);
-      } else if (orgs.length > 0 && !stored) {
-        const firstOrgId = orgs[0]?.id;
-        if (firstOrgId) {
-          setCurrentOrganizationId(firstOrgId);
-          setCurrentOrgIdState(firstOrgId);
-        }
       } else {
-        setCurrentOrgIdState(stored);
+        if (stored && !storedIsValid) {
+          setCurrentOrganizationId(null);
+        }
+        if (orgs.length > 0) {
+          const firstOrgId = orgs[0]?.id;
+          if (firstOrgId) {
+            setCurrentOrganizationId(firstOrgId);
+            setCurrentOrgIdState(firstOrgId);
+          }
+        } else {
+          setCurrentOrgIdState(null);
+        }
       }
     } catch {
       setOrganizations([]);
@@ -82,6 +101,14 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshOrgs();
+  }, [refreshOrgs]);
+
+  useEffect(() => {
+    const onSessionChanged = () => {
+      void refreshOrgs();
+    };
+    window.addEventListener(AUTH_SESSION_CHANGED, onSessionChanged);
+    return () => window.removeEventListener(AUTH_SESSION_CHANGED, onSessionChanged);
   }, [refreshOrgs]);
 
   const setCurrentOrg = useCallback((orgId: string | null) => {

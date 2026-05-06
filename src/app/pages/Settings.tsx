@@ -5,6 +5,7 @@ import {
   User, Palette, Bell, Shield,
   ChevronRight,
   Settings2, Sparkles,
+  Link2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -53,14 +54,16 @@ import {
 } from '@/app/api';
 import type { Pipeline, DealStage } from '@/app/api/types';
 import { BrandSection } from './settings/components/BrandSection';
+import { IntegrationsSection } from './settings/components/IntegrationsSection';
 
-type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'organization' | 'pipelines' | 'security' | 'account';
+type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'organization' | 'pipelines' | 'security' | 'account';
 
 const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'profile', label: 'Profile', icon: User, description: 'Personal information and preferences' },
   { id: 'brand', label: 'Brand & AI', icon: Sparkles, description: 'Brand voice and AI copy settings' },
   { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme, layout, and display options' },
   { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Email and in-app notifications' },
+  { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound JSON webhooks and URLs' },
   { id: 'organization', label: 'Team', icon: Users, description: 'Organization and team members' },
   { id: 'pipelines', label: 'Pipelines', icon: Kanban, description: 'Sales pipeline stages' },
   { id: 'security', label: 'Security', icon: Shield, description: 'Two-factor authentication' },
@@ -74,8 +77,15 @@ export default function Settings() {
   const themeContext = useTheme();
 
   // Tab state
-  const initialTab = (searchParams.get('tab') as SettingsTab) || 'profile';
+  const tabFromUrl = searchParams.get('tab') as SettingsTab | null;
+  const initialTab: SettingsTab =
+    tabFromUrl && TAB_CONFIG.some((t) => t.id === tabFromUrl) ? tabFromUrl : 'profile';
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+
+  useEffect(() => {
+    const raw = searchParams.get('tab') as SettingsTab | null;
+    if (raw && TAB_CONFIG.some((t) => t.id === raw)) setActiveTab(raw);
+  }, [searchParams]);
 
   // Settings state
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -542,6 +552,8 @@ export default function Settings() {
         return <AppearanceSection settings={settings} updateSettings={updateSettings} />;
       case 'notifications':
         return <NotificationsSection settings={settings} updateSettings={updateSettings} />;
+      case 'integrations':
+        return <IntegrationsSection currentOrg={currentOrg} />;
       case 'organization':
         return (
           <OrganizationSection

@@ -2,14 +2,28 @@ const TOKEN_KEY = 'aci_token';
 const USER_KEY = 'aci_user';
 const ORG_ID_KEY = 'aci_org_id';
 
+/** Fired on same-tab login/logout so OrgProvider can refetch workspaces. */
+export const AUTH_SESSION_CHANGED = 'aci-auth-session-changed';
+
+function notifySessionChanged(): void {
+  try {
+    window.dispatchEvent(new Event(AUTH_SESSION_CHANGED));
+  } catch {
+    // ignore (non-browser)
+  }
+}
+
 export type AuthUser = { id: string; name: string; email: string };
 
 export function setSession(token: string, user: AuthUser): void {
   try {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
+    // New login must not keep another user's workspace id (breaks org list / APIs).
+    localStorage.removeItem(ORG_ID_KEY);
+    notifySessionChanged();
   } catch {
-    // ignore
+    // ignore (e.g. private mode / quota) — do not notify; org refetch would see stale auth
   }
 }
 
@@ -54,6 +68,7 @@ export function clearSession(): void {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(ORG_ID_KEY);
+    notifySessionChanged();
   } catch {
     // ignore
   }

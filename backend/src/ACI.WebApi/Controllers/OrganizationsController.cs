@@ -198,9 +198,20 @@ public class OrganizationsController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
         var result = await _organizationService.GetWebhookInfoAsync(id, userId.Value, ct);
-        return result.ToActionResult();
+        if (result.IsFailure)
+            return result.ToActionResult();
+
+        var scheme = Request.Scheme;
+        var host = Request.Host.Value;
+        var infoWithUrl = result.Value with
+        {
+            WebhookUrl = $"{scheme}://{host}/api/webhook/leads",
+            PasswordWebhookUrl = $"{scheme}://{host}/api/webhook/organizations/{id}/leads"
+        };
+
+        return Ok(infoWithUrl);
     }
 
     /// <summary>

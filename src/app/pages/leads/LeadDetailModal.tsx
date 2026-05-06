@@ -947,7 +947,16 @@ function LeadDetailModal({
               {lead.createdAtUtc && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-500">Created</span>
-                  <span className="font-medium text-slate-700">{formatDate(lead.createdAtUtc)}</span>
+                  <span className="font-medium text-slate-700 tabular-nums">
+                    {new Date(lead.createdAtUtc).toLocaleString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    })}
+                  </span>
                 </div>
               )}
             </div>

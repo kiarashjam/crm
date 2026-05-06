@@ -13,6 +13,8 @@ public class Organization : Common.BaseEntity
     public string? WebhookApiKey { get; set; }
     /// <summary>Timestamp when the webhook API key was created.</summary>
     public DateTime? WebhookApiKeyCreatedAtUtc { get; set; }
+    /// <summary>Optional shared password for JSON webhooks. When null or empty, the app default password applies.</summary>
+    public string? WebhookPassword { get; set; }
 
     public User OwnerUser { get; set; } = null!;
     public ICollection<OrganizationMember> Members { get; set; } = new List<OrganizationMember>();

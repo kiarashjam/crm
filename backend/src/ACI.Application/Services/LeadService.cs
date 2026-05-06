@@ -498,5 +498,6 @@ public class LeadService : ILeadService
             e.Description, 
             e.LifecycleStage, 
             e.IsConverted, 
-            e.ConvertedAtUtc);
+            e.ConvertedAtUtc,
+            e.CreatedAtUtc);
 }

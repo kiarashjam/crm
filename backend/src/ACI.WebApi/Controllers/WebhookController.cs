@@ -1,5 +1,7 @@
+using ACI.Application;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Domain.Entities;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -54,52 +56,84 @@ public class WebhookController : ControllerBase
     [ProducesResponseType(typeof(object), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<LeadDto>> CreateLeadViaWebhook(
-        [FromBody] WebhookLeadRequest request, 
+        [FromBody] WebhookLeadRequest request,
         CancellationToken ct)
     {
-        // Validate API key from header
         if (!Request.Headers.TryGetValue("X-Api-Key", out var apiKeyHeader) || string.IsNullOrEmpty(apiKeyHeader))
-        {
             return Unauthorized(new { error = "Missing or invalid X-Api-Key header" });
-        }
 
         var apiKey = apiKeyHeader.ToString().Trim();
         if (string.IsNullOrEmpty(apiKey))
-        {
             return Unauthorized(new { error = "Invalid X-Api-Key header" });
-        }
 
         var organization = await _organizationService.GetByApiKeyAsync(apiKey, ct);
         if (organization == null)
-        {
             return Unauthorized(new { error = "Invalid API key" });
-        }
 
-        // Validate required fields
+        return await CreateLeadForOrganizationAsync(organization, request, ct);
+    }
+
+    /// <summary>
+    /// Creates a lead via JSON webhook using organization id and shared password (header or body field).
+    /// </summary>
+    /// <remarks>
+    /// Send <c>X-Webhook-Password</c> or include <c>webhookPassword</c> in the JSON body.
+    /// If no custom password is stored for the organization, the default password applies.
+    /// </remarks>
+    [HttpPost("organizations/{organizationId:guid}/leads")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(LeadDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<LeadDto>> CreateLeadViaWebhookWithPassword(
+        Guid organizationId,
+        [FromBody] WebhookLeadRequest request,
+        CancellationToken ct)
+    {
+        var organization = await _organizationService.GetByIdUnauthenticatedAsync(organizationId, ct);
+        if (organization == null)
+            return NotFound(new { error = "Organization not found" });
+
+        var headerPassword = Request.Headers.TryGetValue("X-Webhook-Password", out var h) ? h.ToString().Trim() : null;
+        var provided = !string.IsNullOrEmpty(headerPassword)
+            ? headerPassword
+            : request.WebhookPassword?.Trim();
+
+        if (string.IsNullOrEmpty(provided))
+            return Unauthorized(new { error = "Missing X-Webhook-Password header or webhookPassword in JSON body" });
+
+        var expected = string.IsNullOrEmpty(organization.WebhookPassword)
+            ? WebhookConstants.DefaultWebhookPassword
+            : organization.WebhookPassword;
+
+        if (!string.Equals(expected, provided, StringComparison.Ordinal))
+            return Unauthorized(new { error = "Invalid webhook password" });
+
+        return await CreateLeadForOrganizationAsync(organization, request, ct);
+    }
+
+    private async Task<ActionResult<LeadDto>> CreateLeadForOrganizationAsync(
+        Organization organization,
+        WebhookLeadRequest request,
+        CancellationToken ct)
+    {
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Email))
-        {
             return BadRequest(new { error = "Name and Email are required" });
-        }
 
-        // Basic email validation
         if (!request.Email.Contains('@') || request.Email.Length < 3)
-        {
             return BadRequest(new { error = "Invalid email format" });
-        }
 
-        // Handle company creation if CompanyName is provided
         Guid? companyId = null;
         if (!string.IsNullOrWhiteSpace(request.CompanyName))
         {
             var companyRequest = new CreateCompanyRequest { Name = request.CompanyName.Trim() };
             var companyResult = await _companyService.CreateAsync(organization.OwnerUserId, organization.Id, companyRequest, ct);
             if (companyResult.IsSuccess)
-            {
                 companyId = companyResult.Value.Id;
-            }
         }
 
-        // Create lead with source "webhook" (or provided source)
         var leadRequest = new CreateLeadRequest
         {
             Name = request.Name.Trim(),
@@ -111,11 +145,9 @@ public class WebhookController : ControllerBase
         };
 
         var leadResult = await _leadService.CreateAsync(organization.OwnerUserId, organization.Id, leadRequest, ct);
-        
+
         if (leadResult.IsFailure)
-        {
             return StatusCode(500, new { error = "Failed to create lead", detail = leadResult.Error.Description });
-        }
 
         return CreatedAtAction(nameof(CreateLeadViaWebhook), new { id = leadResult.Value.Id }, leadResult.Value);
     }
@@ -123,13 +155,6 @@ public class WebhookController : ControllerBase
     /// <summary>
     /// Gets webhook information (URL and API key status) for an organization.
     /// </summary>
-    /// <param name="organizationId">The organization ID.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>Webhook information including URL and API key status.</returns>
-    /// <response code="200">Returns the webhook information.</response>
-    /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not authorized to view this organization's webhook info.</response>
-    /// <response code="404">Organization not found.</response>
     [HttpGet("organizations/{organizationId:guid}")]
     [Authorize]
     [ProducesResponseType(typeof(WebhookInfoDto), StatusCodes.Status200OK)]
@@ -137,7 +162,7 @@ public class WebhookController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<WebhookInfoDto>> GetWebhookInfo(
-        Guid organizationId, 
+        Guid organizationId,
         CancellationToken ct)
     {
         var userId = _currentUser.UserId;
@@ -146,27 +171,18 @@ public class WebhookController : ControllerBase
         try
         {
             var result = await _organizationService.GetWebhookInfoAsync(organizationId, userId.Value, ct);
-            
+
             if (result.IsFailure)
-            {
                 return result.ToActionResult();
-            }
-            
-            var info = result.Value;
-            
-            // Build full webhook URL from current request
+
             var scheme = Request.Scheme;
             var host = Request.Host.Value;
-            var webhookUrl = $"{scheme}://{host}/api/webhook/leads";
-            
-            // Return with full URL
-            var infoWithUrl = new WebhookInfoDto(
-                WebhookUrl: webhookUrl,
-                ApiKey: info.ApiKey,
-                ApiKeyCreatedAt: info.ApiKeyCreatedAt,
-                HasApiKey: info.HasApiKey
-            );
-            
+            var infoWithUrl = result.Value with
+            {
+                WebhookUrl = $"{scheme}://{host}/api/webhook/leads",
+                PasswordWebhookUrl = $"{scheme}://{host}/api/webhook/organizations/{organizationId}/leads"
+            };
+
             return Ok(infoWithUrl);
         }
         catch (UnauthorizedAccessException)
@@ -182,16 +198,6 @@ public class WebhookController : ControllerBase
     /// <summary>
     /// Generates or regenerates a webhook API key for an organization.
     /// </summary>
-    /// <param name="organizationId">The organization ID.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>The generated API key.</returns>
-    /// <remarks>
-    /// Only organization owners or managers can generate API keys.
-    /// </remarks>
-    /// <response code="200">API key generated successfully.</response>
-    /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not authorized to generate API key for this organization.</response>
-    /// <response code="404">Organization not found.</response>
     [HttpPost("organizations/{organizationId:guid}/generate-key")]
     [Authorize]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
@@ -199,24 +205,42 @@ public class WebhookController : ControllerBase
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<object>> GenerateApiKey(
-        Guid organizationId, 
+        Guid organizationId,
         CancellationToken ct)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
 
-        try
-        {
-            var apiKey = await _organizationService.GenerateWebhookApiKeyAsync(organizationId, userId.Value, ct);
-            return Ok(new { apiKey });
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return Forbid();
-        }
-        catch (InvalidOperationException)
-        {
-            return NotFound();
-        }
+        var result = await _organizationService.GenerateWebhookApiKeyAsync(organizationId, userId.Value, ct);
+        if (result.IsFailure)
+            return result.ToActionResult();
+
+        return Ok(new { apiKey = result.Value });
+    }
+
+    /// <summary>
+    /// Sets or clears the shared JSON webhook password (owner/manager only). Empty body clears to the default.
+    /// </summary>
+    [HttpPut("organizations/{organizationId:guid}/webhook-password")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> UpdateWebhookPassword(
+        Guid organizationId,
+        [FromBody] UpdateWebhookPasswordRequest? body,
+        CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var result = await _organizationService.UpdateWebhookPasswordAsync(
+            organizationId,
+            userId.Value,
+            body?.Password,
+            ct);
+
+        return result.ToNoContentResult();
     }
 }

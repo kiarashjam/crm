@@ -263,6 +263,13 @@ try
                     CREATE INDEX [IX_Organizations_OwnerUserId] ON [Organizations] ([OwnerUserId]);
                 END;
             ");
+
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Organizations', N'WebhookPassword') IS NULL
+                BEGIN
+                    ALTER TABLE [Organizations] ADD [WebhookPassword] nvarchar(256) NULL;
+                END
+            ");
             
             // Create OrganizationMembers table if missing
             await db.Database.ExecuteSqlRawAsync(@"

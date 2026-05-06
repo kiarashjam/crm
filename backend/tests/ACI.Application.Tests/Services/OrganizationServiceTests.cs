@@ -523,6 +523,8 @@ public class OrganizationServiceTests
         result.IsSuccess.Should().BeTrue();
         result.Value.HasApiKey.Should().BeTrue();
         result.Value.ApiKey.Should().Be("aci_testkey123");
+        result.Value.UsesDefaultWebhookPassword.Should().BeTrue();
+        result.Value.PasswordWebhookUrl.Should().BeEmpty();
     }
 
     [Fact]
@@ -542,6 +544,76 @@ public class OrganizationServiceTests
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.Error.Code.Should().Be("Organization.NotMember");
+    }
+
+    #endregion
+
+    #region UpdateWebhookPasswordAsync Tests
+
+    [Fact]
+    public async Task UpdateWebhookPasswordAsync_SetsPassword_WhenOwner()
+    {
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var org = new Organization { Id = orgId, Name = "Test Org" };
+
+        _organizationRepositoryMock
+            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberRole.Owner);
+
+        _organizationRepositoryMock
+            .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+
+        _organizationRepositoryMock
+            .Setup(r => r.UpdateAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await _sut.UpdateWebhookPasswordAsync(orgId, userId, "my-secret");
+
+        result.IsSuccess.Should().BeTrue();
+        org.WebhookPassword.Should().Be("my-secret");
+    }
+
+    [Fact]
+    public async Task UpdateWebhookPasswordAsync_ClearsPassword_WhenEmpty()
+    {
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        var org = new Organization { Id = orgId, Name = "Test Org", WebhookPassword = "old" };
+
+        _organizationRepositoryMock
+            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberRole.Manager);
+
+        _organizationRepositoryMock
+            .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(org);
+
+        _organizationRepositoryMock
+            .Setup(r => r.UpdateAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await _sut.UpdateWebhookPasswordAsync(orgId, userId, "   ");
+
+        result.IsSuccess.Should().BeTrue();
+        org.WebhookPassword.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task UpdateWebhookPasswordAsync_ReturnsNotOwnerOrManager_WhenMember()
+    {
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+
+        _organizationRepositoryMock
+            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberRole.Member);
+
+        var result = await _sut.UpdateWebhookPasswordAsync(orgId, userId, "x");
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Code.Should().Be("Organization.NotOwnerOrManager");
     }
 
     #endregion

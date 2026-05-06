@@ -995,13 +995,13 @@ export default function Leads() {
                   <SelectItem value="createdAt-desc">
                     <span className="flex items-center gap-2">
                       <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
-                      Newest first
+                      Date added · newest first
                     </span>
                   </SelectItem>
                   <SelectItem value="createdAt-asc">
                     <span className="flex items-center gap-2">
                       <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
-                      Oldest first
+                      Date added · oldest first
                     </span>
                   </SelectItem>
                   <SelectItem value="name-asc">
@@ -1353,6 +1353,22 @@ export default function Leads() {
               const assignee = lead.assignedToId ? orgMembers.find(m => m.userId === lead.assignedToId) : null;
               
               // Format dates helper
+              const formatAddedAt = (dateStr?: string) => {
+                if (!dateStr) return null;
+                try {
+                  const d = new Date(dateStr);
+                  if (Number.isNaN(d.getTime())) return null;
+                  return d.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  });
+                } catch { return null; }
+              };
+
               const formatDateShort = (dateStr?: string) => {
                 if (!dateStr) return null;
                 try {
@@ -1570,7 +1586,7 @@ export default function Leads() {
                           <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
                             <Calendar className="w-3.5 h-3.5 text-blue-600" />
                           </div>
-                          <span>Added: <span className="font-semibold text-slate-700">{formatDateShort(lead.createdAtUtc) ?? 'Unknown'}</span></span>
+                          <span>Added: <span className="font-semibold text-slate-700">{formatAddedAt(lead.createdAtUtc) ?? 'Unknown'}</span></span>
                         </div>
                         {lead.isConverted && lead.convertedAtUtc && (
                           <div className="flex items-center gap-1.5 text-emerald-600">

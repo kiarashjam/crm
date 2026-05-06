@@ -4,5 +4,7 @@ public record WebhookInfoDto(
     string WebhookUrl,
     string? ApiKey,
     DateTime? ApiKeyCreatedAt,
-    bool HasApiKey
+    bool HasApiKey,
+    bool UsesDefaultWebhookPassword,
+    string PasswordWebhookUrl
 );

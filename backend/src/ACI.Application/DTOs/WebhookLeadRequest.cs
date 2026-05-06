@@ -40,4 +40,10 @@ public record WebhookLeadRequest
     /// </summary>
     [StringLength(100, ErrorMessage = "Source cannot exceed 100 characters")]
     public string? Source { get; init; }
+
+    /// <summary>
+    /// Shared webhook password when not sent as <c>X-Webhook-Password</c> (password-based endpoint only).
+    /// </summary>
+    [StringLength(256, ErrorMessage = "Webhook password cannot exceed 256 characters")]
+    public string? WebhookPassword { get; init; }
 }

@@ -18,7 +18,6 @@ import {
   type InviteDto,
   type JoinRequestDto,
 } from '@/app/api/organizations';
-import { setCurrentOrganizationId } from '@/app/lib/auth';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
@@ -381,7 +380,16 @@ function CreateOrgDialog({
 export default function Organizations() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { organizations, pendingInvites, refreshOrgs, loading, hasFetched, addDemoOrg: _addDemoOrg, currentOrgId } = useOrg();
+  const {
+    organizations,
+    pendingInvites,
+    refreshOrgs,
+    loading,
+    hasFetched,
+    addDemoOrg: _addDemoOrg,
+    currentOrgId,
+    setCurrentOrg,
+  } = useOrg();
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
@@ -425,13 +433,13 @@ export default function Organizations() {
   }, [organizations, hasFetched]);
 
   const handleSwitchOrg = (org: Organization) => {
-    setCurrentOrganizationId(org.id);
+    setCurrentOrg(org.id);
     toast.success(`Switched to ${org.name}`);
     navigate('/dashboard', { replace: true });
   };
 
   const handleOrgCreated = async (org: Organization) => {
-    setCurrentOrganizationId(org.id);
+    setCurrentOrg(org.id);
     await refreshOrgs();
     navigate('/settings', { replace: true });
   };
@@ -442,7 +450,7 @@ export default function Organizations() {
       const accepted = await acceptInviteById(invite.id);
       if (accepted) {
         await refreshOrgs();
-        setCurrentOrganizationId(accepted.organizationId);
+        setCurrentOrg(accepted.organizationId);
         toast.success(`Joined ${accepted.organizationName}!`);
         navigate('/dashboard', { replace: true });
       } else {
@@ -788,7 +796,7 @@ export default function Organizations() {
                     onNavigate={() => {
                       // If not active, switch first then navigate
                       if (org.id !== currentOrgId) {
-                        setCurrentOrganizationId(org.id);
+                        setCurrentOrg(org.id);
                         toast.success(`Switched to ${org.name}`);
                       }
                       navigate('/dashboard');
