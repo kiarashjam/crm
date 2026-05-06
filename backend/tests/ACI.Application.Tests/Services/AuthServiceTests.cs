@@ -1,9 +1,11 @@
 using ACI.Application.Common;
+using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Tests.Services;
 
@@ -16,6 +18,8 @@ public class AuthServiceTests
     private readonly Mock<ITokenService> _tokenServiceMock;
     private readonly Mock<IPasswordHasher> _passwordHasherMock;
     private readonly Mock<ISecretProtector> _secretProtectorMock;
+    private readonly Mock<IEmailSender> _emailSenderMock;
+    private readonly IOptions<EmailSettings> _emailOptions;
     private readonly Mock<ILogger<AuthService>> _loggerMock;
     private readonly AuthService _sut;
 
@@ -25,13 +29,29 @@ public class AuthServiceTests
         _tokenServiceMock = new Mock<ITokenService>();
         _passwordHasherMock = new Mock<IPasswordHasher>();
         _secretProtectorMock = new Mock<ISecretProtector>();
+        _emailSenderMock = new Mock<IEmailSender>();
+        _emailOptions = Options.Create(new EmailSettings
+        {
+            FrontendBaseUrl = "http://localhost:5173",
+            LogResetLinksWhenSmtpNotConfigured = true,
+        });
         _loggerMock = new Mock<ILogger<AuthService>>();
+
+        _emailSenderMock
+            .Setup(e => e.SendPasswordResetEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        _userRepositoryMock
+            .Setup(r => r.UpdateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         _sut = new AuthService(
             _userRepositoryMock.Object,
             _tokenServiceMock.Object,
             _passwordHasherMock.Object,
             _secretProtectorMock.Object,
+            _emailSenderMock.Object,
+            _emailOptions,
             _loggerMock.Object);
     }
 
@@ -334,6 +354,141 @@ public class AuthServiceTests
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.Error.Code.Should().Be("Auth.EmailNotFound");
+    }
+
+    #endregion
+
+    #region Password reset
+
+    [Fact]
+    public async Task RequestPasswordResetAsync_Succeeds_WhenUserNotFound()
+    {
+        var request = new ForgotPasswordRequest { Email = "missing@example.com" };
+
+        _userRepositoryMock
+            .Setup(r => r.GetByEmailAsync(request.Email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        var result = await _sut.RequestPasswordResetAsync(request);
+
+        result.IsSuccess.Should().BeTrue();
+        _emailSenderMock.Verify(
+            e => e.SendPasswordResetEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task RequestPasswordResetAsync_SkipsEmail_WhenFrontendBaseUrlInvalid()
+    {
+        var badOptions = Options.Create(new EmailSettings
+        {
+            FrontendBaseUrl = "not-a-valid-url",
+            LogResetLinksWhenSmtpNotConfigured = true,
+        });
+        var sut = new AuthService(
+            _userRepositoryMock.Object,
+            _tokenServiceMock.Object,
+            _passwordHasherMock.Object,
+            _secretProtectorMock.Object,
+            _emailSenderMock.Object,
+            badOptions,
+            _loggerMock.Object);
+
+        var request = new ForgotPasswordRequest { Email = "u@example.com" };
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Name = "U",
+            Email = request.Email,
+            PasswordHash = "hash",
+        };
+
+        _userRepositoryMock
+            .Setup(r => r.GetByEmailAsync(request.Email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var result = await sut.RequestPasswordResetAsync(request);
+
+        result.IsSuccess.Should().BeTrue();
+        _emailSenderMock.Verify(
+            e => e.SendPasswordResetEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        user.PasswordResetTokenHash.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RequestPasswordResetAsync_StoresToken_WhenUserExistsAndEmailSends()
+    {
+        var request = new ForgotPasswordRequest { Email = "u@example.com" };
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Name = "U",
+            Email = request.Email,
+            PasswordHash = "hash",
+        };
+
+        _userRepositoryMock
+            .Setup(r => r.GetByEmailAsync(request.Email, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        User? captured = null;
+        _userRepositoryMock
+            .Setup(r => r.UpdateAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback<User, CancellationToken>((u, _) => captured = u)
+            .Returns(Task.CompletedTask);
+
+        var result = await _sut.RequestPasswordResetAsync(request);
+
+        result.IsSuccess.Should().BeTrue();
+        captured.Should().NotBeNull();
+        captured!.PasswordResetTokenHash.Should().NotBeNullOrEmpty();
+        captured.PasswordResetTokenHash!.Length.Should().Be(64);
+        captured.PasswordResetTokenExpiresAtUtc.Should().NotBeNull();
+        _emailSenderMock.Verify(
+            e => e.SendPasswordResetEmailAsync(user.Email, user.Name, It.Is<string>(s => s.Contains("/reset-password?token=")), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_UpdatesPassword_WhenTokenValid()
+    {
+        const string rawToken = "test-raw-token-for-reset";
+        var tokenHash = PasswordResetCrypto.HashRawToken(rawToken);
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "u@example.com",
+            PasswordHash = "old",
+            PasswordResetTokenHash = tokenHash,
+            PasswordResetTokenExpiresAtUtc = DateTime.UtcNow.AddMinutes(30),
+        };
+
+        _userRepositoryMock
+            .Setup(r => r.GetByPasswordResetTokenHashAsync(tokenHash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        _passwordHasherMock.Setup(p => p.Hash("new-pass-99")).Returns("new-hash");
+
+        var result = await _sut.ResetPasswordAsync(new ResetPasswordRequest { Token = rawToken, Password = "new-pass-99" });
+
+        result.IsSuccess.Should().BeTrue();
+        user.PasswordHash.Should().Be("new-hash");
+        user.PasswordResetTokenHash.Should().BeNull();
+        user.PasswordResetTokenExpiresAtUtc.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_Fails_WhenTokenInvalid()
+    {
+        _userRepositoryMock
+            .Setup(r => r.GetByPasswordResetTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((User?)null);
+
+        var result = await _sut.ResetPasswordAsync(new ResetPasswordRequest { Token = "bad", Password = "new-pass-99" });
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Code.Should().Be("Auth.InvalidResetToken");
     }
 
     #endregion

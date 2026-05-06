@@ -494,6 +494,14 @@ try
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'UpdatedAtUtc')
                     ALTER TABLE [UserSettings] ADD [UpdatedAtUtc] datetime2 NOT NULL DEFAULT GETUTCDATE();
             ");
+
+            // Password reset columns on Users
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'PasswordResetTokenHash')
+                    ALTER TABLE [Users] ADD [PasswordResetTokenHash] nvarchar(64) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'PasswordResetTokenExpiresAtUtc')
+                    ALTER TABLE [Users] ADD [PasswordResetTokenExpiresAtUtc] datetime2 NULL;
+            ");
             
             // Fix Leads table columns
             await db.Database.ExecuteSqlRawAsync(@"

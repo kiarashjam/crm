@@ -89,6 +89,7 @@ public static class ResultExtensions
         "Auth.EmailNotFound" => StatusCodes.Status401Unauthorized,
         "Auth.InvalidTwoFactorCode" => StatusCodes.Status401Unauthorized,
         "Auth.AccountLocked" => StatusCodes.Status401Unauthorized,
+        "Auth.InvalidResetToken" => StatusCodes.Status400BadRequest,
         "General.Unauthorized" => StatusCodes.Status401Unauthorized,
         
         // Forbidden errors

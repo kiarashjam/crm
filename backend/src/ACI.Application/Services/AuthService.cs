@@ -1,8 +1,10 @@
 using ACI.Application.Common;
+using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Services;
 
@@ -15,6 +17,8 @@ public class AuthService : IAuthService
     private readonly ITokenService _tokenService;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ISecretProtector _secretProtector;
+    private readonly IEmailSender _emailSender;
+    private readonly EmailSettings _emailSettings;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -22,12 +26,16 @@ public class AuthService : IAuthService
         ITokenService tokenService,
         IPasswordHasher passwordHasher,
         ISecretProtector secretProtector,
+        IEmailSender emailSender,
+        IOptions<EmailSettings> emailSettings,
         ILogger<AuthService> logger)
     {
         _userRepository = userRepository;
         _tokenService = tokenService;
         _passwordHasher = passwordHasher;
         _secretProtector = secretProtector;
+        _emailSender = emailSender;
+        _emailSettings = emailSettings.Value;
         _logger = logger;
     }
 
@@ -51,6 +59,8 @@ public class AuthService : IAuthService
         if (user.TwoFactorEnabled)
         {
             _logger.LogDebug("2FA required for user {UserId}", user.Id);
+            ClearPasswordResetFieldsIfPresent(user);
+            await _userRepository.UpdateAsync(user, ct);
             var twoFactorToken = _tokenService.GenerateTwoFactorToken(user);
             return new LoginResponse(
                 Token: null,
@@ -59,6 +69,7 @@ public class AuthService : IAuthService
                 TwoFactorToken: twoFactorToken);
         }
 
+        ClearPasswordResetFieldsIfPresent(user);
         user.LastLoginAtUtc = DateTime.UtcNow;
         await _userRepository.UpdateAsync(user, ct);
         var token = _tokenService.GenerateToken(user);
@@ -92,6 +103,7 @@ public class AuthService : IAuthService
             return DomainErrors.Auth.InvalidTwoFactorCode;
         }
 
+        ClearPasswordResetFieldsIfPresent(user);
         user.LastLoginAtUtc = DateTime.UtcNow;
         await _userRepository.UpdateAsync(user, ct);
         var token = _tokenService.GenerateToken(user);
@@ -231,5 +243,100 @@ public class AuthService : IAuthService
         
         _logger.LogInformation("2FA disabled successfully for user {UserId}", userId);
         return Result.Success();
+    }
+
+    public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request, CancellationToken ct = default)
+    {
+        var email = request.Email.Trim();
+        _logger.LogInformation("Password reset requested for email {Email}", email);
+
+        var user = await _userRepository.GetByEmailAsync(email, ct);
+        if (user == null || string.IsNullOrEmpty(user.PasswordHash))
+        {
+            // Same outcome as success to avoid account enumeration.
+            return Result.Success();
+        }
+
+        var rawToken = PasswordResetCrypto.CreateRawToken();
+        var tokenHash = PasswordResetCrypto.HashRawToken(rawToken);
+        var expiresAt = DateTime.UtcNow.AddHours(1);
+
+        if (!TryNormalizePasswordResetBaseUrl(_emailSettings.FrontendBaseUrl, out var baseUrl))
+        {
+            _logger.LogError(
+                "Password reset skipped for user {UserId}: Email:FrontendBaseUrl must be an absolute http(s) URL (current: {FrontendBaseUrl})",
+                user.Id,
+                string.IsNullOrWhiteSpace(_emailSettings.FrontendBaseUrl) ? "(empty)" : _emailSettings.FrontendBaseUrl);
+            return Result.Success();
+        }
+
+        var resetUrl = $"{baseUrl}/reset-password?token={Uri.EscapeDataString(rawToken)}";
+
+        var sent = await _emailSender.SendPasswordResetEmailAsync(user.Email, user.Name, resetUrl, ct);
+        if (!sent)
+        {
+            _logger.LogWarning("Password reset email was not sent for user {UserId}; token not stored", user.Id);
+            return Result.Success();
+        }
+
+        user.PasswordResetTokenHash = tokenHash;
+        user.PasswordResetTokenExpiresAtUtc = expiresAt;
+        await _userRepository.UpdateAsync(user, ct);
+
+        _logger.LogInformation("Password reset email sent for user {UserId}", user.Id);
+        return Result.Success();
+    }
+
+    public async Task<Result> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct = default)
+    {
+        var rawToken = request.Token.Trim();
+        if (string.IsNullOrEmpty(rawToken))
+            return DomainErrors.Auth.InvalidResetToken;
+
+        var tokenHash = PasswordResetCrypto.HashRawToken(rawToken);
+        var user = await _userRepository.GetByPasswordResetTokenHashAsync(tokenHash, ct);
+        if (user == null
+            || user.PasswordResetTokenExpiresAtUtc == null
+            || user.PasswordResetTokenExpiresAtUtc < DateTime.UtcNow)
+        {
+            _logger.LogWarning("Password reset failed: invalid or expired token");
+            return DomainErrors.Auth.InvalidResetToken;
+        }
+
+        user.PasswordHash = _passwordHasher.Hash(request.Password);
+        user.PasswordResetTokenHash = null;
+        user.PasswordResetTokenExpiresAtUtc = null;
+        await _userRepository.UpdateAsync(user, ct);
+
+        _logger.LogInformation("Password reset completed for user {UserId}", user.Id);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Pending email reset links should not remain valid after the user proves password knowledge (login or 2FA step).
+    /// </summary>
+    private static void ClearPasswordResetFieldsIfPresent(User user)
+    {
+        if (user.PasswordResetTokenHash == null && user.PasswordResetTokenExpiresAtUtc == null)
+            return;
+        user.PasswordResetTokenHash = null;
+        user.PasswordResetTokenExpiresAtUtc = null;
+    }
+
+    /// <summary>
+    /// Reset emails must point at the SPA with an absolute URL so links are not host-relative to the API.
+    /// </summary>
+    private static bool TryNormalizePasswordResetBaseUrl(string? configured, out string baseUrl)
+    {
+        baseUrl = (configured ?? string.Empty).Trim().TrimEnd('/');
+        if (baseUrl.Length == 0)
+            return false;
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+            return false;
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            return false;
+        if (string.IsNullOrEmpty(uri.Host))
+            return false;
+        return true;
     }
 }

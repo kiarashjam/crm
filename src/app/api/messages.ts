@@ -48,6 +48,11 @@ export const messages = {
     accountCreated: 'Account created.',
     demoMode: 'Demo mode',
     twoFactorCodeRequired: 'Two-factor code required',
+    passwordResetEmailSent:
+      'If an account exists for that email, you will receive reset instructions shortly.',
+    passwordResetComplete: 'Your password was updated. You can sign in now.',
+    passwordResetRequiresApi: 'Password reset requires the app to be connected to the Cadence API (set VITE_API_URL).',
+    passwordResetMissingToken: 'This reset link is missing a token. Open the link from your email or request a new reset.',
   },
   twoFa: {
     enabled: '2FA enabled.',

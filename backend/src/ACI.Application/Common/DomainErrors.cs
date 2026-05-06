@@ -198,6 +198,9 @@ public static class DomainErrors
         
         public static readonly Error AccountLocked = new(
             "Auth.AccountLocked", "The account has been locked due to too many failed attempts");
+
+        public static readonly Error InvalidResetToken = new(
+            "Auth.InvalidResetToken", "This password reset link is invalid or has expired. Request a new one.");
     }
 
     /// <summary>

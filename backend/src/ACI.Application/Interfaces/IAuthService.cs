@@ -58,4 +58,14 @@ public interface IAuthService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Success or failure result.</returns>
     Task<Result> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a password reset email when the account exists (always succeeds from a caller perspective).
+    /// </summary>
+    Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sets a new password using a valid reset token from email.
+    /// </summary>
+    Task<Result> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct = default);
 }

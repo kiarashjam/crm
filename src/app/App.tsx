@@ -13,6 +13,8 @@ import { isUsingRealApi } from '@/app/api/apiClient';
 // Eager-loaded pages (critical path)
 import Homepage from '@/app/pages/Homepage';
 import Login from '@/app/pages/Login';
+import ForgotPassword from '@/app/pages/ForgotPassword';
+import ResetPassword from '@/app/pages/ResetPassword';
 
 // Lazy-loaded pages (code splitting)
 const Organizations = lazy(() => import('@/app/pages/Organizations'));
@@ -73,6 +75,8 @@ export default function App() {
                 {/* Public routes - eager loaded */}
                 <Route path="/" element={<Homepage />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 
                 {/* Public routes - lazy loaded */}
                 <Route path="/help" element={

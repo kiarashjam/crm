@@ -1,3 +1,4 @@
+using ACI.Application.Configuration;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Infrastructure.Configuration;
@@ -22,6 +23,9 @@ public static class DependencyInjection
 
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(connectionString));
+
+        services.Configure<EmailSettings>(configuration.GetSection(EmailSettings.SectionName));
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IContactRepository, ContactRepository>();

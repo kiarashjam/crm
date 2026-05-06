@@ -14,8 +14,14 @@ public sealed class UserRepository : IUserRepository
     public async Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         await _db.Users.FindAsync([id], ct);
 
-    public async Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
-        await _db.Users.FirstOrDefaultAsync(u => u.Email == email, ct);
+    public async Task<User?> GetByEmailAsync(string email, CancellationToken ct = default)
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        return await _db.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == normalized, ct);
+    }
+
+    public async Task<User?> GetByPasswordResetTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
+        await _db.Users.FirstOrDefaultAsync(u => u.PasswordResetTokenHash == tokenHash, ct);
 
     public async Task<User> AddAsync(User user, CancellationToken ct = default)
     {

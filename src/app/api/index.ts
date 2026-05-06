@@ -11,7 +11,10 @@ export {
   twoFactorSetup,
   twoFactorEnable,
   twoFactorDisable,
+  requestPasswordReset,
+  resetPassword,
   type TwoFactorSetupResponse,
+  type ForgotPasswordResponse,
 } from './auth';
 export * from './contacts';
 export * from './deals';

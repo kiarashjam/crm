@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Search, Plus, Pencil, Trash2, Building2, User, ArrowRightCircle, Link2,
   Mail, Phone, Sparkles, Check, Tag, UserPlus, Info, CircleDot,
   Upload, RefreshCw, Users, Handshake, ArrowRight, CheckCircle2,
   SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, X, Download,
-  TrendingUp, Target, Clock, Zap, BarChart3, Calendar, AlertCircle
+  TrendingUp, Target, Clock, Zap, BarChart3, Calendar, AlertCircle, Activity as ActivityIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -26,10 +26,11 @@ import {
   getLeadStatuses,
   getLeadSources,
   convertLead,
+  getActivities,
   messages,
   type ConvertLeadRequest,
 } from '@/app/api';
-import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline } from '@/app/api/types';
+import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
 import { Button } from '@/app/components/ui/button';
@@ -61,7 +62,10 @@ import {
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { LeadDetailModal } from './leads/LeadDetailModal';
-import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM } from './leads/config';
+import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
+
+/** Fallback row style when activity type is unknown (matches `note` in config). */
+const DEFAULT_ACTIVITY_TYPE = ACTIVITY_TYPES[3]!;
 import { isValidGuid } from './leads/utils';
 import type { LeadForm } from './leads/types';
 
@@ -190,6 +194,26 @@ export default function Leads() {
   const [leadAssignments, setLeadAssignments] = useState<Record<string, string>>(() => loadLeadAssignments());
   const [leadReferrals, setLeadReferrals] = useState<Record<string, string>>(() => loadLeadReferrals());
   const [leadCreatedAtMap, setLeadCreatedAtMap] = useState<Record<string, string>>(() => loadLeadCreatedAtMap());
+  const [allActivities, setAllActivities] = useState<Activity[]>([]);
+  const prevDetailModalOpen = useRef(false);
+
+  const activitiesByLeadId = useMemo(() => {
+    const map = new Map<string, Activity[]>();
+    const ts = (iso: string) => {
+      const n = Date.parse(iso);
+      return Number.isNaN(n) ? 0 : n;
+    };
+    for (const a of allActivities) {
+      if (!a.leadId) continue;
+      const list = map.get(a.leadId);
+      if (list) list.push(a);
+      else map.set(a.leadId, [a]);
+    }
+    for (const [, list] of map) {
+      list.sort((x, y) => ts(y.createdAt) - ts(x.createdAt));
+    }
+    return map;
+  }, [allActivities]);
 
   const statusOptions = leadStatuses.length > 0 ? leadStatuses : FALLBACK_STATUSES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
   const sourceOptions = leadSources.length > 0 ? leadSources : FALLBACK_SOURCES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
@@ -220,13 +244,15 @@ export default function Leads() {
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
-      const [pagedResult, companiesData, contactsData, statuses, sources] = await Promise.all([
+      const [pagedResult, companiesData, contactsData, statuses, sources, activitiesData] = await Promise.all([
         getLeadsPaged({ page: currentPage, pageSize, search: debouncedSearch || undefined }),
         getCompanies(),
         getContacts(),
         getLeadStatuses(),
         getLeadSources(),
+        getActivities().catch((): Activity[] => []),
       ]);
+      setAllActivities(Array.isArray(activitiesData) ? activitiesData : []);
       const assignments = loadLeadAssignments();
       const referrals = loadLeadReferrals();
       const createdAtByLeadId = loadLeadCreatedAtMap();
@@ -270,6 +296,16 @@ export default function Leads() {
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
+
+  // Refresh interaction list after closing lead detail (activities are edited in the modal)
+  useEffect(() => {
+    if (prevDetailModalOpen.current && !detailModalOpen) {
+      getActivities()
+        .then((list) => setAllActivities(Array.isArray(list) ? list : []))
+        .catch(() => {});
+    }
+    prevDetailModalOpen.current = detailModalOpen;
+  }, [detailModalOpen]);
 
   // Pagination handlers
   const handlePageChange = (page: number) => {
@@ -1387,6 +1423,23 @@ export default function Leads() {
                 } catch { return null; }
               };
 
+              const formatActivityWhen = (dateStr: string) => {
+                try {
+                  const d = new Date(dateStr);
+                  if (Number.isNaN(d.getTime())) return '';
+                  return d.toLocaleString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  });
+                } catch {
+                  return '';
+                }
+              };
+
+              const leadInteractions = activitiesByLeadId.get(lead.id) ?? [];
+
               return (
                 <div
                   key={lead.id}
@@ -1571,6 +1624,79 @@ export default function Leads() {
                           </p>
                         </div>
                       )}
+
+                      {/* Interactions (activities) — stopPropagation on click so using the list does not open the card */}
+                      <div
+                        className="rounded-xl border border-indigo-100/70 bg-gradient-to-br from-slate-50/90 to-indigo-50/30 p-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                            <ActivityIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            Interactions
+                          </span>
+                          <span className="text-[10px] font-medium text-slate-400 tabular-nums">
+                            {leadInteractions.length} total
+                          </span>
+                        </div>
+                        {leadInteractions.length === 0 ? (
+                          <p className="text-xs text-slate-400">No interactions logged yet.</p>
+                        ) : (
+                          <ul className="max-h-52 overflow-y-auto space-y-2 pr-1">
+                            {leadInteractions.map((activity) => {
+                              const typeKey = (activity.type || '').toLowerCase();
+                              const typeConfig =
+                                ACTIVITY_TYPES.find((t) => t.id === typeKey) ?? DEFAULT_ACTIVITY_TYPE;
+                              const TypeIcon = typeConfig.icon;
+                              const isSystem = typeKey === 'system';
+                              const whenLabel = formatActivityWhen(activity.createdAt);
+                              const iconWrapClass = isSystem
+                                ? 'w-7 h-7 rounded-lg bg-slate-100 text-slate-500 shrink-0 flex items-center justify-center'
+                                : typeConfig.color === 'blue'
+                                  ? 'w-7 h-7 rounded-lg bg-blue-100 text-blue-600 shrink-0 flex items-center justify-center'
+                                  : typeConfig.color === 'purple'
+                                    ? 'w-7 h-7 rounded-lg bg-purple-100 text-purple-600 shrink-0 flex items-center justify-center'
+                                    : typeConfig.color === 'green'
+                                      ? 'w-7 h-7 rounded-lg bg-emerald-100 text-emerald-600 shrink-0 flex items-center justify-center'
+                                      : typeConfig.color === 'slate'
+                                        ? 'w-7 h-7 rounded-lg bg-slate-100 text-slate-500 shrink-0 flex items-center justify-center'
+                                        : 'w-7 h-7 rounded-lg bg-amber-100 text-amber-600 shrink-0 flex items-center justify-center';
+                              return (
+                                <li
+                                  key={activity.id}
+                                  className="flex gap-2.5 rounded-lg border border-slate-200/60 bg-white/90 px-2.5 py-2 text-left"
+                                >
+                                  <div className={iconWrapClass}>
+                                    <TypeIcon className="w-3.5 h-3.5" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                      <span
+                                        className={`text-xs font-medium text-slate-800 ${isSystem ? 'italic text-slate-600' : ''}`}
+                                      >
+                                        {activity.subject || typeConfig.label}
+                                      </span>
+                                      {isSystem && (
+                                        <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                                          system
+                                        </span>
+                                      )}
+                                    </div>
+                                    {activity.body && (
+                                      <p className="mt-0.5 text-[11px] text-slate-600 line-clamp-3 whitespace-pre-wrap">
+                                        {activity.body}
+                                      </p>
+                                    )}
+                                    {whenLabel ? (
+                                      <p className="mt-1 text-[10px] text-slate-400">{whenLabel}</p>
+                                    ) : null}
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
 
                       {/* Meta Info Row */}
                       <div className="flex flex-wrap items-center gap-4 text-xs">

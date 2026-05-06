@@ -158,7 +158,7 @@ export default function Login() {
                 </button>
 
                 <p className="mt-4 text-center">
-                  <Link to="/help" className="text-sm text-slate-500 hover:text-orange-600 focus-visible:underline">
+                  <Link to="/forgot-password" className="text-sm text-slate-500 hover:text-orange-600 focus-visible:underline">
                     Forgot password?
                   </Link>
                 </p>

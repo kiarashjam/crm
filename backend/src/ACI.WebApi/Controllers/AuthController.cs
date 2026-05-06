@@ -199,6 +199,37 @@ public class AuthController : ControllerBase
         
         return result.ToNoContentResult();
     }
+
+    /// <summary>
+    /// Sends a password reset email if an account exists for the given address.
+    /// </summary>
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken ct)
+    {
+        var result = await _authService.RequestPasswordResetAsync(request, ct);
+        if (!result.IsSuccess)
+            return result.ToActionResult();
+
+        return Ok(new
+        {
+            message = "If an account exists for that email, you will receive password reset instructions shortly.",
+        });
+    }
+
+    /// <summary>
+    /// Completes password reset using the token from the email link.
+    /// </summary>
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken ct)
+    {
+        var result = await _authService.ResetPasswordAsync(request, ct);
+        return result.ToActionResult();
+    }
 }
 
 /// <summary>

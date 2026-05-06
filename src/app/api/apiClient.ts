@@ -39,7 +39,8 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
   }
   const url = path.startsWith('http') ? path : `${base}${path.startsWith('/') ? path : `/${path}`}`;
   const res = await fetch(url, { ...init, headers });
-  if (res.status === 401) {
+  // Anonymous endpoints (e.g. forgot/reset password) must not clear an existing session on 401.
+  if (res.status === 401 && !skipAuth) {
     clearSession();
   }
   return res;

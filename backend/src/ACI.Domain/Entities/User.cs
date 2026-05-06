@@ -23,6 +23,11 @@ public class User : Common.BaseEntity
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? LastLoginAtUtc { get; set; }
 
+    /// <summary>SHA-256 hex hash of the raw password-reset token (never store the raw token).</summary>
+    public string? PasswordResetTokenHash { get; set; }
+
+    public DateTime? PasswordResetTokenExpiresAtUtc { get; set; }
+
     public UserSettings? Settings { get; set; }
     public ICollection<OrganizationMember> OrganizationMemberships { get; set; } = new List<OrganizationMember>();
     public ICollection<Company> Companies { get; set; } = new List<Company>();

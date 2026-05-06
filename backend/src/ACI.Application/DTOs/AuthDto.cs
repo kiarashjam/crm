@@ -93,3 +93,28 @@ public record TwoFactorDisableRequest
     [StringLength(10, MinimumLength = 6, ErrorMessage = "Code must be 6-10 characters")]
     public required string Code { get; init; }
 }
+
+/// <summary>
+/// Request a password reset email.
+/// </summary>
+public record ForgotPasswordRequest
+{
+    [Required(ErrorMessage = "Email is required")]
+    [EmailAddress(ErrorMessage = "Invalid email format")]
+    [StringLength(254, ErrorMessage = "Email cannot exceed 254 characters")]
+    public required string Email { get; init; }
+}
+
+/// <summary>
+/// Complete password reset using the token from the email link.
+/// </summary>
+public record ResetPasswordRequest
+{
+    [Required(ErrorMessage = "Token is required")]
+    [StringLength(500, MinimumLength = 8, ErrorMessage = "Token is invalid")]
+    public required string Token { get; init; }
+
+    [Required(ErrorMessage = "Password is required")]
+    [StringLength(100, MinimumLength = 6, ErrorMessage = "Password must be between 6 and 100 characters")]
+    public required string Password { get; init; }
+}

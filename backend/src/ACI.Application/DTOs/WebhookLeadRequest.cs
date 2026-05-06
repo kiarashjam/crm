@@ -23,10 +23,9 @@ public record WebhookLeadRequest
     public required string Email { get; init; }
 
     /// <summary>
-    /// Lead's phone number (optional).
+    /// Lead's phone number (optional). Format is not strictly validated so external tools can send any string.
     /// </summary>
     [StringLength(50, ErrorMessage = "Phone cannot exceed 50 characters")]
-    [Phone(ErrorMessage = "Invalid phone format")]
     public string? Phone { get; init; }
 
     /// <summary>
