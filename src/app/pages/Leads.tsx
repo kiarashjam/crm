@@ -11,10 +11,8 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
-import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
-  getLeadsPaged,
   getLeads,
   createLead,
   updateLead,
@@ -63,11 +61,11 @@ import {
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { LeadDetailModal } from './leads/LeadDetailModal';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
+import { isValidGuid } from './leads/utils';
+import type { LeadForm } from './leads/types';
 
 /** Fallback row style when activity type is unknown (matches `note` in config). */
 const DEFAULT_ACTIVITY_TYPE = ACTIVITY_TYPES[3]!;
-import { isValidGuid } from './leads/utils';
-import type { LeadForm } from './leads/types';
 
 const LEAD_ASSIGNMENTS_STORAGE_KEY = 'crm.leadAssignments.v1';
 const LEAD_REFERRALS_STORAGE_KEY = 'crm.leadReferrals.v1';
@@ -134,9 +132,6 @@ export default function Leads() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
-  // Pagination state from URL
-  const currentPage = Number(searchParams.get('page')) || 1;
-  const pageSize = Number(searchParams.get('pageSize')) || 20;
   const searchFromUrl = searchParams.get('search') || '';
   
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -148,9 +143,6 @@ export default function Leads() {
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   
-  // Pagination state
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [form, setForm] = useState<LeadForm>(EMPTY_LEAD_FORM);
@@ -226,26 +218,36 @@ export default function Leads() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Update URL when debounced search changes
+  // Update URL when debounced search changes (search is applied client-side on the full list)
   useEffect(() => {
-    const params = new URLSearchParams(searchParams);
-    if (debouncedSearch) {
-      params.set('search', debouncedSearch);
-      params.set('page', '1'); // Reset to first page on search
-    } else {
-      params.delete('search');
-    }
-    if (params.toString() !== searchParams.toString()) {
-      setSearchParams(params);
-    }
-  }, [debouncedSearch]);
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (debouncedSearch) {
+          params.set('search', debouncedSearch);
+        } else {
+          params.delete('search');
+        }
+        return params.toString() === prev.toString() ? prev : params;
+      },
+      { replace: true }
+    );
+  }, [debouncedSearch, setSearchParams]);
 
-  // Fetch leads with pagination
+  // Browser back/forward or opening a shared link: align committed search with the URL without clobbering typing-ahead of debounce
+  useEffect(() => {
+    const fromUrl = searchParams.get('search') || '';
+    if (fromUrl === debouncedSearch) return;
+    setDebouncedSearch(fromUrl);
+    setSearchQuery(fromUrl);
+  }, [searchParams, debouncedSearch]);
+
+  // Fetch all leads from API (`/api/leads/all`); search/filter/sort run client-side on `filteredLeads`
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
-      const [pagedResult, companiesData, contactsData, statuses, sources, activitiesData] = await Promise.all([
-        getLeadsPaged({ page: currentPage, pageSize, search: debouncedSearch || undefined }),
+      const [allLeadsRaw, companiesData, contactsData, statuses, sources, activitiesData] = await Promise.all([
+        getLeads(),
         getCompanies(),
         getContacts(),
         getLeadStatuses(),
@@ -260,28 +262,28 @@ export default function Leads() {
       setLeadAssignments(assignments);
       setLeadReferrals(referrals);
       const contactsById = new Map((contactsData ?? []).map((c) => [c.id, c]));
-      setLeads(
-        pagedResult.items.map((lead) => {
-          const resolvedCreatedAt = lead.createdAtUtc || createdAtByLeadId[lead.id];
-          if (!resolvedCreatedAt) {
-            createdAtByLeadId[lead.id] = new Date().toISOString();
-            createdAtChanged = true;
-          }
-          return {
-            ...lead,
-            createdAtUtc: resolvedCreatedAt || createdAtByLeadId[lead.id],
-            assignedToId: assignments[lead.id] || lead.assignedToId,
-            referredByContactId: referrals[lead.id] || lead.referredByContactId,
-            referredByContactName: ((referrals[lead.id] || lead.referredByContactId) ? contactsById.get(referrals[lead.id] || lead.referredByContactId || '')?.name : undefined) || lead.referredByContactName,
-          };
-        })
-      );
+      const merged = (Array.isArray(allLeadsRaw) ? allLeadsRaw : []).map((lead) => {
+        const resolvedCreatedAt = lead.createdAtUtc || createdAtByLeadId[lead.id];
+        if (!resolvedCreatedAt) {
+          createdAtByLeadId[lead.id] = new Date().toISOString();
+          createdAtChanged = true;
+        }
+        return {
+          ...lead,
+          createdAtUtc: resolvedCreatedAt || createdAtByLeadId[lead.id],
+          assignedToId: assignments[lead.id] || lead.assignedToId,
+          referredByContactId: referrals[lead.id] || lead.referredByContactId,
+          referredByContactName:
+            (referrals[lead.id] || lead.referredByContactId
+              ? contactsById.get(referrals[lead.id] || lead.referredByContactId || '')?.name
+              : undefined) || lead.referredByContactName,
+        };
+      });
       if (createdAtChanged) {
         saveLeadCreatedAtMap(createdAtByLeadId);
       }
       setLeadCreatedAtMap(createdAtByLeadId);
-      setTotalCount(pagedResult.totalCount);
-      setTotalPages(pagedResult.totalPages);
+      setLeads(merged);
       setCompanies(companiesData);
       setContacts(contactsData ?? []);
       setLeadStatuses(statuses ?? []);
@@ -291,7 +293,7 @@ export default function Leads() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, debouncedSearch]);
+  }, []);
 
   useEffect(() => {
     fetchLeads();
@@ -306,20 +308,6 @@ export default function Leads() {
     }
     prevDetailModalOpen.current = detailModalOpen;
   }, [detailModalOpen]);
-
-  // Pagination handlers
-  const handlePageChange = (page: number) => {
-    const params = new URLSearchParams(searchParams);
-    params.set('page', String(page));
-    setSearchParams(params);
-  };
-
-  const handlePageSizeChange = (newPageSize: number) => {
-    const params = new URLSearchParams(searchParams);
-    params.set('pageSize', String(newPageSize));
-    params.set('page', '1'); // Reset to first page
-    setSearchParams(params);
-  };
 
   // Load org members for assignment and get current user
   useEffect(() => {
@@ -345,9 +333,9 @@ export default function Leads() {
   const filteredLeads = useMemo(() => {
     let result = [...leads];
     
-    // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    // Search filter (debounced so it matches URL and does not fight the input while typing)
+    if (debouncedSearch.trim()) {
+      const q = debouncedSearch.toLowerCase();
       result = result.filter(
         (l) =>
           l.name.toLowerCase().includes(q) ||
@@ -410,7 +398,7 @@ export default function Leads() {
     });
     
     return result;
-  }, [leads, searchQuery, filterStatus, filterSource, filterConverted, filterAssignment, sortField, sortDirection, currentUser?.id]);
+  }, [leads, debouncedSearch, filterStatus, filterSource, filterConverted, filterAssignment, sortField, sortDirection, currentUser?.id]);
 
   // Count active filters
   const activeFilterCount = [
@@ -1791,17 +1779,6 @@ export default function Leads() {
               );
             })}
           </div>
-          
-          {/* Pagination */}
-          <DataPagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalCount={totalCount}
-            pageSize={pageSize}
-            onPageChange={handlePageChange}
-            onPageSizeChange={handlePageSizeChange}
-            className="mt-6"
-          />
           </>
         )}
         </main>
