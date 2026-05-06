@@ -1377,6 +1377,19 @@ export default function Leads() {
                 email_campaign: '📧',
               };
 
+              const sourceBadgeStyles: Record<string, string> = {
+                website: 'bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 text-blue-900 border-blue-200/70 shadow-sm shadow-blue-500/10',
+                referral: 'bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-900 border-emerald-200/70 shadow-sm',
+                ads: 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border-amber-200/70 shadow-sm',
+                events: 'bg-gradient-to-r from-violet-50 to-fuchsia-50 text-violet-900 border-violet-200/60 shadow-sm',
+                manual: 'bg-gradient-to-r from-slate-100 to-slate-50 text-slate-800 border-slate-200/80 shadow-sm',
+                linkedin: 'bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-900 border-sky-200/70 shadow-sm',
+                cold_call: 'bg-gradient-to-r from-rose-50 to-orange-50 text-rose-900 border-rose-200/60 shadow-sm',
+                email_campaign: 'bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-900 border-indigo-200/70 shadow-sm',
+              };
+              const sourceKey = (lead.source || '').toLowerCase();
+              const sourceBadgeClass = sourceBadgeStyles[sourceKey] ?? 'bg-gradient-to-r from-slate-50 to-slate-100 text-slate-700 border-slate-200/70 shadow-sm';
+
               // Get initials
               const initials = lead.name
                 .split(' ')
@@ -1452,26 +1465,25 @@ export default function Leads() {
                       openDetail(lead);
                     }
                   }}
-                  className="group relative bg-white rounded-2xl border border-slate-200/60 shadow-sm hover:shadow-xl hover:border-slate-300 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 overflow-hidden"
+                  className="group relative rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04),0_10px_40px_-20px_rgba(15,23,42,0.12)] hover:shadow-[0_24px_60px_-20px_rgba(99,102,241,0.22),0_16px_40px_-24px_rgba(15,23,42,0.16)] hover:border-indigo-200/60 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 overflow-hidden ring-1 ring-white/80"
                 >
-                  {/* Animated gradient background on hover */}
-                  <div className="absolute inset-0 bg-gradient-to-br from-orange-50/0 via-amber-50/0 to-rose-50/0 group-hover:from-orange-50/40 group-hover:via-amber-50/30 group-hover:to-rose-50/40 transition-all duration-500" />
-                  
-                  {/* Left accent bar based on status */}
-                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${
-                    lead.isConverted ? 'bg-gradient-to-b from-emerald-500 to-teal-400' :
-                    lead.status === 'New' ? 'bg-gradient-to-b from-blue-500 to-cyan-400' :
-                    lead.status === 'Contacted' ? 'bg-gradient-to-b from-amber-500 to-orange-400' :
-                    lead.status === 'Qualified' ? 'bg-gradient-to-b from-emerald-500 to-teal-400' :
-                    'bg-gradient-to-b from-slate-400 to-slate-300'
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-orange-400/40 to-transparent opacity-60 group-hover:via-indigo-400/50 transition-all duration-500" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/0 via-white to-violet-50/0 group-hover:from-indigo-50/40 group-hover:via-amber-50/20 group-hover:to-fuchsia-50/30 transition-all duration-500" />
+
+                  <div className={`absolute left-0 top-0 bottom-0 w-2 rounded-r-full shadow-[3px_0_14px_-3px_rgba(0,0,0,0.12)] ${
+                    lead.isConverted ? 'bg-gradient-to-b from-emerald-500 via-teal-400 to-cyan-400' :
+                    lead.status === 'New' ? 'bg-gradient-to-b from-blue-600 via-indigo-500 to-cyan-400' :
+                    lead.status === 'Contacted' ? 'bg-gradient-to-b from-amber-500 via-orange-500 to-rose-400' :
+                    lead.status === 'Qualified' ? 'bg-gradient-to-b from-emerald-500 via-teal-400 to-cyan-300' :
+                    'bg-gradient-to-b from-slate-500 to-slate-300'
                   }`} />
 
-                  <div className="relative flex gap-5 p-5 pl-6">
+                  <div className="relative flex gap-5 p-5 pl-7">
                     {/* Left Section: Avatar & Score */}
-                    <div className="shrink-0 flex flex-col items-center gap-3">
+                    <div className="shrink-0 flex flex-col items-center gap-3 rounded-2xl border border-slate-100/90 bg-gradient-to-b from-slate-50/95 via-white to-indigo-50/30 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
                       {/* Avatar */}
                       <div className="relative">
-                        <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${avatarGradient} flex items-center justify-center text-white font-bold text-xl shadow-lg group-hover:scale-105 group-hover:shadow-xl transition-all duration-300`}>
+                        <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${avatarGradient} flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-black/10 ring-4 ring-white/90 group-hover:scale-[1.04] group-hover:shadow-xl group-hover:shadow-indigo-500/20 transition-all duration-300`}>
                           {initials || <User className="w-7 h-7" />}
                         </div>
                         {/* Status indicator */}
@@ -1489,10 +1501,10 @@ export default function Leads() {
                       {/* Lead Score Circle */}
                       {(lead.leadScore !== undefined && lead.leadScore !== null) && (
                         <div className="relative">
-                          <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center ${
-                            lead.leadScore >= 70 ? 'bg-gradient-to-br from-amber-100 to-orange-100 border-2 border-amber-200' :
-                            lead.leadScore >= 40 ? 'bg-gradient-to-br from-blue-100 to-cyan-100 border-2 border-blue-200' :
-                            'bg-slate-100 border-2 border-slate-200'
+                          <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center shadow-inner ${
+                            lead.leadScore >= 70 ? 'bg-gradient-to-br from-amber-100 via-orange-50 to-rose-50 border-2 border-amber-300/80' :
+                            lead.leadScore >= 40 ? 'bg-gradient-to-br from-blue-100 via-cyan-50 to-sky-50 border-2 border-blue-300/70' :
+                            'bg-gradient-to-br from-slate-100 to-slate-50 border-2 border-slate-200'
                           }`}>
                             <span className={`text-lg font-bold ${
                               lead.leadScore >= 70 ? 'text-amber-600' :
@@ -1518,7 +1530,7 @@ export default function Leads() {
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-slate-900 text-lg truncate group-hover:text-orange-600 transition-colors">
+                            <h3 className="font-bold text-slate-900 text-lg truncate tracking-tight group-hover:text-indigo-700 transition-colors duration-300">
                               {lead.name}
                             </h3>
                             {lead.lifecycleStage && (
@@ -1544,17 +1556,17 @@ export default function Leads() {
                         {/* Status Badges */}
                         <div className="flex flex-wrap items-center gap-2 shrink-0">
                           {lead.source && (
-                            <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-slate-100/80 text-slate-600 border border-slate-200/50 backdrop-blur-sm">
-                              <span className="text-sm">{sourceIcons[lead.source.toLowerCase()] || '📌'}</span>
-                              <span className="capitalize font-medium">{lead.source}</span>
+                            <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border backdrop-blur-sm font-semibold ${sourceBadgeClass}`}>
+                              <span className="text-sm drop-shadow-sm">{sourceIcons[sourceKey] || '📌'}</span>
+                              <span className="capitalize">{(lead.source || '').replace(/_/g, ' ')}</span>
                             </span>
                           )}
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border shadow-sm ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
-                            <span className={`w-2 h-2 rounded-full ${statusStyle.dot} animate-pulse`} />
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg border shadow-sm ring-1 ring-slate-900/[0.04] ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
+                            <span className={`w-2 h-2 rounded-full ${statusStyle.dot} shadow-sm animate-pulse`} />
                             {lead.status}
                           </span>
                           {lead.isConverted && (
-                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-200/50">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-300/40 ring-1 ring-white/30">
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               Converted
                             </span>
@@ -1563,37 +1575,45 @@ export default function Leads() {
                       </div>
 
                       {/* Contact Info Row */}
-                      <div className="flex flex-wrap items-center gap-3">
-                        <a 
-                          href={`mailto:${lead.email}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-orange-50 text-slate-600 hover:text-orange-600 border border-slate-200/50 hover:border-orange-200 transition-all"
-                        >
-                          <Mail className="w-4 h-4" />
-                          <span className="truncate max-w-[180px]">{lead.email}</span>
-                        </a>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {lead.email?.trim() ? (
+                          <a 
+                            href={`mailto:${lead.email.trim()}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-900 border border-blue-200/60 hover:border-blue-300 shadow-sm hover:shadow-md transition-all font-medium"
+                          >
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-blue-600 shadow-sm ring-1 ring-blue-100">
+                              <Mail className="w-4 h-4" />
+                            </span>
+                            <span className="truncate max-w-[180px]">{lead.email.trim()}</span>
+                          </a>
+                        ) : null}
                         {lead.phone && (
                           <a 
                             href={`tel:${lead.phone}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-orange-50 text-slate-600 hover:text-orange-600 border border-slate-200/50 hover:border-orange-200 transition-all"
+                            className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-50 to-cyan-50 hover:from-teal-100 hover:to-cyan-100 text-teal-900 border border-teal-200/60 hover:border-teal-300 shadow-sm hover:shadow-md transition-all font-medium"
                           >
-                            <Phone className="w-4 h-4" />
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-teal-600 shadow-sm ring-1 ring-teal-100">
+                              <Phone className="w-4 h-4" />
+                            </span>
                             <span>{lead.phone}</span>
                           </a>
                         )}
                         {assignee && (
-                          <span className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
-                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-[10px] font-bold">
+                          <span className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-50 to-purple-50 text-violet-900 border border-violet-200/60 shadow-sm font-medium">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shadow-md ring-2 ring-white">
                               {assignee.name.charAt(0).toUpperCase()}
                             </div>
                             <span className="font-medium">{assignee.name}</span>
                           </span>
                         )}
                         {lead.referredByContactName && (
-                          <span className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 border border-purple-100">
-                            <UserPlus className="w-4 h-4" />
-                            <span className="font-medium">Referred by {lead.referredByContactName}</span>
+                          <span className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-fuchsia-50 to-pink-50 text-fuchsia-900 border border-fuchsia-200/60 shadow-sm font-medium">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-fuchsia-600 shadow-sm ring-1 ring-fuchsia-100">
+                              <UserPlus className="w-4 h-4" />
+                            </span>
+                            <span>Referred by {lead.referredByContactName}</span>
                           </span>
                         )}
                       </div>
@@ -1618,29 +1638,34 @@ export default function Leads() {
 
                       {/* Description Preview */}
                       {lead.description && (
-                        <div className="relative">
-                          <p className="text-sm text-slate-600 line-clamp-2 bg-gradient-to-r from-slate-50 to-slate-100/50 rounded-xl px-4 py-2.5 border border-slate-100 italic">
-                            "{lead.description}"
+                        <div className="relative overflow-hidden rounded-xl border border-slate-200/60 bg-gradient-to-r from-white via-slate-50/80 to-indigo-50/40 shadow-sm">
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-orange-400 via-amber-400 to-rose-400" aria-hidden />
+                          <p className="text-sm text-slate-700 line-clamp-2 pl-4 pr-4 py-3 font-medium leading-relaxed">
+                            <span className="text-orange-400/90 font-serif text-lg leading-none mr-0.5">“</span>
+                            {lead.description}
+                            <span className="text-orange-400/90 font-serif text-lg leading-none">”</span>
                           </p>
                         </div>
                       )}
 
                       {/* Interactions (activities) — stopPropagation on click so using the list does not open the card */}
                       <div
-                        className="rounded-xl border border-indigo-100/70 bg-gradient-to-br from-slate-50/90 to-indigo-50/30 p-3"
+                        className="rounded-2xl border border-indigo-200/50 bg-gradient-to-br from-white via-indigo-50/50 to-violet-50/60 p-3.5 shadow-[0_8px_30px_-18px_rgba(79,70,229,0.25)] ring-1 ring-indigo-500/[0.06]"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                            <ActivityIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                            Interactions
+                        <div className="flex items-center justify-between gap-2 mb-2.5">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/35">
+                              <ActivityIcon className="w-4 h-4" />
+                            </span>
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-950/80">Interactions</span>
                           </span>
-                          <span className="text-[10px] font-medium text-slate-400 tabular-nums">
+                          <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-bold text-indigo-700 border border-indigo-200/70 tabular-nums shadow-sm">
                             {leadInteractions.length} total
                           </span>
                         </div>
                         {leadInteractions.length === 0 ? (
-                          <p className="text-xs text-slate-400">No interactions logged yet.</p>
+                          <p className="text-xs text-indigo-600/70 pl-0.5">No interactions logged yet — open the lead to add notes and calls.</p>
                         ) : (
                           <ul className="max-h-52 overflow-y-auto space-y-2 pr-1">
                             {leadInteractions.map((activity) => {
@@ -1699,34 +1724,33 @@ export default function Leads() {
                       </div>
 
                       {/* Meta Info Row */}
-                      <div className="flex flex-wrap items-center gap-4 text-xs">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
                         {lead.lastContactedAt && (
-                          <div className="flex items-center gap-1.5 text-slate-500">
-                            <div className="w-6 h-6 rounded-lg bg-amber-100 flex items-center justify-center">
-                              <Clock className="w-3.5 h-3.5 text-amber-600" />
-                            </div>
-                            <span>Last contact: <span className="font-semibold text-slate-700">{formatDateShort(lead.lastContactedAt)}</span></span>
+                          <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/70 bg-gradient-to-r from-amber-50 to-orange-50 px-3 py-1.5 text-amber-900 shadow-sm">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-amber-600 shadow-sm ring-1 ring-amber-100">
+                              <Clock className="w-3.5 h-3.5" />
+                            </span>
+                            <span className="font-medium text-amber-950/80">Last contact <span className="font-bold text-amber-950">{formatDateShort(lead.lastContactedAt)}</span></span>
                           </div>
                         )}
-                        <div className="flex items-center gap-1.5 text-slate-500">
-                          <div className="w-6 h-6 rounded-lg bg-blue-100 flex items-center justify-center">
-                            <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                          </div>
-                          <span>Added: <span className="font-semibold text-slate-700">{formatAddedAt(lead.createdAtUtc) ?? 'Unknown'}</span></span>
+                        <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/70 bg-gradient-to-r from-blue-50 to-sky-50 px-3 py-1.5 text-blue-950 shadow-sm">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-blue-600 shadow-sm ring-1 ring-blue-100">
+                            <Calendar className="w-3.5 h-3.5" />
+                          </span>
+                          <span className="font-medium text-blue-950/80">Added <span className="font-bold text-blue-950">{formatAddedAt(lead.createdAtUtc) ?? 'Unknown'}</span></span>
                         </div>
                         {lead.isConverted && lead.convertedAtUtc && (
-                          <div className="flex items-center gap-1.5 text-emerald-600">
-                            <div className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center">
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            </div>
-                            <span>Converted: <span className="font-semibold">{formatDateFull(lead.convertedAtUtc)}</span></span>
+                          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/70 bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-1.5 text-emerald-950 shadow-sm">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm ring-1 ring-emerald-100">
+                              <Check className="w-3.5 h-3.5" />
+                            </span>
+                            <span className="font-medium text-emerald-950/80">Converted <span className="font-bold text-emerald-950">{formatDateFull(lead.convertedAtUtc)}</span></span>
                           </div>
                         )}
                       </div>
 
-                      {/* Action Buttons - Always visible on right */}
                       <div 
-                        className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100/80 opacity-0 group-hover:opacity-100 transition-all duration-300"
+                        className="flex items-center justify-end gap-2 pt-3 mt-0.5 border-t border-slate-200/70 bg-gradient-to-r from-slate-50/90 via-white to-indigo-50/40 -mx-1 px-1 pb-0.5"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {!lead.isConverted && (
@@ -1734,7 +1758,7 @@ export default function Leads() {
                             variant="outline" 
                             size="sm" 
                             onClick={() => openConvert(lead)} 
-                            className="gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white border-0 shadow-lg shadow-emerald-200/50 hover:shadow-xl hover:shadow-emerald-300/50 hover:scale-105 transition-all" 
+                            className="gap-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-600 text-white border-0 shadow-lg shadow-emerald-300/40 hover:shadow-xl hover:shadow-teal-400/30 hover:scale-[1.02] transition-all font-semibold rounded-lg" 
                             aria-label={`Convert ${lead.name}`}
                           >
                             <ArrowRightCircle className="w-4 h-4" />
@@ -1745,7 +1769,7 @@ export default function Leads() {
                           variant="outline" 
                           size="sm" 
                           onClick={() => openEdit(lead)} 
-                          className="gap-1.5 bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-sm hover:shadow transition-all" 
+                          className="gap-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border-indigo-200/60 hover:border-indigo-300 shadow-sm hover:shadow-md transition-all font-medium rounded-lg" 
                           aria-label={`Edit ${lead.name}`}
                         >
                           <Pencil className="w-4 h-4" />
@@ -1755,7 +1779,7 @@ export default function Leads() {
                           variant="outline"
                           size="sm"
                           onClick={() => setDeleteConfirmLead(lead)}
-                          className="gap-1.5 bg-white text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 shadow-sm hover:shadow transition-all"
+                          className="gap-1.5 bg-white text-red-600 border-red-200/80 hover:bg-gradient-to-r hover:from-red-50 hover:to-rose-50 hover:text-red-700 hover:border-red-300 shadow-sm hover:shadow transition-all font-medium rounded-lg"
                           aria-label={`Delete ${lead.name}`}
                         >
                           <Trash2 className="w-4 h-4" />
