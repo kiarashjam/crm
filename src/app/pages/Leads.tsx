@@ -234,13 +234,20 @@ export default function Leads() {
     );
   }, [debouncedSearch, setSearchParams]);
 
-  // Browser back/forward or opening a shared link: align committed search with the URL without clobbering typing-ahead of debounce
+  // Browser back/forward or opening a shared link: align committed search with the URL.
+  // Compare against a ref so this effect fires only on external URL changes — depending on
+  // `debouncedSearch` would make it run before `setSearchParams` had a chance to commit, and
+  // the stale `searchParams` closure would reset the user's typing.
+  const debouncedSearchRef = useRef(debouncedSearch);
+  useEffect(() => {
+    debouncedSearchRef.current = debouncedSearch;
+  }, [debouncedSearch]);
   useEffect(() => {
     const fromUrl = searchParams.get('search') || '';
-    if (fromUrl === debouncedSearch) return;
+    if (fromUrl === debouncedSearchRef.current) return;
     setDebouncedSearch(fromUrl);
     setSearchQuery(fromUrl);
-  }, [searchParams, debouncedSearch]);
+  }, [searchParams]);
 
   // Fetch all leads from API (`/api/leads/all`); search/filter/sort run client-side on `filteredLeads`
   const fetchLeads = useCallback(async () => {
