@@ -5,6 +5,14 @@ export interface Organization {
   name: string;
   ownerUserId: string;
   isOwner: boolean;
+  /** 0 Owner, 1 Member, 2 Manager. */
+  role: number;
+}
+
+/** True when the current user is Owner or Manager of the organization (full admin access). */
+export function isOrgAdmin(org: { isOwner?: boolean; role?: number } | null | undefined): boolean {
+  if (!org) return false;
+  return org.isOwner === true || org.role === 0 || org.role === 2;
 }
 
 export interface OrgMemberDto {

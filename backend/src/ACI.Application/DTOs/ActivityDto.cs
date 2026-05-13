@@ -13,4 +13,7 @@ public record ActivityDto(
     DateTime? UpdatedAtUtc = null,
     string? ContactName = null,
     string? DealName = null,
-    string? LeadName = null);
+    string? LeadName = null,
+    Guid? CreatedByUserId = null,
+    string? CreatedByName = null,
+    string? CreatedByEmail = null);

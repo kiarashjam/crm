@@ -367,7 +367,7 @@ public class OrganizationServiceTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Code.Should().Be("Organization.NotOwner");
+        result.Error.Code.Should().Be("Organization.NotOwnerOrManager");
     }
 
     [Fact]
@@ -463,7 +463,7 @@ public class OrganizationServiceTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Code.Should().Be("Organization.NotOwner");
+        result.Error.Code.Should().Be("Organization.NotOwnerOrManager");
     }
 
     [Fact]

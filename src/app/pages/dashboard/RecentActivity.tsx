@@ -92,8 +92,12 @@ export function RecentActivity({ items }: RecentActivityProps) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-900 truncate">{item.subject || item.type}</p>
-                    {relatedName && (
-                      <p className="text-xs text-slate-500 truncate">{relatedName}</p>
+                    {(relatedName || item.createdByName) && (
+                      <p className="text-xs text-slate-500 truncate">
+                        {relatedName}
+                        {relatedName && item.createdByName && <> &middot; </>}
+                        {item.createdByName && <>by {item.createdByName}</>}
+                      </p>
                     )}
                   </div>
                   <span className="text-xs text-slate-400 shrink-0">

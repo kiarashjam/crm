@@ -21,6 +21,9 @@ interface ActivityRaw {
   contactName?: string | null;
   dealName?: string | null;
   leadName?: string | null;
+  createdByUserId?: string | null;
+  createdByName?: string | null;
+  createdByEmail?: string | null;
 }
 
 function mapActivity(d: ActivityRaw): Activity {
@@ -38,6 +41,9 @@ function mapActivity(d: ActivityRaw): Activity {
     contactName: d.contactName ?? undefined,
     dealName: d.dealName ?? undefined,
     leadName: d.leadName ?? undefined,
+    createdByUserId: d.createdByUserId ?? undefined,
+    createdByName: d.createdByName ?? undefined,
+    createdByEmail: d.createdByEmail ?? undefined,
   };
 }
 

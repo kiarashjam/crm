@@ -1,6 +1,7 @@
 import { Kanban, Plus, Pencil, Trash2, ChevronRight } from 'lucide-react';
 import type { Pipeline, DealStage } from '@/app/api/types';
 import { isUsingRealApi } from '@/app/api/apiClient';
+import { isOrgAdmin } from '@/app/api/organizations';
 
 export interface PipelinesSectionProps {
   pipelines: Pipeline[];
@@ -31,7 +32,7 @@ export interface PipelinesSectionProps {
   handleUpdateStage: (stageId: string, pipelineId: string) => void;
   handleDeleteStage: (stageId: string, pipelineId: string) => void;
   deletingStageId: string | null;
-  currentOrg: { id: string; isOwner: boolean } | null;
+  currentOrg: { id: string; isOwner: boolean; role?: number } | null;
 }
 
 export function PipelinesSection({
@@ -65,7 +66,7 @@ export function PipelinesSection({
   deletingStageId,
   currentOrg,
 }: PipelinesSectionProps) {
-  if (!isUsingRealApi() || !currentOrg?.isOwner) {
+  if (!isUsingRealApi() || !isOrgAdmin(currentOrg)) {
     return (
       <div className="p-6">
         <div>
@@ -76,7 +77,7 @@ export function PipelinesSection({
           <p className="text-slate-600 text-sm mt-1">Configure your sales pipeline stages</p>
         </div>
         <div className="mt-6 p-4 bg-slate-50 rounded-xl text-center">
-          <p className="text-slate-600">Pipeline management is available for organization owners.</p>
+          <p className="text-slate-600">Pipeline management is available for organization owners and managers.</p>
         </div>
       </div>
     );

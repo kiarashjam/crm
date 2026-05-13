@@ -124,11 +124,10 @@ function LeadDetailModal({
     try {
       const { getActivitiesByLead } = await import('@/app/api');
       const data = await getActivitiesByLead(lead.id);
-      // Add user info to activities (would come from backend in real implementation)
       const activitiesWithUser: ActivityWithUser[] = data.map(a => ({
         ...a,
-        userName: currentUser?.name || 'You',
-        userEmail: currentUser?.email || '',
+        userName: a.createdByName || currentUser?.name || 'You',
+        userEmail: a.createdByEmail || currentUser?.email || '',
       }));
       setActivities(activitiesWithUser);
     } catch (err) {

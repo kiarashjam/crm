@@ -22,9 +22,9 @@ import {
 import { isUsingRealApi } from '@/app/api/apiClient';
 
 const DEMO_ORGANIZATIONS: Organization[] = [
-  { id: 'demo-org', name: 'Demo Organization', ownerUserId: 'demo', isOwner: true },
-  { id: 'demo-acme', name: 'Acme Corp', ownerUserId: 'demo', isOwner: true },
-  { id: 'demo-techstart', name: 'TechStart Inc', ownerUserId: 'demo', isOwner: true },
+  { id: 'demo-org', name: 'Demo Organization', ownerUserId: 'demo', isOwner: true, role: 0 },
+  { id: 'demo-acme', name: 'Acme Corp', ownerUserId: 'demo', isOwner: true, role: 0 },
+  { id: 'demo-techstart', name: 'TechStart Inc', ownerUserId: 'demo', isOwner: true, role: 0 },
 ];
 
 type OrgContextValue = {
@@ -122,6 +122,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       name: name.trim() || 'My Organization',
       ownerUserId: 'demo',
       isOwner: true,
+      role: 0,
     };
     setOrganizations((prev) => [...prev, org]);
     return org;

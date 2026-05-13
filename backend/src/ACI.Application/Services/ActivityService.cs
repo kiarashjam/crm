@@ -195,9 +195,11 @@ public class ActivityService : IActivityService
             };
             
             entity = await _repository.AddAsync(entity, ct);
-            
+
             _logger.LogInformation("Successfully created activity {ActivityId} of type '{Type}'", entity.Id, entity.Type);
-            return Map(entity);
+            // Re-fetch so the DTO can include the related entity and creator-user names.
+            var fetched = await _repository.GetByIdAsync(entity.Id, userId, organizationId, ct);
+            return Map(fetched ?? entity);
         }
         catch (Exception ex)
         {
@@ -295,18 +297,21 @@ public class ActivityService : IActivityService
 
     private static ActivityDto Map(Activity e) =>
         new ActivityDto(
-            e.Id, 
-            e.Type, 
-            e.Subject, 
-            e.Body, 
-            e.ContactId, 
-            e.DealId, 
-            e.LeadId, 
-            e.Participants, 
+            e.Id,
+            e.Type,
+            e.Subject,
+            e.Body,
+            e.ContactId,
+            e.DealId,
+            e.LeadId,
+            e.Participants,
             e.CreatedAtUtc,
             e.UpdatedAtUtc,
             e.Contact?.Name,
             e.Deal?.Name,
-            e.Lead?.Name
+            e.Lead?.Name,
+            e.UserId,
+            e.User?.Name,
+            e.User?.Email
         );
 }

@@ -12,7 +12,9 @@ public sealed class LeadRepository : ILeadRepository
     public LeadRepository(AppDbContext db) => _db = db;
 
     private static IQueryable<Lead> FilterByUserAndOrg(IQueryable<Lead> q, Guid userId, Guid? organizationId) =>
-        q.Where(l => l.UserId == userId && (organizationId == null ? l.OrganizationId == null : l.OrganizationId == organizationId));
+        organizationId == null
+            ? q.Where(l => l.UserId == userId && l.OrganizationId == null)
+            : q.Where(l => l.OrganizationId == organizationId);
 
     private static IQueryable<Lead> ApplySearch(IQueryable<Lead> query, string? search)
     {

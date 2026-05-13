@@ -2,11 +2,11 @@ import { Link } from 'react-router-dom';
 import { Building2, UserPlus, Mail, Check, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { isUsingRealApi } from '@/app/api/apiClient';
-import type { InviteDto, JoinRequestDto, OrgMemberDto } from '@/app/api/organizations';
+import { isOrgAdmin, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
 
 export interface OrganizationSectionProps {
-  organizations: { id: string; name: string; isOwner: boolean }[];
-  currentOrg: { id: string; name: string; isOwner: boolean } | null;
+  organizations: { id: string; name: string; isOwner: boolean; role?: number }[];
+  currentOrg: { id: string; name: string; isOwner: boolean; role?: number } | null;
   setCurrentOrg: (id: string) => void;
   inviteEmail: string;
   setInviteEmail: (val: string) => void;
@@ -88,7 +88,7 @@ export function OrganizationSection({
         </div>
       )}
 
-      {isUsingRealApi() && currentOrg?.isOwner && (
+      {isUsingRealApi() && isOrgAdmin(currentOrg) && (
         <>
           <div className="pt-6 border-t border-slate-200">
             <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">

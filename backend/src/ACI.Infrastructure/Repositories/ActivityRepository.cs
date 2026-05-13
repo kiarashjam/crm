@@ -12,11 +12,13 @@ public sealed class ActivityRepository : IActivityRepository
     public ActivityRepository(AppDbContext db) => _db = db;
 
     private static IQueryable<Activity> FilterByUserAndOrg(IQueryable<Activity> q, Guid userId, Guid? organizationId) =>
-        q.Where(a => a.UserId == userId && (organizationId == null ? a.OrganizationId == null : a.OrganizationId == organizationId));
+        organizationId == null
+            ? q.Where(a => a.UserId == userId && a.OrganizationId == null)
+            : q.Where(a => a.OrganizationId == organizationId);
 
-    /// <summary>Include Contact, Deal, Lead nav properties so the DTO mapper can read their names.</summary>
+    /// <summary>Include Contact, Deal, Lead, and User nav properties so the DTO mapper can read names.</summary>
     private static IQueryable<Activity> IncludeRelated(IQueryable<Activity> q) =>
-        q.Include(a => a.Contact).Include(a => a.Deal).Include(a => a.Lead);
+        q.Include(a => a.Contact).Include(a => a.Deal).Include(a => a.Lead).Include(a => a.User);
 
     private static IQueryable<Activity> ApplySearch(IQueryable<Activity> query, string? search)
     {
