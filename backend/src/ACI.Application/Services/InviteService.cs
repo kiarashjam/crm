@@ -37,10 +37,11 @@ public sealed class InviteService : IInviteService
             return Result.Failure<InviteDto>(DomainErrors.Organization.NotFound);
         }
 
-        if (org.OwnerUserId != userId)
+        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
         {
-            _logger.LogWarning("User {UserId} is not owner of organization {OrganizationId}", userId, organizationId);
-            return Result.Failure<InviteDto>(DomainErrors.Organization.NotOwner);
+            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, organizationId);
+            return Result.Failure<InviteDto>(DomainErrors.Organization.NotOwnerOrManager);
         }
 
         var email = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
@@ -84,10 +85,11 @@ public sealed class InviteService : IInviteService
             return Result.Failure<IReadOnlyList<InviteDto>>(DomainErrors.Organization.NotFound);
         }
 
-        if (org.OwnerUserId != userId)
+        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
         {
-            _logger.LogWarning("User {UserId} is not owner of organization {OrganizationId}", userId, organizationId);
-            return Result.Failure<IReadOnlyList<InviteDto>>(DomainErrors.Organization.NotOwner);
+            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, organizationId);
+            return Result.Failure<IReadOnlyList<InviteDto>>(DomainErrors.Organization.NotOwnerOrManager);
         }
 
         var list = await _inviteRepository.ListPendingByOrganizationIdAsync(organizationId, ct);

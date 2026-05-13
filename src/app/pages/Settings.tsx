@@ -36,6 +36,7 @@ import {
   getOrgMembers,
   updateMemberRole,
   removeMember,
+  isOrgAdmin,
   type InviteDto,
   type JoinRequestDto,
   type OrgMemberDto,
@@ -194,17 +195,19 @@ export default function Settings() {
 
   // Load org data
   useEffect(() => {
-    if (!isUsingRealApi() || !currentOrg?.isOwner || !currentOrg?.id) return;
+    if (!isUsingRealApi() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
     listPendingInvitesForOrg(currentOrg.id).then(setOwnerInvites).catch(() => setOwnerInvites([]));
     listPendingJoinRequestsForOrg(currentOrg.id).then(setOwnerJoinRequests).catch(() => setOwnerJoinRequests([]));
     getOrgMembers(currentOrg.id).then(setOrgMembers).catch(() => setOrgMembers([]));
-  }, [currentOrg?.id, currentOrg?.isOwner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isOrgAdmin only reads isOwner and role
+  }, [currentOrg?.id, currentOrg?.isOwner, currentOrg?.role]);
 
   // Load pipelines
   useEffect(() => {
-    if (!isUsingRealApi() || !currentOrg?.isOwner || !currentOrg?.id) return;
+    if (!isUsingRealApi() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
     getPipelines().then(setPipelines).catch(() => setPipelines([]));
-  }, [currentOrg?.id, currentOrg?.isOwner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isOrgAdmin only reads isOwner and role
+  }, [currentOrg?.id, currentOrg?.isOwner, currentOrg?.role]);
 
   // Load pipeline stages when expanded
   useEffect(() => {

@@ -33,11 +33,17 @@ public sealed class OrganizationService : IOrganizationService
     public async Task<IReadOnlyList<OrganizationDto>> ListMyOrganizationsAsync(Guid userId, CancellationToken ct = default)
     {
         _logger.LogDebug("Listing organizations for user {UserId}", userId);
-        
+
         var orgs = await _organizationRepository.GetByUserIdAsync(userId, ct);
-        
-        _logger.LogDebug("Found {Count} organizations for user {UserId}", orgs.Count, userId);
-        return orgs.Select(o => new OrganizationDto(o.Id, o.Name, o.OwnerUserId, o.OwnerUserId == userId)).ToList();
+        var result = new List<OrganizationDto>(orgs.Count);
+        foreach (var o in orgs)
+        {
+            var role = await _organizationRepository.GetMemberRoleAsync(userId, o.Id, ct) ?? OrgMemberRole.Member;
+            result.Add(new OrganizationDto(o.Id, o.Name, o.OwnerUserId, o.OwnerUserId == userId, (int)role));
+        }
+
+        _logger.LogDebug("Found {Count} organizations for user {UserId}", result.Count, userId);
+        return result;
     }
 
     public async Task<Result<OrganizationDto>> GetOrganizationAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
@@ -57,9 +63,10 @@ public sealed class OrganizationService : IOrganizationService
             _logger.LogWarning("Organization {OrganizationId} not found", organizationId);
             return DomainErrors.Organization.NotFound;
         }
-        
+
+        var role = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct) ?? OrgMemberRole.Member;
         _logger.LogDebug("Successfully retrieved organization {OrganizationId}", organizationId);
-        return new OrganizationDto(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId);
+        return new OrganizationDto(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)role);
     }
 
     public async Task<Result<OrganizationDto>> CreateOrganizationAsync(Guid userId, CreateOrganizationRequest request, CancellationToken ct = default)
@@ -115,7 +122,7 @@ public sealed class OrganizationService : IOrganizationService
             }
             
             _logger.LogInformation("Successfully created organization {OrganizationId} for user {UserId}", org.Id, userId);
-            return new OrganizationDto(org.Id, org.Name, org.OwnerUserId, true);
+            return new OrganizationDto(org.Id, org.Name, org.OwnerUserId, true, (int)OrgMemberRole.Owner);
         }
         catch (Exception ex)
         {
@@ -151,12 +158,12 @@ public sealed class OrganizationService : IOrganizationService
             memberUserId, organizationId, requestingUserId);
         
         var requesterRole = await _organizationRepository.GetMemberRoleAsync(requestingUserId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner)
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
         {
-            _logger.LogWarning("User {RequestingUserId} is not the owner of organization {OrganizationId}", requestingUserId, organizationId);
-            return DomainErrors.Organization.NotOwner;
+            _logger.LogWarning("User {RequestingUserId} is not an owner or manager of organization {OrganizationId}", requestingUserId, organizationId);
+            return DomainErrors.Organization.NotOwnerOrManager;
         }
-        
+
         if (newRole == OrgMemberRole.Owner)
         {
             _logger.LogWarning("Cannot change member role to Owner via UpdateMemberRole - use transfer ownership");
@@ -189,19 +196,19 @@ public sealed class OrganizationService : IOrganizationService
             memberUserId, organizationId, requestingUserId);
         
         var requesterRole = await _organizationRepository.GetMemberRoleAsync(requestingUserId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner)
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
         {
-            _logger.LogWarning("User {RequestingUserId} is not the owner of organization {OrganizationId}", requestingUserId, organizationId);
-            return DomainErrors.Organization.NotOwner;
+            _logger.LogWarning("User {RequestingUserId} is not an owner or manager of organization {OrganizationId}", requestingUserId, organizationId);
+            return DomainErrors.Organization.NotOwnerOrManager;
         }
-        
+
         var member = await _organizationRepository.GetMemberAsync(organizationId, memberUserId, ct);
         if (member == null)
         {
             _logger.LogWarning("Member {MemberUserId} not found in organization {OrganizationId}", memberUserId, organizationId);
             return DomainErrors.Organization.NotMember;
         }
-        
+
         if (member.Role == OrgMemberRole.Owner)
         {
             _logger.LogWarning("Cannot remove owner from organization {OrganizationId}", organizationId);

@@ -22,6 +22,7 @@ import {
   rejectJoinRequest,
   updateMemberRole,
   removeMember,
+  isOrgAdmin,
   type OrgMemberDto,
   type InviteDto,
   type JoinRequestDto,
@@ -107,13 +108,13 @@ function StatCard({
 function MemberDetailPanel({
   member,
   onClose,
-  isOwner,
+  isAdmin,
   onRoleChange,
   onRemove,
 }: {
   member: OrgMemberDto;
   onClose: () => void;
-  isOwner: boolean;
+  isAdmin: boolean;
   onRoleChange: (role: number) => void;
   onRemove: () => void;
 }) {
@@ -262,7 +263,7 @@ function MemberDetailPanel({
         </div>
 
         {/* Admin Actions */}
-        {isOwner && member.role !== 0 && (
+        {isAdmin && member.role !== 0 && (
           <div className="border-t border-slate-200 pt-6 space-y-4">
             <h4 className="text-sm font-semibold text-slate-700">Admin Actions</h4>
             
@@ -333,7 +334,7 @@ export default function Team() {
   // Join request actions
   const [processingJoinRequest, setProcessingJoinRequest] = useState<string | null>(null);
 
-  const isOwner = currentOrg?.isOwner ?? false;
+  const isAdmin = isOrgAdmin(currentOrg);
 
   const loadData = async () => {
     if (!currentOrgId) return;
@@ -555,9 +556,9 @@ export default function Team() {
                   <RefreshCw className="w-4 h-4" />
                   Refresh
                 </Button>
-                {isOwner && (
-                  <Button 
-                    onClick={() => setInviteDialogOpen(true)} 
+                {isAdmin && (
+                  <Button
+                    onClick={() => setInviteDialogOpen(true)}
                     className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white"
                   >
                     <UserPlus className="w-4 h-4" />
@@ -612,7 +613,7 @@ export default function Team() {
         ) : (
           <div className="space-y-8">
             {/* Join Requests Alert */}
-            {isOwner && joinRequests.length > 0 && (
+            {isAdmin && joinRequests.length > 0 && (
               <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200 p-5">
                 <div className="flex items-start gap-4">
                   <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
@@ -971,7 +972,7 @@ export default function Team() {
           <MemberDetailPanel
             member={selectedMember}
             onClose={() => setSelectedMember(null)}
-            isOwner={isOwner}
+            isAdmin={isAdmin}
             onRoleChange={(role) => handleRoleChange(selectedMember, role)}
             onRemove={() => {
               setRemoveMemberConfirm(selectedMember);

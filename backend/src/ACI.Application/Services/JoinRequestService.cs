@@ -79,10 +79,11 @@ public sealed class JoinRequestService : IJoinRequestService
             return Result.Failure<IReadOnlyList<JoinRequestDto>>(DomainErrors.Organization.NotFound);
         }
 
-        if (org.OwnerUserId != userId)
+        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
         {
-            _logger.LogWarning("User {UserId} is not owner of organization {OrganizationId}", userId, organizationId);
-            return Result.Failure<IReadOnlyList<JoinRequestDto>>(DomainErrors.Organization.NotOwner);
+            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, organizationId);
+            return Result.Failure<IReadOnlyList<JoinRequestDto>>(DomainErrors.Organization.NotOwnerOrManager);
         }
 
         var list = await _joinRequestRepository.ListPendingByOrganizationIdAsync(organizationId, ct);
@@ -116,10 +117,11 @@ public sealed class JoinRequestService : IJoinRequestService
             return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotFound);
         }
 
-        if (org.OwnerUserId != userId)
+        var requesterRoleAccept = await _organizationRepository.GetMemberRoleAsync(userId, jr.OrganizationId, ct);
+        if (requesterRoleAccept != OrgMemberRole.Owner && requesterRoleAccept != OrgMemberRole.Manager)
         {
-            _logger.LogWarning("User {UserId} is not owner of organization {OrganizationId}", userId, jr.OrganizationId);
-            return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotOwner);
+            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, jr.OrganizationId);
+            return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotOwnerOrManager);
         }
 
         await _organizationRepository.AddMemberAsync(jr.OrganizationId, jr.UserId, OrgMemberRole.Member, ct);
@@ -156,10 +158,11 @@ public sealed class JoinRequestService : IJoinRequestService
             return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotFound);
         }
 
-        if (org.OwnerUserId != userId)
+        var requesterRoleReject = await _organizationRepository.GetMemberRoleAsync(userId, jr.OrganizationId, ct);
+        if (requesterRoleReject != OrgMemberRole.Owner && requesterRoleReject != OrgMemberRole.Manager)
         {
-            _logger.LogWarning("User {UserId} is not owner of organization {OrganizationId}", userId, jr.OrganizationId);
-            return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotOwner);
+            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, jr.OrganizationId);
+            return Result.Failure<JoinRequestDto>(DomainErrors.Organization.NotOwnerOrManager);
         }
 
         jr.Status = JoinRequestStatus.Rejected;
