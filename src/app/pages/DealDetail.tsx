@@ -580,6 +580,7 @@ export default function DealDetail() {
                           <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{a.subject || a.type}</p>
                           <p className="text-xs text-slate-400">
                             {a.type} &middot; {new Date(a.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {a.createdByName && <> &middot; by {a.createdByName}</>}
                           </p>
                           {a.body && <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 line-clamp-3">{a.body}</p>}
                         </div>

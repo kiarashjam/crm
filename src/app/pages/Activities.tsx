@@ -990,10 +990,11 @@ export default function Activities() {
                             </div>
                           </div>
 
-                          {/* Footer with timestamp */}
+                          {/* Footer with timestamp and creator */}
                           <div className="px-4 py-2 bg-slate-50/50 border-t border-slate-100">
                             <p className="text-xs text-slate-400">
                               {formatDate(activity.createdAt)}
+                              {activity.createdByName && <> &middot; by {activity.createdByName}</>}
                             </p>
                           </div>
                         </div>

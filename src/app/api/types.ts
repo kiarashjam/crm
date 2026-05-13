@@ -179,6 +179,9 @@ export interface Activity {
   contactName?: string;
   dealName?: string;
   leadName?: string;
+  createdByUserId?: string;
+  createdByName?: string;
+  createdByEmail?: string;
 }
 
 export interface Pipeline {
