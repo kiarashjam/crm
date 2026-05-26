@@ -1,10 +1,19 @@
 import type { Lead, PagedResult, PaginationParams } from './types';
 import { mockLeads } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
+
+// Demo-mode persistence: lets create/update/delete survive within the session
+// and across reloads so the demo behaves like a real CRM.
+const leadStore = createMockStore<Lead>({
+  storageKey: 'crm.mock.leads.v1',
+  seed: mockLeads,
+  idOf: (l) => l.id,
+});
 
 type LeadRaw = { id: string; name: string; email: string; phone?: string | null; companyId?: string | null; source?: string | null; status: string; leadSourceId?: string | null; leadStatusId?: string | null; leadScore?: number | null; lastContactedAt?: string | null; description?: string | null; lifecycleStage?: string | null; isConverted?: boolean; convertedAtUtc?: string | null; createdAtUtc?: string | null };
 function mapLead(d: LeadRaw): Lead {
@@ -66,8 +75,8 @@ export async function getLeadsPaged(
   
   // Mock implementation with client-side pagination
   await delay(300);
-  let leads = [...mockLeads];
-  
+  let leads = leadStore.list();
+
   // Apply search filter
   if (search?.trim()) {
     const qLower = search.trim().toLowerCase();
@@ -102,7 +111,7 @@ export async function getLeads(): Promise<Lead[]> {
     return Array.isArray(list) ? list.map(mapLead) : [];
   }
   await delay(300);
-  return [...mockLeads];
+  return leadStore.list();
 }
 
 /** Search leads by name or email (non-paginated, for backward compatibility). */
@@ -129,7 +138,25 @@ export async function createLead(params: { name: string; email: string; phone?: 
     return lead ? mapLead(lead) : null;
   }
   await delay(200);
-  return null;
+  const created: Lead = {
+    id: mockId('lead'),
+    name: params.name,
+    email: params.email,
+    phone: params.phone,
+    companyId: params.companyId,
+    source: params.source,
+    status: params.status ?? 'New',
+    leadSourceId: params.leadSourceId,
+    leadStatusId: params.leadStatusId,
+    leadScore: params.leadScore,
+    lastContactedAt: params.lastContactedAt,
+    description: params.description,
+    lifecycleStage: params.lifecycleStage,
+    isConverted: false,
+    convertedAtUtc: undefined,
+    createdAtUtc: new Date().toISOString(),
+  };
+  return leadStore.add(created);
 }
 
 /** Update a lead. */
@@ -142,7 +169,7 @@ export async function updateLead(id: string, params: Partial<{ name: string; ema
     return lead ? mapLead(lead) : null;
   }
   await delay(200);
-  return null;
+  return leadStore.update(id, params as Partial<Lead>);
 }
 
 /** Delete a lead. */
@@ -152,7 +179,7 @@ export async function deleteLead(id: string): Promise<boolean> {
     return res.status === 204;
   }
   await delay(200);
-  return false;
+  return leadStore.remove(id);
 }
 
 /** Convert a lead to company/contact/deal (create or attach existing). */

@@ -82,6 +82,8 @@ export function isLoggedIn(): boolean {
 export function setDemoUser(user: { name: string; email: string }): void {
   try {
     localStorage.setItem(USER_KEY, JSON.stringify({ id: 'demo', name: user.name, email: user.email }));
+    // Notify OrgProvider so it can react to the just-entered demo session in the same tab.
+    notifySessionChanged();
   } catch {
     // ignore
   }

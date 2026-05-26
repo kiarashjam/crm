@@ -1,17 +1,16 @@
 import type { Contact, PagedResult, PaginationParams } from './types';
 import { mockContacts } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { createMockStore, mockId } from './mockStore';
 
-const STORAGE_KEY = 'crm_contacts';
+const contactStore = createMockStore<Contact>({
+  storageKey: 'crm.mock.contacts.v1',
+  seed: mockContacts,
+  idOf: (c) => c.id,
+});
 
 function getStored(): Contact[] | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as Contact[];
-  } catch {
-    return null;
-  }
+  return contactStore.list();
 }
 
 function delay(ms: number): Promise<void> {
@@ -184,7 +183,18 @@ export async function createContact(params: {
     }
   }
   await delay(200);
-  return { contact: null, error: 'Mock mode - contact creation disabled' };
+  const created: Contact = {
+    id: mockId('contact'),
+    name: params.name,
+    email: params.email,
+    phone: params.phone,
+    jobTitle: params.jobTitle,
+    companyId: params.companyId,
+    description: params.description,
+    isArchived: false,
+  };
+  contactStore.add(created);
+  return { contact: created, error: null };
 }
 
 /** Update a contact. Returns { contact, error } */
@@ -218,7 +228,10 @@ export async function updateContact(
     }
   }
   await delay(200);
-  return { contact: null, error: 'Mock mode - contact update disabled' };
+  const updated = contactStore.update(id, params as Partial<Contact>);
+  return updated
+    ? { contact: updated, error: null }
+    : { contact: null, error: 'Contact not found' };
 }
 
 /** Delete a contact (hard delete). */
@@ -228,7 +241,7 @@ export async function deleteContact(id: string): Promise<boolean> {
     return res.status === 204;
   }
   await delay(200);
-  return false;
+  return contactStore.remove(id);
 }
 
 /** Archive a contact (soft delete). */
@@ -238,7 +251,7 @@ export async function archiveContact(id: string): Promise<boolean> {
     return res.status === 204;
   }
   await delay(200);
-  return false;
+  return contactStore.update(id, { isArchived: true } as Partial<Contact>) !== null;
 }
 
 /** Unarchive a contact. */
@@ -248,7 +261,7 @@ export async function unarchiveContact(id: string): Promise<boolean> {
     return res.status === 204;
   }
   await delay(200);
-  return false;
+  return contactStore.update(id, { isArchived: false } as Partial<Contact>) !== null;
 }
 
 /** Check if an email already exists. */
