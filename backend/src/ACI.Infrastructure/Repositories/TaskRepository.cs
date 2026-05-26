@@ -13,7 +13,9 @@ public sealed class TaskRepository : ITaskRepository
     public TaskRepository(AppDbContext db) => _db = db;
 
     private static IQueryable<TaskItem> FilterByUserAndOrg(IQueryable<TaskItem> q, Guid userId, Guid? organizationId) =>
-        q.Where(t => t.UserId == userId && (organizationId == null ? t.OrganizationId == null : t.OrganizationId == organizationId));
+        organizationId == null
+            ? q.Where(t => t.UserId == userId && t.OrganizationId == null)
+            : q.Where(t => t.OrganizationId == organizationId);
 
     private static IQueryable<TaskItem> FilterByOrgMember(IQueryable<TaskItem> q, Guid? organizationId) =>
         q.Where(t => organizationId == null ? t.OrganizationId == null : t.OrganizationId == organizationId);

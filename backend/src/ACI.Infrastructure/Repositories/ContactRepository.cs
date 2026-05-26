@@ -12,7 +12,9 @@ public sealed class ContactRepository : IContactRepository
     public ContactRepository(AppDbContext db) => _db = db;
 
     private static IQueryable<Contact> FilterByUserAndOrg(IQueryable<Contact> q, Guid userId, Guid? organizationId) =>
-        q.Where(c => c.UserId == userId && (organizationId == null ? c.OrganizationId == null : c.OrganizationId == organizationId));
+        organizationId == null
+            ? q.Where(c => c.UserId == userId && c.OrganizationId == null)
+            : q.Where(c => c.OrganizationId == organizationId);
 
     private static IQueryable<Contact> ApplySearch(IQueryable<Contact> query, string? search)
     {

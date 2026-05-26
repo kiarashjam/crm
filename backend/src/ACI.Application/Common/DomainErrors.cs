@@ -315,9 +315,12 @@ public static class DomainErrors
     {
         public static readonly Error NotFound = new(
             "DealStage.NotFound", "The deal stage was not found");
-        
+
         public static readonly Error NameRequired = new(
             "DealStage.NameRequired", "Deal stage name is required");
+
+        public static readonly Error HasDeals = new(
+            "DealStage.HasDeals", "Cannot delete deal stage with existing deals");
     }
 
     /// <summary>

@@ -9,4 +9,6 @@ public interface IDealStageRepository
     Task<DealStage> AddAsync(DealStage stage, CancellationToken ct = default);
     Task<DealStage?> UpdateAsync(DealStage stage, Guid organizationId, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid organizationId, CancellationToken ct = default);
+    /// <summary>Returns true if any Deal references this stage.</summary>
+    Task<bool> HasAnyDealsAsync(Guid stageId, CancellationToken ct = default);
 }

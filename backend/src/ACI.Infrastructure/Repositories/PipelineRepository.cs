@@ -49,4 +49,7 @@ public sealed class PipelineRepository : IPipelineRepository
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    public async Task<bool> HasAnyDealsAsync(Guid pipelineId, CancellationToken ct = default) =>
+        await _db.Deals.AnyAsync(d => d.PipelineId == pipelineId, ct);
 }

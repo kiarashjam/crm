@@ -113,6 +113,12 @@ public class PipelineService : IPipelineService
             return Result.Failure(DomainErrors.Pipeline.NotFound);
         }
 
+        if (await _repository.HasAnyDealsAsync(id, ct))
+        {
+            _logger.LogWarning("Pipeline {PipelineId} cannot be deleted: deals reference it", id);
+            return Result.Failure(DomainErrors.Pipeline.HasDeals);
+        }
+
         var deleted = await _repository.DeleteAsync(id, organizationId, ct);
         if (!deleted)
         {

@@ -12,7 +12,9 @@ public sealed class CompanyRepository : ICompanyRepository
     public CompanyRepository(AppDbContext db) => _db = db;
 
     private static IQueryable<Company> FilterByUserAndOrg(IQueryable<Company> q, Guid userId, Guid? organizationId) =>
-        q.Where(c => c.UserId == userId && (organizationId == null ? c.OrganizationId == null : c.OrganizationId == organizationId));
+        organizationId == null
+            ? q.Where(c => c.UserId == userId && c.OrganizationId == null)
+            : q.Where(c => c.OrganizationId == organizationId);
 
     private static IQueryable<Company> ApplySearch(IQueryable<Company> query, string? search)
     {
@@ -116,9 +118,9 @@ public sealed class CompanyRepository : ICompanyRepository
         if (companyIds.Count == 0)
             return Array.Empty<(Guid, int, int, decimal)>();
 
-        // Contact counts via SQL GROUP BY
+        // Contact counts via SQL GROUP BY — exclude archived contacts so dashboard counts match the visible list.
         var contactCounts = await _db.Contacts
-            .Where(c => c.CompanyId != null && companyIds.Contains(c.CompanyId.Value))
+            .Where(c => !c.IsArchived && c.CompanyId != null && companyIds.Contains(c.CompanyId.Value))
             .GroupBy(c => c.CompanyId!.Value)
             .Select(g => new { CompanyId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.CompanyId, x => x.Count, ct);
@@ -147,8 +149,8 @@ public sealed class CompanyRepository : ICompanyRepository
 
     public async Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var entity = await _db.Companies.FirstOrDefaultAsync(c =>
-            c.Id == id && c.UserId == userId && (organizationId == null ? c.OrganizationId == null : c.OrganizationId == organizationId), ct);
+        var entity = await FilterByUserAndOrg(_db.Companies, userId, organizationId)
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
         if (entity == null) return false;
         // Null FKs so delete does not violate referential integrity (Contacts, Deals, Leads reference Company)
         await _db.Contacts.Where(c => c.CompanyId == id).ExecuteUpdateAsync(s => s.SetProperty(c => c.CompanyId, (Guid?)null), ct);

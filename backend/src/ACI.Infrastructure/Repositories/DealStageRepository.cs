@@ -52,4 +52,7 @@ public sealed class DealStageRepository : IDealStageRepository
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    public async Task<bool> HasAnyDealsAsync(Guid stageId, CancellationToken ct = default) =>
+        await _db.Deals.AnyAsync(d => d.DealStageId == stageId, ct);
 }

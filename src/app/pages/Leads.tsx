@@ -31,6 +31,7 @@ import {
 import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
+import { useOrg } from '@/app/contexts/OrgContext';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -131,7 +132,8 @@ function saveLeadCreatedAtMap(createdAtByLeadId: Record<string, string>) {
 export default function Leads() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  
+  const { currentOrgId } = useOrg();
+
   const searchFromUrl = searchParams.get('search') || '';
   
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -316,26 +318,21 @@ export default function Leads() {
     prevDetailModalOpen.current = detailModalOpen;
   }, [detailModalOpen]);
 
-  // Load org members for assignment and get current user
+  // Get current user once for activity logging.
   useEffect(() => {
-    const loadOrgMembers = async () => {
-      try {
-        const { getCurrentOrganizationId } = await import('@/app/lib/auth');
-        const orgId = getCurrentOrganizationId();
-        if (orgId) {
-          const members = await getOrgMembers(orgId);
-          setOrgMembers(members);
-        }
-      } catch (err) {
-        console.error('Failed to load org members:', err);
-      }
-    };
-    loadOrgMembers();
-    
-    // Get current user for activity logging
-    const user = getCurrentUser();
-    setCurrentUser(user);
+    setCurrentUser(getCurrentUser());
   }, []);
+
+  // Reload org members whenever the active organization changes.
+  useEffect(() => {
+    if (!currentOrgId) {
+      setOrgMembers([]);
+      return;
+    }
+    getOrgMembers(currentOrgId)
+      .then(setOrgMembers)
+      .catch((err) => console.error('Failed to load org members:', err));
+  }, [currentOrgId]);
 
   const filteredLeads = useMemo(() => {
     let result = [...leads];

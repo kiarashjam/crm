@@ -88,9 +88,12 @@ public sealed class TemplateRepository : ITemplateRepository
             .ThenBy(t => t.Title)
             .ToListAsync(ct);
 
-    public async Task<Template?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+    public async Task<Template?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await _db.Templates
             .Include(t => t.User)
+            .Where(t => t.UserId == userId
+                     || t.IsSystemTemplate
+                     || (organizationId != null && t.OrganizationId == organizationId && t.IsSharedWithOrganization))
             .FirstOrDefaultAsync(t => t.Id == id, ct);
 
     public async Task<Template> CreateAsync(Template template, CancellationToken ct = default)
@@ -117,9 +120,13 @@ public sealed class TemplateRepository : ITemplateRepository
         }
     }
 
-    public async Task IncrementUseCountAsync(Guid id, CancellationToken ct = default)
+    public async Task IncrementUseCountAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var template = await _db.Templates.FindAsync([id], ct);
+        var template = await _db.Templates
+            .Where(t => t.UserId == userId
+                     || t.IsSystemTemplate
+                     || (organizationId != null && t.OrganizationId == organizationId && t.IsSharedWithOrganization))
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
         if (template != null)
         {
             template.UseCount++;

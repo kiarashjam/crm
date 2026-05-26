@@ -220,6 +220,7 @@ try
     app.UseCors();
     app.UseAuthentication();
     app.UseAuthorization();
+    app.UseMiddleware<ACI.WebApi.Middleware.OrganizationAccessMiddleware>();
     
     // Health check endpoint
     app.MapHealthChecks("/health");
@@ -863,10 +864,14 @@ try
     }
     
     // Add diagnostic endpoint that shows DB error if any
-    app.MapGet("/db-status", () => dbError == null 
-        ? Results.Ok(new { status = "ok", message = "Database initialized successfully" }) 
+    app.MapGet("/db-status", () => dbError == null
+        ? Results.Ok(new { status = "ok", message = "Database initialized successfully" })
         : Results.Ok(new { status = "error", message = dbError }));
-    
+
+    // Diagnostic endpoints below leak stack traces and schema. Restrict to Development.
+    if (app.Environment.IsDevelopment())
+    {
+
     // Test templates directly
     app.MapGet("/db-test-templates", async (AppDbContext db) =>
     {
@@ -1136,7 +1141,8 @@ try
             return Results.Ok(new { status = "error", message = ex.Message });
         }
     });
-    
+
+    } // end Development-only diagnostic endpoints
 
     Log.Information("ACI CRM API started successfully");
     app.Run();

@@ -12,7 +12,9 @@ public sealed class DealRepository : IDealRepository
     public DealRepository(AppDbContext db) => _db = db;
 
     private static IQueryable<Deal> FilterByUserAndOrg(IQueryable<Deal> q, Guid userId, Guid? organizationId) =>
-        q.Where(d => d.UserId == userId && (organizationId == null ? d.OrganizationId == null : d.OrganizationId == organizationId));
+        organizationId == null
+            ? q.Where(d => d.UserId == userId && d.OrganizationId == null)
+            : q.Where(d => d.OrganizationId == organizationId);
 
     private static IQueryable<Deal> IncludeRelated(IQueryable<Deal> q) =>
         q.Include(d => d.Assignee)
