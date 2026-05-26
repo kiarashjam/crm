@@ -1,17 +1,16 @@
 import type { Deal, PagedResult, PaginationParams } from './types';
 import { mockDeals } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { createMockStore, mockId } from './mockStore';
 
-const STORAGE_KEY = 'crm_deals';
+const dealStore = createMockStore<Deal>({
+  storageKey: 'crm.mock.deals.v1',
+  seed: mockDeals,
+  idOf: (d) => d.id,
+});
 
 function getStored(): Deal[] | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as Deal[];
-  } catch {
-    return null;
-  }
+  return dealStore.list();
 }
 
 function delay(ms: number): Promise<void> {
@@ -184,7 +183,23 @@ export async function createDeal(params: { name: string; value: string; currency
     return deal ? mapDeal(deal) : null;
   }
   await delay(200);
-  return null;
+  const created: Deal = {
+    id: mockId('deal'),
+    name: params.name,
+    value: params.value,
+    currency: params.currency,
+    stage: params.stage,
+    pipelineId: params.pipelineId,
+    dealStageId: params.dealStageId,
+    companyId: params.companyId,
+    contactId: params.contactId,
+    assigneeId: params.assigneeId,
+    expectedCloseDateUtc: params.expectedCloseDateUtc,
+    description: params.description,
+    probability: params.probability,
+    createdAtUtc: new Date().toISOString(),
+  } as Deal;
+  return dealStore.add(created);
 }
 
 /** Update a deal (stage, value, contact, expected close date, won/lost, pipeline, assignee, description, probability, close reason). */
@@ -197,7 +212,7 @@ export async function updateDeal(id: string, params: Partial<{ name: string; val
     return deal ? mapDeal(deal) : null;
   }
   await delay(200);
-  return null;
+  return dealStore.update(id, { ...(params as Partial<Deal>), updatedAtUtc: new Date().toISOString() });
 }
 
 /** Delete a deal. */
@@ -207,5 +222,5 @@ export async function deleteDeal(id: string): Promise<boolean> {
     return res.status === 204;
   }
   await delay(200);
-  return false;
+  return dealStore.remove(id);
 }
