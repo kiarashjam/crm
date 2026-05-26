@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
@@ -32,7 +33,12 @@ public class LeadsController : ControllerBase
     /// </summary>
     /// <param name="page">Page number (1-based). Default is 1.</param>
     /// <param name="pageSize">Number of items per page. Default is 20, max 100.</param>
-    /// <param name="search">Optional search query.</param>
+    /// <param name="search">Optional search query (name, email, phone).</param>
+    /// <param name="status">Filter by status name, or "all".</param>
+    /// <param name="source">Filter by source, or "all".</param>
+    /// <param name="converted">Filter: "all", "active", or "converted".</param>
+    /// <param name="sortBy">Sort field: name, email, status, createdAt.</param>
+    /// <param name="sortDir">Sort direction: asc or desc.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of leads.</returns>
     /// <response code="200">Returns the paginated list of leads.</response>
@@ -44,20 +50,60 @@ public class LeadsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
+        [FromQuery] string? status = null,
+        [FromQuery] string? source = null,
+        [FromQuery] string? converted = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        bool? isConverted = converted?.Trim().ToLowerInvariant() switch
+        {
+            "converted" => true,
+            "active" => false,
+            _ => null,
+        };
+
+        var options = new LeadQueryOptions
+        {
+            Search = search,
+            Status = status,
+            Source = source,
+            IsConverted = isConverted,
+            SortBy = string.IsNullOrWhiteSpace(sortBy) ? "createdAt" : sortBy,
+            SortDir = string.IsNullOrWhiteSpace(sortDir) ? "desc" : sortDir,
+        };
+
         var result = await _leadService.GetLeadsPagedAsync(
-            userId.Value, 
-            _currentUser.CurrentOrganizationId, 
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
             page,
             pageSize,
-            search,
+            options,
             ct);
-        
+
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Retrieves aggregate statistics for leads in the current organization.
+    /// </summary>
+    [HttpGet("stats")]
+    [ProducesResponseType(typeof(LeadStatsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<LeadStatsDto>> GetStats(CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var stats = await _leadService.GetStatsAsync(userId.Value, _currentUser.CurrentOrganizationId, ct);
+        return Ok(stats);
     }
 
     /// <summary>

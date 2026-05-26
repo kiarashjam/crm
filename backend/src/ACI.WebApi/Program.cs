@@ -61,6 +61,7 @@ try
     });
 
     builder.Services.AddControllers();
+    builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddProblemDetails();
 
@@ -216,6 +217,7 @@ try
         options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
     });
 
+    app.UseResponseCompression();
     app.UseHttpsRedirection();
     app.UseCors();
     app.UseAuthentication();

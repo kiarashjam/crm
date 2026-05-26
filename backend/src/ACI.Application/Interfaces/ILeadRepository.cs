@@ -1,3 +1,5 @@
+using ACI.Application.Common;
+using ACI.Application.DTOs;
 using ACI.Domain.Entities;
 
 namespace ACI.Application.Interfaces;
@@ -6,12 +8,14 @@ public interface ILeadRepository
 {
     // Paginated methods
     Task<(IReadOnlyList<Lead> Items, int TotalCount)> GetPagedAsync(
-        Guid userId, 
-        Guid? organizationId, 
-        int skip, 
-        int take, 
-        string? search = null,
+        Guid userId,
+        Guid? organizationId,
+        int skip,
+        int take,
+        LeadQueryOptions? options = null,
         CancellationToken ct = default);
+
+    Task<LeadStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
     
     Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, CancellationToken ct = default);
     

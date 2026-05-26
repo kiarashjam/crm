@@ -12,9 +12,13 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
+import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getLeads,
+  getLeadsPaged,
+  getLeadStats,
+  getLeadById,
   createLead,
   updateLead,
   deleteLead,
@@ -25,10 +29,11 @@ import {
   getLeadStatuses,
   getLeadSources,
   convertLead,
-  getActivities,
+  getActivitiesByLead,
   createActivity,
   messages,
   type ConvertLeadRequest,
+  type LeadStats,
 } from '@/app/api';
 import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
@@ -142,8 +147,13 @@ export default function Leads() {
   const { currentOrgId } = useOrg();
 
   const searchFromUrl = searchParams.get('search') || '';
-  
+  const currentPage = Number(searchParams.get('page')) || 1;
+  const pageSize = Number(searchParams.get('pageSize')) || 20;
+
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [leadStats, setLeadStats] = useState<LeadStats | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [leadStatuses, setLeadStatuses] = useState<LeadStatus[]>([]);
@@ -205,26 +215,7 @@ export default function Leads() {
   const [leadAssignments, setLeadAssignments] = useState<Record<string, string>>(() => loadLeadAssignments());
   const [leadReferrals, setLeadReferrals] = useState<Record<string, string>>(() => loadLeadReferrals());
   const [leadCreatedAtMap, setLeadCreatedAtMap] = useState<Record<string, string>>(() => loadLeadCreatedAtMap());
-  const [allActivities, setAllActivities] = useState<Activity[]>([]);
-  const prevDetailModalOpen = useRef(false);
-
-  const activitiesByLeadId = useMemo(() => {
-    const map = new Map<string, Activity[]>();
-    const ts = (iso: string) => {
-      const n = Date.parse(iso);
-      return Number.isNaN(n) ? 0 : n;
-    };
-    for (const a of allActivities) {
-      if (!a.leadId) continue;
-      const list = map.get(a.leadId);
-      if (list) list.push(a);
-      else map.set(a.leadId, [a]);
-    }
-    for (const [, list] of map) {
-      list.sort((x, y) => ts(y.createdAt) - ts(x.createdAt));
-    }
-    return map;
-  }, [allActivities]);
+  const [pageActivities, setPageActivities] = useState<Map<string, Activity[]>>(new Map());
 
   const statusOptions = leadStatuses.length > 0 ? leadStatuses : FALLBACK_STATUSES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
   const sourceOptions = leadSources.length > 0 ? leadSources : FALLBACK_SOURCES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
@@ -237,7 +228,7 @@ export default function Leads() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Update URL when debounced search changes (search is applied client-side on the full list)
+  // Update URL when debounced search changes (resets to page 1)
   useEffect(() => {
     setSearchParams(
       (prev) => {
@@ -247,11 +238,25 @@ export default function Leads() {
         } else {
           params.delete('search');
         }
+        params.set('page', '1');
         return params.toString() === prev.toString() ? prev : params;
       },
       { replace: true }
     );
   }, [debouncedSearch, setSearchParams]);
+
+  // Reset to page 1 when server-side filters or sort change
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        if (prev.get('page') === '1') return prev;
+        const params = new URLSearchParams(prev);
+        params.set('page', '1');
+        return params;
+      },
+      { replace: true }
+    );
+  }, [filterStatus, filterSource, filterConverted, filterAssignment, sortField, sortDirection, setSearchParams]);
 
   // Browser back/forward or opening a shared link: align committed search with the URL.
   // Compare against a ref so this effect fires only on external URL changes — depending on
@@ -268,27 +273,16 @@ export default function Leads() {
     setSearchQuery(fromUrl);
   }, [searchParams]);
 
-  // Fetch all leads from API (`/api/leads/all`); search/filter/sort run client-side on `filteredLeads`
-  const fetchLeads = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [allLeadsRaw, companiesData, contactsData, statuses, sources, activitiesData] = await Promise.all([
-        getLeads(),
-        getCompanies(),
-        getContacts(),
-        getLeadStatuses(),
-        getLeadSources(),
-        getActivities().catch((): Activity[] => []),
-      ]);
-      setAllActivities(Array.isArray(activitiesData) ? activitiesData : []);
+  const mergeLeadsWithLocalData = useCallback(
+    (rawLeads: Lead[], contactsById: Map<string, Contact>) => {
       const assignments = loadLeadAssignments();
       const referrals = loadLeadReferrals();
       const createdAtByLeadId = loadLeadCreatedAtMap();
       let createdAtChanged = false;
       setLeadAssignments(assignments);
       setLeadReferrals(referrals);
-      const contactsById = new Map((contactsData ?? []).map((c) => [c.id, c]));
-      const merged = (Array.isArray(allLeadsRaw) ? allLeadsRaw : []).map((lead) => {
+
+      const merged = rawLeads.map((lead) => {
         const resolvedCreatedAt = lead.createdAtUtc || createdAtByLeadId[lead.id];
         if (!resolvedCreatedAt) {
           createdAtByLeadId[lead.id] = new Date().toISOString();
@@ -305,35 +299,206 @@ export default function Leads() {
               : undefined) || lead.referredByContactName,
         };
       });
-      if (createdAtChanged) {
-        saveLeadCreatedAtMap(createdAtByLeadId);
-      }
+
+      if (createdAtChanged) saveLeadCreatedAtMap(createdAtByLeadId);
       setLeadCreatedAtMap(createdAtByLeadId);
-      setLeads(merged);
-      setCompanies(companiesData);
+      return merged;
+    },
+    [],
+  );
+
+  const applyAssignmentFilter = useCallback(
+    (list: Lead[]) => {
+      if (filterAssignment === 'me' && currentUser?.id) {
+        return list.filter((l) => l.assignedToId === currentUser.id);
+      }
+      if (filterAssignment === 'unassigned') {
+        return list.filter((l) => !l.assignedToId);
+      }
+      return list;
+    },
+    [filterAssignment, currentUser?.id],
+  );
+
+  const applyClientLeadFilters = useCallback(
+    (list: Lead[]) => {
+      let result = [...list];
+      if (debouncedSearch.trim()) {
+        const q = debouncedSearch.toLowerCase();
+        result = result.filter(
+          (l) =>
+            l.name.toLowerCase().includes(q) ||
+            l.email.toLowerCase().includes(q) ||
+            (l.phone && l.phone.includes(q)),
+        );
+      }
+      if (filterStatus !== 'all') result = result.filter((l) => l.status === filterStatus);
+      if (filterSource !== 'all') result = result.filter((l) => l.source === filterSource);
+      if (filterConverted === 'converted') result = result.filter((l) => l.isConverted);
+      else if (filterConverted === 'active') result = result.filter((l) => !l.isConverted);
+
+      const toSortableTimestamp = (value?: string) => {
+        if (!value) return Number.NEGATIVE_INFINITY;
+        const ts = Date.parse(value);
+        return Number.isNaN(ts) ? Number.NEGATIVE_INFINITY : ts;
+      };
+      result.sort((a, b) => {
+        let comparison = 0;
+        switch (sortField) {
+          case 'name':
+            comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+            break;
+          case 'email':
+            comparison = a.email.localeCompare(b.email, undefined, { sensitivity: 'base' });
+            break;
+          case 'status':
+            comparison = a.status.localeCompare(b.status, undefined, { sensitivity: 'base' });
+            break;
+          case 'createdAt':
+            comparison = toSortableTimestamp(a.createdAtUtc) - toSortableTimestamp(b.createdAtUtc);
+            break;
+        }
+        if (comparison === 0) {
+          comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+        }
+        return sortDirection === 'asc' ? comparison : -comparison;
+      });
+      return result;
+    },
+    [debouncedSearch, filterStatus, filterSource, filterConverted, sortField, sortDirection],
+  );
+
+  const loadPageActivities = useCallback(async (leadIds: string[]) => {
+    if (!leadIds.length) {
+      setPageActivities(new Map());
+      return;
+    }
+    try {
+      const results = await Promise.all(
+        leadIds.map((id) => getActivitiesByLead(id).catch((): Activity[] => [])),
+      );
+      const map = new Map<string, Activity[]>();
+      leadIds.forEach((id, index) => {
+        const list = results[index] ?? [];
+        list.sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt));
+        map.set(id, list);
+      });
+      setPageActivities(map);
+    } catch {
+      setPageActivities(new Map());
+    }
+  }, []);
+
+  const ensureCompaniesAndContacts = useCallback(async () => {
+    if (companies.length > 0 && contacts.length > 0) return;
+    try {
+      const [companiesData, contactsData] = await Promise.all([getCompanies(), getContacts()]);
+      setCompanies(companiesData ?? []);
       setContacts(contactsData ?? []);
+    } catch {
+      // dialogs can still open without full lists
+    }
+  }, [companies.length, contacts.length]);
+
+  const fetchLeads = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [statuses, sources, stats] = await Promise.all([
+        getLeadStatuses(),
+        getLeadSources(),
+        getLeadStats(),
+      ]);
       setLeadStatuses(statuses ?? []);
       setLeadSources(sources ?? []);
+      setLeadStats(stats);
+
+      const contactsById = new Map(contacts.map((c) => [c.id, c]));
+      const useAssignmentMode = filterAssignment !== 'all';
+
+      if (useAssignmentMode) {
+        const allLeadsRaw = await getLeads();
+        let merged = mergeLeadsWithLocalData(Array.isArray(allLeadsRaw) ? allLeadsRaw : [], contactsById);
+        merged = applyClientLeadFilters(merged);
+        merged = applyAssignmentFilter(merged);
+        const count = merged.length;
+        const pages = Math.ceil(count / pageSize) || 0;
+        const start = (currentPage - 1) * pageSize;
+        const pageItems = merged.slice(start, start + pageSize);
+        setLeads(pageItems);
+        setTotalCount(count);
+        setTotalPages(pages);
+        await loadPageActivities(pageItems.map((l) => l.id));
+        if (pages > 0 && currentPage > pages) {
+          const params = new URLSearchParams(searchParams);
+          params.set('page', String(pages));
+          setSearchParams(params, { replace: true });
+        }
+      } else {
+        const paged = await getLeadsPaged({
+          page: currentPage,
+          pageSize,
+          search: debouncedSearch || undefined,
+          status: filterStatus !== 'all' ? filterStatus : undefined,
+          source: filterSource !== 'all' ? filterSource : undefined,
+          converted: filterConverted,
+          sortBy: sortField,
+          sortDir: sortDirection,
+        });
+        const merged = mergeLeadsWithLocalData(paged.items, contactsById);
+        setLeads(merged);
+        setTotalCount(paged.totalCount);
+        setTotalPages(paged.totalPages);
+        await loadPageActivities(merged.map((l) => l.id));
+
+        // If URL page is past the end (e.g. after deletes), jump to last page
+        const pages = paged.totalPages;
+        if (pages > 0 && currentPage > pages) {
+          const params = new URLSearchParams(searchParams);
+          params.set('page', String(pages));
+          setSearchParams(params, { replace: true });
+        }
+      }
     } catch {
       toast.error(messages.errors.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [
+    contacts,
+    currentPage,
+    pageSize,
+    debouncedSearch,
+    filterStatus,
+    filterSource,
+    filterConverted,
+    filterAssignment,
+    sortField,
+    sortDirection,
+    currentUser?.id,
+    searchParams,
+    setSearchParams,
+    mergeLeadsWithLocalData,
+    applyClientLeadFilters,
+    applyAssignmentFilter,
+    loadPageActivities,
+  ]);
 
   useEffect(() => {
     fetchLeads();
   }, [fetchLeads]);
 
-  // Refresh interaction list after closing lead detail (activities are edited in the modal)
-  useEffect(() => {
-    if (prevDetailModalOpen.current && !detailModalOpen) {
-      getActivities()
-        .then((list) => setAllActivities(Array.isArray(list) ? list : []))
-        .catch(() => {});
-    }
-    prevDetailModalOpen.current = detailModalOpen;
-  }, [detailModalOpen]);
+  const handlePageChange = (page: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('page', String(page));
+    setSearchParams(params);
+  };
+
+  const handlePageSizeChange = (newPageSize: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('pageSize', String(newPageSize));
+    params.set('page', '1');
+    setSearchParams(params);
+  };
 
   // Get current user once for activity logging.
   useEffect(() => {
@@ -351,75 +516,8 @@ export default function Leads() {
       .catch((err) => console.error('Failed to load org members:', err));
   }, [currentOrgId]);
 
-  const filteredLeads = useMemo(() => {
-    let result = [...leads];
-    
-    // Search filter (debounced so it matches URL and does not fight the input while typing)
-    if (debouncedSearch.trim()) {
-      const q = debouncedSearch.toLowerCase();
-      result = result.filter(
-        (l) =>
-          l.name.toLowerCase().includes(q) ||
-          l.email.toLowerCase().includes(q) ||
-          (l.phone && l.phone.includes(q))
-      );
-    }
-    
-    // Status filter
-    if (filterStatus !== 'all') {
-      result = result.filter((l) => l.status === filterStatus);
-    }
-    
-    // Source filter
-    if (filterSource !== 'all') {
-      result = result.filter((l) => l.source === filterSource);
-    }
-    
-    // Converted filter
-    if (filterConverted === 'converted') {
-      result = result.filter((l) => l.isConverted);
-    } else if (filterConverted === 'active') {
-      result = result.filter((l) => !l.isConverted);
-    }
-
-    // Assignment filter
-    if (filterAssignment === 'me' && currentUser?.id) {
-      result = result.filter((l) => l.assignedToId === currentUser.id);
-    } else if (filterAssignment === 'unassigned') {
-      result = result.filter((l) => !l.assignedToId);
-    }
-    
-    const toSortableTimestamp = (value?: string) => {
-      if (!value) return Number.NEGATIVE_INFINITY;
-      const ts = Date.parse(value);
-      return Number.isNaN(ts) ? Number.NEGATIVE_INFINITY : ts;
-    };
-
-    // Sorting
-    result.sort((a, b) => {
-      let comparison = 0;
-      switch (sortField) {
-        case 'name':
-          comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-          break;
-        case 'email':
-          comparison = a.email.localeCompare(b.email, undefined, { sensitivity: 'base' });
-          break;
-        case 'status':
-          comparison = a.status.localeCompare(b.status, undefined, { sensitivity: 'base' });
-          break;
-        case 'createdAt':
-          comparison = toSortableTimestamp(a.createdAtUtc) - toSortableTimestamp(b.createdAtUtc);
-          break;
-      }
-      if (comparison === 0) {
-        comparison = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-      }
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-    
-    return result;
-  }, [leads, debouncedSearch, filterStatus, filterSource, filterConverted, filterAssignment, sortField, sortDirection, currentUser?.id]);
+  /** Leads for the current page (search/filter/sort applied server-side, except assignment filter). */
+  const filteredLeads = leads;
 
   // Count active filters
   const activeFilterCount = [
@@ -456,6 +554,7 @@ export default function Leads() {
   const handleExportLeads = async () => {
     setExporting(true);
     try {
+      await ensureCompaniesAndContacts();
       const allLeads = await getLeads();
       if (!allLeads.length) {
         toast.info('No leads to export');
@@ -486,7 +585,7 @@ export default function Leads() {
         lead.email,
         lead.phone ?? '',
         lead.referredByContactName ?? (lead.referredByContactId ? contacts.find((c) => c.id === lead.referredByContactId)?.name : '') ?? '',
-        lead.companyId ? companyName(lead.companyId) : '',
+        lead.companyId ? companyName(lead) : '',
         lead.source ?? '',
         lead.status,
         lead.leadScore ?? '',
@@ -524,6 +623,7 @@ export default function Leads() {
 
   // Primary entry point opens the streamlined Quick Add modal.
   const openCreate = () => {
+    void ensureCompaniesAndContacts();
     setEditingLead(null);
     setForm(EMPTY_LEAD_FORM);
     setQuickAddOpen(true);
@@ -540,6 +640,7 @@ export default function Leads() {
     status?: string;
     description?: string;
   }) => {
+    void ensureCompaniesAndContacts();
     setEditingLead(null);
     setForm({
       ...EMPTY_LEAD_FORM,
@@ -577,8 +678,8 @@ export default function Leads() {
       toast.error('Failed to create lead');
       return;
     }
-    handleLeadUpdate(created);
     toast.success('Lead added');
+    await fetchLeads();
   };
 
   const handleDeleteConfirm = async () => {
@@ -601,6 +702,7 @@ export default function Leads() {
   };
 
   const openConvert = (lead: Lead) => {
+    void ensureCompaniesAndContacts();
     setConvertDialogLead(lead);
     setConvertOptionsLoading(true);
     setConvertForm({
@@ -660,6 +762,7 @@ export default function Leads() {
   };
 
   const openEdit = (lead: Lead) => {
+    void ensureCompaniesAndContacts();
     setEditingLead(lead);
     const sourceOpt = sourceOptions.find((s) => s.id === lead.leadSourceId || s.name === lead.source);
     const statusOpt = statusOptions.find((s) => s.id === lead.leadStatusId || s.name === lead.status);
@@ -708,15 +811,26 @@ export default function Leads() {
   // Reopen the detail modal when the page is loaded with ?leadId=... (deep link / refresh).
   useEffect(() => {
     const leadId = searchParams.get('leadId');
-    if (!leadId || detailModalOpen || leads.length === 0) return;
+    if (!leadId || detailModalOpen) return;
     const target = leads.find((l) => l.id === leadId);
     if (target) {
       setDetailLead(target);
       setDetailModalOpen(true);
+      return;
     }
-    // Intentionally only react to lead list changes; detail-open is one-shot per leadId.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads]);
+    let cancelled = false;
+    getLeadById(leadId)
+      .then((lead) => {
+        if (!cancelled && lead) {
+          setDetailLead(lead);
+          setDetailModalOpen(true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [leads, searchParams, detailModalOpen]);
 
   // Keyboard shortcuts: `/` focuses search, `n` opens "New lead".
   useEffect(() => {
@@ -776,10 +890,16 @@ export default function Leads() {
       body: payload.body,
       leadId: lead.id,
     });
-    // Refresh the inline activity list for this lead.
     try {
-      const list = await getActivities();
-      setAllActivities(Array.isArray(list) ? list : []);
+      const list = await getActivitiesByLead(lead.id);
+      setPageActivities((prev) => {
+        const next = new Map(prev);
+        next.set(
+          lead.id,
+          [...list].sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt)),
+        );
+        return next;
+      });
     } catch {
       /* refresh failure is non-fatal */
     }
@@ -809,6 +929,7 @@ export default function Leads() {
         toast.error(`${failed} of ${ids.length} updates failed`);
       }
       clearSelection();
+      await fetchLeads();
     } finally {
       setBulkBusy(false);
     }
@@ -832,13 +953,13 @@ export default function Leads() {
           failed++;
         }
       });
-      if (successIds.size > 0) {
-        setLeads((prev) => prev.filter((l) => !successIds.has(l.id)));
-      }
       if (failed === 0) {
         toast.success(`Deleted ${ids.length} lead${ids.length === 1 ? '' : 's'}`);
       } else {
         toast.error(`${failed} of ${ids.length} deletes failed`);
+      }
+      if (successIds.size > 0) {
+        await fetchLeads();
       }
       clearSelection();
     } finally {
@@ -946,15 +1067,9 @@ export default function Leads() {
           lifecycleStage: form.lifecycleStage || undefined,
         });
         if (created) {
-          const mergedCreatedLead: Lead = {
-            ...created,
-            createdAtUtc: created.createdAtUtc ?? new Date().toISOString(),
-            referredByContactId: form.referredByContactId || undefined,
-            referredByContactName: form.referredByContactId ? contacts.find((c) => c.id === form.referredByContactId)?.name : undefined,
-          };
-          handleLeadUpdate(mergedCreatedLead);
           toast.success(messages.success.leadCreated);
           setDialogOpen(false);
+          await fetchLeads();
         } else {
           toast.error(messages.errors.generic);
         }
@@ -966,31 +1081,20 @@ export default function Leads() {
     }
   };
 
-  const companyName = (id: string) => companies.find((c) => c.id === id)?.name ?? '—';
+  const companyName = (lead: Lead) =>
+    lead.companyName ?? (lead.companyId ? companies.find((c) => c.id === lead.companyId)?.name : undefined) ?? '—';
 
-  // Calculate lead statistics
-  const leadStats = useMemo(() => {
-    const total = leads.length;
-    const converted = leads.filter(l => l.isConverted).length;
-    const active = total - converted;
-    const newLeads = leads.filter(l => l.status === 'New').length;
-    const contacted = leads.filter(l => l.status === 'Contacted' || l.status === 'Attempted Contact' || l.status === 'Connected').length;
-    const qualified = leads.filter(l => l.status === 'Qualified').length;
-    const conversionRate = total > 0 ? Math.round((converted / total) * 100) : 0;
-    
-    // Calculate leads added this week
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    const thisWeek = leads.filter(l => {
-      if (!l.createdAtUtc) return false;
-      return new Date(l.createdAtUtc) >= oneWeekAgo;
-    }).length;
-    
-    // Hot leads (high score)
-    const hotLeads = leads.filter(l => (l.leadScore ?? 0) >= 70 && !l.isConverted).length;
-    
-    return { total, converted, active, newLeads, contacted, qualified, conversionRate, thisWeek, hotLeads };
-  }, [leads]);
+  const stats = leadStats ?? {
+    total: totalCount,
+    converted: 0,
+    active: totalCount,
+    newLeads: 0,
+    contacted: 0,
+    qualified: 0,
+    conversionRate: 0,
+    thisWeek: 0,
+    hotLeads: 0,
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -1044,7 +1148,7 @@ export default function Leads() {
         </div>
 
           {/* Stats Cards */}
-          {!loading && leads.length > 0 && (
+          {!loading && totalCount > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
               {/* Total Leads */}
               <div className="group relative bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 overflow-hidden">
@@ -1053,7 +1157,7 @@ export default function Leads() {
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <BarChart3 className="w-5 h-5 text-slate-600" />
                   </div>
-                  <p className="text-3xl font-bold text-slate-900 tracking-tight">{leadStats.total}</p>
+                  <p className="text-3xl font-bold text-slate-900 tracking-tight">{stats.total}</p>
                   <p className="text-xs font-medium text-slate-500 mt-1">Total Leads</p>
                 </div>
               </div>
@@ -1068,7 +1172,7 @@ export default function Leads() {
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <Target className="w-5 h-5 text-blue-600" />
                   </div>
-                  <p className="text-3xl font-bold text-blue-600 tracking-tight">{leadStats.active}</p>
+                  <p className="text-3xl font-bold text-blue-600 tracking-tight">{stats.active}</p>
                   <p className="text-xs font-medium text-blue-600/70 mt-1">Active</p>
                 </div>
               </div>
@@ -1080,7 +1184,7 @@ export default function Leads() {
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <Zap className="w-5 h-5 text-amber-600" />
                   </div>
-                  <p className="text-3xl font-bold text-amber-600 tracking-tight">{leadStats.hotLeads}</p>
+                  <p className="text-3xl font-bold text-amber-600 tracking-tight">{stats.hotLeads}</p>
                   <p className="text-xs font-medium text-amber-600/70 mt-1">Hot Leads</p>
                 </div>
               </div>
@@ -1095,13 +1199,13 @@ export default function Leads() {
                   <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3">
                     <TrendingUp className="w-5 h-5 text-white" />
                   </div>
-                  <p className="text-3xl font-bold text-white tracking-tight">{leadStats.conversionRate}%</p>
+                  <p className="text-3xl font-bold text-white tracking-tight">{stats.conversionRate}%</p>
                   <p className="text-xs font-medium text-white/80 mt-1">Converted</p>
                   <div className="mt-3">
                     <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-white rounded-full transition-all duration-500"
-                        style={{ width: `${leadStats.conversionRate}%` }}
+                        style={{ width: `${stats.conversionRate}%` }}
                       />
                     </div>
                   </div>
@@ -1115,7 +1219,7 @@ export default function Leads() {
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <Calendar className="w-5 h-5 text-purple-600" />
                   </div>
-                  <p className="text-3xl font-bold text-purple-600 tracking-tight">{leadStats.thisWeek}</p>
+                  <p className="text-3xl font-bold text-purple-600 tracking-tight">{stats.thisWeek}</p>
                   <p className="text-xs font-medium text-purple-600/70 mt-1">This Week</p>
                 </div>
               </div>
@@ -1130,7 +1234,7 @@ export default function Leads() {
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-100 to-cyan-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                     <CheckCircle2 className="w-5 h-5 text-cyan-600" />
                   </div>
-                  <p className="text-3xl font-bold text-cyan-600 tracking-tight">{leadStats.qualified}</p>
+                  <p className="text-3xl font-bold text-cyan-600 tracking-tight">{stats.qualified}</p>
                   <p className="text-xs font-medium text-cyan-600/70 mt-1">Qualified</p>
                 </div>
               </div>
@@ -1138,7 +1242,7 @@ export default function Leads() {
           )}
 
           {/* Quick Insights Banner */}
-          {!loading && leads.length > 0 && (leadStats.hotLeads > 0 || leadStats.newLeads > 3) && (
+          {!loading && totalCount > 0 && (stats.hotLeads > 0 || stats.newLeads > 3) && (
             <div className="mt-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 p-4">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
@@ -1147,16 +1251,16 @@ export default function Leads() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-amber-800">Quick Insights</p>
                   <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-amber-700">
-                    {leadStats.hotLeads > 0 && (
+                    {stats.hotLeads > 0 && (
                       <span className="flex items-center gap-1">
                         <Zap className="w-3.5 h-3.5" />
-                        {leadStats.hotLeads} hot lead{leadStats.hotLeads > 1 ? 's' : ''} ready for outreach
+                        {stats.hotLeads} hot lead{stats.hotLeads > 1 ? 's' : ''} ready for outreach
                       </span>
                     )}
-                    {leadStats.newLeads > 3 && (
+                    {stats.newLeads > 3 && (
                       <span className="flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" />
-                        {leadStats.newLeads} new leads awaiting first contact
+                        {stats.newLeads} new leads awaiting first contact
                       </span>
                     )}
                   </div>
@@ -1482,13 +1586,13 @@ export default function Leads() {
                 </span>
               )}
               <span className="text-xs text-slate-400">
-                {filteredLeads.length} of {leads.length} leads
+                {filteredLeads.length} of {totalCount} leads
               </span>
             </div>
           )}
 
           {/* No results message */}
-          {filteredLeads.length === 0 && !loading && leads.length > 0 && (
+          {filteredLeads.length === 0 && !loading && totalCount > 0 && (
             <div className="mt-4 flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10">
               <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
                 <Search className="w-5 h-5 text-slate-400" />
@@ -1506,7 +1610,7 @@ export default function Leads() {
 
         {loading ? (
           <ContentSkeleton rows={6} />
-        ) : leads.length === 0 ? (
+        ) : totalCount === 0 ? (
           <div className="w-full">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               {/* Gradient header */}
@@ -1684,7 +1788,7 @@ export default function Leads() {
                 }
               };
 
-              const leadInteractions = activitiesByLeadId.get(lead.id) ?? [];
+              const leadInteractions = pageActivities.get(lead.id) ?? [];
 
               return (
                 <div
@@ -1798,7 +1902,7 @@ export default function Leads() {
                           {lead.companyId && (
                             <p className="flex items-center gap-1.5 text-sm text-slate-500 mt-0.5">
                               <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                              <span className="truncate">{companyName(lead.companyId)}</span>
+                              <span className="truncate">{companyName(lead)}</span>
                             </p>
                           )}
                         </div>
@@ -2059,6 +2163,15 @@ export default function Leads() {
               );
             })}
           </div>
+          <DataPagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalCount={totalCount}
+            pageSize={pageSize}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+            className="mt-6"
+          />
           </>
         )}
         </main>
