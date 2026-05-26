@@ -16,9 +16,9 @@ public interface ITemplateRepository
     Task<IReadOnlyList<Template>> GetByUserIdAsync(Guid userId, CancellationToken ct = default);
     Task<IReadOnlyList<Template>> GetByOrganizationIdAsync(Guid organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<Template>> GetSharedTemplatesAsync(Guid organizationId, CancellationToken ct = default);
-    Task<Template?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<Template?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Template> CreateAsync(Template template, CancellationToken ct = default);
     Task<Template> UpdateAsync(Template template, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
-    Task IncrementUseCountAsync(Guid id, CancellationToken ct = default);
+    Task IncrementUseCountAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

@@ -12,7 +12,9 @@ public sealed class CopyHistoryRepository : ICopyHistoryRepository
     public CopyHistoryRepository(AppDbContext db) => _db = db;
 
     private static IQueryable<CopyHistoryItem> FilterByUserAndOrg(IQueryable<CopyHistoryItem> q, Guid userId, Guid? organizationId) =>
-        q.Where(h => h.UserId == userId && (organizationId == null ? h.OrganizationId == null : h.OrganizationId == organizationId));
+        organizationId == null
+            ? q.Where(h => h.UserId == userId && h.OrganizationId == null)
+            : q.Where(h => h.OrganizationId == organizationId);
 
     public async Task<IReadOnlyList<CopyHistoryItem>> GetByUserIdAsync(Guid userId, CancellationToken ct = default) =>
         await _db.CopyHistoryItems

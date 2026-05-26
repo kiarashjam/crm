@@ -141,10 +141,15 @@ public sealed class InviteService : IInviteService
             return Result.Failure<InviteDto>(DomainErrors.Organization.AlreadyMember);
         }
 
+        // Atomically claim the invite so two concurrent accepts don't both add the member.
+        var claimed = await _inviteRepository.TryClaimAsync(invite.Id, userId, ct);
+        if (!claimed)
+        {
+            _logger.LogWarning("Invite {InviteId} was claimed by another concurrent request", invite.Id);
+            return Result.Failure<InviteDto>(DomainErrors.Invite.AlreadyAccepted);
+        }
+
         await _organizationRepository.AddMemberAsync(invite.OrganizationId, userId, OrgMemberRole.Member, ct);
-        invite.AcceptedByUserId = userId;
-        invite.AcceptedAtUtc = DateTime.UtcNow;
-        await _inviteRepository.UpdateAsync(invite, ct);
 
         _logger.LogInformation("User {UserId} accepted invite {InviteId} to organization {OrganizationId}", userId, invite.Id, invite.OrganizationId);
         return Result.Success(new InviteDto(invite.Id, invite.OrganizationId, invite.Organization.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
@@ -210,10 +215,15 @@ public sealed class InviteService : IInviteService
             return Result.Failure<InviteDto>(DomainErrors.Organization.AlreadyMember);
         }
 
+        // Atomically claim the invite so two concurrent accepts don't both add the member.
+        var claimed = await _inviteRepository.TryClaimAsync(invite.Id, userId, ct);
+        if (!claimed)
+        {
+            _logger.LogWarning("Invite {InviteId} was claimed by another concurrent request", invite.Id);
+            return Result.Failure<InviteDto>(DomainErrors.Invite.AlreadyAccepted);
+        }
+
         await _organizationRepository.AddMemberAsync(invite.OrganizationId, userId, OrgMemberRole.Member, ct);
-        invite.AcceptedByUserId = userId;
-        invite.AcceptedAtUtc = DateTime.UtcNow;
-        await _inviteRepository.UpdateAsync(invite, ct);
 
         _logger.LogInformation("User {UserId} accepted invite {InviteId} to organization {OrganizationId}", userId, inviteId, invite.OrganizationId);
         return Result.Success(new InviteDto(invite.Id, invite.OrganizationId, invite.Organization.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));

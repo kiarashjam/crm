@@ -9,4 +9,6 @@ public interface IPipelineRepository
     Task<Pipeline> AddAsync(Pipeline pipeline, CancellationToken ct = default);
     Task<Pipeline?> UpdateAsync(Pipeline pipeline, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid organizationId, CancellationToken ct = default);
+    /// <summary>Returns true if any Deal references this pipeline.</summary>
+    Task<bool> HasAnyDealsAsync(Guid pipelineId, CancellationToken ct = default);
 }

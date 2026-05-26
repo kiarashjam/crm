@@ -103,8 +103,11 @@ public sealed class LeadRepository : ILeadRepository
     {
         var existing = await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == id, ct);
         if (existing == null) return false;
-        var linkedTasks = await _db.TaskItems.Where(t => t.LeadId == id).ToListAsync(ct);
-        foreach (var t in linkedTasks) t.LeadId = null;
+        // Null FKs so delete does not leave orphan references (TaskItems and Contacts may point at this lead).
+        await _db.TaskItems.Where(t => t.LeadId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.LeadId, (Guid?)null), ct);
+        await _db.Contacts.Where(c => c.ConvertedFromLeadId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ConvertedFromLeadId, (Guid?)null), ct);
         _db.Leads.Remove(existing);
         await _db.SaveChangesAsync(ct);
         return true;

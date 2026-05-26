@@ -41,10 +41,11 @@ public interface ITemplateService
     /// Gets a template by its ID.
     /// </summary>
     /// <param name="userId">The user ID.</param>
+    /// <param name="organizationId">The active organization ID (for shared-template access).</param>
     /// <param name="id">The template ID.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The template if found and accessible, or a failure result.</returns>
-    Task<Result<TemplateDto>> GetByIdAsync(Guid userId, Guid id, CancellationToken ct = default);
+    Task<Result<TemplateDto>> GetByIdAsync(Guid userId, Guid? organizationId, Guid id, CancellationToken ct = default);
 
     /// <summary>
     /// Creates a new template.
@@ -78,7 +79,9 @@ public interface ITemplateService
     /// <summary>
     /// Increments the use count for a template.
     /// </summary>
+    /// <param name="userId">The user ID.</param>
+    /// <param name="organizationId">The active organization ID (for shared-template access).</param>
     /// <param name="id">The template ID.</param>
     /// <param name="ct">Cancellation token.</param>
-    Task IncrementUseCountAsync(Guid id, CancellationToken ct = default);
+    Task IncrementUseCountAsync(Guid userId, Guid? organizationId, Guid id, CancellationToken ct = default);
 }

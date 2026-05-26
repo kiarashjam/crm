@@ -151,11 +151,11 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
 
         // Act
-        var result = await _sut.GetByIdAsync(userId, templateId);
+        var result = await _sut.GetByIdAsync(userId, null, templateId);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -181,11 +181,11 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
 
         // Act
-        var result = await _sut.GetByIdAsync(userId, templateId);
+        var result = await _sut.GetByIdAsync(userId, null, templateId);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -209,11 +209,11 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
 
         // Act
-        var result = await _sut.GetByIdAsync(userId, templateId);
+        var result = await _sut.GetByIdAsync(userId, null, templateId);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -228,11 +228,11 @@ public class TemplateServiceTests
         var templateId = Guid.NewGuid();
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Template?)null);
 
         // Act
-        var result = await _sut.GetByIdAsync(userId, templateId);
+        var result = await _sut.GetByIdAsync(userId, null, templateId);
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -258,11 +258,11 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
 
         // Act
-        var result = await _sut.GetByIdAsync(userId, templateId);
+        var result = await _sut.GetByIdAsync(userId, null, templateId);
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -419,7 +419,7 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingTemplate);
 
         _templateRepositoryMock
@@ -455,7 +455,7 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Template?)null);
 
         // Act
@@ -495,7 +495,7 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingTemplate);
 
         // Act
@@ -535,7 +535,7 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(existingTemplate);
 
         // Act
@@ -566,7 +566,7 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
 
         _templateRepositoryMock
@@ -588,7 +588,7 @@ public class TemplateServiceTests
         var templateId = Guid.NewGuid();
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Template?)null);
 
         // Act
@@ -616,7 +616,7 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
 
         // Act
@@ -644,7 +644,7 @@ public class TemplateServiceTests
         };
 
         _templateRepositoryMock
-            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(template);
 
         // Act
@@ -666,14 +666,14 @@ public class TemplateServiceTests
         var templateId = Guid.NewGuid();
 
         _templateRepositoryMock
-            .Setup(r => r.IncrementUseCountAsync(templateId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.IncrementUseCountAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         // Act
-        await _sut.IncrementUseCountAsync(templateId);
+        await _sut.IncrementUseCountAsync(Guid.NewGuid(), null, templateId);
 
         // Assert
-        _templateRepositoryMock.Verify(r => r.IncrementUseCountAsync(templateId, It.IsAny<CancellationToken>()), Times.Once);
+        _templateRepositoryMock.Verify(r => r.IncrementUseCountAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     #endregion

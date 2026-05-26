@@ -130,6 +130,12 @@ public class DealStageService : IDealStageService
             return Result.Failure(DomainErrors.DealStage.NotFound);
         }
 
+        if (await _repository.HasAnyDealsAsync(id, ct))
+        {
+            _logger.LogWarning("Deal stage {DealStageId} cannot be deleted: deals reference it", id);
+            return Result.Failure(DomainErrors.DealStage.HasDeals);
+        }
+
         var deleted = await _repository.DeleteAsync(id, organizationId, ct);
         if (!deleted)
         {
