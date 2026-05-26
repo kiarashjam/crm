@@ -145,8 +145,15 @@ public sealed class InviteService : IInviteService
         var claimed = await _inviteRepository.TryClaimAsync(invite.Id, userId, ct);
         if (!claimed)
         {
-            _logger.LogWarning("Invite {InviteId} was claimed by another concurrent request", invite.Id);
-            return Result.Failure<InviteDto>(DomainErrors.Invite.AlreadyAccepted);
+            // Loser of a race, OR this user already claimed it but a previous AddMemberAsync failed
+            // (leaving claimed-but-not-a-member). Recover the latter case so the user isn't stuck.
+            var current = await _inviteRepository.GetByIdAsync(invite.Id, ct);
+            if (current?.AcceptedByUserId != userId)
+            {
+                _logger.LogWarning("Invite {InviteId} was claimed by another concurrent request", invite.Id);
+                return Result.Failure<InviteDto>(DomainErrors.Invite.AlreadyAccepted);
+            }
+            _logger.LogInformation("Invite {InviteId} already claimed by user {UserId}; completing add-member step", invite.Id, userId);
         }
 
         await _organizationRepository.AddMemberAsync(invite.OrganizationId, userId, OrgMemberRole.Member, ct);
@@ -219,8 +226,15 @@ public sealed class InviteService : IInviteService
         var claimed = await _inviteRepository.TryClaimAsync(invite.Id, userId, ct);
         if (!claimed)
         {
-            _logger.LogWarning("Invite {InviteId} was claimed by another concurrent request", invite.Id);
-            return Result.Failure<InviteDto>(DomainErrors.Invite.AlreadyAccepted);
+            // Loser of a race, OR this user already claimed it but a previous AddMemberAsync failed
+            // (leaving claimed-but-not-a-member). Recover the latter case so the user isn't stuck.
+            var current = await _inviteRepository.GetByIdAsync(invite.Id, ct);
+            if (current?.AcceptedByUserId != userId)
+            {
+                _logger.LogWarning("Invite {InviteId} was claimed by another concurrent request", invite.Id);
+                return Result.Failure<InviteDto>(DomainErrors.Invite.AlreadyAccepted);
+            }
+            _logger.LogInformation("Invite {InviteId} already claimed by user {UserId}; completing add-member step", invite.Id, userId);
         }
 
         await _organizationRepository.AddMemberAsync(invite.OrganizationId, userId, OrgMemberRole.Member, ct);

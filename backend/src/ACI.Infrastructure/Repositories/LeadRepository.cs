@@ -103,9 +103,12 @@ public sealed class LeadRepository : ILeadRepository
     {
         var existing = await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == id, ct);
         if (existing == null) return false;
-        // Null FKs so delete does not leave orphan references (TaskItems and Contacts may point at this lead).
+        // Null FKs so delete does not leave orphan references and does not violate the FK constraint
+        // when EF's default ClientSetNull behaviour can't load the related rows.
         await _db.TaskItems.Where(t => t.LeadId == id)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.LeadId, (Guid?)null), ct);
+        await _db.Activities.Where(a => a.LeadId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.LeadId, (Guid?)null), ct);
         await _db.Contacts.Where(c => c.ConvertedFromLeadId == id)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.ConvertedFromLeadId, (Guid?)null), ct);
         _db.Leads.Remove(existing);

@@ -242,31 +242,21 @@ public class TemplateServiceTests
     [Fact]
     public async Task GetByIdAsync_ReturnsNotOwnedError_WhenUserDoesNotHaveAccess()
     {
-        // Arrange
+        // Arrange — repo filter now enforces access, so an inaccessible template
+        // surfaces as a null return and the service maps that to NotFound.
         var userId = Guid.NewGuid();
-        var otherUserId = Guid.NewGuid();
         var templateId = Guid.NewGuid();
-        var template = new Template
-        {
-            Id = templateId,
-            UserId = otherUserId,
-            Title = "Private Template",
-            Content = "Content",
-            IsSharedWithOrganization = false,
-            IsSystemTemplate = false,
-            CopyTypeId = CopyTypeId.SalesEmail
-        };
 
         _templateRepositoryMock
             .Setup(r => r.GetByIdAsync(templateId, It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(template);
+            .ReturnsAsync((Template?)null);
 
         // Act
         var result = await _sut.GetByIdAsync(userId, null, templateId);
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Code.Should().Be("Template.NotOwned");
+        result.Error.Code.Should().Be("Template.NotFound");
     }
 
     #endregion
