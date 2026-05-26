@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { 
+import {
   Search, Plus, Pencil, Trash2, Building2, User, ArrowRightCircle, Link2,
   Mail, Phone, Sparkles, Check, Tag, UserPlus, Info, CircleDot,
   Upload, RefreshCw, Users, Handshake, ArrowRight, CheckCircle2,
   SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, X, Download,
   TrendingUp, Target, Clock, Zap, BarChart3, Calendar, AlertCircle, Activity as ActivityIcon,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -25,6 +26,7 @@ import {
   getLeadSources,
   convertLead,
   getActivities,
+  createActivity,
   messages,
   type ConvertLeadRequest,
 } from '@/app/api';
@@ -60,6 +62,11 @@ import {
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { LeadDetailModal } from './leads/LeadDetailModal';
+import { StatusChangePopover } from './leads/components/StatusChangePopover';
+import { QuickLogPopover } from './leads/components/QuickLogPopover';
+import { BulkActionsBar } from './leads/components/BulkActionsBar';
+import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
 import { isValidGuid } from './leads/utils';
 import type { LeadForm } from './leads/types';
@@ -173,6 +180,16 @@ export default function Leads() {
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [orgMembers, setOrgMembers] = useState<OrgMemberDto[]>([]);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+
+  // Multi-select for bulk actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Search input ref so the `/` shortcut can focus it
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Quick-add lead modal (single-page form; full wizard remains available)
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
 
   // Filter & Sort state
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -508,10 +525,63 @@ export default function Leads() {
     }
   };
 
+  // Primary entry point opens the streamlined Quick Add modal.
   const openCreate = () => {
     setEditingLead(null);
     setForm(EMPTY_LEAD_FORM);
+    setQuickAddOpen(true);
+  };
+
+  // Open the full multi-step editor, optionally prefilled with what the user
+  // already typed in Quick Add.
+  const openFullEditor = (prefill?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    companyId?: string;
+    source?: string;
+    status?: string;
+    description?: string;
+  }) => {
+    setEditingLead(null);
+    setForm({
+      ...EMPTY_LEAD_FORM,
+      name: prefill?.name ?? '',
+      email: prefill?.email ?? '',
+      phone: prefill?.phone ?? '',
+      companyId: prefill?.companyId ?? '',
+      source: prefill?.source ?? '',
+      status: prefill?.status ?? '',
+      description: prefill?.description ?? '',
+    });
     setDialogOpen(true);
+  };
+
+  // Persist a lead from the Quick Add modal using the same handlers as the wizard.
+  const handleQuickAddSubmit = async (input: {
+    name: string;
+    email: string;
+    phone?: string;
+    companyId?: string;
+    source?: string;
+    status?: string;
+    description?: string;
+  }) => {
+    const created = await createLead({
+      name: input.name,
+      email: input.email,
+      phone: input.phone,
+      companyId: input.companyId && isValidGuid(input.companyId) ? input.companyId : undefined,
+      source: input.source,
+      status: input.status,
+      description: input.description,
+    });
+    if (!created) {
+      toast.error('Failed to create lead');
+      return;
+    }
+    handleLeadUpdate(created);
+    toast.success('Lead added');
   };
 
   const handleDeleteConfirm = async () => {
@@ -616,6 +686,167 @@ export default function Leads() {
   const openDetail = (lead: Lead) => {
     setDetailLead(lead);
     setDetailModalOpen(true);
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.set('leadId', lead.id);
+        return params;
+      },
+      { replace: true },
+    );
+  };
+
+  const closeDetail = () => {
+    setDetailModalOpen(false);
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        params.delete('leadId');
+        return params;
+      },
+      { replace: true },
+    );
+  };
+
+  // Reopen the detail modal when the page is loaded with ?leadId=... (deep link / refresh).
+  useEffect(() => {
+    const leadId = searchParams.get('leadId');
+    if (!leadId || detailModalOpen || leads.length === 0) return;
+    const target = leads.find((l) => l.id === leadId);
+    if (target) {
+      setDetailLead(target);
+      setDetailModalOpen(true);
+    }
+    // Intentionally only react to lead list changes; detail-open is one-shot per leadId.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads]);
+
+  // Keyboard shortcuts: `/` focuses search, `n` opens "New lead".
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTyping = !!target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      );
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '/' && !isTyping) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      } else if (e.key.toLowerCase() === 'n' && !isTyping && !dialogOpen && !detailModalOpen && !quickAddOpen) {
+        e.preventDefault();
+        setQuickAddOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [dialogOpen, detailModalOpen, quickAddOpen]);
+
+  // Selection helpers
+  const toggleSelected = (leadId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) next.delete(leadId);
+      else next.add(leadId);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Inline status change from the card — saves a round-trip through the detail modal.
+  const handleInlineStatusChange = async (lead: Lead, newStatus: string) => {
+    try {
+      const updated = await updateLead(lead.id, { status: newStatus });
+      if (updated) {
+        handleLeadUpdate({ ...lead, ...updated, status: newStatus });
+        toast.success(`Status set to ${newStatus}`);
+      }
+    } catch (err) {
+      console.error('Failed to update lead status', err);
+      toast.error('Failed to update status');
+    }
+  };
+
+  // Inline quick-log activity from the card.
+  const handleQuickLogActivity = async (
+    lead: Lead,
+    payload: { type: string; body: string },
+  ) => {
+    await createActivity({
+      type: payload.type,
+      body: payload.body,
+      leadId: lead.id,
+    });
+    // Refresh the inline activity list for this lead.
+    try {
+      const list = await getActivities();
+      setAllActivities(Array.isArray(list) ? list : []);
+    } catch {
+      /* refresh failure is non-fatal */
+    }
+  };
+
+  // Bulk operations
+  const runBulkStatusChange = async (newStatus: string) => {
+    if (selectedIds.size === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    const ids = Array.from(selectedIds);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => updateLead(id, { status: newStatus })),
+      );
+      let failed = 0;
+      results.forEach((r, idx) => {
+        if (r.status === 'fulfilled' && r.value) {
+          const existing = leads.find((l) => l.id === ids[idx]);
+          if (existing) handleLeadUpdate({ ...existing, ...r.value, status: newStatus });
+        } else {
+          failed++;
+        }
+      });
+      if (failed === 0) {
+        toast.success(`Set ${ids.length} lead${ids.length === 1 ? '' : 's'} to ${newStatus}`);
+      } else {
+        toast.error(`${failed} of ${ids.length} updates failed`);
+      }
+      clearSelection();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const runBulkDelete = async () => {
+    if (selectedIds.size === 0 || bulkBusy) return;
+    if (!window.confirm(`Delete ${selectedIds.size} lead${selectedIds.size === 1 ? '' : 's'}? This cannot be undone.`)) {
+      return;
+    }
+    setBulkBusy(true);
+    const ids = Array.from(selectedIds);
+    try {
+      const results = await Promise.allSettled(ids.map((id) => deleteLead(id)));
+      const successIds = new Set<string>();
+      let failed = 0;
+      results.forEach((r, idx) => {
+        if (r.status === 'fulfilled' && r.value) {
+          successIds.add(ids[idx]!);
+        } else {
+          failed++;
+        }
+      });
+      if (successIds.size > 0) {
+        setLeads((prev) => prev.filter((l) => !successIds.has(l.id)));
+      }
+      if (failed === 0) {
+        toast.success(`Deleted ${ids.length} lead${ids.length === 1 ? '' : 's'}`);
+      } else {
+        toast.error(`${failed} of ${ids.length} deletes failed`);
+      }
+      clearSelection();
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const handleLeadUpdate = (updatedLead: Lead) => {
@@ -952,8 +1183,9 @@ export default function Leads() {
                   <Search className="w-4 h-4 text-orange-300 group-focus-within:text-orange-200 transition-colors" aria-hidden />
                 </div>
                 <Input
+                  ref={searchInputRef}
                   type="search"
-                  placeholder="Search by name, email, or phone..."
+                  placeholder="Search by name, email, or phone…  (press / )"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-14 pr-10 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white placeholder:text-slate-400 shadow-xl shadow-black/10 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 focus:bg-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300"
@@ -1338,6 +1570,15 @@ export default function Leads() {
           null /* No results message is shown in the filter panel above */
         ) : (
           <>
+          {selectedIds.size > 0 && (
+            <BulkActionsBar
+              count={selectedIds.size}
+              statuses={statusOptions.map((s) => s.name)}
+              onClear={clearSelection}
+              onBulkStatusChange={runBulkStatusChange}
+              onBulkDelete={runBulkDelete}
+            />
+          )}
           <div className="space-y-3">
             {filteredLeads.map((lead) => {
               // Status color mapping
@@ -1473,6 +1714,23 @@ export default function Leads() {
                     'bg-gradient-to-b from-slate-500 to-slate-300'
                   }`} />
 
+                  {/* Bulk-select checkbox: visible on hover, or always when any are selected. */}
+                  <div
+                    className={`absolute top-3 left-3 z-20 transition-opacity ${
+                      selectedIds.size > 0 || selectedIds.has(lead.id)
+                        ? 'opacity-100'
+                        : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+                    }`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Checkbox
+                      checked={selectedIds.has(lead.id)}
+                      onCheckedChange={() => toggleSelected(lead.id)}
+                      aria-label={`Select ${lead.name}`}
+                      className="bg-white shadow"
+                    />
+                  </div>
+
                   <div className="relative flex gap-5 p-5 pl-7">
                     {/* Left Section: Avatar & Score */}
                     <div className="shrink-0 flex flex-col items-center gap-3 rounded-2xl border border-slate-100/90 bg-gradient-to-b from-slate-50/95 via-white to-indigo-50/30 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
@@ -1556,10 +1814,14 @@ export default function Leads() {
                               <span className="capitalize">{(lead.source || '').replace(/_/g, ' ')}</span>
                             </span>
                           )}
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg border shadow-sm ring-1 ring-slate-900/[0.04] ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
-                            <span className={`w-2 h-2 rounded-full ${statusStyle.dot} shadow-sm animate-pulse`} />
-                            {lead.status}
-                          </span>
+                          <StatusChangePopover
+                            currentStatus={lead.status}
+                            statuses={statusOptions.map((s) => s.name)}
+                            disabled={lead.isConverted}
+                            onChange={(s) => handleInlineStatusChange(lead, s)}
+                            className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border shadow-sm ring-1 ring-slate-900/[0.04] ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}
+                            prefix={<span className={`w-2 h-2 rounded-full ${statusStyle.dot} shadow-sm animate-pulse`} />}
+                          />
                           {lead.isConverted && (
                             <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-300/40 ring-1 ring-white/30">
                               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1760,11 +2022,25 @@ export default function Leads() {
                             Convert to Deal
                           </Button>
                         )}
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => openEdit(lead)} 
-                          className="gap-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border-indigo-200/60 hover:border-indigo-300 shadow-sm hover:shadow-md transition-all font-medium rounded-lg" 
+                        <QuickLogPopover
+                          onSubmit={(payload) => handleQuickLogActivity(lead, payload)}
+                          trigger={
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-emerald-200/60 hover:border-emerald-300 shadow-sm hover:shadow-md transition-all font-medium rounded-lg"
+                              aria-label={`Log activity for ${lead.name}`}
+                            >
+                              <MessageSquarePlus className="w-4 h-4" />
+                              Log
+                            </Button>
+                          }
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); openEdit(lead); }}
+                          className="gap-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border-indigo-200/60 hover:border-indigo-300 shadow-sm hover:shadow-md transition-all font-medium rounded-lg"
                           aria-label={`Edit ${lead.name}`}
                         >
                           <Pencil className="w-4 h-4" />
@@ -1791,6 +2067,16 @@ export default function Leads() {
         </main>
       </PageTransition>
 
+      <QuickAddLeadDialog
+        open={quickAddOpen}
+        onOpenChange={setQuickAddOpen}
+        onSubmit={handleQuickAddSubmit}
+        onOpenFullEditor={openFullEditor}
+        statusOptions={statusOptions}
+        sourceOptions={sourceOptions}
+        companies={companies}
+      />
+
       <AddLeadDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -1808,7 +2094,7 @@ export default function Leads() {
       {/* Lead Detail Modal */}
       <LeadDetailModal
         open={detailModalOpen}
-        onOpenChange={setDetailModalOpen}
+        onOpenChange={(next) => (next ? setDetailModalOpen(true) : closeDetail())}
         lead={detailLead}
         companies={companies}
         statusOptions={statusOptions}
