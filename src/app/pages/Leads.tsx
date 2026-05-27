@@ -1016,7 +1016,7 @@ export default function Leads() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[200px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
+                  <SelectTrigger className="relative h-11 w-[150px] sm:w-[180px] lg:w-[200px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
                         <ArrowUpDown className="w-3.5 h-3.5 text-slate-300" />
@@ -1081,12 +1081,41 @@ export default function Leads() {
 
           {/* Expandable Filter Panel */}
           {showFilters && (
-            <div className="mt-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/10 p-4 animate-in slide-in-from-top-2 duration-200">
-              <div className="flex flex-wrap gap-4">
+            <div className="mt-4 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.09] to-white/[0.04] backdrop-blur-md p-4 sm:p-5 shadow-lg shadow-black/20 animate-in slide-in-from-top-2 duration-200">
+              {/* Panel header */}
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500/30 to-amber-500/30 ring-1 ring-white/10 flex items-center justify-center shrink-0">
+                    <SlidersHorizontal className="w-4 h-4 text-orange-200" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white leading-none">Refine results</h3>
+                    <p className="text-[11px] text-slate-400 mt-1.5 leading-none">
+                      {activeFilterCount > 0
+                        ? `${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active`
+                        : 'No filters applied'}
+                    </p>
+                  </div>
+                </div>
+                {activeFilterCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="h-8 px-3 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" />
+                    Clear all
+                  </Button>
+                )}
+              </div>
+
+              {/* Filter grid — 1 col on mobile, 2 on tablet, 4 on desktop */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* Status Filter (multi-select) */}
-                <div className="min-w-[160px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
-                    <Tag className="w-3.5 h-3.5" />
+                <div className="min-w-0">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    <Tag className="w-3.5 h-3.5 text-orange-300/80" />
                     Status
                   </label>
                   <StatusFilterMultiSelect
@@ -1097,13 +1126,13 @@ export default function Leads() {
                 </div>
 
                 {/* Source Filter */}
-                <div className="min-w-[160px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
-                    <Sparkles className="w-3.5 h-3.5" />
+                <div className="min-w-0">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-orange-300/80" />
                     Source
                   </label>
                   <Select value={filterSource} onValueChange={setFilterSource}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
                       <SelectValue placeholder="All sources" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1118,13 +1147,13 @@ export default function Leads() {
                 </div>
 
                 {/* Converted Filter */}
-                <div className="min-w-[160px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
-                    <RefreshCw className="w-3.5 h-3.5" />
+                <div className="min-w-0">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-orange-300/80" />
                     Conversion
                   </label>
                   <Select value={filterConverted} onValueChange={(v) => setFilterConverted(v as typeof filterConverted)}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
                       <SelectValue placeholder="All leads" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1146,13 +1175,13 @@ export default function Leads() {
                 </div>
 
                 {/* Assignment Filter */}
-                <div className="min-w-[180px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
-                    <User className="w-3.5 h-3.5" />
+                <div className="min-w-0">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    <User className="w-3.5 h-3.5 text-orange-300/80" />
                     Assignment
                   </label>
                   <Select value={filterAssignment} onValueChange={(v) => setFilterAssignment(v as typeof filterAssignment)}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
                       <SelectValue placeholder="All assignments" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1162,21 +1191,6 @@ export default function Leads() {
                     </SelectContent>
                   </Select>
                 </div>
-
-                {/* Clear Filters */}
-                {activeFilterCount > 0 && (
-                  <div className="flex items-end">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearFilters}
-                      className="h-10 text-slate-300 hover:text-white hover:bg-white/10"
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      Clear all
-                    </Button>
-                  </div>
-                )}
               </div>
             </div>
           )}
