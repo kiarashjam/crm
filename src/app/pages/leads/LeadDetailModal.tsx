@@ -33,6 +33,7 @@ import { toast } from 'sonner';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import type { LeadDetailModalProps, ActivityWithUser, TaskItem } from './types';
 import { STATUS_BADGE_COLORS, ACTIVITY_TYPES, LIFECYCLE_STAGES } from './config';
+import { isValidGuid } from './utils';
 
 function LeadDetailModal({
   open,
@@ -183,15 +184,20 @@ function LeadDetailModal({
       const { updateLead } = await import('@/app/api');
       const updateData: Record<string, unknown> = {};
       
-      // Map field names to API fields
+      // Map field names to API fields.
+      // NOTE: leadStatusId / leadSourceId are nullable GUIDs on the backend.
+      // When the org has no configured statuses/sources we fall back to options
+      // whose `id` is the *name* (e.g. "Contacted"), which is NOT a GUID. Sending
+      // that makes the whole request body fail to deserialize (400). Only attach
+      // the id when it's an actual GUID; the string `status`/`source` always go.
       if (fieldName === 'status') {
         updateData.status = value;
         const statusOpt = statusOptions.find(s => s.name === value);
-        if (statusOpt) updateData.leadStatusId = statusOpt.id;
+        if (statusOpt && isValidGuid(statusOpt.id)) updateData.leadStatusId = statusOpt.id;
       } else if (fieldName === 'source') {
         updateData.source = value;
         const sourceOpt = sourceOptions.find(s => s.name === value);
-        if (sourceOpt) updateData.leadSourceId = sourceOpt.id;
+        if (sourceOpt && isValidGuid(sourceOpt.id)) updateData.leadSourceId = sourceOpt.id;
       } else if (fieldName === 'leadScore') {
         updateData.leadScore = typeof value === 'string' ? parseInt(value, 10) : value;
       } else {
