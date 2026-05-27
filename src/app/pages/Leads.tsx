@@ -68,6 +68,7 @@ import {
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { LeadDetailModal } from './leads/LeadDetailModal';
+import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
 import { StatusChangePopover } from './leads/components/StatusChangePopover';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
@@ -204,7 +205,8 @@ export default function Leads() {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
   // Filter & Sort state
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  // Status filter supports multiple selections (empty array = all statuses).
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterConverted, setFilterConverted] = useState<'all' | 'converted' | 'active'>('active');
   const [filterAssignment, setFilterAssignment] = useState<'all' | 'me' | 'unassigned'>('all');
@@ -256,7 +258,7 @@ export default function Leads() {
       },
       { replace: true }
     );
-  }, [filterStatus, filterSource, filterConverted, filterAssignment, sortField, sortDirection, setSearchParams]);
+  }, [filterStatuses, filterSource, filterConverted, filterAssignment, sortField, sortDirection, setSearchParams]);
 
   // Browser back/forward or opening a shared link: align committed search with the URL.
   // Compare against a ref so this effect fires only on external URL changes — depending on
@@ -332,7 +334,7 @@ export default function Leads() {
             (l.phone && l.phone.includes(q)),
         );
       }
-      if (filterStatus !== 'all') result = result.filter((l) => l.status === filterStatus);
+      if (filterStatuses.length > 0) result = result.filter((l) => filterStatuses.includes(l.status));
       if (filterSource !== 'all') result = result.filter((l) => l.source === filterSource);
       if (filterConverted === 'converted') result = result.filter((l) => l.isConverted);
       else if (filterConverted === 'active') result = result.filter((l) => !l.isConverted);
@@ -365,7 +367,7 @@ export default function Leads() {
       });
       return result;
     },
-    [debouncedSearch, filterStatus, filterSource, filterConverted, sortField, sortDirection],
+    [debouncedSearch, filterStatuses, filterSource, filterConverted, sortField, sortDirection],
   );
 
   const loadPageActivities = useCallback(async (leadIds: string[]) => {
@@ -413,9 +415,11 @@ export default function Leads() {
       setLeadStats(stats);
 
       const contactsById = new Map(contacts.map((c) => [c.id, c]));
-      const useAssignmentMode = filterAssignment !== 'all';
+      // The paged API takes a single status. When the user picks more than one
+      // status (or filters by assignment), filter client-side instead.
+      const useClientMode = filterAssignment !== 'all' || filterStatuses.length > 1;
 
-      if (useAssignmentMode) {
+      if (useClientMode) {
         const allLeadsRaw = await getLeads();
         let merged = mergeLeadsWithLocalData(Array.isArray(allLeadsRaw) ? allLeadsRaw : [], contactsById);
         merged = applyClientLeadFilters(merged);
@@ -438,7 +442,7 @@ export default function Leads() {
           page: currentPage,
           pageSize,
           search: debouncedSearch || undefined,
-          status: filterStatus !== 'all' ? filterStatus : undefined,
+          status: filterStatuses.length === 1 ? filterStatuses[0] : undefined,
           source: filterSource !== 'all' ? filterSource : undefined,
           converted: filterConverted,
           sortBy: sortField,
@@ -468,7 +472,7 @@ export default function Leads() {
     currentPage,
     pageSize,
     debouncedSearch,
-    filterStatus,
+    filterStatuses,
     filterSource,
     filterConverted,
     filterAssignment,
@@ -521,7 +525,7 @@ export default function Leads() {
 
   // Count active filters
   const activeFilterCount = [
-    filterStatus !== 'all',
+    filterStatuses.length > 0,
     filterSource !== 'all',
     filterConverted !== 'all',
     filterAssignment !== 'all',
@@ -529,7 +533,7 @@ export default function Leads() {
 
   // Clear all filters
   const clearFilters = () => {
-    setFilterStatus('all');
+    setFilterStatuses([]);
     setFilterSource('all');
     setFilterConverted('all');
     setFilterAssignment('all');
@@ -1227,7 +1231,7 @@ export default function Leads() {
               {/* Qualified Leads */}
               <div 
                 className="group relative bg-white rounded-2xl border border-cyan-100 p-5 shadow-sm hover:shadow-xl hover:shadow-cyan-100 hover:border-cyan-200 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { setFilterStatus('Qualified'); setShowFilters(true); }}
+                onClick={() => { setFilterStatuses(['Qualified']); setShowFilters(true); }}
               >
                 <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
                 <div className="relative">
@@ -1412,53 +1416,58 @@ export default function Leads() {
 
           {/* Expandable Filter Panel */}
           {showFilters && (
-            <div className="mt-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/10 p-4 animate-in slide-in-from-top-2 duration-200">
-              <div className="flex flex-wrap gap-4">
-                {/* Status Filter */}
-                <div className="min-w-[160px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
-                    <Tag className="w-3.5 h-3.5" />
+            <div className="mt-4 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.09] to-white/[0.04] backdrop-blur-md p-4 sm:p-5 shadow-lg shadow-black/20 animate-in slide-in-from-top-2 duration-200">
+              {/* Panel header */}
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500/30 to-amber-500/30 ring-1 ring-white/10 flex items-center justify-center shrink-0">
+                    <SlidersHorizontal className="w-4 h-4 text-orange-200" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white leading-none">Refine results</h3>
+                    <p className="text-[11px] text-slate-400 mt-1.5 leading-none">
+                      {activeFilterCount > 0
+                        ? `${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active`
+                        : 'No filters applied'}
+                    </p>
+                  </div>
+                </div>
+                {activeFilterCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="h-8 px-3 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" />
+                    Clear all
+                  </Button>
+                )}
+              </div>
+
+              {/* Filter grid — 1 col on mobile, 2 on tablet, 4 on desktop */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                {/* Status Filter (multi-select) */}
+                <div className="min-w-0">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    <Tag className="w-3.5 h-3.5 text-orange-300/80" />
                     Status
                   </label>
-                  <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
-                      <SelectValue placeholder="All statuses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-slate-300" />
-                          All statuses
-                        </span>
-                      </SelectItem>
-                      {statusOptions.map((s) => {
-                        const colors: Record<string, string> = {
-                          New: 'bg-blue-500',
-                          Contacted: 'bg-amber-500',
-                          Qualified: 'bg-emerald-500',
-                          Lost: 'bg-slate-400',
-                        };
-                        return (
-                          <SelectItem key={s.id} value={s.name}>
-                            <span className="flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full ${colors[s.name] || 'bg-slate-400'}`} />
-                              {s.name}
-                            </span>
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                  <StatusFilterMultiSelect
+                    options={statusOptions.map((s) => s.name)}
+                    selected={filterStatuses}
+                    onChange={setFilterStatuses}
+                  />
                 </div>
 
                 {/* Source Filter */}
-                <div className="min-w-[160px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
-                    <Sparkles className="w-3.5 h-3.5" />
+                <div className="min-w-0">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-orange-300/80" />
                     Source
                   </label>
                   <Select value={filterSource} onValueChange={setFilterSource}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
                       <SelectValue placeholder="All sources" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1473,13 +1482,13 @@ export default function Leads() {
                 </div>
 
                 {/* Converted Filter */}
-                <div className="min-w-[160px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
-                    <RefreshCw className="w-3.5 h-3.5" />
+                <div className="min-w-0">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-orange-300/80" />
                     Conversion
                   </label>
                   <Select value={filterConverted} onValueChange={(v) => setFilterConverted(v as typeof filterConverted)}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
                       <SelectValue placeholder="All leads" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1501,13 +1510,13 @@ export default function Leads() {
                 </div>
 
                 {/* Assignment Filter */}
-                <div className="min-w-[180px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
-                    <User className="w-3.5 h-3.5" />
+                <div className="min-w-0">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    <User className="w-3.5 h-3.5 text-orange-300/80" />
                     Assignment
                   </label>
                   <Select value={filterAssignment} onValueChange={(v) => setFilterAssignment(v as typeof filterAssignment)}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
                       <SelectValue placeholder="All assignments" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1517,21 +1526,6 @@ export default function Leads() {
                     </SelectContent>
                   </Select>
                 </div>
-
-                {/* Clear Filters */}
-                {activeFilterCount > 0 && (
-                  <div className="flex items-end">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearFilters}
-                      className="h-10 text-slate-300 hover:text-white hover:bg-white/10"
-                    >
-                      <X className="w-4 h-4 mr-1" />
-                      Clear all
-                    </Button>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -1549,15 +1543,19 @@ export default function Leads() {
                   </button>
                 </span>
               )}
-              {filterStatus !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-400/30">
+              {filterStatuses.map((status) => (
+                <span key={status} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-400/30">
                   <Tag className="w-3 h-3" />
-                  {filterStatus}
-                  <button onClick={() => setFilterStatus('all')} className="ml-0.5 hover:text-blue-100 transition-colors">
+                  {status}
+                  <button
+                    onClick={() => setFilterStatuses((prev) => prev.filter((s) => s !== status))}
+                    className="ml-0.5 hover:text-blue-100 transition-colors"
+                    aria-label={`Remove ${status} filter`}
+                  >
                     <X className="w-3 h-3" />
                   </button>
                 </span>
-              )}
+              ))}
               {filterSource !== 'all' && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-medium border border-amber-400/30">
                   <Sparkles className="w-3 h-3" />
