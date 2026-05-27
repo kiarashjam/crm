@@ -60,6 +60,7 @@ import {
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { LeadDetailModal } from './leads/LeadDetailModal';
+import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
 import { isValidGuid } from './leads/utils';
 import type { LeadForm } from './leads/types';
@@ -175,7 +176,8 @@ export default function Leads() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 
   // Filter & Sort state
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  // Status filter supports selecting multiple statuses. Empty array = all statuses.
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const [filterSource, setFilterSource] = useState<string>('all');
   const [filterConverted, setFilterConverted] = useState<'all' | 'converted' | 'active'>('active');
   const [filterAssignment, setFilterAssignment] = useState<'all' | 'me' | 'unassigned'>('all');
@@ -351,9 +353,9 @@ export default function Leads() {
       );
     }
     
-    // Status filter
-    if (filterStatus !== 'all') {
-      result = result.filter((l) => l.status === filterStatus);
+    // Status filter (multi-select; empty = all)
+    if (filterStatuses.length > 0) {
+      result = result.filter((l) => filterStatuses.includes(l.status));
     }
     
     // Source filter
@@ -405,11 +407,11 @@ export default function Leads() {
     });
     
     return result;
-  }, [leads, debouncedSearch, filterStatus, filterSource, filterConverted, filterAssignment, sortField, sortDirection, currentUser?.id]);
+  }, [leads, debouncedSearch, filterStatuses, filterSource, filterConverted, filterAssignment, sortField, sortDirection, currentUser?.id]);
 
   // Count active filters
   const activeFilterCount = [
-    filterStatus !== 'all',
+    filterStatuses.length > 0,
     filterSource !== 'all',
     filterConverted !== 'all',
     filterAssignment !== 'all',
@@ -417,7 +419,7 @@ export default function Leads() {
 
   // Clear all filters
   const clearFilters = () => {
-    setFilterStatus('all');
+    setFilterStatuses([]);
     setFilterSource('all');
     setFilterConverted('all');
     setFilterAssignment('all');
@@ -895,7 +897,7 @@ export default function Leads() {
               {/* Qualified Leads */}
               <div 
                 className="group relative bg-white rounded-2xl border border-cyan-100 p-5 shadow-sm hover:shadow-xl hover:shadow-cyan-100 hover:border-cyan-200 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { setFilterStatus('Qualified'); setShowFilters(true); }}
+                onClick={() => { setFilterStatuses(['Qualified']); setShowFilters(true); }}
               >
                 <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
                 <div className="relative">
@@ -1081,41 +1083,17 @@ export default function Leads() {
           {showFilters && (
             <div className="mt-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/10 p-4 animate-in slide-in-from-top-2 duration-200">
               <div className="flex flex-wrap gap-4">
-                {/* Status Filter */}
+                {/* Status Filter (multi-select) */}
                 <div className="min-w-[160px]">
                   <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
                     <Tag className="w-3.5 h-3.5" />
                     Status
                   </label>
-                  <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
-                      <SelectValue placeholder="All statuses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">
-                        <span className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-slate-300" />
-                          All statuses
-                        </span>
-                      </SelectItem>
-                      {statusOptions.map((s) => {
-                        const colors: Record<string, string> = {
-                          New: 'bg-blue-500',
-                          Contacted: 'bg-amber-500',
-                          Qualified: 'bg-emerald-500',
-                          Lost: 'bg-slate-400',
-                        };
-                        return (
-                          <SelectItem key={s.id} value={s.name}>
-                            <span className="flex items-center gap-2">
-                              <span className={`w-2 h-2 rounded-full ${colors[s.name] || 'bg-slate-400'}`} />
-                              {s.name}
-                            </span>
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                  <StatusFilterMultiSelect
+                    options={statusOptions.map((s) => s.name)}
+                    selected={filterStatuses}
+                    onChange={setFilterStatuses}
+                  />
                 </div>
 
                 {/* Source Filter */}
@@ -1216,15 +1194,19 @@ export default function Leads() {
                   </button>
                 </span>
               )}
-              {filterStatus !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-400/30">
+              {filterStatuses.map((status) => (
+                <span key={status} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-400/30">
                   <Tag className="w-3 h-3" />
-                  {filterStatus}
-                  <button onClick={() => setFilterStatus('all')} className="ml-0.5 hover:text-blue-100 transition-colors">
+                  {status}
+                  <button
+                    onClick={() => setFilterStatuses((prev) => prev.filter((s) => s !== status))}
+                    className="ml-0.5 hover:text-blue-100 transition-colors"
+                    aria-label={`Remove ${status} filter`}
+                  >
                     <X className="w-3 h-3" />
                   </button>
                 </span>
-              )}
+              ))}
               {filterSource !== 'all' && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-medium border border-amber-400/30">
                   <Sparkles className="w-3 h-3" />
