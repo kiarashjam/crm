@@ -83,27 +83,21 @@ public class TemplateService : ITemplateService
 
     /// <inheritdoc />
     public async Task<Result<TemplateDto>> GetByIdAsync(
-        Guid userId, 
-        Guid id, 
+        Guid userId,
+        Guid? organizationId,
+        Guid id,
         CancellationToken ct = default)
     {
         _logger.LogDebug("Getting template {TemplateId} for user {UserId}", id, userId);
-        
-        var template = await _repository.GetByIdAsync(id, ct);
-        
+
+        var template = await _repository.GetByIdAsync(id, userId, organizationId, ct);
+
         if (template == null)
         {
-            _logger.LogWarning("Template {TemplateId} not found", id);
+            _logger.LogWarning("Template {TemplateId} not accessible for user {UserId}", id, userId);
             return DomainErrors.Template.NotFound;
         }
-        
-        // Check access: user owns it, it's shared with their org, or it's a system template
-        if (template.UserId != userId && !template.IsSharedWithOrganization && !template.IsSystemTemplate)
-        {
-            _logger.LogWarning("User {UserId} does not have access to template {TemplateId}", userId, id);
-            return DomainErrors.Template.NotOwned;
-        }
-        
+
         return MapToDto(template);
     }
 
@@ -164,14 +158,14 @@ public class TemplateService : ITemplateService
 
     /// <inheritdoc />
     public async Task<Result<TemplateDto>> UpdateAsync(
-        Guid userId, 
-        Guid id, 
-        UpdateTemplateRequest request, 
+        Guid userId,
+        Guid id,
+        UpdateTemplateRequest request,
         CancellationToken ct = default)
     {
         _logger.LogInformation("Updating template {TemplateId} for user {UserId}", id, userId);
-        
-        var template = await _repository.GetByIdAsync(id, ct);
+
+        var template = await _repository.GetByIdAsync(id, userId, null, ct);
         
         if (template == null)
         {
@@ -220,13 +214,13 @@ public class TemplateService : ITemplateService
 
     /// <inheritdoc />
     public async Task<Result> DeleteAsync(
-        Guid userId, 
-        Guid id, 
+        Guid userId,
+        Guid id,
         CancellationToken ct = default)
     {
         _logger.LogInformation("Deleting template {TemplateId} for user {UserId}", id, userId);
-        
-        var template = await _repository.GetByIdAsync(id, ct);
+
+        var template = await _repository.GetByIdAsync(id, userId, null, ct);
         
         if (template == null)
         {
@@ -261,10 +255,10 @@ public class TemplateService : ITemplateService
     }
 
     /// <inheritdoc />
-    public async Task IncrementUseCountAsync(Guid id, CancellationToken ct = default)
+    public async Task IncrementUseCountAsync(Guid userId, Guid? organizationId, Guid id, CancellationToken ct = default)
     {
-        _logger.LogDebug("Incrementing use count for template {TemplateId}", id);
-        await _repository.IncrementUseCountAsync(id, ct);
+        _logger.LogDebug("Incrementing use count for template {TemplateId} by user {UserId}", id, userId);
+        await _repository.IncrementUseCountAsync(id, userId, organizationId, ct);
     }
 
     private static TemplateDto MapToDto(Template t) => new(

@@ -1,3 +1,5 @@
+using ACI.Application.Common;
+using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
@@ -20,53 +22,145 @@ public sealed class LeadRepository : ILeadRepository
     {
         if (string.IsNullOrWhiteSpace(search)) return query;
         var q = search.Trim().ToLowerInvariant();
-        return query.Where(l => l.Name.ToLower().Contains(q) || l.Email.ToLower().Contains(q));
+        return query.Where(l =>
+            l.Name.ToLower().Contains(q) ||
+            l.Email.ToLower().Contains(q) ||
+            (l.Phone != null && l.Phone.Contains(q)));
     }
 
+    private static IQueryable<Lead> ApplyFilters(IQueryable<Lead> query, LeadQueryOptions? options)
+    {
+        if (options == null) return query;
+
+        if (!string.IsNullOrWhiteSpace(options.Status) &&
+            !string.Equals(options.Status, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            var status = options.Status.Trim();
+            query = query.Where(l => l.Status == status);
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.Source) &&
+            !string.Equals(options.Source, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            var source = options.Source.Trim();
+            query = query.Where(l => l.Source == source);
+        }
+
+        if (options.IsConverted.HasValue)
+        {
+            query = options.IsConverted.Value
+                ? query.Where(l => l.IsConverted)
+                : query.Where(l => !l.IsConverted);
+        }
+
+        return query;
+    }
+
+    private static IQueryable<Lead> ApplySort(IQueryable<Lead> query, LeadQueryOptions? options)
+    {
+        var sortBy = options?.SortBy?.Trim().ToLowerInvariant() ?? "createdat";
+        var desc = string.Equals(options?.SortDir?.Trim(), "desc", StringComparison.OrdinalIgnoreCase);
+
+        return sortBy switch
+        {
+            "email" => desc
+                ? query.OrderByDescending(l => l.Email).ThenBy(l => l.Name)
+                : query.OrderBy(l => l.Email).ThenBy(l => l.Name),
+            "status" => desc
+                ? query.OrderByDescending(l => l.Status).ThenBy(l => l.Name)
+                : query.OrderBy(l => l.Status).ThenBy(l => l.Name),
+            "createdat" => desc
+                ? query.OrderByDescending(l => l.CreatedAtUtc).ThenBy(l => l.Name)
+                : query.OrderBy(l => l.CreatedAtUtc).ThenBy(l => l.Name),
+            _ => desc
+                ? query.OrderByDescending(l => l.Name)
+                : query.OrderBy(l => l.Name),
+        };
+    }
+
+    private static IQueryable<Lead> BuildFilteredQuery(
+        AppDbContext db,
+        Guid userId,
+        Guid? organizationId,
+        LeadQueryOptions? options) =>
+        ApplySort(
+            ApplyFilters(
+                ApplySearch(
+                    FilterByUserAndOrg(db.Leads.AsNoTracking(), userId, organizationId),
+                    options?.Search),
+                options),
+            options);
+
     public async Task<(IReadOnlyList<Lead> Items, int TotalCount)> GetPagedAsync(
-        Guid userId, 
-        Guid? organizationId, 
-        int skip, 
-        int take, 
-        string? search = null,
+        Guid userId,
+        Guid? organizationId,
+        int skip,
+        int take,
+        LeadQueryOptions? options = null,
         CancellationToken ct = default)
     {
-        var query = FilterByUserAndOrg(_db.Leads, userId, organizationId);
-        query = ApplySearch(query, search);
-        
+        var query = BuildFilteredQuery(_db, userId, organizationId, options);
+
         var totalCount = await query.CountAsync(ct);
         var items = await query
-            .OrderBy(l => l.Name)
+            .Include(l => l.Company)
             .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
-        
+
         return (items, totalCount);
+    }
+
+    public async Task<LeadStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId);
+        var oneWeekAgo = DateTime.UtcNow.AddDays(-7);
+
+        var total = await query.CountAsync(ct);
+        var converted = await query.CountAsync(l => l.IsConverted, ct);
+        var active = total - converted;
+        var newLeads = await query.CountAsync(l => l.Status == "New", ct);
+        var contacted = await query.CountAsync(l =>
+            l.Status == "Contacted" || l.Status == "Attempted Contact" || l.Status == "Connected", ct);
+        var qualified = await query.CountAsync(l => l.Status == "Qualified", ct);
+        var thisWeek = await query.CountAsync(l => l.CreatedAtUtc >= oneWeekAgo, ct);
+        var hotLeads = await query.CountAsync(l => !l.IsConverted && l.LeadScore >= 70, ct);
+        var conversionRate = total > 0 ? (int)Math.Round((double)converted / total * 100) : 0;
+
+        return new LeadStatsDto(total, converted, active, newLeads, contacted, qualified, conversionRate, thisWeek, hotLeads);
     }
 
     public async Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, CancellationToken ct = default)
     {
-        var query = FilterByUserAndOrg(_db.Leads, userId, organizationId);
-        query = ApplySearch(query, search);
+        var query = ApplySearch(FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId), search);
         return await query.CountAsync(ct);
     }
 
     public async Task<IReadOnlyList<Lead>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await FilterByUserAndOrg(_db.Leads, userId, organizationId).OrderBy(l => l.Name).ToListAsync(ct);
+        await ApplySort(
+                ApplySearch(FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId), null),
+                new LeadQueryOptions { SortBy = "name", SortDir = "asc" })
+            .Include(l => l.Company)
+            .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Lead>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
             return await GetByUserIdAsync(userId, organizationId, ct);
         var q = query.Trim().ToLowerInvariant();
-        return await FilterByUserAndOrg(_db.Leads, userId, organizationId)
-            .Where(l => l.Name.ToLower().Contains(q) || l.Email.ToLower().Contains(q))
-            .OrderBy(l => l.Name)
+        return await ApplySort(
+                FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
+                    .Where(l => l.Name.ToLower().Contains(q) || l.Email.ToLower().Contains(q) ||
+                                (l.Phone != null && l.Phone.Contains(q))),
+                new LeadQueryOptions { SortBy = "name", SortDir = "asc" })
+            .Include(l => l.Company)
             .ToListAsync(ct);
     }
 
     public async Task<Lead?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == id, ct);
+        await FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
+            .Include(l => l.Company)
+            .FirstOrDefaultAsync(l => l.Id == id, ct);
 
     public async Task<Lead> AddAsync(Lead lead, CancellationToken ct = default)
     {
@@ -103,8 +197,12 @@ public sealed class LeadRepository : ILeadRepository
     {
         var existing = await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == id, ct);
         if (existing == null) return false;
-        var linkedTasks = await _db.TaskItems.Where(t => t.LeadId == id).ToListAsync(ct);
-        foreach (var t in linkedTasks) t.LeadId = null;
+        await _db.TaskItems.Where(t => t.LeadId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.LeadId, (Guid?)null), ct);
+        await _db.Activities.Where(a => a.LeadId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.LeadId, (Guid?)null), ct);
+        await _db.Contacts.Where(c => c.ConvertedFromLeadId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ConvertedFromLeadId, (Guid?)null), ct);
         _db.Leads.Remove(existing);
         await _db.SaveChangesAsync(ct);
         return true;

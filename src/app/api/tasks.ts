@@ -1,10 +1,17 @@
 import type { TaskItem, TaskStats, TaskStatusType, TaskPriorityType, PagedResult } from './types';
 import { mockTasks } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
+
+const taskStore = createMockStore<TaskItem>({
+  storageKey: 'crm.mock.tasks.v1',
+  seed: mockTasks,
+  idOf: (t) => t.id,
+});
 
 interface TaskRaw {
   id: string;
@@ -99,7 +106,7 @@ export async function getTasksPaged(options?: GetTasksPagedOptions): Promise<Pag
   // Mock pagination
   const page = options?.page ?? 1;
   const pageSize = options?.pageSize ?? 20;
-  let filtered = [...mockTasks];
+  let filtered = taskStore.list();
   if (options?.search) {
     const s = options.search.toLowerCase();
     filtered = filtered.filter(t => 
@@ -157,7 +164,7 @@ export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
     return [];
   }
   await delay(200);
-  let filtered = [...mockTasks];
+  let filtered = taskStore.list();
   if (options?.overdueOnly) {
     const now = new Date();
     filtered = filtered.filter((t) => !t.completed && t.dueDateUtc && new Date(t.dueDateUtc) < now);
@@ -182,7 +189,7 @@ export async function getTaskById(id: string): Promise<TaskItem | null> {
     }
   }
   await delay(200);
-  return mockTasks.find((t) => t.id === id) ?? null;
+  return taskStore.byId(id) ?? null;
 }
 
 /** Get tasks by lead ID. */
@@ -198,7 +205,7 @@ export async function getTasksByLead(leadId: string): Promise<TaskItem[]> {
     return [];
   }
   await delay(200);
-  return mockTasks.filter((t) => t.leadId === leadId);
+  return taskStore.list().filter((t) => t.leadId === leadId);
 }
 
 /** Get tasks by deal ID. */
@@ -214,7 +221,7 @@ export async function getTasksByDeal(dealId: string): Promise<TaskItem[]> {
     return [];
   }
   await delay(200);
-  return mockTasks.filter((t) => t.dealId === dealId);
+  return taskStore.list().filter((t) => t.dealId === dealId);
 }
 
 /** Get tasks by contact ID. */
@@ -250,18 +257,19 @@ export async function getTaskStats(): Promise<TaskStats> {
   }
   await delay(100);
   // Mock stats
+  const tasks = taskStore.list();
   const now = new Date();
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
   return {
-    total: mockTasks.length,
-    todo: mockTasks.filter((t) => t.status === 'todo').length,
-    inProgress: mockTasks.filter((t) => t.status === 'in_progress').length,
-    completed: mockTasks.filter((t) => t.status === 'completed').length,
+    total: tasks.length,
+    todo: tasks.filter((t) => t.status === 'todo').length,
+    inProgress: tasks.filter((t) => t.status === 'in_progress').length,
+    completed: tasks.filter((t) => t.status === 'completed').length,
     cancelled: 0,
-    overdue: mockTasks.filter((t) => t.status !== 'completed' && t.dueDateUtc && new Date(t.dueDateUtc) < now).length,
-    dueToday: mockTasks.filter((t) => t.status !== 'completed' && t.dueDateUtc && new Date(t.dueDateUtc).toDateString() === today.toDateString()).length,
-    highPriority: mockTasks.filter((t) => t.status !== 'completed' && t.priority === 'high').length,
+    overdue: tasks.filter((t) => t.status !== 'completed' && t.dueDateUtc && new Date(t.dueDateUtc) < now).length,
+    dueToday: tasks.filter((t) => t.status !== 'completed' && t.dueDateUtc && new Date(t.dueDateUtc).toDateString() === today.toDateString()).length,
+    highPriority: tasks.filter((t) => t.status !== 'completed' && t.priority === 'high').length,
   };
 }
 
@@ -289,9 +297,9 @@ export async function createTask(params: CreateTaskParams): Promise<TaskItem | n
     return task ? mapTask(task) : null;
   }
   await delay(200);
-  // Mock create
+  // Mock create — now persisted via mockStore so it survives reloads.
   const newTask: TaskItem = {
-    id: crypto.randomUUID(),
+    id: mockId('task'),
     title: params.title,
     description: params.description,
     dueDateUtc: params.dueDateUtc,
@@ -306,7 +314,7 @@ export async function createTask(params: CreateTaskParams): Promise<TaskItem | n
     notes: params.notes,
     createdAtUtc: new Date().toISOString(),
   };
-  return newTask;
+  return taskStore.add(newTask);
 }
 
 export interface UpdateTaskParams {
@@ -340,7 +348,7 @@ export async function updateTask(id: string, params: UpdateTaskParams): Promise<
     return task ? mapTask(task) : null;
   }
   await delay(200);
-  return null;
+  return taskStore.update(id, params as Partial<TaskItem>);
 }
 
 /** Update task status only. */
@@ -353,7 +361,7 @@ export async function updateTaskStatus(id: string, status: TaskStatusType): Prom
     return task ? mapTask(task) : null;
   }
   await delay(200);
-  return null;
+  return taskStore.update(id, { status, completed: status === 'completed' } as Partial<TaskItem>);
 }
 
 /** Assign or unassign a task. */
@@ -366,7 +374,7 @@ export async function assignTask(id: string, assigneeId: string | null): Promise
     return task ? mapTask(task) : null;
   }
   await delay(200);
-  return null;
+  return taskStore.update(id, { assigneeId: assigneeId ?? undefined } as Partial<TaskItem>);
 }
 
 /** Link or unlink a task to a lead. */
@@ -402,7 +410,7 @@ export async function deleteTask(id: string): Promise<boolean> {
     return res.status === 204;
   }
   await delay(200);
-  return true;
+  return taskStore.remove(id);
 }
 
 // ============================================================================

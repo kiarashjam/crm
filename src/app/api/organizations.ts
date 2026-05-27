@@ -1,4 +1,5 @@
-import { authFetchJson, authFetch } from './apiClient';
+import { authFetchJson, authFetch, isUsingRealApi } from './apiClient';
+import { getCurrentUser } from '@/app/lib/auth';
 
 export interface Organization {
   id: string;
@@ -61,6 +62,7 @@ export async function createOrganization(name: string): Promise<Organization | n
 }
 
 export async function listMyPendingInvites(): Promise<InviteDto[]> {
+  if (!isUsingRealApi()) return [];
   const list = await authFetchJson<InviteDto[]>('/api/invites/pending');
   return Array.isArray(list) ? list : [];
 }
@@ -89,6 +91,7 @@ export async function createInvite(organizationId: string, email: string): Promi
 }
 
 export async function listPendingInvitesForOrg(organizationId: string): Promise<InviteDto[]> {
+  if (!isUsingRealApi()) return [];
   const list = await authFetchJson<InviteDto[]>(`/api/invites/organization/${organizationId}`);
   return Array.isArray(list) ? list : [];
 }
@@ -101,6 +104,7 @@ export async function createJoinRequest(organizationId: string): Promise<JoinReq
 }
 
 export async function listPendingJoinRequestsForOrg(organizationId: string): Promise<JoinRequestDto[]> {
+  if (!isUsingRealApi()) return [];
   const list = await authFetchJson<JoinRequestDto[]>(`/api/joinrequests/organization/${organizationId}`);
   return Array.isArray(list) ? list : [];
 }
@@ -120,6 +124,12 @@ export async function rejectJoinRequest(joinRequestId: string): Promise<JoinRequ
 }
 
 export async function getOrgMembers(organizationId: string): Promise<OrgMemberDto[]> {
+  if (!isUsingRealApi()) {
+    // Demo mode: the only "member" is the demo user themselves.
+    const u = getCurrentUser();
+    if (!u) return [];
+    return [{ userId: u.id, name: u.name, email: u.email, role: 0 }];
+  }
   const list = await authFetchJson<OrgMemberDto[]>(`/api/organizations/${organizationId}/members`);
   return Array.isArray(list) ? list : [];
 }

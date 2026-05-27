@@ -1,6 +1,13 @@
 import type { Activity, PagedResult } from './types';
 import { mockActivities } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { createMockStore, mockId } from './mockStore';
+
+const activityStore = createMockStore<Activity>({
+  storageKey: 'crm.mock.activities.v1',
+  seed: mockActivities,
+  idOf: (a) => a.id,
+});
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -78,7 +85,7 @@ export async function getActivitiesPaged(options?: GetActivitiesPagedOptions): P
   // Mock pagination
   const page = options?.page ?? 1;
   const pageSize = options?.pageSize ?? 20;
-  let filtered = [...mockActivities];
+  let filtered = activityStore.list();
   if (options?.search) {
     const s = options.search.toLowerCase();
     filtered = filtered.filter(a => 
@@ -112,7 +119,7 @@ export async function getActivities(): Promise<Activity[]> {
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
-  return [...mockActivities];
+  return activityStore.list();
 }
 
 /** Get activities by contact. */
@@ -122,7 +129,7 @@ export async function getActivitiesByContact(contactId: string): Promise<Activit
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
-  return mockActivities.filter((a) => a.contactId === contactId);
+  return activityStore.list().filter((a) => a.contactId === contactId);
 }
 
 /** Get activities by deal. */
@@ -132,7 +139,7 @@ export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
-  return mockActivities.filter((a) => a.dealId === dealId);
+  return activityStore.list().filter((a) => a.dealId === dealId);
 }
 
 /** Get activities by lead. */
@@ -142,7 +149,7 @@ export async function getActivitiesByLead(leadId: string): Promise<Activity[]> {
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
-  return mockActivities.filter((a) => a.leadId === leadId);
+  return activityStore.list().filter((a) => a.leadId === leadId);
 }
 
 /** Get activity counts per org member (HP-3). */
@@ -164,7 +171,22 @@ export async function createActivity(params: { type: string; subject?: string; b
     return activity ? mapActivity(activity) : null;
   }
   await delay(200);
-  return null;
+  const created: Activity = {
+    id: mockId('act'),
+    type: params.type,
+    subject: params.subject ?? undefined,
+    body: params.body ?? undefined,
+    contactId: params.contactId,
+    dealId: params.dealId,
+    leadId: params.leadId,
+    participants: params.participants,
+    createdAt: new Date().toISOString(),
+    updatedAt: undefined,
+    contactName: undefined,
+    dealName: undefined,
+    leadName: undefined,
+  };
+  return activityStore.add(created);
 }
 
 /** Update an activity. */
@@ -177,7 +199,13 @@ export async function updateActivity(id: string, params: { type?: string; subjec
     return activity ? mapActivity(activity) : null;
   }
   await delay(200);
-  return null;
+  return activityStore.update(id, {
+    ...(params.type !== undefined ? { type: params.type } : {}),
+    ...(params.subject !== undefined ? { subject: params.subject } : {}),
+    ...(params.body !== undefined ? { body: params.body } : {}),
+    ...(params.participants !== undefined ? { participants: params.participants } : {}),
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 /** Delete an activity. */
@@ -187,5 +215,5 @@ export async function deleteActivity(id: string): Promise<boolean> {
     return res.status === 204;
   }
   await delay(200);
-  return false;
+  return activityStore.remove(id);
 }

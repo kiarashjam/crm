@@ -106,8 +106,8 @@ public class TemplatesController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
-        var result = await _templateService.GetByIdAsync(userId.Value, id, ct);
+
+        var result = await _templateService.GetByIdAsync(userId.Value, _currentUser.OrganizationId, id, ct);
         return result.ToActionResult();
     }
 
@@ -211,7 +211,10 @@ public class TemplatesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<ActionResult> IncrementUseCount(Guid id, CancellationToken ct)
     {
-        await _templateService.IncrementUseCountAsync(id, ct);
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        await _templateService.IncrementUseCountAsync(userId.Value, _currentUser.OrganizationId, id, ct);
         return NoContent();
     }
 }

@@ -44,4 +44,14 @@ public sealed class InviteRepository : IInviteRepository
         _db.Invites.Update(invite);
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task<bool> TryClaimAsync(Guid inviteId, Guid acceptingUserId, CancellationToken ct = default)
+    {
+        var rows = await _db.Invites
+            .Where(i => i.Id == inviteId && i.AcceptedByUserId == null)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.AcceptedByUserId, acceptingUserId)
+                .SetProperty(i => i.AcceptedAtUtc, DateTime.UtcNow), ct);
+        return rows == 1;
+    }
 }

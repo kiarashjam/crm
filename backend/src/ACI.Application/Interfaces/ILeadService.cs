@@ -11,7 +11,15 @@ public interface ILeadService
     /// <summary>
     /// Retrieves leads with pagination and optional search.
     /// </summary>
-    Task<PagedResult<LeadDto>> GetLeadsPagedAsync(Guid userId, Guid? organizationId, int page = 1, int pageSize = 20, string? search = null, CancellationToken ct = default);
+    Task<PagedResult<LeadDto>> GetLeadsPagedAsync(
+        Guid userId,
+        Guid? organizationId,
+        int page = 1,
+        int pageSize = 20,
+        LeadQueryOptions? options = null,
+        CancellationToken ct = default);
+
+    Task<LeadStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     /// <summary>
     /// Retrieves all leads for a user within an organization.

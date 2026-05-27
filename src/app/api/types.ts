@@ -82,6 +82,7 @@ export interface Lead {
   referredByContactId?: string;
   referredByContactName?: string;
   companyId?: string;
+  companyName?: string;
   source?: string;
   status: string;
   leadSourceId?: string;

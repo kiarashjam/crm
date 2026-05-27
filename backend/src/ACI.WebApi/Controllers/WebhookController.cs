@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using ACI.Application;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -108,7 +110,11 @@ public class WebhookController : ControllerBase
             ? WebhookConstants.DefaultWebhookPassword
             : organization.WebhookPassword;
 
-        if (!string.Equals(expected, provided, StringComparison.Ordinal))
+        // Constant-time comparison to avoid leaking password length / prefix via timing.
+        var expectedBytes = Encoding.UTF8.GetBytes(expected);
+        var providedBytes = Encoding.UTF8.GetBytes(provided);
+        if (expectedBytes.Length != providedBytes.Length ||
+            !CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes))
             return Unauthorized(new { error = "Invalid webhook password" });
 
         return await CreateLeadForOrganizationAsync(organization, request, ct);

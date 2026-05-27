@@ -33,28 +33,32 @@ public class LeadService : ILeadService
 
     /// <inheritdoc />
     public async Task<PagedResult<LeadDto>> GetLeadsPagedAsync(
-        Guid userId, 
-        Guid? organizationId, 
-        int page = 1, 
-        int pageSize = 20, 
-        string? search = null,
+        Guid userId,
+        Guid? organizationId,
+        int page = 1,
+        int pageSize = 20,
+        LeadQueryOptions? options = null,
         CancellationToken ct = default)
     {
         _logger.LogDebug(
-            "Getting paged leads for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}'",
-            userId, organizationId, page, pageSize, search);
+            "Getting paged leads for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}",
+            userId, organizationId, page, pageSize);
 
         var skip = (page - 1) * pageSize;
-        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, ct);
-        
+        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, options, ct);
+
         var dtos = items.Select(Map).ToList();
-        
+
         _logger.LogInformation(
             "Retrieved {Count} of {Total} leads for user {UserId} (page {Page})",
             items.Count, totalCount, userId, page);
 
         return PagedResult<LeadDto>.Create(dtos, totalCount, page, pageSize);
     }
+
+    /// <inheritdoc />
+    public async Task<LeadStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        await _repository.GetStatsAsync(userId, organizationId, ct);
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<LeadDto>> GetLeadsAsync(
@@ -484,20 +488,21 @@ public class LeadService : ILeadService
 
     private static LeadDto Map(Lead e) =>
         new LeadDto(
-            e.Id, 
-            e.Name, 
-            e.Email, 
-            e.Phone, 
-            e.CompanyId, 
-            e.Source, 
-            e.Status, 
-            e.LeadSourceId, 
-            e.LeadStatusId, 
-            e.LeadScore, 
-            e.LastContactedAt, 
-            e.Description, 
-            e.LifecycleStage, 
-            e.IsConverted, 
+            e.Id,
+            e.Name,
+            e.Email,
+            e.Phone,
+            e.CompanyId,
+            e.Company?.Name,
+            e.Source,
+            e.Status,
+            e.LeadSourceId,
+            e.LeadStatusId,
+            e.LeadScore,
+            e.LastContactedAt,
+            e.Description,
+            e.LifecycleStage,
+            e.IsConverted,
             e.ConvertedAtUtc,
             e.CreatedAtUtc);
 }
