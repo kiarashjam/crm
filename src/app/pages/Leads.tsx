@@ -81,6 +81,63 @@ import type { LeadForm } from './leads/types';
 /** Fallback row style when activity type is unknown (matches `note` in config). */
 const DEFAULT_ACTIVITY_TYPE = ACTIVITY_TYPES[3]!;
 
+// --- Lead card display constants & formatters (module-level so they are not
+//     re-allocated for every card on every render). ---
+type StatusStyle = { bg: string; text: string; border: string; dot: string };
+const LEAD_STATUS_COLORS: Record<string, StatusStyle> = {
+  New: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-500' },
+  Contacted: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' },
+  Qualified: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+  Lost: { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-200', dot: 'bg-slate-400' },
+};
+const DEFAULT_STATUS_STYLE: StatusStyle = { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', dot: 'bg-slate-400' };
+
+const LEAD_AVATAR_GRADIENTS: Record<string, string> = {
+  New: 'from-blue-500 to-cyan-400',
+  Contacted: 'from-amber-500 to-orange-400',
+  Qualified: 'from-emerald-500 to-teal-400',
+  Lost: 'from-slate-400 to-slate-300',
+};
+
+const LEAD_SOURCE_ICONS: Record<string, string> = {
+  website: '🌐',
+  referral: '🤝',
+  ads: '📢',
+  events: '🎯',
+  manual: '✏️',
+  linkedin: '💼',
+  cold_call: '📞',
+  email_campaign: '📧',
+};
+
+const LEAD_SOURCE_BADGE_STYLES: Record<string, string> = {
+  website: 'bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 text-blue-900 border-blue-200/70 shadow-sm shadow-blue-500/10',
+  referral: 'bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-900 border-emerald-200/70 shadow-sm',
+  ads: 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border-amber-200/70 shadow-sm',
+  events: 'bg-gradient-to-r from-violet-50 to-fuchsia-50 text-violet-900 border-violet-200/60 shadow-sm',
+  manual: 'bg-gradient-to-r from-slate-100 to-slate-50 text-slate-800 border-slate-200/80 shadow-sm',
+  linkedin: 'bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-900 border-sky-200/70 shadow-sm',
+  cold_call: 'bg-gradient-to-r from-rose-50 to-orange-50 text-rose-900 border-rose-200/60 shadow-sm',
+  email_campaign: 'bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-900 border-indigo-200/70 shadow-sm',
+};
+const DEFAULT_SOURCE_BADGE_CLASS = 'bg-gradient-to-r from-slate-50 to-slate-100 text-slate-700 border-slate-200/70 shadow-sm';
+
+const safeDate = (dateStr?: string): Date | null => {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+const fmtAddedAt = (dateStr?: string) =>
+  safeDate(dateStr)?.toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit',
+  }) ?? null;
+const fmtDateShort = (dateStr?: string) =>
+  safeDate(dateStr)?.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) ?? null;
+const fmtDateFull = (dateStr?: string) =>
+  safeDate(dateStr)?.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) ?? null;
+const fmtActivityWhen = (dateStr: string) =>
+  safeDate(dateStr)?.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) ?? '';
+
 const LEAD_ASSIGNMENTS_STORAGE_KEY = 'crm.leadAssignments.v1';
 const LEAD_REFERRALS_STORAGE_KEY = 'crm.leadReferrals.v1';
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
@@ -523,6 +580,12 @@ export default function Leads() {
   /** Leads for the current page (search/filter/sort applied server-side, except assignment filter). */
   const filteredLeads = leads;
 
+  // Index org members by id once per render so each card's assignee lookup is O(1).
+  const orgMembersById = useMemo(
+    () => new Map(orgMembers.map((m) => [m.userId, m])),
+    [orgMembers],
+  );
+
   // Count active filters
   const activeFilterCount = [
     filterStatuses.length > 0,
@@ -933,7 +996,13 @@ export default function Leads() {
         toast.error(`${failed} of ${ids.length} updates failed`);
       }
       clearSelection();
-      await fetchLeads();
+      // The optimistic handleLeadUpdate calls already reflect the new status.
+      // Only refetch when a status filter is active, since the changed leads
+      // may no longer match the current filter (avoids a needless page +
+      // per-lead activity reload in the common no-filter case).
+      if (filterStatuses.length > 0 || filterConverted !== 'all') {
+        await fetchLeads();
+      }
     } finally {
       setBulkBusy(false);
     }
@@ -1680,50 +1749,15 @@ export default function Leads() {
           )}
           <div className="space-y-3">
             {filteredLeads.map((lead) => {
-              // Status color mapping
-              const statusColors: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-                New: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-500' },
-                Contacted: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' },
-                Qualified: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-                Lost: { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-200', dot: 'bg-slate-400' },
-              };
-              const statusStyle = statusColors[lead.status] || { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', dot: 'bg-slate-400' };
+              const statusStyle = LEAD_STATUS_COLORS[lead.status] || DEFAULT_STATUS_STYLE;
 
-              // Avatar gradient based on status
-              const avatarGradients: Record<string, string> = {
-                New: 'from-blue-500 to-cyan-400',
-                Contacted: 'from-amber-500 to-orange-400',
-                Qualified: 'from-emerald-500 to-teal-400',
-                Lost: 'from-slate-400 to-slate-300',
-              };
-              const avatarGradient = lead.isConverted 
-                ? 'from-emerald-600 to-teal-500' 
-                : (avatarGradients[lead.status] || 'from-slate-500 to-slate-400');
+              const avatarGradient = lead.isConverted
+                ? 'from-emerald-600 to-teal-500'
+                : (LEAD_AVATAR_GRADIENTS[lead.status] || 'from-slate-500 to-slate-400');
 
-              // Source icons mapping
-              const sourceIcons: Record<string, string> = {
-                website: '🌐',
-                referral: '🤝',
-                ads: '📢',
-                events: '🎯',
-                manual: '✏️',
-                linkedin: '💼',
-                cold_call: '📞',
-                email_campaign: '📧',
-              };
-
-              const sourceBadgeStyles: Record<string, string> = {
-                website: 'bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 text-blue-900 border-blue-200/70 shadow-sm shadow-blue-500/10',
-                referral: 'bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-900 border-emerald-200/70 shadow-sm',
-                ads: 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border-amber-200/70 shadow-sm',
-                events: 'bg-gradient-to-r from-violet-50 to-fuchsia-50 text-violet-900 border-violet-200/60 shadow-sm',
-                manual: 'bg-gradient-to-r from-slate-100 to-slate-50 text-slate-800 border-slate-200/80 shadow-sm',
-                linkedin: 'bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-900 border-sky-200/70 shadow-sm',
-                cold_call: 'bg-gradient-to-r from-rose-50 to-orange-50 text-rose-900 border-rose-200/60 shadow-sm',
-                email_campaign: 'bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-900 border-indigo-200/70 shadow-sm',
-              };
+              const sourceIcons = LEAD_SOURCE_ICONS;
               const sourceKey = (lead.source || '').toLowerCase();
-              const sourceBadgeClass = sourceBadgeStyles[sourceKey] ?? 'bg-gradient-to-r from-slate-50 to-slate-100 text-slate-700 border-slate-200/70 shadow-sm';
+              const sourceBadgeClass = LEAD_SOURCE_BADGE_STYLES[sourceKey] ?? DEFAULT_SOURCE_BADGE_CLASS;
 
               // Get initials
               const initials = lead.name
@@ -1733,58 +1767,13 @@ export default function Leads() {
                 .join('')
                 .toUpperCase();
 
-              // Get assignee info
-              const assignee = lead.assignedToId ? orgMembers.find(m => m.userId === lead.assignedToId) : null;
-              
-              // Format dates helper
-              const formatAddedAt = (dateStr?: string) => {
-                if (!dateStr) return null;
-                try {
-                  const d = new Date(dateStr);
-                  if (Number.isNaN(d.getTime())) return null;
-                  return d.toLocaleString(undefined, {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                    second: '2-digit',
-                  });
-                } catch { return null; }
-              };
+              // Get assignee info (orgMembers indexed once per render via useMemo below)
+              const assignee = lead.assignedToId ? orgMembersById.get(lead.assignedToId) ?? null : null;
 
-              const formatDateShort = (dateStr?: string) => {
-                if (!dateStr) return null;
-                try {
-                  const d = new Date(dateStr);
-                  if (Number.isNaN(d.getTime())) return null;
-                  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-                } catch { return null; }
-              };
-
-              const formatDateFull = (dateStr?: string) => {
-                if (!dateStr) return null;
-                try {
-                  const d = new Date(dateStr);
-                  if (Number.isNaN(d.getTime())) return null;
-                  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-                } catch { return null; }
-              };
-
-              const formatActivityWhen = (dateStr: string) => {
-                try {
-                  const d = new Date(dateStr);
-                  if (Number.isNaN(d.getTime())) return '';
-                  return d.toLocaleString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  });
-                } catch {
-                  return '';
-                }
-              };
+              const formatAddedAt = fmtAddedAt;
+              const formatDateShort = fmtDateShort;
+              const formatDateFull = fmtDateFull;
+              const formatActivityWhen = fmtActivityWhen;
 
               const leadInteractions = pageActivities.get(lead.id) ?? [];
 
