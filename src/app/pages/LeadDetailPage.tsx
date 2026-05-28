@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import {
-  ArrowLeft, Mail, Phone, Building2, Sparkles, Tag, Trash2, ArrowRightCircle,
-  User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, X, Calendar,
+  ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2, ArrowRightCircle,
+  User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
   MessageSquarePlus, FileText, Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -108,47 +108,61 @@ export default function LeadDetailPage() {
   const [newTaskDue, setNewTaskDue] = useState('');
   const [creatingTask, setCreatingTask] = useState(false);
 
-  // Tag input
-  const [newTag, setNewTag] = useState('');
-  const tagInputRef = useRef<HTMLInputElement | null>(null);
-
   // ----- Initial load -----
+  // Each id-keyed effect uses a `cancelled` flag so a quick A → B navigation
+  // can't let A's response stomp B's data. State for the previous lead is
+  // also reset eagerly so the page never briefly mixes A's lead with B's tasks.
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     setNotFound(false);
+    setLead(null);
+    setActivities([]);
+    setTasks([]);
+    let cancelled = false;
     (async () => {
       try {
         const found = await getLeadById(id);
-        if (!found) {
-          setNotFound(true);
-        } else {
-          setLead(found);
-        }
+        if (cancelled) return;
+        if (!found) setNotFound(true);
+        else setLead(found);
       } catch {
-        setNotFound(true);
+        if (!cancelled) setNotFound(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
   }, [id]);
 
   // Static lookup data (don't block first paint of lead detail).
   useEffect(() => {
-    getCompanies().then(setCompanies).catch(() => setCompanies([]));
-    getLeadStatuses().then(setStatuses).catch(() => setStatuses([]));
-    getLeadSources().then(setSources).catch(() => setSources([]));
+    let cancelled = false;
+    getCompanies().then((v) => { if (!cancelled) setCompanies(v); }).catch(() => { if (!cancelled) setCompanies([]); });
+    getLeadStatuses().then((v) => { if (!cancelled) setStatuses(v); }).catch(() => { if (!cancelled) setStatuses([]); });
+    getLeadSources().then((v) => { if (!cancelled) setSources(v); }).catch(() => { if (!cancelled) setSources([]); });
+    return () => { cancelled = true; };
   }, []);
   useEffect(() => {
     if (!currentOrgId) { setOrgMembers([]); return; }
-    getOrgMembers(currentOrgId).then(setOrgMembers).catch(() => setOrgMembers([]));
+    let cancelled = false;
+    getOrgMembers(currentOrgId)
+      .then((v) => { if (!cancelled) setOrgMembers(v); })
+      .catch(() => { if (!cancelled) setOrgMembers([]); });
+    return () => { cancelled = true; };
   }, [currentOrgId]);
 
-  // Activities + tasks once we know the lead exists.
+  // Activities + tasks for the current lead, with the same cancellation pattern.
   useEffect(() => {
     if (!id) return;
-    getActivitiesByLead(id).then(setActivities).catch(() => setActivities([]));
-    getTasksByLead(id).then(setTasks).catch(() => setTasks([]));
+    let cancelled = false;
+    getActivitiesByLead(id)
+      .then((v) => { if (!cancelled) setActivities(v); })
+      .catch(() => { if (!cancelled) setActivities([]); });
+    getTasksByLead(id)
+      .then((v) => { if (!cancelled) setTasks(v); })
+      .catch(() => { if (!cancelled) setTasks([]); });
+    return () => { cancelled = true; };
   }, [id]);
 
   // ----- Derived -----
@@ -328,25 +342,6 @@ export default function LeadDetailPage() {
         leadId: task.id ? lead?.id : undefined,
       }).catch(() => {});
     }
-  };
-
-  const handleAddTag = async () => {
-    if (!lead || !newTag.trim()) return;
-    const tag = newTag.trim();
-    if (lead.tags?.includes(tag)) {
-      setNewTag('');
-      return;
-    }
-    const nextTags = [...(lead.tags ?? []), tag];
-    const ok = await patchLead({ tags: nextTags }, { subject: 'Tag added', body: tag });
-    if (ok) setNewTag('');
-    tagInputRef.current?.focus();
-  };
-
-  const handleRemoveTag = async (tag: string) => {
-    if (!lead) return;
-    const nextTags = (lead.tags ?? []).filter((t) => t !== tag);
-    await patchLead({ tags: nextTags }, { subject: 'Tag removed', body: tag });
   };
 
   const handleDelete = async () => {
@@ -812,43 +807,10 @@ export default function LeadDetailPage() {
                 )}
               </div>
 
-              {/* Tags card */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Tags</h3>
-                {(lead.tags ?? []).length === 0 ? (
-                  <p className="text-xs text-slate-400 italic mb-2">No tags yet</p>
-                ) : (
-                  <div className="mb-2 flex flex-wrap gap-1.5">
-                    {(lead.tags ?? []).map((tag) => (
-                      <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
-                        <Tag className="w-3 h-3 text-slate-400" />
-                        {tag}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTag(tag)}
-                          className="ml-0.5 text-slate-400 hover:text-red-500"
-                          aria-label={`Remove tag ${tag}`}
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="flex gap-1.5">
-                  <input
-                    ref={tagInputRef}
-                    value={newTag}
-                    onChange={(e) => setNewTag(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
-                    placeholder="Add tag…"
-                    className="flex-1 rounded-md border border-slate-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30"
-                  />
-                  <Button size="sm" variant="outline" onClick={handleAddTag} disabled={!newTag.trim()} className="h-7 px-2 text-xs">
-                    Add
-                  </Button>
-                </div>
-              </div>
+              {/* Tags intentionally not surfaced here yet: the backend's
+                  UpdateLeadRequest has no Tags field, so any add/remove would
+                  silently fail to persist. Re-enable once the backend gains
+                  Lead.Tags support. */}
             </aside>
           </div>
         </main>

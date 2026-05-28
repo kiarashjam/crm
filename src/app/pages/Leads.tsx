@@ -258,14 +258,32 @@ export default function Leads() {
   // Quick-add lead modal (single-page form; full wizard remains available)
   const [quickAddOpen, setQuickAddOpen] = useState(false);
 
-  // Filter & Sort state
-  // Status filter supports multiple selections (empty array = all statuses).
-  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
-  const [filterSource, setFilterSource] = useState<string>('all');
-  const [filterConverted, setFilterConverted] = useState<'all' | 'converted' | 'active'>('active');
-  const [filterAssignment, setFilterAssignment] = useState<'all' | 'me' | 'unassigned'>('all');
-  const [sortField, setSortField] = useState<'name' | 'email' | 'status' | 'createdAt'>('createdAt');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  // Filter & Sort state.
+  // Initial values are seeded from the URL so that navigating away (e.g. to a
+  // lead detail page) and back preserves the user's filters. The matching
+  // useEffect below writes any state change back into the URL.
+  const [filterStatuses, setFilterStatuses] = useState<string[]>(() => {
+    const raw = new URLSearchParams(window.location.search).get('statuses');
+    return raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  });
+  const [filterSource, setFilterSource] = useState<string>(() => {
+    return new URLSearchParams(window.location.search).get('source') ?? 'all';
+  });
+  const [filterConverted, setFilterConverted] = useState<'all' | 'converted' | 'active'>(() => {
+    const v = new URLSearchParams(window.location.search).get('converted');
+    return v === 'all' || v === 'converted' || v === 'active' ? v : 'active';
+  });
+  const [filterAssignment, setFilterAssignment] = useState<'all' | 'me' | 'unassigned'>(() => {
+    const v = new URLSearchParams(window.location.search).get('assignment');
+    return v === 'me' || v === 'unassigned' ? v : 'all';
+  });
+  const [sortField, setSortField] = useState<'name' | 'email' | 'status' | 'createdAt'>(() => {
+    const v = new URLSearchParams(window.location.search).get('sort');
+    return v === 'name' || v === 'email' || v === 'status' || v === 'createdAt' ? v : 'createdAt';
+  });
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>(() => {
+    return new URLSearchParams(window.location.search).get('dir') === 'asc' ? 'asc' : 'desc';
+  });
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [leadAssignments, setLeadAssignments] = useState<Record<string, string>>(() => loadLeadAssignments());
@@ -301,14 +319,26 @@ export default function Leads() {
     );
   }, [debouncedSearch, setSearchParams]);
 
-  // Reset to page 1 when server-side filters or sort change
+  // Reset to page 1 when filters / sort change, and mirror the values into the
+  // URL so navigating away and back preserves them (and so any URL is shareable).
   useEffect(() => {
     setSearchParams(
       (prev) => {
-        if (prev.get('page') === '1') return prev;
         const params = new URLSearchParams(prev);
         params.set('page', '1');
-        return params;
+        if (filterStatuses.length > 0) params.set('statuses', filterStatuses.join(','));
+        else params.delete('statuses');
+        if (filterSource && filterSource !== 'all') params.set('source', filterSource);
+        else params.delete('source');
+        if (filterConverted !== 'active') params.set('converted', filterConverted);
+        else params.delete('converted');
+        if (filterAssignment !== 'all') params.set('assignment', filterAssignment);
+        else params.delete('assignment');
+        if (sortField !== 'createdAt') params.set('sort', sortField);
+        else params.delete('sort');
+        if (sortDirection !== 'desc') params.set('dir', sortDirection);
+        else params.delete('dir');
+        return params.toString() === prev.toString() ? prev : params;
       },
       { replace: true }
     );
