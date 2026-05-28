@@ -67,7 +67,6 @@ import {
 
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
-import { LeadDetailModal } from './leads/LeadDetailModal';
 import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
 import { StatusChangePopover } from './leads/components/StatusChangePopover';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
@@ -246,8 +245,6 @@ export default function Leads() {
   const [converting, setConverting] = useState(false);
 
   // Detail modal state
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
-  const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [orgMembers, setOrgMembers] = useState<OrgMemberDto[]>([]);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 
@@ -850,54 +847,77 @@ export default function Leads() {
     setDialogOpen(true);
   };
 
+  // Lead detail now lives on its own page (/leads/:id). Clicking a card
+  // navigates instead of opening a modal.
   const openDetail = (lead: Lead) => {
-    setDetailLead(lead);
-    setDetailModalOpen(true);
-    setSearchParams(
-      (prev) => {
-        const params = new URLSearchParams(prev);
-        params.set('leadId', lead.id);
-        return params;
-      },
-      { replace: true },
-    );
+    navigate(`/leads/${lead.id}`);
   };
 
-  const closeDetail = () => {
-    setDetailModalOpen(false);
-    setSearchParams(
-      (prev) => {
-        const params = new URLSearchParams(prev);
-        params.delete('leadId');
-        return params;
-      },
-      { replace: true },
-    );
-  };
-
-  // Reopen the detail modal when the page is loaded with ?leadId=... (deep link / refresh).
+  // Migrate any legacy `?leadId=` deep-links to the new page, then handle
+  // hand-offs from the detail page: `?convertLeadId=<id>` opens the convert
+  // dialog; `?edit=<id>` opens the edit wizard. Each cleans up its own param.
   useEffect(() => {
-    const leadId = searchParams.get('leadId');
-    if (!leadId || detailModalOpen) return;
-    const target = leads.find((l) => l.id === leadId);
-    if (target) {
-      setDetailLead(target);
-      setDetailModalOpen(true);
+    const legacyLeadId = searchParams.get('leadId');
+    if (legacyLeadId) {
+      navigate(`/leads/${legacyLeadId}`, { replace: true });
       return;
     }
-    let cancelled = false;
-    getLeadById(leadId)
-      .then((lead) => {
-        if (!cancelled && lead) {
-          setDetailLead(lead);
-          setDetailModalOpen(true);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [leads, searchParams, detailModalOpen]);
+    const convertLeadId = searchParams.get('convertLeadId');
+    if (convertLeadId) {
+      const target = leads.find((l) => l.id === convertLeadId);
+      const consumeParam = () => {
+        setSearchParams(
+          (prev) => {
+            const p = new URLSearchParams(prev);
+            p.delete('convertLeadId');
+            return p;
+          },
+          { replace: true },
+        );
+      };
+      if (target) {
+        setConvertDialogLead(target);
+        consumeParam();
+      } else {
+        getLeadById(convertLeadId)
+          .then((lead) => {
+            if (lead) setConvertDialogLead(lead);
+            consumeParam();
+          })
+          .catch(() => consumeParam());
+      }
+      return;
+    }
+    const editLeadId = searchParams.get('edit');
+    if (editLeadId) {
+      const target = leads.find((l) => l.id === editLeadId);
+      const consumeParam = () => {
+        setSearchParams(
+          (prev) => {
+            const p = new URLSearchParams(prev);
+            p.delete('edit');
+            return p;
+          },
+          { replace: true },
+        );
+      };
+      if (target) {
+        openEdit(target);
+        consumeParam();
+      } else {
+        getLeadById(editLeadId)
+          .then((lead) => {
+            if (lead) openEdit(lead);
+            consumeParam();
+          })
+          .catch(() => consumeParam());
+      }
+    }
+    // openEdit is re-created each render but only sets state; the effect is
+    // idempotent (one-shot per ?edit / ?convertLeadId param), so listing it as
+    // a dep would only cause needless re-runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, searchParams, navigate, setSearchParams]);
 
   // Keyboard shortcuts: `/` focuses search, `n` opens "New lead".
   useEffect(() => {
@@ -913,14 +933,14 @@ export default function Leads() {
         e.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
-      } else if (e.key.toLowerCase() === 'n' && !isTyping && !dialogOpen && !detailModalOpen && !quickAddOpen) {
+      } else if (e.key.toLowerCase() === 'n' && !isTyping && !dialogOpen && !quickAddOpen) {
         e.preventDefault();
         setQuickAddOpen(true);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [dialogOpen, detailModalOpen, quickAddOpen]);
+  }, [dialogOpen, quickAddOpen]);
 
   // Selection helpers
   const toggleSelected = (leadId: string) => {
@@ -1082,7 +1102,6 @@ export default function Leads() {
       if (!hasLead) return [mergedLead, ...prev];
       return prev.map((l) => (l.id === mergedLead.id ? mergedLead : l));
     });
-    setDetailLead(mergedLead);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2186,22 +2205,6 @@ export default function Leads() {
         statusOptions={statusOptions}
         onSubmit={handleSubmit}
         saving={saving}
-      />
-
-      {/* Lead Detail Modal */}
-      <LeadDetailModal
-        open={detailModalOpen}
-        onOpenChange={(next) => (next ? setDetailModalOpen(true) : closeDetail())}
-        lead={detailLead}
-        companies={companies}
-        statusOptions={statusOptions}
-        sourceOptions={sourceOptions}
-        onEdit={openEdit}
-        onConvert={(lead) => setConvertDialogLead(lead)}
-        onDelete={(lead) => setDeleteConfirmLead(lead)}
-        onUpdate={handleLeadUpdate}
-        orgMembers={orgMembers}
-        currentUser={currentUser}
       />
 
       {/* Enhanced Convert Lead Dialog */}

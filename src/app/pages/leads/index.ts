@@ -12,5 +12,4 @@ export { AddLeadDialog } from './AddLeadDialog';
 export { LeadCard } from './LeadCard';
 export { LeadFilters } from './LeadFilters';
 export { LeadStats } from './LeadStats';
-export { LeadDetailModal } from './LeadDetailModal';
 export { ConvertLeadDialog } from './ConvertLeadDialog';

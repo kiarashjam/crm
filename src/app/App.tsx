@@ -27,6 +27,7 @@ const Help = lazy(() => import('@/app/pages/Help'));
 const Privacy = lazy(() => import('@/app/pages/Privacy'));
 const Terms = lazy(() => import('@/app/pages/Terms'));
 const Leads = lazy(() => import('@/app/pages/Leads'));
+const LeadDetailPage = lazy(() => import('@/app/pages/LeadDetailPage'));
 const LeadWebhook = lazy(() => import('@/app/pages/LeadWebhook'));
 const LeadImport = lazy(() => import('@/app/pages/LeadImport'));
 const Pipeline = lazy(() => import('@/app/pages/Pipeline'));
@@ -107,6 +108,7 @@ export default function App() {
                     <Route path="/leads" element={<Leads />} />
                     <Route path="/leads/webhook" element={<LeadWebhook />} />
                     <Route path="/leads/import" element={<LeadImport />} />
+                    <Route path="/leads/:id" element={<LeadDetailPage />} />
                     <Route path="/deals" element={<Pipeline />} />
                     <Route path="/deals/:id" element={<DealDetail />} />
                     <Route path="/tasks" element={<Tasks />} />
