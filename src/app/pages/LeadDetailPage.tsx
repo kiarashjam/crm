@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2, ArrowRightCircle,
@@ -34,6 +34,7 @@ import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES } from './leads/c
 import { isValidGuid } from './leads/utils';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
+import { ScoreGauge } from './leads/detail/ScoreGauge';
 
 type Tab = 'activity' | 'tasks' | 'notes';
 
@@ -445,20 +446,41 @@ export default function LeadDetailPage() {
             </div>
           </div>
 
-          {/* Hero */}
-          <section className="border-b border-slate-200/70 bg-white">
-            <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          {/* Hero — status-tinted gradient backdrop with decorative blurs gives the page depth */}
+          <section className="relative isolate overflow-hidden border-b border-slate-200/70 bg-gradient-to-br from-white via-slate-50/60 to-white">
+            {/* status-tinted radial accent */}
+            <div
+              aria-hidden
+              className={cn(
+                'pointer-events-none absolute -top-24 -right-12 h-72 w-72 rounded-full blur-3xl opacity-25',
+                'bg-gradient-to-br', gradient,
+              )}
+            />
+            <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-12 h-64 w-64 rounded-full bg-indigo-200/30 blur-3xl" />
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-200/80 to-transparent" />
+
+            <div className="relative mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-8 lg:px-8">
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex min-w-0 items-start gap-4 sm:gap-5">
-                  <div
-                    className={cn(
-                      'flex h-16 w-16 sm:h-20 sm:w-20 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-white text-xl sm:text-2xl font-bold shadow-lg ring-4 ring-white',
-                      gradient,
+                  <div className="relative shrink-0">
+                    <div
+                      className={cn(
+                        'flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-2xl bg-gradient-to-br text-white text-xl sm:text-2xl font-bold shadow-lg ring-4 ring-white',
+                        gradient,
+                      )}
+                    >
+                      {initialsOf(lead.name) || <UserIcon className="w-7 h-7" />}
+                    </div>
+                    {lead.isConverted && (
+                      <span
+                        aria-hidden
+                        className="absolute -right-1 -bottom-1 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow ring-4 ring-white"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </span>
                     )}
-                  >
-                    {initialsOf(lead.name) || <UserIcon className="w-7 h-7" />}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
                         {lead.name}
@@ -514,48 +536,46 @@ export default function LeadDetailPage() {
                         </span>
                       )}
                     </div>
+                    {/* Compact meta strip: timestamps live inline rather than as separate cards */}
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                      <span className="inline-flex items-center gap-1.5" title={formatFull(lead.lastContactedAt) ?? ''}>
+                        <Clock className="w-3 h-3" />
+                        Last contacted {formatRelative(lead.lastContactedAt) ?? '—'}
+                      </span>
+                      <span className="text-slate-200">·</span>
+                      <span className="inline-flex items-center gap-1.5" title={formatFull(lead.createdAtUtc) ?? ''}>
+                        <Calendar className="w-3 h-3" />
+                        Created {formatRelative(lead.createdAtUtc) ?? '—'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Quick action buttons */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {lead.email && (
-                    <Button asChild size="sm" variant="outline" className="gap-1.5">
-                      <a href={`mailto:${lead.email}`}><Mail className="w-4 h-4" /> Email</a>
-                    </Button>
-                  )}
-                  {lead.phone && (
-                    <Button asChild size="sm" variant="outline" className="gap-1.5">
-                      <a href={`tel:${lead.phone}`}><Phone className="w-4 h-4" /> Call</a>
-                    </Button>
-                  )}
-                  <QuickLogPopover
-                    onSubmit={(p) => logActivity(p)}
-                    trigger={
-                      <Button size="sm" className="gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:from-orange-600 hover:to-amber-600 shadow shadow-orange-500/20">
-                        <MessageSquarePlus className="w-4 h-4" />
-                        Log activity
+                {/* Right side: score gauge + action buttons (stack on mobile, side-by-side on lg) */}
+                <div className="flex shrink-0 flex-row items-center gap-5 lg:flex-col lg:items-end lg:gap-4">
+                  <ScoreEditor score={lead.leadScore ?? 0} onSave={saveScore} />
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {lead.email && (
+                      <Button asChild size="sm" variant="outline" className="gap-1.5">
+                        <a href={`mailto:${lead.email}`}><Mail className="w-4 h-4" /> Email</a>
                       </Button>
-                    }
-                  />
+                    )}
+                    {lead.phone && (
+                      <Button asChild size="sm" variant="outline" className="gap-1.5">
+                        <a href={`tel:${lead.phone}`}><Phone className="w-4 h-4" /> Call</a>
+                      </Button>
+                    )}
+                    <QuickLogPopover
+                      onSubmit={(p) => logActivity(p)}
+                      trigger={
+                        <Button size="sm" className="gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:from-orange-600 hover:to-amber-600 shadow shadow-orange-500/20">
+                          <MessageSquarePlus className="w-4 h-4" />
+                          Log activity
+                        </Button>
+                      }
+                    />
+                  </div>
                 </div>
-              </div>
-
-              {/* Score bar */}
-              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <ScoreCard score={lead.leadScore ?? 0} onSave={saveScore} />
-                <FactCard
-                  label="Last contacted"
-                  value={formatRelative(lead.lastContactedAt) ?? '—'}
-                  hint={formatFull(lead.lastContactedAt) ?? ''}
-                  icon={<Clock className="w-4 h-4 text-slate-400" />}
-                />
-                <FactCard
-                  label="Created"
-                  value={formatRelative(lead.createdAtUtc) ?? '—'}
-                  hint={formatFull(lead.createdAtUtc) ?? ''}
-                  icon={<Calendar className="w-4 h-4 text-slate-400" />}
-                />
               </div>
             </div>
           </section>
@@ -726,85 +746,87 @@ export default function LeadDetailPage() {
               )}
             </div>
 
-            {/* Sidebar */}
-            <aside className="space-y-4">
-              {/* About card */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Contact</h3>
-                <div className="space-y-3">
-                  <InlineField label="Name" value={lead.name} onSave={saveName} icon={<UserIcon className="w-3.5 h-3.5" />} />
-                  <InlineField label="Email" type="email" value={lead.email ?? ''} onSave={saveEmail} icon={<Mail className="w-3.5 h-3.5" />} />
-                  <InlineField label="Phone" type="tel" value={lead.phone ?? ''} onSave={savePhone} icon={<Phone className="w-3.5 h-3.5" />} />
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Company</div>
-                    <Select value={lead.companyId ?? ''} onValueChange={(v) => setCompanyId(v === '__none__' ? '' : v)}>
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="No company" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">No company</SelectItem>
-                        {companies.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+            {/* Sidebar — single card with section dividers, sticky on lg+ so it
+                stays in view as the user scrolls the activity timeline. */}
+            <aside className="lg:sticky lg:top-[64px] lg:self-start lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto">
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                {/* Contact section */}
+                <SidebarSection title="Contact">
+                  <div className="space-y-3">
+                    <InlineField label="Name" value={lead.name} onSave={saveName} icon={<UserIcon className="w-3.5 h-3.5" />} />
+                    <InlineField label="Email" type="email" value={lead.email ?? ''} onSave={saveEmail} icon={<Mail className="w-3.5 h-3.5" />} />
+                    <InlineField label="Phone" type="tel" value={lead.phone ?? ''} onSave={savePhone} icon={<Phone className="w-3.5 h-3.5" />} />
+                    <SidebarSelectField label="Company" icon={<Building2 className="w-3.5 h-3.5 text-slate-400" />}>
+                      <Select value={lead.companyId ?? ''} onValueChange={(v) => setCompanyId(v === '__none__' ? '' : v)}>
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue placeholder="No company" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">No company</SelectItem>
+                          {companies.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </SidebarSelectField>
                   </div>
-                </div>
-              </div>
+                </SidebarSection>
 
-              {/* Details card */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Details</h3>
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-                      Source
+                {/* Details section */}
+                <SidebarSection title="Details">
+                  <div className="space-y-3">
+                    <SidebarSelectField label="Source" icon={<Sparkles className="w-3.5 h-3.5 text-orange-400" />}>
+                      <Select value={lead.source ?? ''} onValueChange={setSource}>
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue placeholder="Not set" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sourceOptions.map((s) => (
+                            <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </SidebarSelectField>
+                    <SidebarSelectField label="Lifecycle stage">
+                      <Select value={lead.lifecycleStage ?? ''} onValueChange={setLifecycle}>
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue placeholder="Not set" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LIFECYCLE_STAGES.map((s) => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </SidebarSelectField>
+                  </div>
+                </SidebarSection>
+
+                {/* Owner section */}
+                <SidebarSection title="Owner" last>
+                  <Select value={lead.assignedToId ?? '__none__'} onValueChange={(v) => setAssignment(v === '__none__' ? '' : v)}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Unassigned</SelectItem>
+                      {orgMembers.map((m) => (
+                        <SelectItem key={m.userId} value={m.userId}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {assignee && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white text-[11px] font-semibold ring-2 ring-white shadow-sm">
+                        {(assignee.name?.[0] ?? '?').toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-slate-700">{assignee.name}</p>
+                        <p className="truncate text-[11px] text-slate-400">{assignee.email}</p>
+                      </div>
                     </div>
-                    <Select value={lead.source ?? ''} onValueChange={setSource}>
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Not set" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sourceOptions.map((s) => (
-                          <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Lifecycle stage</div>
-                    <Select value={lead.lifecycleStage ?? ''} onValueChange={setLifecycle}>
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Not set" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {LIFECYCLE_STAGES.map((s) => (
-                          <SelectItem key={s} value={s}>{s}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Owner card */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Owner</h3>
-                <Select value={lead.assignedToId ?? '__none__'} onValueChange={(v) => setAssignment(v === '__none__' ? '' : v)}>
-                  <SelectTrigger className="h-9 text-sm">
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Unassigned</SelectItem>
-                    {orgMembers.map((m) => (
-                      <SelectItem key={m.userId} value={m.userId}>{m.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {assignee && (
-                  <p className="mt-2 truncate text-xs text-slate-500">{assignee.email}</p>
-                )}
+                  )}
+                </SidebarSection>
               </div>
 
               {/* Tags intentionally not surfaced here yet: the backend's
@@ -847,49 +869,120 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors',
-        active ? 'text-indigo-700' : 'text-slate-500 hover:text-slate-700',
+        'relative flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-sm font-medium transition-colors',
+        active
+          ? 'text-indigo-700'
+          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/60',
       )}
+      aria-current={active ? 'page' : undefined}
     >
       {icon}
       {children}
-      {active && <span className="absolute inset-x-0 -bottom-px h-0.5 bg-gradient-to-r from-indigo-500 to-purple-500" />}
+      <span
+        aria-hidden
+        className={cn(
+          'absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-opacity duration-200',
+          active ? 'opacity-100' : 'opacity-0',
+        )}
+      />
     </button>
   );
 }
 
-function ScoreCard({ score, onSave }: { score: number; onSave: (v: string) => Promise<boolean> }) {
-  const tone = score >= 70 ? 'from-emerald-500 to-teal-500' : score >= 40 ? 'from-amber-500 to-orange-500' : 'from-slate-400 to-slate-300';
+/**
+ * Sidebar section with a small uppercase header, separated from the next
+ * section by a thin divider rather than living in its own white card. Keeps
+ * the right rail visually calm while still grouping fields.
+ */
+function SidebarSection({
+  title, children, last,
+}: { title: string; children: React.ReactNode; last?: boolean }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Lead score</span>
-        <span className="text-2xl font-bold tabular-nums text-slate-900">{score}</span>
-      </div>
-      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-        <div className={cn('h-full rounded-full bg-gradient-to-r', tone)} style={{ width: `${Math.min(100, Math.max(0, score))}%` }} />
-      </div>
-      <details className="mt-2 group">
-        <summary className="cursor-pointer text-xs text-slate-400 hover:text-slate-600">
-          <Pencil className="inline w-3 h-3 mr-1" /> Edit
-        </summary>
-        <div className="mt-2">
-          <InlineField label="Set score (0–100)" type="number" value={String(score)} onSave={onSave} />
-        </div>
-      </details>
+    <div className={cn('p-4', !last && 'border-b border-slate-100')}>
+      <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        {title}
+      </h3>
+      {children}
     </div>
   );
 }
 
-function FactCard({ label, value, hint, icon }: { label: string; value: string; hint?: string; icon: React.ReactNode }) {
+/** Labelled wrapper for sidebar <Select> rows so the label has the same
+ *  weight & icon style as the click-to-edit InlineField rows above it. */
+function SidebarSelectField({
+  label, icon, children,
+}: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+    <div>
+      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
         {icon}
         {label}
       </div>
-      <p className="mt-1.5 text-base font-semibold text-slate-900">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-slate-400">{hint}</p>}
+      {children}
     </div>
+  );
+}
+
+/**
+ * Lead score editor — a circular gauge that flips into an inline number input
+ * when clicked. The gauge IS the affordance; no separate "Edit" link.
+ */
+function ScoreEditor({ score, onSave }: { score: number; onSave: (v: string) => Promise<boolean> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(score));
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) setDraft(String(score));
+  }, [score, editing]);
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const commit = async () => {
+    if (saving) return;
+    if (draft.trim() === String(score)) { setEditing(false); return; }
+    setSaving(true);
+    const ok = await onSave(draft.trim());
+    setSaving(false);
+    if (ok) setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-2 py-1.5 shadow-sm">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Score</span>
+        <input
+          ref={inputRef}
+          type="number"
+          min={0}
+          max={100}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { e.preventDefault(); setDraft(String(score)); setEditing(false); }
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          }}
+          onBlur={commit}
+          className="w-14 rounded-md border border-slate-200 px-1.5 py-1 text-center text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
+        />
+        {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      aria-label="Edit lead score"
+      className="group relative transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40 rounded-full"
+    >
+      <ScoreGauge score={score} />
+      <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-400 opacity-0 shadow ring-1 ring-slate-200 transition-opacity group-hover:opacity-100">
+        <Pencil className="w-3 h-3" />
+      </span>
+    </button>
   );
 }

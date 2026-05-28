@@ -137,18 +137,28 @@ export function InlineField({
           onClick={enterEdit}
           disabled={readOnly}
           className={cn(
-            'flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors -mx-2',
-            readOnly ? 'cursor-default text-slate-700' : 'hover:bg-slate-50 cursor-text',
+            'group/row -mx-2 flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors',
+            readOnly
+              ? 'cursor-default text-slate-700'
+              : 'cursor-text hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40',
           )}
         >
           <span className="flex min-w-0 items-center gap-2">
-            {icon && <span className="text-slate-400 shrink-0">{icon}</span>}
-            <span className={cn('min-w-0 truncate', !value && 'text-slate-400 italic')}>
+            {icon && (
+              <span className="shrink-0 text-slate-400 transition-colors group-hover/row:text-indigo-500">
+                {icon}
+              </span>
+            )}
+            <span className={cn(
+              'min-w-0 truncate transition-colors',
+              !value && 'italic text-slate-400',
+              value && 'group-hover/row:text-slate-900',
+            )}>
               {renderValue ? renderValue(value) : (value || emptyHint)}
             </span>
           </span>
           {!readOnly && (
-            <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100" />
+            <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-300 opacity-0 transition-all duration-200 group-hover/row:opacity-100 group-hover/row:text-slate-500" />
           )}
         </button>
       )}

@@ -96,11 +96,12 @@ export function ActivityTimeline({ activities, emptyHint = 'No activity yet.' }:
               const Icon = s.icon;
               const isSystem = activity.type === 'system';
               const created = new Date(activity.createdAt);
+              const creatorInitial = activity.createdByName?.trim().charAt(0).toUpperCase();
               return (
                 <li key={activity.id} className="relative pl-8 pb-5 last:pb-0">
                   <span
                     className={cn(
-                      'absolute left-0 top-0 -translate-x-1/2 flex h-7 w-7 items-center justify-center rounded-full ring-4 ring-white shadow-sm',
+                      'absolute left-0 top-0 -translate-x-1/2 flex h-7 w-7 items-center justify-center rounded-full ring-4 ring-white shadow-sm transition-transform',
                       s.tone,
                     )}
                     aria-hidden
@@ -109,10 +110,10 @@ export function ActivityTimeline({ activities, emptyHint = 'No activity yet.' }:
                   </span>
                   <div
                     className={cn(
-                      'rounded-xl border px-4 py-3 transition-colors',
+                      'rounded-xl border px-4 py-3 transition-all',
                       isSystem
                         ? 'border-slate-100 bg-slate-50/60'
-                        : 'border-slate-200 bg-white hover:border-indigo-200/70 hover:bg-indigo-50/30',
+                        : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-indigo-200/70 hover:bg-indigo-50/30 hover:shadow-sm',
                     )}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -138,7 +139,18 @@ export function ActivityTimeline({ activities, emptyHint = 'No activity yet.' }:
                       </p>
                     )}
                     {activity.createdByName && (
-                      <p className="mt-2 text-[11px] text-slate-400">by {activity.createdByName}</p>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold text-white ring-2 ring-white shadow-sm',
+                            isSystem ? 'bg-slate-400' : 'bg-gradient-to-br from-indigo-500 to-purple-500',
+                          )}
+                          aria-hidden
+                        >
+                          {creatorInitial ?? '?'}
+                        </span>
+                        <span className="text-[11px] text-slate-500">{activity.createdByName}</span>
+                      </div>
                     )}
                   </div>
                 </li>
