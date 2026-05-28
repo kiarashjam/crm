@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Search, Plus, Pencil, Trash2, Building2, User, ArrowRightCircle, Link2,
   Mail, Phone, Sparkles, Check, Tag, UserPlus, Info, CircleDot,
@@ -200,6 +200,7 @@ function saveLeadCreatedAtMap(createdAtByLeadId: Record<string, string>) {
 
 export default function Leads() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentOrgId } = useOrg();
 
@@ -878,9 +879,13 @@ export default function Leads() {
   };
 
   // Lead detail now lives on its own page (/leads/:id). Clicking a card
-  // navigates instead of opening a modal.
+  // navigates instead of opening a modal. Stash the current list URL
+  // (including filters / sort / page) via router state so the detail page's
+  // Back / breadcrumb can return here with everything intact.
   const openDetail = (lead: Lead) => {
-    navigate(`/leads/${lead.id}`);
+    navigate(`/leads/${lead.id}`, {
+      state: { from: location.pathname + location.search },
+    });
   };
 
   // Migrate any legacy `?leadId=` deep-links to the new page, then handle

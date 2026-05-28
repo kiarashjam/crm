@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2, ArrowRightCircle,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
@@ -81,7 +81,13 @@ function formatFull(iso?: string): string | null {
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { currentOrgId } = useOrg();
+
+  // When the user arrives from the leads list, Leads.tsx stashes the source
+  // URL (including filters/sort) here so Back / breadcrumb can return there
+  // intact. Direct deep-links won't have it; fall back to the bare list.
+  const backUrl = (location.state as { from?: string } | null)?.from ?? '/leads';
 
   // Core data
   const [lead, setLead] = useState<Lead | null>(null);
@@ -352,7 +358,7 @@ export default function LeadDetailPage() {
       const ok = await deleteLead(lead.id);
       if (ok) {
         toast.success('Lead deleted');
-        navigate('/leads');
+        navigate(backUrl);
       } else {
         toast.error('Failed to delete lead');
       }
@@ -386,7 +392,7 @@ export default function LeadDetailPage() {
             <h1 className="text-2xl font-semibold text-slate-900">Lead not found</h1>
             <p className="mt-2 text-slate-500">It may have been deleted, or you don&apos;t have access to it.</p>
             <Button asChild className="mt-6">
-              <Link to="/leads"><ArrowLeft className="w-4 h-4 mr-2" /> Back to leads</Link>
+              <Link to={backUrl}><ArrowLeft className="w-4 h-4 mr-2" /> Back to leads</Link>
             </Button>
           </main>
         </PageTransition>
@@ -409,7 +415,7 @@ export default function LeadDetailPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigate('/leads')}
+                  onClick={() => navigate(backUrl)}
                   className="gap-1.5 text-slate-600 hover:text-slate-900"
                   aria-label="Back to leads"
                 >
@@ -417,7 +423,7 @@ export default function LeadDetailPage() {
                   <span className="hidden sm:inline">Back</span>
                 </Button>
                 <span className="hidden h-5 w-px bg-slate-200 sm:block" />
-                <Link to="/leads" className="hidden text-sm text-slate-500 hover:text-slate-700 sm:inline">Leads</Link>
+                <Link to={backUrl} className="hidden text-sm text-slate-500 hover:text-slate-700 sm:inline">Leads</Link>
                 <span className="hidden text-slate-300 sm:inline">/</span>
                 <span className="truncate text-sm font-medium text-slate-700">{lead.name}</span>
               </div>
