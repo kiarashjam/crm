@@ -28,6 +28,7 @@ import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { isUsingRealApi } from '@/app/api';
 import { authFetchJson } from '@/app/api/apiClient';
 import type { GlobalSearchResult } from '@/app/api/search';
+import NotificationBell from '@/app/components/NotificationBell';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -484,8 +485,11 @@ export default function AppHeader() {
           {/* HP-9: Global search bar */}
           {isUsingRealApi() && <GlobalSearchBar />}
 
-          {/* Right: org selector + user menu + mobile trigger */}
+          {/* Right: notifications + org selector + user menu + mobile trigger */}
           <div className="flex items-center gap-2">
+            {/* Notifications */}
+            <NotificationBell />
+
             {/* Organization Selector */}
             {org?.currentOrg && (
               <Link
