@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2, ArrowRightCircle,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
-  MessageSquarePlus, FileText, Clock,
+  MessageSquarePlus, FileText, Clock, UserPlus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -12,11 +12,12 @@ import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getLeadById, updateLead, deleteLead,
-  getCompanies, getLeadStatuses, getLeadSources,
+  getCompanies, getContacts, getLeadStatuses, getLeadSources,
   getActivitiesByLead, createActivity,
   getTasksByLead, createTask, updateTask,
+  messages,
 } from '@/app/api';
-import type { Lead, Company, LeadStatus, LeadSource, Activity, TaskItem } from '@/app/api/types';
+import type { Lead, Company, Contact, LeadStatus, LeadSource, Activity, TaskItem } from '@/app/api/types';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { Button } from '@/app/components/ui/button';
@@ -30,8 +31,11 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { StatusChangePopover } from './leads/components/StatusChangePopover';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
-import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES } from './leads/config';
+import { AddLeadDialog } from './leads/AddLeadDialog';
+import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES, EMPTY_LEAD_FORM } from './leads/config';
 import { isValidGuid } from './leads/utils';
+import { loadLeadReferrals, setLeadReferral } from './leads/leadReferralStore';
+import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
@@ -94,6 +98,7 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [statuses, setStatuses] = useState<LeadStatus[]>([]);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -104,6 +109,12 @@ export default function LeadDetailPage() {
   const [tab, setTab] = useState<Tab>('activity');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Full "Edit lead" dialog — reuses the same multi-step editor as the leads
+  // list so every field (incl. Referred by) can be edited from this page.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<LeadForm>(EMPTY_LEAD_FORM);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Quick-log + email composer + task input
   const [noteDraft, setNoteDraft] = useState('');
@@ -131,8 +142,14 @@ export default function LeadDetailPage() {
       try {
         const found = await getLeadById(id);
         if (cancelled) return;
-        if (!found) setNotFound(true);
-        else setLead(found);
+        if (!found) {
+          setNotFound(true);
+        } else {
+          // referredByContactId isn't persisted by the backend — recover it from
+          // the local referral store (kept in sync with the leads list page).
+          const referredId = found.referredByContactId || loadLeadReferrals()[found.id];
+          setLead(referredId ? { ...found, referredByContactId: referredId } : found);
+        }
       } catch {
         if (!cancelled) setNotFound(true);
       } finally {
@@ -146,6 +163,7 @@ export default function LeadDetailPage() {
   useEffect(() => {
     let cancelled = false;
     getCompanies().then((v) => { if (!cancelled) setCompanies(v); }).catch(() => { if (!cancelled) setCompanies([]); });
+    getContacts().then((v) => { if (!cancelled) setContacts(v); }).catch(() => { if (!cancelled) setContacts([]); });
     getLeadStatuses().then((v) => { if (!cancelled) setStatuses(v); }).catch(() => { if (!cancelled) setStatuses([]); });
     getLeadSources().then((v) => { if (!cancelled) setSources(v); }).catch(() => { if (!cancelled) setSources([]); });
     return () => { cancelled = true; };
@@ -186,6 +204,11 @@ export default function LeadDetailPage() {
     () => (lead?.assignedToId ? orgMembers.find((m) => m.userId === lead.assignedToId) ?? null : null),
     [orgMembers, lead?.assignedToId],
   );
+  const referredContact = useMemo(
+    () => (lead?.referredByContactId ? contacts.find((c) => c.id === lead.referredByContactId) ?? null : null),
+    [contacts, lead?.referredByContactId],
+  );
+  const referredByName = referredContact?.name ?? lead?.referredByContactName ?? null;
 
   const gradient = lead && (lead.isConverted ? 'from-emerald-600 via-teal-500 to-cyan-400' : STATUS_GRADIENTS[lead.status] || 'from-slate-500 via-slate-400 to-slate-300');
   const statusBadgeTone = lead ? STATUS_BADGE_TONE[lead.status] ?? 'bg-slate-100 text-slate-600 border-slate-200' : '';
@@ -204,7 +227,14 @@ export default function LeadDetailPage() {
         toast.error('Failed to save');
         return false;
       }
-      setLead((prev) => (prev ? { ...prev, ...updated } : prev));
+      // The backend response omits referredByContactId (not part of its update
+      // contract), so keep the locally-tracked referral rather than dropping it.
+      setLead((prev) => (prev ? {
+        ...prev,
+        ...updated,
+        referredByContactId: updated.referredByContactId ?? prev.referredByContactId,
+        referredByContactName: updated.referredByContactName ?? prev.referredByContactName,
+      } : prev));
       if (log) {
         createActivity({ type: 'system', subject: log.subject, body: log.body, leadId: lead.id })
           .then((a) => a && setActivities((prev) => [a, ...prev]))
@@ -368,6 +398,82 @@ export default function LeadDetailPage() {
     }
   };
 
+  // Open the full multi-step editor, prefilled from the current lead. Mirrors
+  // the leads list's openEdit so the two stay behaviourally identical.
+  const openEdit = () => {
+    if (!lead) return;
+    const sourceOpt = sourceOptions.find((s) => s.id === lead.leadSourceId || s.name === lead.source);
+    const statusOpt = statusOptions.find((s) => s.id === lead.leadStatusId || s.name === lead.status);
+    setEditForm({
+      name: lead.name,
+      email: lead.email,
+      phone: lead.phone ?? '',
+      referredByContactId: lead.referredByContactId ?? '',
+      companyId: lead.companyId ?? '',
+      source: lead.source ?? (sourceOpt?.name ?? 'Manual'),
+      status: lead.status,
+      leadSourceId: lead.leadSourceId ?? (sourceOpt?.id ?? ''),
+      leadStatusId: lead.leadStatusId ?? (statusOpt?.id ?? ''),
+      leadScore: lead.leadScore?.toString() ?? '',
+      description: lead.description ?? '',
+      lifecycleStage: lead.lifecycleStage ?? '',
+    });
+    setEditOpen(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lead) return;
+    if (!editForm.name.trim() || !editForm.email.trim()) {
+      toast.error(messages.validation.nameAndEmailRequired);
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      // Only send leadSourceId/leadStatusId when they're real GUIDs (fallback
+      // option ids are plain strings the backend would reject).
+      const validLeadSourceId = isValidGuid(editForm.leadSourceId) ? editForm.leadSourceId : undefined;
+      const validLeadStatusId = isValidGuid(editForm.leadStatusId) ? editForm.leadStatusId : undefined;
+      const parsedScore = editForm.leadScore ? parseInt(editForm.leadScore, 10) : undefined;
+      const validLeadScore = parsedScore !== undefined && !Number.isNaN(parsedScore) && parsedScore >= 0 && parsedScore <= 100 ? parsedScore : undefined;
+
+      const updated = await updateLead(lead.id, {
+        name: editForm.name.trim(),
+        email: editForm.email.trim(),
+        phone: editForm.phone.trim() || undefined,
+        companyId: editForm.companyId || undefined,
+        source: editForm.source || undefined,
+        status: editForm.status,
+        leadSourceId: validLeadSourceId,
+        leadStatusId: validLeadStatusId,
+        leadScore: validLeadScore,
+        description: editForm.description.trim() || undefined,
+        lifecycleStage: editForm.lifecycleStage || undefined,
+      });
+      if (!updated) {
+        toast.error(messages.errors.generic);
+        return;
+      }
+      // referredByContactId isn't part of the backend update contract — mirror
+      // it to the shared local store (and local state) like the leads list does.
+      const referredByContactId = editForm.referredByContactId || undefined;
+      setLeadReferral(lead.id, referredByContactId);
+      const referredByContactName = referredByContactId
+        ? contacts.find((c) => c.id === referredByContactId)?.name
+        : undefined;
+      setLead((prev) => (prev ? { ...prev, ...updated, referredByContactId, referredByContactName } : prev));
+      createActivity({ type: 'system', subject: 'Lead details updated', leadId: lead.id })
+        .then((a) => a && setActivities((prev) => [a, ...prev]))
+        .catch(() => { /* non-fatal */ });
+      toast.success(messages.success.leadUpdated);
+      setEditOpen(false);
+    } catch {
+      toast.error(messages.errors.generic);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   // ----- Render -----
 
   if (loading) {
@@ -428,6 +534,15 @@ export default function LeadDetailPage() {
                 <span className="truncate text-sm font-medium text-slate-700">{lead.name}</span>
               </div>
               <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openEdit}
+                  className="gap-1.5 border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+                >
+                  <Pencil className="w-4 h-4" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
                 {!lead.isConverted && (
                   <Button
                     variant="outline"
@@ -540,6 +655,19 @@ export default function LeadDetailPage() {
                           <UserIcon className="w-3.5 h-3.5" />
                           {assignee.name}
                         </span>
+                      )}
+                      {referredByName && (
+                        referredContact ? (
+                          <Link to={`/contacts/${referredContact.id}`} className="inline-flex items-center gap-1.5 hover:text-violet-700">
+                            <UserPlus className="w-3.5 h-3.5" />
+                            Referred by {referredByName}
+                          </Link>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5">
+                            <UserPlus className="w-3.5 h-3.5" />
+                            Referred by {referredByName}
+                          </span>
+                        )
                       )}
                     </div>
                     {/* Compact meta strip: timestamps live inline rather than as separate cards */}
@@ -861,6 +989,22 @@ export default function LeadDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Full lead editor — same multi-step dialog used on the leads list, so
+          every field (incl. Referred by) is editable from the detail page. */}
+      <AddLeadDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        editingLead={lead}
+        form={editForm}
+        setForm={setEditForm}
+        companies={companies}
+        contacts={contacts}
+        sourceOptions={sourceOptions}
+        statusOptions={statusOptions}
+        onSubmit={handleEditSubmit}
+        saving={savingEdit}
+      />
     </div>
   );
 }
