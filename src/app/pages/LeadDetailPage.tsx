@@ -35,6 +35,7 @@ import { AddLeadDialog } from './leads/AddLeadDialog';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES, EMPTY_LEAD_FORM } from './leads/config';
 import { isValidGuid } from './leads/utils';
 import { loadLeadReferrals, setLeadReferral } from './leads/leadReferralStore';
+import { loadLeadAssignments, setLeadAssignment } from './leads/leadAssignmentStore';
 import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
@@ -162,10 +163,11 @@ export default function LeadDetailPage() {
         if (!found) {
           setNotFound(true);
         } else {
-          // referredByContactId isn't persisted by the backend — recover it from
-          // the local referral store (kept in sync with the leads list page).
+          // referredByContactId and assignedToId aren't persisted by the backend —
+          // recover them from the local stores (kept in sync with the leads list).
           const referredId = found.referredByContactId || loadLeadReferrals()[found.id];
-          setLead(referredId ? { ...found, referredByContactId: referredId } : found);
+          const ownerId = found.assignedToId || loadLeadAssignments()[found.id];
+          setLead({ ...found, referredByContactId: referredId || undefined, assignedToId: ownerId || undefined });
         }
       } catch {
         if (!cancelled) setNotFound(true);
@@ -268,6 +270,7 @@ export default function LeadDetailPage() {
         ...updated,
         referredByContactId: updated.referredByContactId ?? prev.referredByContactId,
         referredByContactName: updated.referredByContactName ?? prev.referredByContactName,
+        assignedToId: updated.assignedToId ?? prev.assignedToId,
       } : prev));
       if (log) {
         createActivity({ type: 'system', subject: log.subject, body: log.body, leadId: lead.id })
@@ -302,11 +305,17 @@ export default function LeadDetailPage() {
     patchLead({ lifecycleStage: stage }, { subject: 'Lifecycle stage updated', body: stage });
 
   const setAssignment = (userId: string) => {
+    if (!lead) return;
+    const next = userId || undefined;
     const m = orgMembers.find((x) => x.userId === userId);
-    return patchLead(
-      { assignedToId: userId || undefined },
-      { subject: m ? `Assigned to ${m.name}` : 'Unassigned' },
-    );
+    // assignedToId isn't part of the backend update contract — mirror it to the
+    // shared local store (and local state) like the leads list does.
+    setLeadAssignment(lead.id, next);
+    setLead((prev) => (prev ? { ...prev, assignedToId: next } : prev));
+    createActivity({ type: 'system', subject: m ? `Assigned to ${m.name}` : 'Unassigned', leadId: lead.id })
+      .then((a) => a && setActivities((prev) => [a, ...prev]))
+      .catch(() => { /* non-fatal */ });
+    toast.success(m ? `Assigned to ${m.name}` : 'Unassigned');
   };
 
   const setCompanyId = (companyId: string | '') => {
@@ -535,7 +544,7 @@ export default function LeadDetailPage() {
       const referredByContactName = referredByContactId
         ? contacts.find((c) => c.id === referredByContactId)?.name
         : undefined;
-      setLead((prev) => (prev ? { ...prev, ...updated, referredByContactId, referredByContactName } : prev));
+      setLead((prev) => (prev ? { ...prev, ...updated, referredByContactId, referredByContactName, assignedToId: prev.assignedToId } : prev));
       createActivity({ type: 'system', subject: 'Lead details updated', leadId: lead.id })
         .then((a) => a && setActivities((prev) => [a, ...prev]))
         .catch(() => { /* non-fatal */ });
