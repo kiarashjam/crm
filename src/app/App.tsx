@@ -36,6 +36,7 @@ const Tasks = lazy(() => import('@/app/pages/Tasks'));
 const TaskDetail = lazy(() => import('@/app/pages/TaskDetail'));
 const Activities = lazy(() => import('@/app/pages/Activities'));
 const Sequences = lazy(() => import('@/app/pages/Sequences'));
+const Reports = lazy(() => import('@/app/pages/Reports'));
 const Companies = lazy(() => import('@/app/pages/Companies'));
 const CompanyDetail = lazy(() => import('@/app/pages/CompanyDetail'));
 const Contacts = lazy(() => import('@/app/pages/Contacts'));
@@ -116,6 +117,7 @@ export default function App() {
                     <Route path="/tasks/:id" element={<TaskDetail />} />
                     <Route path="/activities" element={<Activities />} />
                     <Route path="/sequences" element={<Sequences />} />
+                    <Route path="/reports" element={<Reports />} />
                     <Route path="/contacts" element={<Contacts />} />
                     <Route path="/contacts/:id" element={<ContactDetail />} />
                     <Route path="/companies" element={<Companies />} />
