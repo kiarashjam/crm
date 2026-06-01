@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Save, Users, Kanban,
+  Save, Users, Kanban, SlidersHorizontal,
   User, Palette, Bell, Shield,
   ChevronRight,
   Settings2, Sparkles,
@@ -23,6 +23,7 @@ import { NotificationsSection } from '@/app/pages/settings/components/Notificati
 import { AccountSection } from '@/app/pages/settings/components/AccountSection';
 import { AppearanceSection } from '@/app/pages/settings/components/AppearanceSection';
 import { PipelinesSection } from '@/app/pages/settings/components/PipelinesSection';
+import { CustomFieldsSection } from '@/app/pages/settings/components/CustomFieldsSection';
 import { OrganizationSection } from '@/app/pages/settings/components/OrganizationSection';
 import { SecuritySection } from '@/app/pages/settings/components/SecuritySection';
 import { useOrg } from '@/app/contexts/OrgContext';
@@ -57,7 +58,7 @@ import type { Pipeline, DealStage } from '@/app/api/types';
 import { BrandSection } from './settings/components/BrandSection';
 import { IntegrationsSection } from './settings/components/IntegrationsSection';
 
-type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'organization' | 'pipelines' | 'security' | 'account';
+type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
 
 const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'profile', label: 'Profile', icon: User, description: 'Personal information and preferences' },
@@ -67,6 +68,7 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
   { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound JSON webhooks and URLs' },
   { id: 'organization', label: 'Team', icon: Users, description: 'Organization and team members' },
   { id: 'pipelines', label: 'Pipelines', icon: Kanban, description: 'Sales pipeline stages' },
+  { id: 'customFields', label: 'Custom Fields', icon: SlidersHorizontal, description: 'Add your own fields to records' },
   { id: 'security', label: 'Security', icon: Shield, description: 'Two-factor authentication' },
   { id: 'account', label: 'Account', icon: Settings2, description: 'Account management and data' },
 ];
@@ -615,6 +617,8 @@ export default function Settings() {
             currentOrg={currentOrg}
           />
         );
+      case 'customFields':
+        return <CustomFieldsSection />;
       case 'security':
         return (
           <SecuritySection
