@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
+import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
@@ -399,6 +401,20 @@ export default function CompanyDetail() {
               </div>
             )}
           </Card>
+
+          {/* Custom fields (renders only when defined for companies) */}
+          <CustomFieldsCard
+            entityType="company"
+            recordId={company.id}
+            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6"
+          />
+
+          {/* Attachments */}
+          <AttachmentsCard
+            entityType="company"
+            recordId={company.id}
+            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6"
+          />
         </main>
       </PageTransition>
 

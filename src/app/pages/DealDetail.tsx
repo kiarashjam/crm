@@ -22,6 +22,8 @@ import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import AppHeader from '@/app/components/AppHeader';
 import DealLineItemsCard from '@/app/components/DealLineItemsCard';
+import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getDealById, updateDeal, deleteDeal, messages } from '@/app/api';
@@ -417,6 +419,20 @@ export default function DealDetail() {
                 dealId={deal.id}
                 className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm mt-6"
                 onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, value: String(t) } : prev))}
+              />
+
+              {/* Custom fields (renders only when defined for deals) */}
+              <CustomFieldsCard
+                entityType="deal"
+                recordId={deal.id}
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm mt-6"
+              />
+
+              {/* Attachments */}
+              <AttachmentsCard
+                entityType="deal"
+                recordId={deal.id}
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm mt-6"
               />
 
               {/* Linked Tasks Section */}

@@ -40,6 +40,9 @@ import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
 import AiNextActionCard from '@/app/components/AiNextActionCard';
+import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import AttachmentsCard from '@/app/components/AttachmentsCard';
+import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 
 type Tab = 'activity' | 'tasks' | 'notes';
 
@@ -123,6 +126,7 @@ export default function LeadDetailPage() {
   // Full "Edit lead" dialog — reuses the same multi-step editor as the leads
   // list so every field (incl. Referred by) can be edited from this page.
   const [editOpen, setEditOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
   const [editForm, setEditForm] = useState<LeadForm>(EMPTY_LEAD_FORM);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -623,6 +627,17 @@ export default function LeadDetailPage() {
                 <span className="truncate text-sm font-medium text-slate-700">{lead.name}</span>
               </div>
               <div className="flex items-center gap-1.5">
+                {lead.email && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEmailOpen(true)}
+                    className="gap-1.5 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span className="hidden sm:inline">Email</span>
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1148,6 +1163,12 @@ export default function LeadDetailPage() {
                   UpdateLeadRequest has no Tags field, so any add/remove would
                   silently fail to persist. Re-enable once the backend gains
                   Lead.Tags support. */}
+
+              {/* Custom fields (renders only when defined for leads) */}
+              <CustomFieldsCard entityType="lead" recordId={lead.id} className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" />
+
+              {/* Attachments */}
+              <AttachmentsCard entityType="lead" recordId={lead.id} className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" />
             </aside>
           </div>
         </main>
@@ -1186,6 +1207,20 @@ export default function LeadDetailPage() {
         onSubmit={handleEditSubmit}
         saving={savingEdit}
       />
+
+      {lead.email && (
+        <EmailComposerDialog
+          open={emailOpen}
+          onOpenChange={setEmailOpen}
+          to={lead.email}
+          context={{ leadId: lead.id }}
+          aiContext={`${lead.name}${lead.companyName ? ` at ${lead.companyName}` : ''} · ${lead.status} lead`}
+          onSent={() => {
+            getActivitiesByLead(lead.id).then(setActivities).catch(() => {});
+            void bumpLastContacted();
+          }}
+        />
+      )}
     </div>
   );
 }
