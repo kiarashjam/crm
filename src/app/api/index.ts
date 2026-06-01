@@ -32,6 +32,7 @@ export * from './sequences';
 export * from './customFields';
 export * from './automations';
 export * from './attachments';
+export * from './dedupe';
 export * from './reporting';
 export * from './search';
 export * from './templates';
