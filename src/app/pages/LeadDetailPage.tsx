@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2, ArrowRightCircle,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
-  MessageSquarePlus, FileText, Clock,
+  MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -12,11 +12,12 @@ import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getLeadById, updateLead, deleteLead,
-  getCompanies, getLeadStatuses, getLeadSources,
+  getCompanies, getContacts, getLeadStatuses, getLeadSources,
   getActivitiesByLead, createActivity,
-  getTasksByLead, createTask, updateTask,
+  getTasksByLead, createTask, updateTask, deleteTask,
+  messages,
 } from '@/app/api';
-import type { Lead, Company, LeadStatus, LeadSource, Activity, TaskItem } from '@/app/api/types';
+import type { Lead, Company, Contact, LeadStatus, LeadSource, Activity, TaskItem } from '@/app/api/types';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { Button } from '@/app/components/ui/button';
@@ -30,8 +31,11 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { StatusChangePopover } from './leads/components/StatusChangePopover';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
-import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES } from './leads/config';
+import { AddLeadDialog } from './leads/AddLeadDialog';
+import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES, EMPTY_LEAD_FORM } from './leads/config';
 import { isValidGuid } from './leads/utils';
+import { loadLeadReferrals, setLeadReferral } from './leads/leadReferralStore';
+import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
@@ -78,6 +82,15 @@ function formatFull(iso?: string): string | null {
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
+/** A due date is overdue when it's in the past (used to flag open tasks). */
+function isOverdue(iso?: string): boolean {
+  if (!iso) return false;
+  const t = Date.parse(iso);
+  return !Number.isNaN(t) && t < Date.now();
+}
+
+const OUTREACH_ACTIVITY_TYPES = new Set(['call', 'email', 'meeting']);
+
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -94,6 +107,7 @@ export default function LeadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [statuses, setStatuses] = useState<LeadStatus[]>([]);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -104,6 +118,15 @@ export default function LeadDetailPage() {
   const [tab, setTab] = useState<Tab>('activity');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Full "Edit lead" dialog — reuses the same multi-step editor as the leads
+  // list so every field (incl. Referred by) can be edited from this page.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<LeadForm>(EMPTY_LEAD_FORM);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Transient "copied!" feedback for the contact quick-copy buttons.
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Quick-log + email composer + task input
   const [noteDraft, setNoteDraft] = useState('');
@@ -131,8 +154,14 @@ export default function LeadDetailPage() {
       try {
         const found = await getLeadById(id);
         if (cancelled) return;
-        if (!found) setNotFound(true);
-        else setLead(found);
+        if (!found) {
+          setNotFound(true);
+        } else {
+          // referredByContactId isn't persisted by the backend — recover it from
+          // the local referral store (kept in sync with the leads list page).
+          const referredId = found.referredByContactId || loadLeadReferrals()[found.id];
+          setLead(referredId ? { ...found, referredByContactId: referredId } : found);
+        }
       } catch {
         if (!cancelled) setNotFound(true);
       } finally {
@@ -146,6 +175,7 @@ export default function LeadDetailPage() {
   useEffect(() => {
     let cancelled = false;
     getCompanies().then((v) => { if (!cancelled) setCompanies(v); }).catch(() => { if (!cancelled) setCompanies([]); });
+    getContacts().then((v) => { if (!cancelled) setContacts(v); }).catch(() => { if (!cancelled) setContacts([]); });
     getLeadStatuses().then((v) => { if (!cancelled) setStatuses(v); }).catch(() => { if (!cancelled) setStatuses([]); });
     getLeadSources().then((v) => { if (!cancelled) setSources(v); }).catch(() => { if (!cancelled) setSources([]); });
     return () => { cancelled = true; };
@@ -186,6 +216,28 @@ export default function LeadDetailPage() {
     () => (lead?.assignedToId ? orgMembers.find((m) => m.userId === lead.assignedToId) ?? null : null),
     [orgMembers, lead?.assignedToId],
   );
+  const referredContact = useMemo(
+    () => (lead?.referredByContactId ? contacts.find((c) => c.id === lead.referredByContactId) ?? null : null),
+    [contacts, lead?.referredByContactId],
+  );
+  const referredByName = referredContact?.name ?? lead?.referredByContactName ?? null;
+
+  // Tasks ordered for action: open tasks first (soonest due first, undated
+  // last), completed tasks sink to the bottom.
+  const sortedTasks = useMemo(() => {
+    const doneRank = (t: TaskItem) => (t.status === 'completed' ? 1 : 0);
+    return [...tasks].sort((a, b) => {
+      if (doneRank(a) !== doneRank(b)) return doneRank(a) - doneRank(b);
+      const ad = a.dueDateUtc ? Date.parse(a.dueDateUtc) : Number.POSITIVE_INFINITY;
+      const bd = b.dueDateUtc ? Date.parse(b.dueDateUtc) : Number.POSITIVE_INFINITY;
+      return ad - bd;
+    });
+  }, [tasks]);
+  // The single most urgent open task — surfaced as the "Next step".
+  const nextTask = useMemo(
+    () => sortedTasks.find((t) => t.status !== 'completed') ?? null,
+    [sortedTasks],
+  );
 
   const gradient = lead && (lead.isConverted ? 'from-emerald-600 via-teal-500 to-cyan-400' : STATUS_GRADIENTS[lead.status] || 'from-slate-500 via-slate-400 to-slate-300');
   const statusBadgeTone = lead ? STATUS_BADGE_TONE[lead.status] ?? 'bg-slate-100 text-slate-600 border-slate-200' : '';
@@ -204,7 +256,14 @@ export default function LeadDetailPage() {
         toast.error('Failed to save');
         return false;
       }
-      setLead((prev) => (prev ? { ...prev, ...updated } : prev));
+      // The backend response omits referredByContactId (not part of its update
+      // contract), so keep the locally-tracked referral rather than dropping it.
+      setLead((prev) => (prev ? {
+        ...prev,
+        ...updated,
+        referredByContactId: updated.referredByContactId ?? prev.referredByContactId,
+        referredByContactName: updated.referredByContactName ?? prev.referredByContactName,
+      } : prev));
       if (log) {
         createActivity({ type: 'system', subject: log.subject, body: log.body, leadId: lead.id })
           .then((a) => a && setActivities((prev) => [a, ...prev]))
@@ -265,11 +324,37 @@ export default function LeadDetailPage() {
     return patchLead({ leadScore: n }, { subject: `Score set to ${n}` });
   };
 
+  // Logging an outreach touch (call/email/meeting) advances "Last contacted"
+  // so the hero metric reflects reality. Optimistic locally; the PUT is
+  // best-effort (kept for the session even if it fails).
+  const bumpLastContacted = async () => {
+    if (!lead) return;
+    const when = new Date().toISOString();
+    setLead((prev) => (prev ? { ...prev, lastContactedAt: when } : prev));
+    try {
+      await updateLead(lead.id, { lastContactedAt: when });
+    } catch {
+      /* non-fatal */
+    }
+  };
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(label);
+      toast.success(`${label} copied`);
+      window.setTimeout(() => setCopiedField((c) => (c === label ? null : c)), 1500);
+    } catch {
+      toast.error('Copy failed');
+    }
+  };
+
   // Quick-log via popover (from card) — also used by the inline note + email flows.
   const logActivity = async (params: { type: string; subject?: string; body: string }) => {
     if (!lead) return;
     const a = await createActivity({ ...params, leadId: lead.id });
     if (a) setActivities((prev) => [a, ...prev]);
+    if (OUTREACH_ACTIVITY_TYPES.has(params.type)) void bumpLastContacted();
   };
 
   const handleAddNote = async () => {
@@ -301,6 +386,7 @@ export default function LeadDetailPage() {
         leadId: lead.id,
       });
       if (a) setActivities((prev) => [a, ...prev]);
+      void bumpLastContacted();
       const mailto = `mailto:${encodeURIComponent(lead.email)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
       window.location.href = mailto;
       setEmailSubject('');
@@ -346,8 +432,21 @@ export default function LeadDetailPage() {
         type: 'system',
         subject: nextStatus === 'completed' ? 'Task completed' : 'Task reopened',
         body: task.title,
-        leadId: task.id ? lead?.id : undefined,
+        leadId: lead?.id,
       }).catch(() => {});
+    }
+  };
+
+  const handleDeleteTask = async (task: TaskItem) => {
+    const snapshot = tasks;
+    setTasks((prev) => prev.filter((t) => t.id !== task.id)); // optimistic
+    const ok = await deleteTask(task.id);
+    if (ok) {
+      toast.success('Task deleted');
+      createActivity({ type: 'system', subject: 'Task deleted', body: task.title, leadId: lead?.id }).catch(() => {});
+    } else {
+      setTasks(snapshot); // revert
+      toast.error('Failed to delete task');
     }
   };
 
@@ -368,14 +467,107 @@ export default function LeadDetailPage() {
     }
   };
 
+  // Open the full multi-step editor, prefilled from the current lead. Mirrors
+  // the leads list's openEdit so the two stay behaviourally identical.
+  const openEdit = useCallback(() => {
+    if (!lead) return;
+    const sourceOpt = sourceOptions.find((s) => s.id === lead.leadSourceId || s.name === lead.source);
+    const statusOpt = statusOptions.find((s) => s.id === lead.leadStatusId || s.name === lead.status);
+    setEditForm({
+      name: lead.name,
+      email: lead.email,
+      phone: lead.phone ?? '',
+      referredByContactId: lead.referredByContactId ?? '',
+      companyId: lead.companyId ?? '',
+      source: lead.source ?? (sourceOpt?.name ?? 'Manual'),
+      status: lead.status,
+      leadSourceId: lead.leadSourceId ?? (sourceOpt?.id ?? ''),
+      leadStatusId: lead.leadStatusId ?? (statusOpt?.id ?? ''),
+      leadScore: lead.leadScore?.toString() ?? '',
+      description: lead.description ?? '',
+      lifecycleStage: lead.lifecycleStage ?? '',
+    });
+    setEditOpen(true);
+  }, [lead, sourceOptions, statusOptions]);
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lead) return;
+    if (!editForm.name.trim() || !editForm.email.trim()) {
+      toast.error(messages.validation.nameAndEmailRequired);
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      // Only send leadSourceId/leadStatusId when they're real GUIDs (fallback
+      // option ids are plain strings the backend would reject).
+      const validLeadSourceId = isValidGuid(editForm.leadSourceId) ? editForm.leadSourceId : undefined;
+      const validLeadStatusId = isValidGuid(editForm.leadStatusId) ? editForm.leadStatusId : undefined;
+      const parsedScore = editForm.leadScore ? parseInt(editForm.leadScore, 10) : undefined;
+      const validLeadScore = parsedScore !== undefined && !Number.isNaN(parsedScore) && parsedScore >= 0 && parsedScore <= 100 ? parsedScore : undefined;
+
+      const updated = await updateLead(lead.id, {
+        name: editForm.name.trim(),
+        email: editForm.email.trim(),
+        phone: editForm.phone.trim() || undefined,
+        companyId: editForm.companyId || undefined,
+        source: editForm.source || undefined,
+        status: editForm.status,
+        leadSourceId: validLeadSourceId,
+        leadStatusId: validLeadStatusId,
+        leadScore: validLeadScore,
+        description: editForm.description.trim() || undefined,
+        lifecycleStage: editForm.lifecycleStage || undefined,
+      });
+      if (!updated) {
+        toast.error(messages.errors.generic);
+        return;
+      }
+      // referredByContactId isn't part of the backend update contract — mirror
+      // it to the shared local store (and local state) like the leads list does.
+      const referredByContactId = editForm.referredByContactId || undefined;
+      setLeadReferral(lead.id, referredByContactId);
+      const referredByContactName = referredByContactId
+        ? contacts.find((c) => c.id === referredByContactId)?.name
+        : undefined;
+      setLead((prev) => (prev ? { ...prev, ...updated, referredByContactId, referredByContactName } : prev));
+      createActivity({ type: 'system', subject: 'Lead details updated', leadId: lead.id })
+        .then((a) => a && setActivities((prev) => [a, ...prev]))
+        .catch(() => { /* non-fatal */ });
+      toast.success(messages.success.leadUpdated);
+      setEditOpen(false);
+    } catch {
+      toast.error(messages.errors.generic);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Keyboard shortcut: `e` opens the full editor (ignored while typing in a
+  // field or when a dialog is already open), matching the leads list's `n`/`/`.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (typing) return;
+      if (e.key.toLowerCase() === 'e' && !editOpen && !deleteOpen) {
+        e.preventDefault();
+        openEdit();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [openEdit, editOpen, deleteOpen]);
+
   // ----- Render -----
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50/40">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <PageTransition>
-          <main id={MAIN_CONTENT_ID} className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+          <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
             <ContentSkeleton rows={6} />
           </main>
         </PageTransition>
@@ -385,15 +577,17 @@ export default function LeadDetailPage() {
 
   if (notFound || !lead) {
     return (
-      <div className="min-h-screen bg-slate-50/40">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <PageTransition>
-          <main id={MAIN_CONTENT_ID} className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8 text-center">
-            <h1 className="text-2xl font-semibold text-slate-900">Lead not found</h1>
-            <p className="mt-2 text-slate-500">It may have been deleted, or you don&apos;t have access to it.</p>
-            <Button asChild className="mt-6">
-              <Link to={backUrl}><ArrowLeft className="w-4 h-4 mr-2" /> Back to leads</Link>
-            </Button>
+          <main id={MAIN_CONTENT_ID} className="flex-1 w-full flex items-center justify-center px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+            <div className="mx-auto max-w-md text-center">
+              <h1 className="text-2xl font-semibold text-slate-900">Lead not found</h1>
+              <p className="mt-2 text-slate-500">It may have been deleted, or you don&apos;t have access to it.</p>
+              <Button asChild className="mt-6">
+                <Link to={backUrl}><ArrowLeft className="w-4 h-4 mr-2" /> Back to leads</Link>
+              </Button>
+            </div>
           </main>
         </PageTransition>
       </div>
@@ -404,13 +598,13 @@ export default function LeadDetailPage() {
   const openTaskCount = tasks.filter((t) => t.status !== 'completed').length;
 
   return (
-    <div className="min-h-screen bg-slate-50/40">
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
-        <main id={MAIN_CONTENT_ID}>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full" tabIndex={-1}>
           {/* Sticky toolbar */}
           <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
-            <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
+            <div className="flex w-full items-center justify-between gap-3 px-[var(--page-padding)] py-2.5">
               <div className="flex min-w-0 items-center gap-3">
                 <Button
                   variant="ghost"
@@ -428,6 +622,15 @@ export default function LeadDetailPage() {
                 <span className="truncate text-sm font-medium text-slate-700">{lead.name}</span>
               </div>
               <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openEdit}
+                  className="gap-1.5 border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+                >
+                  <Pencil className="w-4 h-4" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
                 {!lead.isConverted && (
                   <Button
                     variant="outline"
@@ -465,7 +668,7 @@ export default function LeadDetailPage() {
             <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-12 h-64 w-64 rounded-full bg-indigo-200/30 blur-3xl" />
             <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-200/80 to-transparent" />
 
-            <div className="relative mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-8 lg:px-8">
+            <div className="relative w-full px-[var(--page-padding)] py-7 sm:py-8">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex min-w-0 items-start gap-4 sm:gap-5">
                   <div className="relative shrink-0">
@@ -524,22 +727,41 @@ export default function LeadDetailPage() {
                         </Link>
                       )}
                       {lead.email && (
-                        <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-1.5 hover:text-blue-700">
-                          <Mail className="w-3.5 h-3.5" />
-                          {lead.email}
-                        </a>
+                        <span className="group/copy inline-flex items-center gap-1">
+                          <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-1.5 hover:text-blue-700">
+                            <Mail className="w-3.5 h-3.5" />
+                            {lead.email}
+                          </a>
+                          <CopyButton label="Copy email" copied={copiedField === 'Email'} onClick={() => copyToClipboard(lead.email!, 'Email')} />
+                        </span>
                       )}
                       {lead.phone && (
-                        <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1.5 hover:text-teal-700">
-                          <Phone className="w-3.5 h-3.5" />
-                          {lead.phone}
-                        </a>
+                        <span className="group/copy inline-flex items-center gap-1">
+                          <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1.5 hover:text-teal-700">
+                            <Phone className="w-3.5 h-3.5" />
+                            {lead.phone}
+                          </a>
+                          <CopyButton label="Copy phone" copied={copiedField === 'Phone'} onClick={() => copyToClipboard(lead.phone!, 'Phone')} />
+                        </span>
                       )}
                       {assignee && (
                         <span className="inline-flex items-center gap-1.5">
                           <UserIcon className="w-3.5 h-3.5" />
                           {assignee.name}
                         </span>
+                      )}
+                      {referredByName && (
+                        referredContact ? (
+                          <Link to={`/contacts/${referredContact.id}`} className="inline-flex items-center gap-1.5 hover:text-violet-700">
+                            <UserPlus className="w-3.5 h-3.5" />
+                            Referred by {referredByName}
+                          </Link>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5">
+                            <UserPlus className="w-3.5 h-3.5" />
+                            Referred by {referredByName}
+                          </span>
+                        )
                       )}
                     </div>
                     {/* Compact meta strip: timestamps live inline rather than as separate cards */}
@@ -587,7 +809,7 @@ export default function LeadDetailPage() {
           </section>
 
           {/* Body: tabs + sidebar */}
-          <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_320px] lg:px-8">
+          <div className="grid w-full gap-6 px-[var(--page-padding)] py-6 lg:grid-cols-[1fr_320px]">
             {/* Main column */}
             <div className="min-w-0">
               {/* Tab bar */}
@@ -697,38 +919,58 @@ export default function LeadDetailPage() {
                     </div>
                   ) : (
                     <ul className="space-y-2">
-                      {tasks.map((t) => (
-                        <li key={t.id} className={cn(
-                          'group flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 transition-colors',
-                          t.status === 'completed' && 'opacity-60',
-                        )}>
-                          <button
-                            type="button"
-                            onClick={() => toggleTask(t)}
-                            aria-label={t.status === 'completed' ? 'Mark task as not done' : 'Mark task as done'}
-                            className={cn(
-                              'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors',
-                              t.status === 'completed'
-                                ? 'border-emerald-500 bg-emerald-500 text-white'
-                                : 'border-slate-300 bg-white hover:border-emerald-400',
-                            )}
-                          >
-                            {t.status === 'completed' && <CheckCircle2 className="w-3 h-3" />}
-                          </button>
-                          <div className="min-w-0 flex-1">
-                            <p className={cn('text-sm font-medium text-slate-800', t.status === 'completed' && 'line-through text-slate-500')}>
-                              {t.title}
-                            </p>
-                            {t.dueDateUtc && (
-                              <p className="mt-0.5 text-xs text-slate-500">Due {formatFull(t.dueDateUtc)}</p>
-                            )}
-                          </div>
-                          <span className={cn(
-                            'text-[10px] font-semibold uppercase tracking-wider rounded-md px-1.5 py-0.5',
-                            t.priority === 'high' ? 'bg-red-50 text-red-600' : t.priority === 'medium' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500',
-                          )}>{t.priority}</span>
-                        </li>
-                      ))}
+                      {sortedTasks.map((t) => {
+                        const overdue = t.status !== 'completed' && isOverdue(t.dueDateUtc);
+                        return (
+                          <li key={t.id} className={cn(
+                            'group flex items-start gap-3 rounded-2xl border bg-white px-4 py-3 transition-colors',
+                            overdue ? 'border-red-200' : 'border-slate-200',
+                            t.status === 'completed' && 'opacity-60',
+                          )}>
+                            <button
+                              type="button"
+                              onClick={() => toggleTask(t)}
+                              aria-label={t.status === 'completed' ? 'Mark task as not done' : 'Mark task as done'}
+                              className={cn(
+                                'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors',
+                                t.status === 'completed'
+                                  ? 'border-emerald-500 bg-emerald-500 text-white'
+                                  : 'border-slate-300 bg-white hover:border-emerald-400',
+                              )}
+                            >
+                              {t.status === 'completed' && <CheckCircle2 className="w-3 h-3" />}
+                            </button>
+                            <div className="min-w-0 flex-1">
+                              <p className={cn('text-sm font-medium text-slate-800', t.status === 'completed' && 'line-through text-slate-500')}>
+                                {t.title}
+                              </p>
+                              {t.dueDateUtc && (
+                                <p className={cn(
+                                  'mt-0.5 inline-flex items-center gap-1 text-xs',
+                                  overdue ? 'font-semibold text-red-600' : 'text-slate-500',
+                                )}>
+                                  {overdue && <AlertCircle className="w-3 h-3" />}
+                                  {overdue ? 'Overdue · ' : 'Due '}{formatFull(t.dueDateUtc)}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <span className={cn(
+                                'text-[10px] font-semibold uppercase tracking-wider rounded-md px-1.5 py-0.5',
+                                t.priority === 'high' ? 'bg-red-50 text-red-600' : t.priority === 'medium' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500',
+                              )}>{t.priority}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTask(t)}
+                                aria-label="Delete task"
+                                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 group-hover:opacity-100"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>
@@ -755,6 +997,59 @@ export default function LeadDetailPage() {
             {/* Sidebar — single card with section dividers, sticky on lg+ so it
                 stays in view as the user scrolls the activity timeline. */}
             <aside className="lg:sticky lg:top-[64px] lg:self-start lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto">
+              {/* Next step — the most urgent open task, surfaced so the next
+                  follow-up is always one glance (and one click) away. */}
+              <div className={cn(
+                'mb-4 overflow-hidden rounded-2xl border bg-white shadow-sm',
+                nextTask && isOverdue(nextTask.dueDateUtc) ? 'border-red-200' : 'border-slate-200',
+              )}>
+                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Next step</h3>
+                  <button
+                    type="button"
+                    onClick={() => setTab('tasks')}
+                    className="text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
+                  >
+                    {nextTask ? 'All tasks' : 'Add task'}
+                  </button>
+                </div>
+                <div className="p-4">
+                  {nextTask ? (
+                    <div className="flex items-start gap-3">
+                      <button
+                        type="button"
+                        onClick={() => toggleTask(nextTask)}
+                        aria-label="Mark next step done"
+                        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 border-slate-300 bg-white transition-colors hover:border-emerald-400"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-800">{nextTask.title}</p>
+                        {nextTask.dueDateUtc ? (
+                          <p className={cn(
+                            'mt-0.5 inline-flex items-center gap-1 text-xs',
+                            isOverdue(nextTask.dueDateUtc) ? 'font-semibold text-red-600' : 'text-slate-500',
+                          )}>
+                            {isOverdue(nextTask.dueDateUtc) ? <AlertCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                            {isOverdue(nextTask.dueDateUtc) ? 'Overdue · ' : 'Due '}{formatFull(nextTask.dueDateUtc)}
+                          </p>
+                        ) : (
+                          <p className="mt-0.5 text-xs text-slate-400">No due date</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setTab('tasks')}
+                      className="flex w-full items-center gap-2 rounded-lg border border-dashed border-slate-200 px-3 py-2.5 text-left text-sm text-slate-500 transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 hover:text-indigo-700"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add a follow-up task
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 {/* Contact section */}
                 <SidebarSection title="Contact">
@@ -861,6 +1156,22 @@ export default function LeadDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Full lead editor — same multi-step dialog used on the leads list, so
+          every field (incl. Referred by) is editable from the detail page. */}
+      <AddLeadDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        editingLead={lead}
+        form={editForm}
+        setForm={setEditForm}
+        companies={companies}
+        contacts={contacts}
+        sourceOptions={sourceOptions}
+        statusOptions={statusOptions}
+        onSubmit={handleEditSubmit}
+        saving={savingEdit}
+      />
     </div>
   );
 }
@@ -926,6 +1237,22 @@ function SidebarSelectField({
       </div>
       {children}
     </div>
+  );
+}
+
+/** Subtle copy-to-clipboard affordance shown beside email/phone in the hero.
+ *  Reveals on hover of its `group/copy` parent; flips to a check on success. */
+function CopyButton({ onClick, copied, label }: { onClick: () => void; copied: boolean; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="inline-flex h-5 w-5 items-center justify-center rounded text-slate-300 opacity-0 transition-all hover:bg-slate-100 hover:text-slate-600 focus-visible:opacity-100 group-hover/copy:opacity-100"
+    >
+      {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+    </button>
   );
 }
 

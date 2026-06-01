@@ -75,6 +75,7 @@ import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
 import { isValidGuid } from './leads/utils';
+import { loadLeadReferrals, saveLeadReferrals } from './leads/leadReferralStore';
 import type { LeadForm } from './leads/types';
 
 /** Fallback row style when activity type is unknown (matches `note` in config). */
@@ -138,7 +139,6 @@ const fmtActivityWhen = (dateStr: string) =>
   safeDate(dateStr)?.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) ?? '';
 
 const LEAD_ASSIGNMENTS_STORAGE_KEY = 'crm.leadAssignments.v1';
-const LEAD_REFERRALS_STORAGE_KEY = 'crm.leadReferrals.v1';
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
 
 function loadLeadAssignments(): Record<string, string> {
@@ -155,25 +155,6 @@ function loadLeadAssignments(): Record<string, string> {
 function saveLeadAssignments(assignments: Record<string, string>) {
   try {
     localStorage.setItem(LEAD_ASSIGNMENTS_STORAGE_KEY, JSON.stringify(assignments));
-  } catch {
-    // ignore storage failures
-  }
-}
-
-function loadLeadReferrals(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(LEAD_REFERRALS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, string>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLeadReferrals(referrals: Record<string, string>) {
-  try {
-    localStorage.setItem(LEAD_REFERRALS_STORAGE_KEY, JSON.stringify(referrals));
   } catch {
     // ignore storage failures
   }
