@@ -12,6 +12,7 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { authFetchJson } from '@/app/api/apiClient';
 import {
   getActivitiesByContact, getTasksByContact,
@@ -469,6 +470,13 @@ export default function ContactDetail() {
 
           {/* Custom fields (renders only when fields are defined for contacts) */}
           <CustomFieldsCard
+            entityType="contact"
+            recordId={contact.id}
+            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8"
+          />
+
+          {/* Attachments */}
+          <AttachmentsCard
             entityType="contact"
             recordId={contact.id}
             className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8"
