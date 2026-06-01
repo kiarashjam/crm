@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Paperclip, Upload, Trash2, Download, Loader2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/app/components/ui/utils';
@@ -27,11 +27,11 @@ export default function AttachmentsCard({ entityType, recordId, className }: Att
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     getAttachments(entityType, recordId).then(setItems).catch(() => setItems([])).finally(() => setLoading(false));
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [entityType, recordId]);
+  }, [entityType, recordId]);
+  useEffect(() => { load(); }, [load]);
 
   const doUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;

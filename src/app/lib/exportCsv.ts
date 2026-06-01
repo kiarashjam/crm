@@ -6,6 +6,9 @@ export interface CsvColumn<T> {
   value: (row: T) => string | number | null | undefined;
 }
 
+/** UTF-8 byte-order mark (U+FEFF) so Excel opens the file with the right encoding. */
+const BOM = String.fromCharCode(0xfeff);
+
 function escapeCell(v: string | number | null | undefined): string {
   if (v == null) return '';
   const s = String(v);
@@ -22,8 +25,7 @@ export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
 
 export function downloadCsv<T>(filename: string, rows: T[], columns: CsvColumn<T>[]): void {
   const csv = toCsv(rows, columns);
-  // Prepend a BOM so Excel reads UTF-8 correctly.
-  const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
