@@ -564,10 +564,10 @@ export default function LeadDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50/40">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <PageTransition>
-          <main id={MAIN_CONTENT_ID} className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+          <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
             <ContentSkeleton rows={6} />
           </main>
         </PageTransition>
@@ -577,15 +577,17 @@ export default function LeadDetailPage() {
 
   if (notFound || !lead) {
     return (
-      <div className="min-h-screen bg-slate-50/40">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <PageTransition>
-          <main id={MAIN_CONTENT_ID} className="mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:px-8 text-center">
-            <h1 className="text-2xl font-semibold text-slate-900">Lead not found</h1>
-            <p className="mt-2 text-slate-500">It may have been deleted, or you don&apos;t have access to it.</p>
-            <Button asChild className="mt-6">
-              <Link to={backUrl}><ArrowLeft className="w-4 h-4 mr-2" /> Back to leads</Link>
-            </Button>
+          <main id={MAIN_CONTENT_ID} className="flex-1 w-full flex items-center justify-center px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+            <div className="mx-auto max-w-md text-center">
+              <h1 className="text-2xl font-semibold text-slate-900">Lead not found</h1>
+              <p className="mt-2 text-slate-500">It may have been deleted, or you don&apos;t have access to it.</p>
+              <Button asChild className="mt-6">
+                <Link to={backUrl}><ArrowLeft className="w-4 h-4 mr-2" /> Back to leads</Link>
+              </Button>
+            </div>
           </main>
         </PageTransition>
       </div>
@@ -596,13 +598,13 @@ export default function LeadDetailPage() {
   const openTaskCount = tasks.filter((t) => t.status !== 'completed').length;
 
   return (
-    <div className="min-h-screen bg-slate-50/40">
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
-        <main id={MAIN_CONTENT_ID}>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full" tabIndex={-1}>
           {/* Sticky toolbar */}
           <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
-            <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
+            <div className="flex w-full items-center justify-between gap-3 px-[var(--page-padding)] py-2.5">
               <div className="flex min-w-0 items-center gap-3">
                 <Button
                   variant="ghost"
@@ -666,7 +668,7 @@ export default function LeadDetailPage() {
             <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-12 h-64 w-64 rounded-full bg-indigo-200/30 blur-3xl" />
             <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-200/80 to-transparent" />
 
-            <div className="relative mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-8 lg:px-8">
+            <div className="relative w-full px-[var(--page-padding)] py-7 sm:py-8">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex min-w-0 items-start gap-4 sm:gap-5">
                   <div className="relative shrink-0">
@@ -807,7 +809,7 @@ export default function LeadDetailPage() {
           </section>
 
           {/* Body: tabs + sidebar */}
-          <div className="mx-auto grid max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_320px] lg:px-8">
+          <div className="grid w-full gap-6 px-[var(--page-padding)] py-6 lg:grid-cols-[1fr_320px]">
             {/* Main column */}
             <div className="min-w-0">
               {/* Tab bar */}
