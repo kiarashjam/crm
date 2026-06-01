@@ -3,12 +3,16 @@ import { useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, Sparkles, Play, Mail, Lock, User as UserIcon,
   Eye, EyeOff, Loader2, AlertCircle, ShieldCheck, Workflow, BarChart3, Bot,
+  AlertTriangle, WifiOff, Info, ShieldAlert, ServerCrash, Clock, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { login, loginWithTwoFactor, register, messages } from '@/app/api';
 import { setSession, setDemoUser } from '@/app/lib/auth';
 import { isUsingRealApi } from '@/app/api/apiClient';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/app/components/ui/input-otp';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/app/components/ui/dialog';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { cn } from '@/app/components/ui/utils';
 
@@ -31,6 +35,7 @@ export default function Login() {
   const [twoFactorToken, setTwoFactorToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [errorModal, setErrorModal] = useState<{ message: string; was2fa: boolean } | null>(null);
 
   const canSubmit = useMemo(() => {
     if (requires2fa) return code.replace(/\D/g, '').length === 6 && !!twoFactorToken;
@@ -72,7 +77,8 @@ export default function Login() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : messages.errors.generic;
       setError(msg);
-      toast.error(msg);
+      // Surface a detailed, explained failure dialog (what happened + why).
+      setErrorModal({ message: msg, was2fa: requires2fa });
     } finally {
       setSubmitting(false);
     }
@@ -333,6 +339,13 @@ export default function Login() {
           </div>
         </main>
       </div>
+
+      <AuthErrorDialog
+        info={errorModal}
+        onClose={() => setErrorModal(null)}
+        onRetry={() => { setErrorModal(null); document.getElementById(requires2fa ? 'otp-input' : 'email')?.focus(); }}
+        onDemo={() => { setErrorModal(null); startDemo(); }}
+      />
     </div>
   );
 }
@@ -357,5 +370,137 @@ function Field({
         {children}
       </div>
     </div>
+  );
+}
+
+// ---------- Auth error explanation ----------
+
+type AuthErrorKind = 'credentials' | 'network' | 'config' | 'twofactor' | 'ratelimit' | 'server' | 'generic';
+
+/** Best-effort classification of an auth failure from its message/status text. */
+function classifyAuthError(raw: string, was2fa: boolean): AuthErrorKind {
+  const m = (raw || '').toLowerCase();
+  if (was2fa && /(code|2fa|two-factor|token|expired|invalid)/.test(m)) return 'twofactor';
+  if (/(vite_api_url|not set|demo)/.test(m)) return 'config';
+  if (/(failed to fetch|networkerror|network error|load failed|err_|connection|timeout|fetch)/.test(m)) return 'network';
+  if (/(429|too many|rate limit)/.test(m)) return 'ratelimit';
+  if (/(401|403|unauthorized|forbidden|invalid|incorrect|credential|password|no account|not found|email)/.test(m)) return 'credentials';
+  if (/(500|502|503|504|server error|internal)/.test(m)) return 'server';
+  return 'generic';
+}
+
+const AUTH_ERROR_COPY: Record<AuthErrorKind, {
+  icon: React.ElementType; tone: string; title: string; what: string; how: string;
+}> = {
+  credentials: {
+    icon: Lock, tone: 'bg-amber-100 text-amber-600',
+    title: "Those details didn't match",
+    what: "We couldn't sign you in with that email and password.",
+    how: 'This usually means the email or password was mistyped, caps lock is on, or the account doesn’t exist yet. Create an account or reset your password to continue.',
+  },
+  network: {
+    icon: WifiOff, tone: 'bg-rose-100 text-rose-600',
+    title: "Couldn't reach the server",
+    what: 'The app tried to sign you in but never got a response.',
+    how: 'This happens when your connection drops, you’re offline, or the Cadence API isn’t reachable right now. Check your connection and try again.',
+  },
+  config: {
+    icon: Info, tone: 'bg-blue-100 text-blue-600',
+    title: 'This is a demo build',
+    what: 'Live sign-in needs a connected backend, which isn’t configured here.',
+    how: 'The app has no API URL set (VITE_API_URL), so real authentication is unavailable. Use “Explore the demo” to try everything with sample data.',
+  },
+  twofactor: {
+    icon: ShieldAlert, tone: 'bg-violet-100 text-violet-600',
+    title: "That code didn't work",
+    what: 'The six-digit code was rejected.',
+    how: 'Authenticator codes rotate every ~30 seconds and can only be used once. Open your authenticator, grab the current code, and enter it promptly.',
+  },
+  ratelimit: {
+    icon: Clock, tone: 'bg-orange-100 text-orange-600',
+    title: 'Too many attempts',
+    what: 'Sign-in is paused for a moment.',
+    how: 'After several failed attempts we temporarily block sign-in to protect the account. Wait a minute, then try again.',
+  },
+  server: {
+    icon: ServerCrash, tone: 'bg-rose-100 text-rose-600',
+    title: 'Something went wrong on our end',
+    what: 'The server hit an error while completing your request.',
+    how: 'This is almost always temporary and not caused by anything you did. Trying again in a moment usually works.',
+  },
+  generic: {
+    icon: AlertTriangle, tone: 'bg-slate-100 text-slate-600',
+    title: "We couldn't sign you in",
+    what: 'An unexpected error interrupted sign-in.',
+    how: 'The exact technical detail is shown below — it’s the best clue to what happened. Try again, or use the demo to keep exploring.',
+  },
+};
+
+/** Explained, dismissible failure dialog: what happened, why it happens, and the raw detail. */
+function AuthErrorDialog({
+  info, onClose, onRetry, onDemo,
+}: {
+  info: { message: string; was2fa: boolean } | null;
+  onClose: () => void;
+  onRetry: () => void;
+  onDemo: () => void;
+}) {
+  const kind = info ? classifyAuthError(info.message, info.was2fa) : 'generic';
+  const copy = AUTH_ERROR_COPY[kind];
+  const Icon = copy.icon;
+
+  return (
+    <Dialog open={!!info} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="sm:max-w-[460px]">
+        <DialogHeader>
+          <div className="mb-1 flex items-center gap-3">
+            <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', copy.tone)}>
+              <Icon className="h-5 w-5" />
+            </span>
+            <DialogTitle className="text-left text-lg">{copy.title}</DialogTitle>
+          </div>
+          <DialogDescription className="text-left text-slate-600">{copy.what}</DialogDescription>
+        </DialogHeader>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">Why this happens</p>
+          <p className="text-sm text-slate-600">{copy.how}</p>
+        </div>
+
+        {info?.message && (
+          <details className="group rounded-xl border border-slate-200 bg-white">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700">
+              Technical details
+              <span className="text-slate-400 transition-transform group-open:rotate-180">⌄</span>
+            </summary>
+            <pre className="overflow-x-auto whitespace-pre-wrap break-words border-t border-slate-100 px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-500">
+              {info.message}
+            </pre>
+          </details>
+        )}
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          {kind === 'config' ? (
+            <>
+              <button type="button" onClick={onClose} className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50">Close</button>
+              <button type="button" onClick={onDemo} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500">
+                <Play className="h-4 w-4" /> Explore the demo
+              </button>
+            </>
+          ) : (
+            <>
+              {kind === 'credentials' && (
+                <Link to="/forgot-password" onClick={onClose} className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                  Reset password
+                </Link>
+              )}
+              <button type="button" onClick={onRetry} className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-orange-600 to-orange-500 px-4 text-sm font-semibold text-white hover:from-orange-500 hover:to-orange-400">
+                <RefreshCw className="h-4 w-4" /> Try again
+              </button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
