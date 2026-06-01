@@ -30,6 +30,7 @@ export * from './notifications';
 export * from './email';
 export * from './sequences';
 export * from './customFields';
+export * from './automations';
 export * from './reporting';
 export * from './search';
 export * from './templates';
