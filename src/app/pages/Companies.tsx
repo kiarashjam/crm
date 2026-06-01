@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
+import ExportCsvButton from '@/app/components/ExportCsvButton';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
@@ -423,6 +424,20 @@ export default function Companies() {
               </div>
               
               <div className="flex items-center gap-3">
+                <ExportCsvButton
+                  rows={filteredCompanies}
+                  filename="companies"
+                  className="h-10 rounded-xl"
+                  columns={[
+                    { header: 'Name', value: (c) => c.name },
+                    { header: 'Domain', value: (c) => c.domain },
+                    { header: 'Industry', value: (c) => c.industry },
+                    { header: 'Size', value: (c) => c.size },
+                    { header: 'Website', value: (c) => c.website },
+                    { header: 'Location', value: (c) => c.location },
+                    { header: 'Created', value: (c) => c.createdAtUtc },
+                  ]}
+                />
                 <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
                   <Plus className="w-4 h-4" />
                   Add Company
