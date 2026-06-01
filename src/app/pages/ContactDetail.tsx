@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import { authFetchJson } from '@/app/api/apiClient';
 import {
   getActivitiesByContact, getTasksByContact,
@@ -60,6 +61,7 @@ export default function ContactDetail() {
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -248,6 +250,11 @@ export default function ContactDetail() {
               <ArrowLeft className="w-4 h-4" /> Back to Contacts
             </Button>
             <div className="flex gap-2">
+              {contact.email && !contact.doNotContact && (
+                <Button variant="outline" size="sm" onClick={() => setEmailOpen(true)} className="gap-1">
+                  <Mail className="w-3.5 h-3.5" /> Email
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={openEdit} className="gap-1">
                 <Pencil className="w-3.5 h-3.5" /> Edit
               </Button>
@@ -631,6 +638,16 @@ export default function ContactDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {contact.email && (
+        <EmailComposerDialog
+          open={emailOpen}
+          onOpenChange={setEmailOpen}
+          to={contact.email}
+          context={{ contactId: contact.id }}
+          onSent={() => { if (id) getActivitiesByContact(id).then(setActivities).catch(() => {}); }}
+        />
+      )}
     </div>
   );
 }

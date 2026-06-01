@@ -27,6 +27,7 @@ export * from './leadSources';
 export * from './tasks';
 export * from './activities';
 export * from './notifications';
+export * from './email';
 export * from './reporting';
 export * from './search';
 export * from './templates';
