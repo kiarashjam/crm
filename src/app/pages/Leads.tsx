@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import {
-  Search, Plus, Pencil, Trash2, Building2, User, ArrowRightCircle, Link2,
+  Search, Plus, Building2, User, ArrowRightCircle, Link2,
   Mail, Phone, Sparkles, Check, Tag, UserPlus, Info, CircleDot,
   Upload, RefreshCw, Users, Handshake, ArrowRight, CheckCircle2,
   SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, X, Download,
@@ -54,16 +54,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/app/components/ui/alert-dialog';
 
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
@@ -76,6 +66,7 @@ import { Checkbox } from '@/app/components/ui/checkbox';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
 import { isValidGuid } from './leads/utils';
 import { loadLeadReferrals, saveLeadReferrals } from './leads/leadReferralStore';
+import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignmentStore';
 import type { LeadForm } from './leads/types';
 
 /** Fallback row style when activity type is unknown (matches `note` in config). */
@@ -138,27 +129,21 @@ const fmtDateFull = (dateStr?: string) =>
 const fmtActivityWhen = (dateStr: string) =>
   safeDate(dateStr)?.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) ?? '';
 
-const LEAD_ASSIGNMENTS_STORAGE_KEY = 'crm.leadAssignments.v1';
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
+/** Session-scoped scroll position so returning from a lead detail restores it. */
+const LEAD_LIST_SCROLL_KEY = 'crm.leads.scrollY';
 
-function loadLeadAssignments(): Record<string, string> {
-  try {
-    const raw = localStorage.getItem(LEAD_ASSIGNMENTS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, string>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLeadAssignments(assignments: Record<string, string>) {
-  try {
-    localStorage.setItem(LEAD_ASSIGNMENTS_STORAGE_KEY, JSON.stringify(assignments));
-  } catch {
-    // ignore storage failures
-  }
-}
+/** Short labels for the sort trigger so the selected value fits its box. */
+const SORT_LABELS: Record<string, string> = {
+  'createdAt-desc': 'Newest first',
+  'createdAt-asc': 'Oldest first',
+  'name-asc': 'Name A–Z',
+  'name-desc': 'Name Z–A',
+  'status-asc': 'Status A–Z',
+  'status-desc': 'Status Z–A',
+  'email-asc': 'Email A–Z',
+  'email-desc': 'Email Z–A',
+};
 
 function loadLeadCreatedAtMap(): Record<string, string> {
   try {
@@ -205,8 +190,6 @@ export default function Leads() {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [form, setForm] = useState<LeadForm>(EMPTY_LEAD_FORM);
   const [saving, setSaving] = useState(false);
-  const [deleteConfirmLead, setDeleteConfirmLead] = useState<Lead | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [convertDialogLead, setConvertDialogLead] = useState<Lead | null>(null);
   const [convertForm, setConvertForm] = useState<ConvertLeadRequest>({
     createContact: true,
@@ -557,6 +540,24 @@ export default function Leads() {
     fetchLeads();
   }, [fetchLeads]);
 
+  // Returning from a lead detail: once this page's rows have rendered, restore
+  // the scroll position saved in openDetail so the user lands back on the lead
+  // they were looking at. One-shot per mount; clears the stored value.
+  const scrollRestoredRef = useRef(false);
+  useEffect(() => {
+    if (loading || scrollRestoredRef.current || leads.length === 0) return;
+    let y: number | null = null;
+    try {
+      const raw = sessionStorage.getItem(LEAD_LIST_SCROLL_KEY);
+      if (raw != null) { y = parseInt(raw, 10); sessionStorage.removeItem(LEAD_LIST_SCROLL_KEY); }
+    } catch { /* ignore */ }
+    if (y == null || Number.isNaN(y)) return;
+    scrollRestoredRef.current = true;
+    const top = y;
+    // Two rAFs so the list has painted and has its full height before scrolling.
+    requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top, behavior: 'auto' })));
+  }, [loading, leads]);
+
   const handlePageChange = (page: number) => {
     const params = new URLSearchParams(searchParams);
     params.set('page', String(page));
@@ -758,25 +759,6 @@ export default function Leads() {
     await fetchLeads();
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteConfirmLead) return;
-    setDeleting(true);
-    try {
-      const ok = await deleteLead(deleteConfirmLead.id);
-      if (ok) {
-        toast.success(messages.success.leadDeleted);
-        setDeleteConfirmLead(null);
-        fetchLeads(); // Refresh data
-      } else {
-        toast.error(messages.errors.generic);
-      }
-    } catch {
-      toast.error(messages.errors.generic);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   const openConvert = (lead: Lead) => {
     void ensureCompaniesAndContacts();
     setConvertDialogLead(lead);
@@ -864,6 +846,9 @@ export default function Leads() {
   // (including filters / sort / page) via router state so the detail page's
   // Back / breadcrumb can return here with everything intact.
   const openDetail = (lead: Lead) => {
+    // Remember the list's scroll position so returning from the detail page
+    // lands back where the lead was, not at the top.
+    try { sessionStorage.setItem(LEAD_LIST_SCROLL_KEY, String(window.scrollY)); } catch { /* ignore */ }
     navigate(`/leads/${lead.id}`, {
       state: { from: location.pathname + location.search },
     });
@@ -892,12 +877,12 @@ export default function Leads() {
         );
       };
       if (target) {
-        setConvertDialogLead(target);
+        openConvert(target);
         consumeParam();
       } else {
         getLeadById(convertLeadId)
           .then((lead) => {
-            if (lead) setConvertDialogLead(lead);
+            if (lead) openConvert(lead);
             consumeParam();
           })
           .catch(() => consumeParam());
@@ -1455,12 +1440,14 @@ export default function Leads() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[200px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
+                  <SelectTrigger className="relative h-11 w-[190px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="w-6 h-6 shrink-0 rounded-lg bg-white/10 flex items-center justify-center">
                         <ArrowUpDown className="w-3.5 h-3.5 text-slate-300" />
                       </div>
-                      <SelectValue placeholder="Sort by..." />
+                      <span className="min-w-0 truncate text-sm">
+                        {SORT_LABELS[`${sortField}-${sortDirection}`] ?? 'Sort by…'}
+                      </span>
                     </div>
                   </SelectTrigger>
                 <SelectContent>
@@ -1817,17 +1804,23 @@ export default function Leads() {
                   key={lead.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => openDetail(lead)}
+                  onClick={(e) => {
+                    // Don't navigate when the click came from an interactive control
+                    // inside the card (e.g. the Log button / its popover, checkbox, links).
+                    if ((e.target as HTMLElement).closest('button, a, input, textarea, label, [role="dialog"], [data-radix-popper-content-wrapper]')) return;
+                    openDetail(lead);
+                  }}
                   onKeyDown={(e) => {
+                    // Only the card itself (not a focused child control) navigates on Enter/Space.
+                    if (e.target !== e.currentTarget) return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       openDetail(lead);
                     }
                   }}
-                  className="group relative rounded-2xl border border-slate-200/70 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04),0_10px_40px_-20px_rgba(15,23,42,0.12)] hover:shadow-[0_24px_60px_-20px_rgba(99,102,241,0.22),0_16px_40px_-24px_rgba(15,23,42,0.16)] hover:border-indigo-200/60 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 overflow-hidden ring-1 ring-white/80"
+                  className="group relative rounded-2xl border border-slate-200 bg-white shadow-[0_2px_3px_rgba(15,23,42,0.04),0_8px_16px_-6px_rgba(15,23,42,0.10),0_24px_48px_-16px_rgba(15,23,42,0.16)] hover:shadow-[0_3px_6px_rgba(15,23,42,0.06),0_14px_28px_-8px_rgba(99,102,241,0.18),0_32px_64px_-20px_rgba(15,23,42,0.22)] hover:border-indigo-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 overflow-hidden ring-1 ring-black/[0.03]"
                 >
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-orange-400/40 to-transparent opacity-60 group-hover:via-indigo-400/50 transition-all duration-500" />
-                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/0 via-white to-violet-50/0 group-hover:from-indigo-50/40 group-hover:via-amber-50/20 group-hover:to-fuchsia-50/30 transition-all duration-500" />
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-300/50 to-transparent" />
 
                   <div className={`absolute left-0 top-0 bottom-0 w-2 rounded-r-full shadow-[3px_0_14px_-3px_rgba(0,0,0,0.12)] ${
                     lead.isConverted ? 'bg-gradient-to-b from-emerald-500 via-teal-400 to-cyan-400' :
@@ -1859,7 +1852,7 @@ export default function Leads() {
                     <div className="shrink-0 flex flex-col items-center gap-3 rounded-2xl border border-slate-100/90 bg-gradient-to-b from-slate-50/95 via-white to-indigo-50/30 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
                       {/* Avatar */}
                       <div className="relative">
-                        <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${avatarGradient} flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-black/10 ring-4 ring-white/90 group-hover:scale-[1.04] group-hover:shadow-xl group-hover:shadow-indigo-500/20 transition-all duration-300`}>
+                        <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${avatarGradient} flex items-center justify-center text-white font-bold text-xl shadow-[0_4px_8px_-2px_rgba(15,23,42,0.25),0_8px_16px_-4px_rgba(15,23,42,0.2)] ring-4 ring-white`}>
                           {initials || <User className="w-7 h-7" />}
                         </div>
                         {/* Status indicator */}
@@ -1906,7 +1899,7 @@ export default function Leads() {
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-slate-900 text-lg truncate tracking-tight group-hover:text-indigo-700 transition-colors duration-300">
+                            <h3 className="font-bold text-slate-900 text-lg truncate tracking-tight">
                               {lead.name}
                             </h3>
                             {lead.lifecycleStage && (
@@ -1943,7 +1936,7 @@ export default function Leads() {
                             disabled={lead.isConverted}
                             onChange={(s) => handleInlineStatusChange(lead, s)}
                             className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border shadow-sm ring-1 ring-slate-900/[0.04] ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}
-                            prefix={<span className={`w-2 h-2 rounded-full ${statusStyle.dot} shadow-sm animate-pulse`} />}
+                            prefix={<span className={`w-2 h-2 rounded-full ${statusStyle.dot} shadow-sm`} />}
                           />
                           {lead.isConverted && (
                             <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-300/40 ring-1 ring-white/30">
@@ -2129,29 +2122,19 @@ export default function Leads() {
                         )}
                       </div>
 
-                      <div 
-                        className="flex items-center justify-end gap-2 pt-3 mt-0.5 border-t border-slate-200/70 bg-gradient-to-r from-slate-50/90 via-white to-indigo-50/40 -mx-1 px-1 pb-0.5"
+                      {/* Card actions: quick-log only. Edit / Convert / Delete
+                          live on the lead detail page to keep the list focused. */}
+                      <div
+                        className="flex items-center justify-end gap-2 pt-3 mt-0.5 border-t border-slate-200/70 -mx-1 px-1 pb-0.5"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {!lead.isConverted && (
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => openConvert(lead)} 
-                            className="gap-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-600 text-white border-0 shadow-lg shadow-emerald-300/40 hover:shadow-xl hover:shadow-teal-400/30 hover:scale-[1.02] transition-all font-semibold rounded-lg" 
-                            aria-label={`Convert ${lead.name}`}
-                          >
-                            <ArrowRightCircle className="w-4 h-4" />
-                            Convert to Deal
-                          </Button>
-                        )}
                         <QuickLogPopover
                           onSubmit={(payload) => handleQuickLogActivity(lead, payload)}
                           trigger={
                             <Button
                               variant="outline"
                               size="sm"
-                              className="gap-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-emerald-200/60 hover:border-emerald-300 shadow-sm hover:shadow-md transition-all font-medium rounded-lg"
+                              className="gap-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-emerald-200/70 hover:border-emerald-300 shadow-sm font-medium rounded-lg"
                               aria-label={`Log activity for ${lead.name}`}
                             >
                               <MessageSquarePlus className="w-4 h-4" />
@@ -2159,25 +2142,6 @@ export default function Leads() {
                             </Button>
                           }
                         />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); openEdit(lead); }}
-                          className="gap-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 border-indigo-200/60 hover:border-indigo-300 shadow-sm hover:shadow-md transition-all font-medium rounded-lg"
-                          aria-label={`Edit ${lead.name}`}
-                        >
-                          <Pencil className="w-4 h-4" />
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDeleteConfirmLead(lead)}
-                          className="gap-1.5 bg-white text-red-600 border-red-200/80 hover:bg-gradient-to-r hover:from-red-50 hover:to-rose-50 hover:text-red-700 hover:border-red-300 shadow-sm hover:shadow transition-all font-medium rounded-lg"
-                          aria-label={`Delete ${lead.name}`}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
                       </div>
                     </div>
                   </div>
@@ -2659,23 +2623,6 @@ export default function Leads() {
           </div>
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={!!deleteConfirmLead} onOpenChange={(open) => !open && setDeleteConfirmLead(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete lead?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove &quot;{deleteConfirmLead?.name}&quot;. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} disabled={deleting} className="bg-red-600 hover:bg-red-700">
-              {deleting ? 'Deleting...' : 'Delete'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

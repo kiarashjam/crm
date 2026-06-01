@@ -21,6 +21,9 @@ import {
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import AppHeader from '@/app/components/AppHeader';
+import DealLineItemsCard from '@/app/components/DealLineItemsCard';
+import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getDealById, updateDeal, deleteDeal, messages } from '@/app/api';
@@ -167,7 +170,7 @@ export default function DealDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <div className="flex-1 flex items-center justify-center">
           <div className="animate-pulse text-slate-400">Loading deal...</div>
@@ -178,7 +181,7 @@ export default function DealDetail() {
 
   if (!deal) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
           <p className="text-slate-500">Deal not found</p>
@@ -191,7 +194,7 @@ export default function DealDetail() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full max-w-5xl mx-auto px-6 py-8" tabIndex={-1}>
@@ -411,6 +414,27 @@ export default function DealDetail() {
                   )}
                 </div>
               )}
+              {/* Products & line items */}
+              <DealLineItemsCard
+                dealId={deal.id}
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm mt-6"
+                onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, value: String(t) } : prev))}
+              />
+
+              {/* Custom fields (renders only when defined for deals) */}
+              <CustomFieldsCard
+                entityType="deal"
+                recordId={deal.id}
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm mt-6"
+              />
+
+              {/* Attachments */}
+              <AttachmentsCard
+                entityType="deal"
+                recordId={deal.id}
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm mt-6"
+              />
+
               {/* Linked Tasks Section */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm mt-6">
                 <div className="p-5 border-b border-slate-200 dark:border-slate-700">

@@ -35,8 +35,8 @@
   --text-lg: 1.125rem;
   --text-xl: 1.25rem;
   --text-2xl: 1.5rem;
-  --background: #ffffff;
-  --background-subtle: #f8fafc;
+  --background: #faf6ee; /* cream */
+  --background-subtle: #f5efe2;
   --foreground: oklch(0.145 0 0);
   --card: #ffffff;
   --card-foreground: oklch(0.145 0 0);
@@ -429,7 +429,7 @@
     radial-gradient(ellipse at 0% 0%, rgba(255, 122, 89, 0.05) 0%, transparent 50%),
     radial-gradient(ellipse at 100% 0%, rgba(20, 184, 166, 0.04) 0%, transparent 50%),
     radial-gradient(ellipse at 50% 100%, rgba(99, 102, 241, 0.03) 0%, transparent 50%),
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 40%, #f1f5f9 100%);
+    linear-gradient(180deg, #fdfbf5 0%, #faf6ec 45%, #f4eddd 100%);
 }
 
 .dark .bg-gradient-subtle {

@@ -12,6 +12,7 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import ExportCsvButton from '@/app/components/ExportCsvButton';
 import { getContactsPaged, createContact, updateContact, deleteContact, getCompanies, getDealsPaged, messages } from '@/app/api';
 import { archiveContact, unarchiveContact } from '@/app/api/contacts';
 import { getTasks } from '@/app/api/tasks';
@@ -439,6 +440,19 @@ export default function Contacts() {
               </div>
               
               <div className="flex items-center gap-3">
+                <ExportCsvButton
+                  rows={filteredContacts}
+                  filename="contacts"
+                  className="h-10 rounded-xl"
+                  columns={[
+                    { header: 'Name', value: (c) => c.name },
+                    { header: 'Email', value: (c) => c.email },
+                    { header: 'Phone', value: (c) => c.phone },
+                    { header: 'Job Title', value: (c) => c.jobTitle },
+                    { header: 'Company', value: (c) => c.companyName },
+                    { header: 'Created', value: (c) => c.createdAtUtc },
+                  ]}
+                />
                 <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
                   <Plus className="w-4 h-4" />
                   Add Contact

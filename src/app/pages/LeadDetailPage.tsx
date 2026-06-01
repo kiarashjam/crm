@@ -35,10 +35,15 @@ import { AddLeadDialog } from './leads/AddLeadDialog';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES, EMPTY_LEAD_FORM } from './leads/config';
 import { isValidGuid } from './leads/utils';
 import { loadLeadReferrals, setLeadReferral } from './leads/leadReferralStore';
+import { loadLeadAssignments, setLeadAssignment } from './leads/leadAssignmentStore';
 import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
+import AiNextActionCard from '@/app/components/AiNextActionCard';
+import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import AttachmentsCard from '@/app/components/AttachmentsCard';
+import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 
 type Tab = 'activity' | 'tasks' | 'notes';
 
@@ -122,6 +127,7 @@ export default function LeadDetailPage() {
   // Full "Edit lead" dialog — reuses the same multi-step editor as the leads
   // list so every field (incl. Referred by) can be edited from this page.
   const [editOpen, setEditOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
   const [editForm, setEditForm] = useState<LeadForm>(EMPTY_LEAD_FORM);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -157,10 +163,11 @@ export default function LeadDetailPage() {
         if (!found) {
           setNotFound(true);
         } else {
-          // referredByContactId isn't persisted by the backend — recover it from
-          // the local referral store (kept in sync with the leads list page).
+          // referredByContactId and assignedToId aren't persisted by the backend —
+          // recover them from the local stores (kept in sync with the leads list).
           const referredId = found.referredByContactId || loadLeadReferrals()[found.id];
-          setLead(referredId ? { ...found, referredByContactId: referredId } : found);
+          const ownerId = found.assignedToId || loadLeadAssignments()[found.id];
+          setLead({ ...found, referredByContactId: referredId || undefined, assignedToId: ownerId || undefined });
         }
       } catch {
         if (!cancelled) setNotFound(true);
@@ -263,6 +270,7 @@ export default function LeadDetailPage() {
         ...updated,
         referredByContactId: updated.referredByContactId ?? prev.referredByContactId,
         referredByContactName: updated.referredByContactName ?? prev.referredByContactName,
+        assignedToId: updated.assignedToId ?? prev.assignedToId,
       } : prev));
       if (log) {
         createActivity({ type: 'system', subject: log.subject, body: log.body, leadId: lead.id })
@@ -297,11 +305,17 @@ export default function LeadDetailPage() {
     patchLead({ lifecycleStage: stage }, { subject: 'Lifecycle stage updated', body: stage });
 
   const setAssignment = (userId: string) => {
+    if (!lead) return;
+    const next = userId || undefined;
     const m = orgMembers.find((x) => x.userId === userId);
-    return patchLead(
-      { assignedToId: userId || undefined },
-      { subject: m ? `Assigned to ${m.name}` : 'Unassigned' },
-    );
+    // assignedToId isn't part of the backend update contract — mirror it to the
+    // shared local store (and local state) like the leads list does.
+    setLeadAssignment(lead.id, next);
+    setLead((prev) => (prev ? { ...prev, assignedToId: next } : prev));
+    createActivity({ type: 'system', subject: m ? `Assigned to ${m.name}` : 'Unassigned', leadId: lead.id })
+      .then((a) => a && setActivities((prev) => [a, ...prev]))
+      .catch(() => { /* non-fatal */ });
+    toast.success(m ? `Assigned to ${m.name}` : 'Unassigned');
   };
 
   const setCompanyId = (companyId: string | '') => {
@@ -530,7 +544,7 @@ export default function LeadDetailPage() {
       const referredByContactName = referredByContactId
         ? contacts.find((c) => c.id === referredByContactId)?.name
         : undefined;
-      setLead((prev) => (prev ? { ...prev, ...updated, referredByContactId, referredByContactName } : prev));
+      setLead((prev) => (prev ? { ...prev, ...updated, referredByContactId, referredByContactName, assignedToId: prev.assignedToId } : prev));
       createActivity({ type: 'system', subject: 'Lead details updated', leadId: lead.id })
         .then((a) => a && setActivities((prev) => [a, ...prev]))
         .catch(() => { /* non-fatal */ });
@@ -622,6 +636,17 @@ export default function LeadDetailPage() {
                 <span className="truncate text-sm font-medium text-slate-700">{lead.name}</span>
               </div>
               <div className="flex items-center gap-1.5">
+                {lead.email && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEmailOpen(true)}
+                    className="gap-1.5 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  >
+                    <Mail className="w-4 h-4" />
+                    <span className="hidden sm:inline">Email</span>
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -997,6 +1022,19 @@ export default function LeadDetailPage() {
             {/* Sidebar — single card with section dividers, sticky on lg+ so it
                 stays in view as the user scrolls the activity timeline. */}
             <aside className="lg:sticky lg:top-[64px] lg:self-start lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto">
+              {/* AI assist — derived engagement score + recommended next action. */}
+              <AiNextActionCard
+                lead={lead}
+                activities={activities}
+                tasks={tasks}
+                className="mb-4 overflow-hidden rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/80 to-white shadow-sm"
+                onAct={(kind) => {
+                  if (kind === 'convert') navigate(`/leads?convertLeadId=${lead.id}`);
+                  else if (kind === 'task') setTab('tasks');
+                  else setTab('activity');
+                }}
+              />
+
               {/* Next step — the most urgent open task, surfaced so the next
                   follow-up is always one glance (and one click) away. */}
               <div className={cn(
@@ -1134,6 +1172,12 @@ export default function LeadDetailPage() {
                   UpdateLeadRequest has no Tags field, so any add/remove would
                   silently fail to persist. Re-enable once the backend gains
                   Lead.Tags support. */}
+
+              {/* Custom fields (renders only when defined for leads) */}
+              <CustomFieldsCard entityType="lead" recordId={lead.id} className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" />
+
+              {/* Attachments */}
+              <AttachmentsCard entityType="lead" recordId={lead.id} className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" />
             </aside>
           </div>
         </main>
@@ -1172,6 +1216,20 @@ export default function LeadDetailPage() {
         onSubmit={handleEditSubmit}
         saving={savingEdit}
       />
+
+      {lead.email && (
+        <EmailComposerDialog
+          open={emailOpen}
+          onOpenChange={setEmailOpen}
+          to={lead.email}
+          context={{ leadId: lead.id }}
+          aiContext={`${lead.name}${lead.companyName ? ` at ${lead.companyName}` : ''} · ${lead.status} lead`}
+          onSent={() => {
+            getActivitiesByLead(lead.id).then(setActivities).catch(() => {});
+            void bumpLastContacted();
+          }}
+        />
+      )}
     </div>
   );
 }

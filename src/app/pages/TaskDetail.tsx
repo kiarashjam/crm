@@ -216,7 +216,7 @@ export default function TaskDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-orange-50">
+      <div className="min-h-screen bg-gradient-subtle">
         <AppHeader />
         <main id={MAIN_CONTENT_ID} className="mx-auto max-w-4xl px-6 py-10">
           <div className="flex items-center justify-center py-20">
@@ -229,7 +229,7 @@ export default function TaskDetail() {
 
   if (!task) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-orange-50">
+      <div className="min-h-screen bg-gradient-subtle">
         <AppHeader />
         <main id={MAIN_CONTENT_ID} className="mx-auto max-w-4xl px-6 py-10">
           <div className="text-center py-20">
@@ -248,7 +248,7 @@ export default function TaskDetail() {
   const StatusIcon = statusInfo!.icon;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-orange-50">
+    <div className="min-h-screen bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="mx-auto max-w-4xl px-6 py-8">

@@ -604,7 +604,7 @@ export default function Pipeline() {
   const detailCompany = detailDeal?.companyId ? companies.find((c) => c.id === detailDeal.companyId) : undefined;
 
   return (
-    <div className="min-h-screen flex flex-col overflow-hidden bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+    <div className="min-h-screen flex flex-col overflow-hidden bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 min-h-0 flex flex-col w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>

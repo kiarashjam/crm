@@ -10,6 +10,9 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import EmailComposerDialog from '@/app/components/EmailComposerDialog';
+import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { authFetchJson } from '@/app/api/apiClient';
 import {
   getActivitiesByContact, getTasksByContact,
@@ -60,6 +63,7 @@ export default function ContactDetail() {
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -210,7 +214,7 @@ export default function ContactDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -224,7 +228,7 @@ export default function ContactDetail() {
 
   if (!contact) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -238,7 +242,7 @@ export default function ContactDetail() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full max-w-5xl mx-auto px-6 py-8" tabIndex={-1}>
@@ -248,6 +252,11 @@ export default function ContactDetail() {
               <ArrowLeft className="w-4 h-4" /> Back to Contacts
             </Button>
             <div className="flex gap-2">
+              {contact.email && !contact.doNotContact && (
+                <Button variant="outline" size="sm" onClick={() => setEmailOpen(true)} className="gap-1">
+                  <Mail className="w-3.5 h-3.5" /> Email
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={openEdit} className="gap-1">
                 <Pencil className="w-3.5 h-3.5" /> Edit
               </Button>
@@ -459,6 +468,20 @@ export default function ContactDetail() {
             )}
           </div>
 
+          {/* Custom fields (renders only when fields are defined for contacts) */}
+          <CustomFieldsCard
+            entityType="contact"
+            recordId={contact.id}
+            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8"
+          />
+
+          {/* Attachments */}
+          <AttachmentsCard
+            entityType="contact"
+            recordId={contact.id}
+            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8"
+          />
+
           {/* Activities Section */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8">
             <div className="flex items-center gap-2 mb-4">
@@ -631,6 +654,16 @@ export default function ContactDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {contact.email && (
+        <EmailComposerDialog
+          open={emailOpen}
+          onOpenChange={setEmailOpen}
+          to={contact.email}
+          context={{ contactId: contact.id }}
+          onSent={() => { if (id) getActivitiesByContact(id).then(setActivities).catch(() => {}); }}
+        />
+      )}
     </div>
   );
 }

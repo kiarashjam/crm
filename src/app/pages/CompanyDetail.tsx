@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
+import CustomFieldsCard from '@/app/components/CustomFieldsCard';
+import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
@@ -154,7 +156,7 @@ export default function CompanyDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -168,7 +170,7 @@ export default function CompanyDetail() {
 
   if (!company) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -182,7 +184,7 @@ export default function CompanyDetail() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full max-w-5xl mx-auto px-6 py-8" tabIndex={-1}>
@@ -399,6 +401,20 @@ export default function CompanyDetail() {
               </div>
             )}
           </Card>
+
+          {/* Custom fields (renders only when defined for companies) */}
+          <CustomFieldsCard
+            entityType="company"
+            recordId={company.id}
+            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6"
+          />
+
+          {/* Attachments */}
+          <AttachmentsCard
+            entityType="company"
+            recordId={company.id}
+            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6"
+          />
         </main>
       </PageTransition>
 

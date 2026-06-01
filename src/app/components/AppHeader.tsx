@@ -22,12 +22,18 @@ import {
   Search,
   X,
   Target,
+  Workflow,
+  BarChart3,
+  Zap,
+  Copy,
+  ScrollText,
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { isUsingRealApi } from '@/app/api';
 import { authFetchJson } from '@/app/api/apiClient';
 import type { GlobalSearchResult } from '@/app/api/search';
+import NotificationBell from '@/app/components/NotificationBell';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,6 +55,11 @@ const allNavItems = [
   { path: '/tasks', label: 'Tasks', icon: CheckSquare },
   { path: '/contacts', label: 'Contacts', icon: UserCircle },
   { path: '/activities', label: 'Activities', icon: Activity },
+  { path: '/sequences', label: 'Sequences', icon: Workflow },
+  { path: '/reports', label: 'Reports', icon: BarChart3 },
+  { path: '/automations', label: 'Automations', icon: Zap },
+  { path: '/duplicates', label: 'Duplicates', icon: Copy },
+  { path: '/audit', label: 'Audit', icon: ScrollText },
   { path: '/companies', label: 'Companies', icon: Building2 },
   { path: '/team', label: 'Team', icon: UsersRound },
   { path: '/templates', label: 'Templates', icon: LayoutTemplate },
@@ -484,8 +495,11 @@ export default function AppHeader() {
           {/* HP-9: Global search bar */}
           {isUsingRealApi() && <GlobalSearchBar />}
 
-          {/* Right: org selector + user menu + mobile trigger */}
+          {/* Right: notifications + org selector + user menu + mobile trigger */}
           <div className="flex items-center gap-2">
+            {/* Notifications */}
+            <NotificationBell />
+
             {/* Organization Selector */}
             {org?.currentOrg && (
               <Link
