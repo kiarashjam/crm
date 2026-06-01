@@ -22,6 +22,7 @@ import {
   Search,
   X,
   Target,
+  Workflow,
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
@@ -50,6 +51,7 @@ const allNavItems = [
   { path: '/tasks', label: 'Tasks', icon: CheckSquare },
   { path: '/contacts', label: 'Contacts', icon: UserCircle },
   { path: '/activities', label: 'Activities', icon: Activity },
+  { path: '/sequences', label: 'Sequences', icon: Workflow },
   { path: '/companies', label: 'Companies', icon: Building2 },
   { path: '/team', label: 'Team', icon: UsersRound },
   { path: '/templates', label: 'Templates', icon: LayoutTemplate },
