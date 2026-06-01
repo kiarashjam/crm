@@ -39,6 +39,7 @@ import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
+import AiNextActionCard from '@/app/components/AiNextActionCard';
 
 type Tab = 'activity' | 'tasks' | 'notes';
 
@@ -997,6 +998,19 @@ export default function LeadDetailPage() {
             {/* Sidebar — single card with section dividers, sticky on lg+ so it
                 stays in view as the user scrolls the activity timeline. */}
             <aside className="lg:sticky lg:top-[64px] lg:self-start lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto">
+              {/* AI assist — derived engagement score + recommended next action. */}
+              <AiNextActionCard
+                lead={lead}
+                activities={activities}
+                tasks={tasks}
+                className="mb-4 overflow-hidden rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/80 to-white shadow-sm"
+                onAct={(kind) => {
+                  if (kind === 'convert') navigate(`/leads?convertLeadId=${lead.id}`);
+                  else if (kind === 'task') setTab('tasks');
+                  else setTab('activity');
+                }}
+              />
+
               {/* Next step — the most urgent open task, surfaced so the next
                   follow-up is always one glance (and one click) away. */}
               <div className={cn(

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, Send, Loader2 } from 'lucide-react';
+import { Mail, Send, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -8,7 +8,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Label } from '@/app/components/ui/label';
-import { sendEmail, createActivity, isUsingRealApi } from '@/app/api';
+import { sendEmail, createActivity, generateCopy, isUsingRealApi } from '@/app/api';
 
 export interface EmailComposerContext {
   leadId?: string;
@@ -25,6 +25,8 @@ interface EmailComposerDialogProps {
   defaultBody?: string;
   /** Associates the sent message + logged activity with a record. */
   context?: EmailComposerContext;
+  /** Extra context for the AI draft (e.g. "Acme Corp · enterprise lead"). */
+  aiContext?: string;
   /** Called after a successful send (e.g. to refresh a timeline). */
   onSent?: () => void;
 }
@@ -35,7 +37,7 @@ interface EmailComposerDialogProps {
  * activity against the related record so it lands on the timeline.
  */
 export default function EmailComposerDialog({
-  open, onOpenChange, to, defaultSubject = '', defaultBody = '', context, onSent,
+  open, onOpenChange, to, defaultSubject = '', defaultBody = '', context, aiContext, onSent,
 }: EmailComposerDialogProps) {
   const [toAddr, setToAddr] = useState(to);
   const [cc, setCc] = useState('');
@@ -43,6 +45,28 @@ export default function EmailComposerDialog({
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody] = useState(defaultBody);
   const [sending, setSending] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+
+  const aiDraft = async () => {
+    setDrafting(true);
+    try {
+      const goal = subject.trim()
+        ? `Write a concise, friendly outreach email about: ${subject.trim()}`
+        : 'Write a concise, friendly sales outreach email to start a conversation';
+      const copy = await generateCopy({
+        copyTypeId: 'sales-email',
+        goal,
+        context: aiContext || `Recipient: ${toAddr}`,
+        length: 'medium',
+      });
+      if (copy) { setBody(copy); toast.success('Draft generated'); }
+      else toast.error('Could not generate a draft');
+    } catch {
+      toast.error('Could not generate a draft');
+    } finally {
+      setDrafting(false);
+    }
+  };
 
   // Re-seed the fields each time the dialog is opened for a new context.
   useEffect(() => {
@@ -126,7 +150,18 @@ export default function EmailComposerDialog({
             <Input id="email-subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" className="mt-1" />
           </div>
           <div>
-            <Label htmlFor="email-body">Message</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="email-body">Message</Label>
+              <button
+                type="button"
+                onClick={aiDraft}
+                disabled={drafting}
+                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-60"
+              >
+                {drafting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {drafting ? 'Drafting…' : 'AI draft'}
+              </button>
+            </div>
             <Textarea id="email-body" value={body} onChange={(e) => setBody(e.target.value)} rows={9} placeholder="Write your message…" className="mt-1 resize-none" />
           </div>
         </div>
