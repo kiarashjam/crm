@@ -170,7 +170,7 @@ export default function DealDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <div className="flex-1 flex items-center justify-center">
           <div className="animate-pulse text-slate-400">Loading deal...</div>
@@ -181,7 +181,7 @@ export default function DealDetail() {
 
   if (!deal) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
           <p className="text-slate-500">Deal not found</p>
@@ -194,7 +194,7 @@ export default function DealDetail() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full max-w-5xl mx-auto px-6 py-8" tabIndex={-1}>

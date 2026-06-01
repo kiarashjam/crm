@@ -156,7 +156,7 @@ export default function CompanyDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -170,7 +170,7 @@ export default function CompanyDetail() {
 
   if (!company) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
@@ -184,7 +184,7 @@ export default function CompanyDetail() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-emerald-950/30">
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full max-w-5xl mx-auto px-6 py-8" tabIndex={-1}>

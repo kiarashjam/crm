@@ -133,6 +133,18 @@ const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
 /** Session-scoped scroll position so returning from a lead detail restores it. */
 const LEAD_LIST_SCROLL_KEY = 'crm.leads.scrollY';
 
+/** Short labels for the sort trigger so the selected value fits its box. */
+const SORT_LABELS: Record<string, string> = {
+  'createdAt-desc': 'Newest first',
+  'createdAt-asc': 'Oldest first',
+  'name-asc': 'Name A–Z',
+  'name-desc': 'Name Z–A',
+  'status-asc': 'Status A–Z',
+  'status-desc': 'Status Z–A',
+  'email-asc': 'Email A–Z',
+  'email-desc': 'Email Z–A',
+};
+
 function loadLeadCreatedAtMap(): Record<string, string> {
   try {
     const raw = localStorage.getItem(LEAD_CREATED_AT_STORAGE_KEY);
@@ -1428,12 +1440,14 @@ export default function Leads() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[200px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
+                  <SelectTrigger className="relative h-11 w-[190px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="w-6 h-6 shrink-0 rounded-lg bg-white/10 flex items-center justify-center">
                         <ArrowUpDown className="w-3.5 h-3.5 text-slate-300" />
                       </div>
-                      <SelectValue placeholder="Sort by..." />
+                      <span className="min-w-0 truncate text-sm">
+                        {SORT_LABELS[`${sortField}-${sortDirection}`] ?? 'Sort by…'}
+                      </span>
                     </div>
                   </SelectTrigger>
                 <SelectContent>
