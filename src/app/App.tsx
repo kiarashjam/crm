@@ -39,6 +39,7 @@ const Sequences = lazy(() => import('@/app/pages/Sequences'));
 const Reports = lazy(() => import('@/app/pages/Reports'));
 const Automations = lazy(() => import('@/app/pages/Automations'));
 const Duplicates = lazy(() => import('@/app/pages/Duplicates'));
+const AuditLog = lazy(() => import('@/app/pages/AuditLog'));
 const Companies = lazy(() => import('@/app/pages/Companies'));
 const CompanyDetail = lazy(() => import('@/app/pages/CompanyDetail'));
 const Contacts = lazy(() => import('@/app/pages/Contacts'));
@@ -122,6 +123,7 @@ export default function App() {
                     <Route path="/reports" element={<Reports />} />
                     <Route path="/automations" element={<Automations />} />
                     <Route path="/duplicates" element={<Duplicates />} />
+                    <Route path="/audit" element={<AuditLog />} />
                     <Route path="/contacts" element={<Contacts />} />
                     <Route path="/contacts/:id" element={<ContactDetail />} />
                     <Route path="/companies" element={<Companies />} />

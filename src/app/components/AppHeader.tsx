@@ -26,6 +26,7 @@ import {
   BarChart3,
   Zap,
   Copy,
+  ScrollText,
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
@@ -58,6 +59,7 @@ const allNavItems = [
   { path: '/reports', label: 'Reports', icon: BarChart3 },
   { path: '/automations', label: 'Automations', icon: Zap },
   { path: '/duplicates', label: 'Duplicates', icon: Copy },
+  { path: '/audit', label: 'Audit', icon: ScrollText },
   { path: '/companies', label: 'Companies', icon: Building2 },
   { path: '/team', label: 'Team', icon: UsersRound },
   { path: '/templates', label: 'Templates', icon: LayoutTemplate },
