@@ -4,15 +4,17 @@ import {
   Activity as ActivityIcon, Plus, Phone, Mail, MessageSquare, FileText, Trash2,
   Search, X, Calendar, Clock, User, Target, BarChart3, TrendingUp, Video,
   Presentation, CheckCircle, Users, Filter, Sparkles, Pencil, UserCheck,
-  ChevronDown, CalendarDays, CalendarClock, Zap, AlertCircle
+  ChevronDown, CalendarDays, CalendarClock, Zap, AlertCircle, Download, FileText as FileTextIcon, FileSpreadsheet, Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getActivitiesPaged, createActivity, updateActivity, deleteActivity, getContacts, getDeals, getLeads, getActivitiesByContact, getActivitiesByDeal, getActivitiesByLead, messages } from '@/app/api';
+import { getActivities, getActivitiesPaged, createActivity, updateActivity, deleteActivity, getContacts, getDeals, getLeads, getActivitiesByContact, getActivitiesByDeal, getActivitiesByLead, messages } from '@/app/api';
 import type { Activity, Contact, Deal, Lead, PagedResult } from '@/app/api/types';
+import { downloadCsv } from '@/app/lib/exportCsv';
+import { activityCsvColumns, printActivitiesPdf, activityTypeLabel } from '@/app/lib/exportActivities';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -123,6 +125,7 @@ export default function Activities() {
   const [saving, setSaving] = useState(false);
   const [deleteConfirmActivity, setDeleteConfirmActivity] = useState<Activity | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   
   // Pagination state
   const [page, setPage] = useState(1);
@@ -413,6 +416,40 @@ export default function Activities() {
     }
   };
 
+  // Export the full activity history (all pages), honoring the current filters.
+  const handleExport = async (format: 'pdf' | 'csv') => {
+    setExporting(true);
+    try {
+      let rows = await getActivities();
+      if (!Array.isArray(rows)) rows = [];
+      if (filter === 'contact' && filterContactId) rows = rows.filter((a) => a.contactId === filterContactId);
+      else if (filter === 'deal' && filterDealId) rows = rows.filter((a) => a.dealId === filterDealId);
+      else if (filter === 'lead' && filterLeadId) rows = rows.filter((a) => a.leadId === filterLeadId);
+      if (filterType !== 'all') rows = rows.filter((a) => a.type === filterType);
+      const q = debouncedSearch.trim().toLowerCase();
+      if (q) {
+        rows = rows.filter((a) =>
+          [a.subject, a.body, a.contactName, a.dealName, a.leadName]
+            .some((v) => (v || '').toLowerCase().includes(q)));
+      }
+      rows.sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt));
+      if (rows.length === 0) { toast.error('No activities to export'); return; }
+
+      if (format === 'csv') {
+        downloadCsv('activity-history', rows, activityCsvColumns);
+        toast.success(`Exported ${rows.length} ${rows.length === 1 ? 'activity' : 'activities'}`);
+      } else {
+        const subtitle = filterType !== 'all' ? `Type: ${activityTypeLabel(filterType)}` : 'All activity types';
+        const ok = printActivitiesPdf(rows, { subtitle });
+        if (!ok) toast.error('Allow pop-ups for this site to export as PDF');
+      }
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Quick log activity with preset type
   const quickLogActivity = (type: string) => {
     setEditingActivity(null);
@@ -480,7 +517,27 @@ export default function Activities() {
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" disabled={exporting} className="gap-2 h-10 px-4 rounded-xl border-slate-200" aria-label="Export activity history">
+                      {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      Export
+                      <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem onClick={() => handleExport('pdf')} className="gap-2">
+                      <FileTextIcon className="w-4 h-4 text-rose-500" />
+                      <span>Export as PDF</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExport('csv')} className="gap-2">
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                      <span>Google Sheets (CSV)</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 <Button onClick={() => { setEditingActivity(null); setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '' }); setDialogOpen(true); }} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
                   <Plus className="w-4 h-4" />
                   Log Activity

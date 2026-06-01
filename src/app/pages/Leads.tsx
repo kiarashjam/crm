@@ -267,8 +267,13 @@ export default function Leads() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Update URL when debounced search changes (resets to page 1)
+  // Update URL when debounced search changes. Reset to page 1 only when the
+  // search value actually changed — not on unrelated URL updates (e.g. clicking
+  // a page), which would otherwise snap the user back to page 1.
+  const prevSearchRef = useRef<string | null>(null);
   useEffect(() => {
+    const searchChanged = prevSearchRef.current !== null && prevSearchRef.current !== debouncedSearch;
+    prevSearchRef.current = debouncedSearch;
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
@@ -277,7 +282,7 @@ export default function Leads() {
         } else {
           params.delete('search');
         }
-        params.set('page', '1');
+        if (searchChanged) params.set('page', '1');
         return params.toString() === prev.toString() ? prev : params;
       },
       { replace: true }
@@ -286,11 +291,17 @@ export default function Leads() {
 
   // Reset to page 1 when filters / sort change, and mirror the values into the
   // URL so navigating away and back preserves them (and so any URL is shareable).
+  // Page is reset only when a filter actually changes (tracked via a signature
+  // ref) so this effect re-running for other reasons can't clobber pagination.
+  const prevFilterSigRef = useRef<string | null>(null);
   useEffect(() => {
+    const sig = JSON.stringify([filterStatuses, filterSource, filterConverted, filterAssignment, sortField, sortDirection]);
+    const filtersChanged = prevFilterSigRef.current !== null && prevFilterSigRef.current !== sig;
+    prevFilterSigRef.current = sig;
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
-        params.set('page', '1');
+        if (filtersChanged) params.set('page', '1');
         if (filterStatuses.length > 0) params.set('statuses', filterStatuses.join(','));
         else params.delete('statuses');
         if (filterSource && filterSource !== 'all') params.set('source', filterSource);

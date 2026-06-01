@@ -41,6 +41,7 @@ import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
 import AiNextActionCard from '@/app/components/AiNextActionCard';
+import SaveLeadAsContactDialog from '@/app/components/SaveLeadAsContactDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
@@ -128,6 +129,7 @@ export default function LeadDetailPage() {
   // list so every field (incl. Referred by) can be edited from this page.
   const [editOpen, setEditOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [saveContactOpen, setSaveContactOpen] = useState(false);
   const [editForm, setEditForm] = useState<LeadForm>(EMPTY_LEAD_FORM);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -655,6 +657,15 @@ export default function LeadDetailPage() {
                 >
                   <Pencil className="w-4 h-4" />
                   <span className="hidden sm:inline">Edit</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSaveContactOpen(true)}
+                  className="gap-1.5 border-violet-200 bg-white text-violet-700 hover:bg-violet-50 hover:text-violet-800"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span className="hidden sm:inline">Save as contact</span>
                 </Button>
                 {!lead.isConverted && (
                   <Button
@@ -1230,6 +1241,15 @@ export default function LeadDetailPage() {
           }}
         />
       )}
+
+      <SaveLeadAsContactDialog
+        open={saveContactOpen}
+        onOpenChange={setSaveContactOpen}
+        lead={lead}
+        companyName={company?.name ?? lead.companyName}
+        existingContacts={contacts}
+        onCreated={() => { getActivitiesByLead(lead.id).then(setActivities).catch(() => {}); }}
+      />
     </div>
   );
 }
