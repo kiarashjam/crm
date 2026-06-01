@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 import AppHeader from '@/app/components/AppHeader';
+import DealLineItemsCard from '@/app/components/DealLineItemsCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getDealById, updateDeal, deleteDeal, messages } from '@/app/api';
@@ -411,6 +412,13 @@ export default function DealDetail() {
                   )}
                 </div>
               )}
+              {/* Products & line items */}
+              <DealLineItemsCard
+                dealId={deal.id}
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm mt-6"
+                onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, value: String(t) } : prev))}
+              />
+
               {/* Linked Tasks Section */}
               <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm mt-6">
                 <div className="p-5 border-b border-slate-200 dark:border-slate-700">

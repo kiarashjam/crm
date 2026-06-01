@@ -33,6 +33,7 @@ export * from './customFields';
 export * from './automations';
 export * from './attachments';
 export * from './dedupe';
+export * from './products';
 export * from './reporting';
 export * from './search';
 export * from './templates';
