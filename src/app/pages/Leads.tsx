@@ -6,7 +6,7 @@ import {
   Upload, RefreshCw, Users, Handshake, ArrowRight, CheckCircle2,
   SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, X, Download,
   TrendingUp, Target, Clock, Zap, BarChart3, Calendar, AlertCircle, Activity as ActivityIcon,
-  MessageSquarePlus,
+  MessageSquarePlus, UserCircle, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -60,6 +60,7 @@ import { AddLeadDialog } from './leads/AddLeadDialog';
 import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
 import { StatusChangePopover } from './leads/components/StatusChangePopover';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
+import { AssignPopover } from './leads/components/AssignPopover';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
 import { Checkbox } from '@/app/components/ui/checkbox';
@@ -1002,6 +1003,23 @@ export default function Leads() {
     } catch {
       /* refresh failure is non-fatal */
     }
+  };
+
+  // Reassign a lead's owner inline from its card. assignedToId isn't part of the
+  // backend update contract, so it's mirrored to the shared local store.
+  const handleAssignLead = (lead: Lead, userId: string) => {
+    const next = userId || undefined;
+    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, assignedToId: next } : l)));
+    setLeadAssignments((prev) => {
+      const updated = { ...prev };
+      if (next) updated[lead.id] = next;
+      else delete updated[lead.id];
+      saveLeadAssignments(updated);
+      return updated;
+    });
+    const member = userId ? orgMembersById.get(userId) : null;
+    createActivity({ type: 'system', subject: member ? `Assigned to ${member.name}` : 'Unassigned', leadId: lead.id }).catch(() => {});
+    toast.success(member ? `Assigned to ${member.name}` : 'Lead unassigned');
   };
 
   // Bulk operations
@@ -1984,14 +2002,6 @@ export default function Leads() {
                             <span>{lead.phone}</span>
                           </a>
                         )}
-                        {assignee && (
-                          <span className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-50 to-purple-50 text-violet-900 border border-violet-200/60 shadow-sm font-medium">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-[10px] font-bold shadow-md ring-2 ring-white">
-                              {assignee.name.charAt(0).toUpperCase()}
-                            </div>
-                            <span className="font-medium">{assignee.name}</span>
-                          </span>
-                        )}
                         {lead.referredByContactName && (
                           <span className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-fuchsia-50 to-pink-50 text-fuchsia-900 border border-fuchsia-200/60 shadow-sm font-medium">
                             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-fuchsia-600 shadow-sm ring-1 ring-fuchsia-100">
@@ -2133,12 +2143,36 @@ export default function Leads() {
                         )}
                       </div>
 
-                      {/* Card actions: quick-log only. Edit / Convert / Delete
-                          live on the lead detail page to keep the list focused. */}
+                      {/* Card actions: owner assignment + quick-log. Edit /
+                          Convert / Delete live on the detail page. */}
                       <div
-                        className="flex items-center justify-end gap-2 pt-3 mt-0.5 border-t border-slate-200/70 -mx-1 px-1 pb-0.5"
+                        className="flex items-center justify-between gap-2 pt-3 mt-0.5 border-t border-slate-200/70 -mx-1 px-1 pb-0.5"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        <AssignPopover
+                          assigneeId={lead.assignedToId}
+                          members={orgMembers}
+                          onAssign={(userId) => handleAssignLead(lead, userId)}
+                          trigger={
+                            <button
+                              type="button"
+                              aria-label={assignee ? `Assigned to ${assignee.name} — change owner` : 'Assign owner'}
+                              className="group/assign inline-flex max-w-[55%] items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 text-sm text-slate-600 shadow-sm hover:border-indigo-300 hover:bg-indigo-50/50"
+                            >
+                              {assignee ? (
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white ring-2 ring-white">
+                                  {assignee.name.charAt(0).toUpperCase()}
+                                </span>
+                              ) : (
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                                  <UserCircle className="h-4 w-4" />
+                                </span>
+                              )}
+                              <span className="truncate font-medium">{assignee ? assignee.name : 'Unassigned'}</span>
+                              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            </button>
+                          }
+                        />
                         <QuickLogPopover
                           onSubmit={(payload) => handleQuickLogActivity(lead, payload)}
                           trigger={
