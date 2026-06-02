@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3, TrendingUp, Target, DollarSign, Percent, Loader2,
+  Users, UserCheck, Gauge, Sparkles,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
-  PieChart, Pie, LineChart, Line,
+  PieChart, Pie, LineChart, Line, Area, AreaChart,
 } from 'recharts';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -75,6 +76,35 @@ export default function Reports() {
     const leadsByStatus = groupSum(leads, (l) => l.status || 'Unknown', () => 1);
     const leadsBySource = groupSum(leads, (l) => l.source || 'Unknown', () => 1).slice(0, 6);
 
+    // ---- Lead analytics ----
+    const totalLeads = leads.length;
+    const convertedLeads = leads.filter((l) => l.isConverted).length;
+    const conversionRate = totalLeads ? Math.round((convertedLeads / totalLeads) * 100) : 0;
+    const qualifiedLeads = leads.filter((l) => (l.status || '').toLowerCase().includes('qualified')).length;
+    const scored = leads.filter((l) => typeof l.leadScore === 'number');
+    const avgScore = scored.length ? Math.round(scored.reduce((s, l) => s + (l.leadScore ?? 0), 0) / scored.length) : 0;
+    const leadsByLifecycle = groupSum(leads.filter((l) => l.lifecycleStage), (l) => l.lifecycleStage || '—', () => 1);
+
+    // New leads per week, last 8 weeks.
+    const WEEK = 7 * 86_400_000;
+    const leadWeeks: { name: string; value: number }[] = [];
+    for (let i = 7; i >= 0; i--) {
+      const start = Date.now() - (i + 1) * WEEK;
+      const end = Date.now() - i * WEEK;
+      const value = leads.filter((l) => {
+        const t = Date.parse(l.createdAtUtc || '');
+        return !Number.isNaN(t) && t >= start && t < end;
+      }).length;
+      leadWeeks.push({ name: new Date(end).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }), value });
+    }
+    // Acquisition → qualification → conversion funnel.
+    const leadFunnel = [
+      { name: 'All leads', value: totalLeads },
+      { name: 'Contacted+', value: leads.filter((l) => !/^new$/i.test(l.status || '')).length },
+      { name: 'Qualified', value: qualifiedLeads },
+      { name: 'Converted', value: convertedLeads },
+    ];
+
     // Activity volume over the last 14 days.
     const days: { name: string; value: number }[] = [];
     const byDay = new Map<string, number>();
@@ -94,12 +124,21 @@ export default function Reports() {
       openValue, weighted, winRate, avgDeal,
       wonCount: won.length, lostCount: lost.length, openCount: open.length,
       byStage, byAssignee, leadsByStatus, leadsBySource, days,
+      totalLeads, convertedLeads, conversionRate, qualifiedLeads, avgScore,
+      leadsByLifecycle, leadWeeks, leadFunnel,
       winLoss: [
         { name: 'Won', value: won.length },
         { name: 'Lost', value: lost.length },
       ],
     };
   }, [deals, leads, activities]);
+
+  const leadKpis = [
+    { label: 'Total leads', value: String(m.totalLeads), sub: `${m.qualifiedLeads} qualified`, icon: Users, tone: 'text-blue-600 bg-blue-50' },
+    { label: 'Conversion rate', value: `${m.conversionRate}%`, sub: `${m.convertedLeads} converted`, icon: UserCheck, tone: 'text-emerald-600 bg-emerald-50' },
+    { label: 'Avg lead score', value: `${m.avgScore}`, sub: 'across scored leads', icon: Gauge, tone: 'text-violet-600 bg-violet-50' },
+    { label: 'New (8 wks)', value: String(m.leadWeeks.reduce((s, w) => s + w.value, 0)), sub: 'created recently', icon: Sparkles, tone: 'text-amber-600 bg-amber-50' },
+  ];
 
   const kpis = [
     { label: 'Open pipeline', value: fmtMoney(m.openValue), sub: `${m.openCount} open deals`, icon: DollarSign, tone: 'text-indigo-600 bg-indigo-50' },
@@ -224,6 +263,76 @@ export default function Reports() {
                     </ResponsiveContainer>
                   )}
                 </ChartCard>
+              </div>
+
+              {/* ---- Leads ---- */}
+              <div className="pt-2">
+                <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                  <Users className="h-5 w-5 text-indigo-600" /> Leads
+                </h2>
+                <p className="mb-4 mt-0.5 text-sm text-slate-500">Acquisition, qualification and conversion from your leads.</p>
+
+                <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  {leadKpis.map((k) => (
+                    <div key={k.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-slate-500">{k.label}</span>
+                        <span className={cn('flex h-8 w-8 items-center justify-center rounded-lg', k.tone)}><k.icon className="h-4 w-4" /></span>
+                      </div>
+                      <p className="mt-2 text-2xl font-bold text-slate-900">{k.value}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">{k.sub}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <ChartCard title="New leads (last 8 weeks)">
+                    <ResponsiveContainer width="100%" height={260}>
+                      <AreaChart data={m.leadWeeks} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="leadGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#6366f1" stopOpacity={0.3} />
+                            <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="value" stroke="#6366f1" strokeWidth={2.5} fill="url(#leadGrad)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+
+                  <ChartCard title="Lead funnel">
+                    <ResponsiveContainer width="100%" height={260}>
+                      <BarChart data={m.leadFunnel} layout="vertical" margin={{ top: 4, right: 28, left: 20, bottom: 0 }}>
+                        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                        <YAxis type="category" dataKey="name" width={84} tick={{ fontSize: 11, fill: '#64748b' }} />
+                        <Tooltip cursor={{ fill: '#f8fafc' }} />
+                        <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={26}>
+                          {m.leadFunnel.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+
+                  {m.leadsByLifecycle.length > 0 && (
+                    <ChartCard title="Leads by lifecycle stage">
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={m.leadsByLifecycle} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                          <Tooltip cursor={{ fill: '#f8fafc' }} />
+                          <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={56}>
+                            {m.leadsByLifecycle.map((_, i) => <Cell key={i} fill={PALETTE[i % PALETTE.length]} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </ChartCard>
+                  )}
+                </div>
               </div>
             </div>
           )}
