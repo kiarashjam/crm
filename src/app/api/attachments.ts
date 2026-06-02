@@ -4,7 +4,7 @@
 // file into a data URL (small files only, to respect localStorage limits) so
 // uploads + downloads work offline.
 
-import { isUsingRealApi, authFetch, authFetchJson, getApiBaseUrl } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, getApiBaseUrl } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { getCurrentUser } from '@/app/lib/auth';
 
@@ -48,47 +48,47 @@ function readAsDataUrl(file: File): Promise<string> {
 }
 
 export async function getAttachments(entityType: AttachmentEntity, recordId: string): Promise<Attachment[]> {
-  if (isUsingRealApi()) {
-    const res = await authFetchJson<Attachment[]>(`/api/attachments?entityType=${entityType}&recordId=${recordId}`);
-    return Array.isArray(res) ? res : [];
-  }
-  await delay(120);
-  return store
-    .list()
-    .filter((a) => a.entityType === entityType && a.recordId === recordId)
-    .sort((a, b) => Date.parse(b.uploadedAtUtc) - Date.parse(a.uploadedAtUtc));
+  return apiWithFallback(
+    async () => { const res = await authFetchJson<Attachment[]>(`/api/attachments?entityType=${entityType}&recordId=${recordId}`); return Array.isArray(res) ? res : []; },
+    async () => {
+      await delay(120);
+      return store.list().filter((a) => a.entityType === entityType && a.recordId === recordId).sort((a, b) => Date.parse(b.uploadedAtUtc) - Date.parse(a.uploadedAtUtc));
+    },
+  );
 }
 
 export async function uploadAttachment(entityType: AttachmentEntity, recordId: string, file: File): Promise<Attachment | null> {
-  if (isUsingRealApi()) {
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('entityType', entityType);
-    fd.append('recordId', recordId);
-    return authFetchJson<Attachment>('/api/attachments', { method: 'POST', body: fd });
-  }
-  await delay(300);
-  const dataUrl = file.size <= MAX_INLINE_BYTES ? await readAsDataUrl(file) : undefined;
-  return store.add({
-    id: mockId('att'),
-    entityType,
-    recordId,
-    fileName: file.name,
-    contentType: file.type || 'application/octet-stream',
-    size: file.size,
-    dataUrl,
-    uploadedAtUtc: new Date().toISOString(),
-    uploadedByName: getCurrentUser()?.name,
-  });
+  return apiWithFallback(
+    () => {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('entityType', entityType);
+      fd.append('recordId', recordId);
+      return authFetchJson<Attachment>('/api/attachments', { method: 'POST', body: fd });
+    },
+    async () => {
+      await delay(300);
+      const dataUrl = file.size <= MAX_INLINE_BYTES ? await readAsDataUrl(file) : undefined;
+      return store.add({
+        id: mockId('att'),
+        entityType,
+        recordId,
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        size: file.size,
+        dataUrl,
+        uploadedAtUtc: new Date().toISOString(),
+        uploadedByName: getCurrentUser()?.name,
+      });
+    },
+  );
 }
 
 export async function deleteAttachment(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch(`/api/attachments/${id}`, { method: 'DELETE' });
-    return res.status === 204 || res.ok;
-  }
-  await delay(120);
-  return store.remove(id);
+  return apiWithFallback(
+    async () => { const res = await authFetch(`/api/attachments/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { await delay(120); return store.remove(id); },
+  );
 }
 
 /** Resolve a usable href for downloading/opening an attachment. */

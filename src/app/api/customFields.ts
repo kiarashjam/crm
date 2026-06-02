@@ -4,7 +4,7 @@
 // with their own fields. Definitions live per entity type; values are stored
 // per record. The backend persists both; demo mode keeps them in localStorage.
 
-import { isUsingRealApi, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -58,16 +58,17 @@ function slugify(label: string): string {
 // ---- Definitions ----
 
 export async function getFieldDefinitions(entityType?: CustomFieldEntity): Promise<CustomFieldDef[]> {
-  if (isUsingRealApi()) {
-    const q = entityType ? `?entityType=${entityType}` : '';
-    const res = await authFetchJson<CustomFieldDef[]>(`/api/custom-fields${q}`);
-    return Array.isArray(res) ? res : [];
-  }
-  await delay(120);
-  return defStore
-    .list()
-    .filter((d) => !entityType || d.entityType === entityType)
-    .sort((a, b) => a.order - b.order);
+  return apiWithFallback(
+    async () => {
+      const q = entityType ? `?entityType=${entityType}` : '';
+      const res = await authFetchJson<CustomFieldDef[]>(`/api/custom-fields${q}`);
+      return Array.isArray(res) ? res : [];
+    },
+    async () => {
+      await delay(120);
+      return defStore.list().filter((d) => !entityType || d.entityType === entityType).sort((a, b) => a.order - b.order);
+    },
+  );
 }
 
 export interface CustomFieldInput {
@@ -79,66 +80,60 @@ export interface CustomFieldInput {
 }
 
 export async function createFieldDefinition(input: CustomFieldInput): Promise<CustomFieldDef | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<CustomFieldDef>('/api/custom-fields', { method: 'POST', body: JSON.stringify(input) });
-  }
-  await delay(150);
-  const existing = defStore.list().filter((d) => d.entityType === input.entityType);
-  return defStore.add({
-    id: mockId('cf'),
-    entityType: input.entityType,
-    key: `${slugify(input.label)}_${Math.random().toString(36).slice(2, 6)}`,
-    label: input.label,
-    type: input.type,
-    options: input.options,
-    required: input.required,
-    order: existing.length,
-  });
+  return apiWithFallback(
+    () => authFetchJson<CustomFieldDef>('/api/custom-fields', { method: 'POST', body: JSON.stringify(input) }),
+    async () => {
+      await delay(150);
+      const existing = defStore.list().filter((d) => d.entityType === input.entityType);
+      return defStore.add({
+        id: mockId('cf'),
+        entityType: input.entityType,
+        key: `${slugify(input.label)}_${Math.random().toString(36).slice(2, 6)}`,
+        label: input.label,
+        type: input.type,
+        options: input.options,
+        required: input.required,
+        order: existing.length,
+      });
+    },
+  );
 }
 
 export async function updateFieldDefinition(id: string, patch: Partial<CustomFieldInput>): Promise<CustomFieldDef | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<CustomFieldDef>(`/api/custom-fields/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
-  }
-  await delay(120);
-  return defStore.update(id, patch);
+  return apiWithFallback(
+    () => authFetchJson<CustomFieldDef>(`/api/custom-fields/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    async () => { await delay(120); return defStore.update(id, patch); },
+  );
 }
 
 export async function deleteFieldDefinition(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch(`/api/custom-fields/${id}`, { method: 'DELETE' });
-    return res.status === 204 || res.ok;
-  }
-  await delay(120);
-  return defStore.remove(id);
+  return apiWithFallback(
+    async () => { const res = await authFetch(`/api/custom-fields/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { await delay(120); return defStore.remove(id); },
+  );
 }
 
 // ---- Values ----
 
 export async function getFieldValues(entityType: CustomFieldEntity, recordId: string): Promise<CustomFieldValues> {
-  if (isUsingRealApi()) {
-    try {
+  return apiWithFallback(
+    async () => {
       const res = await authFetchJson<CustomFieldValues>(`/api/custom-fields/values?entityType=${entityType}&recordId=${recordId}`);
       return res ?? {};
-    } catch {
-      return {};
-    }
-  }
-  await delay(80);
-  return valuesStore.byId(`${entityType}:${recordId}`)?.values ?? {};
+    },
+    async () => { await delay(80); return valuesStore.byId(`${entityType}:${recordId}`)?.values ?? {}; },
+  );
 }
 
 export async function saveFieldValues(entityType: CustomFieldEntity, recordId: string, values: CustomFieldValues): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch('/api/custom-fields/values', {
-      method: 'PUT',
-      body: JSON.stringify({ entityType, recordId, values }),
-    });
-    return res.ok;
-  }
-  await delay(120);
-  const id = `${entityType}:${recordId}`;
-  if (valuesStore.byId(id)) valuesStore.update(id, { values });
-  else valuesStore.add({ id, entityType, recordId, values });
-  return true;
+  return apiWithFallback(
+    async () => { const res = await authFetch('/api/custom-fields/values', { method: 'PUT', body: JSON.stringify({ entityType, recordId, values }) }); if (!res.ok) throw new Error('failed'); return true; },
+    async () => {
+      await delay(120);
+      const id = `${entityType}:${recordId}`;
+      if (valuesStore.byId(id)) valuesStore.update(id, { values });
+      else valuesStore.add({ id, entityType, recordId, values });
+      return true;
+    },
+  );
 }

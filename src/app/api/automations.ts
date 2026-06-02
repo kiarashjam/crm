@@ -4,7 +4,7 @@
 // engine that evaluates triggers and executes actions; demo mode persists the
 // rule definitions locally so the builder is fully usable offline.
 
-import { isUsingRealApi, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -92,12 +92,10 @@ const ruleStore = createMockStore<AutomationRule>({
 });
 
 export async function getAutomations(): Promise<AutomationRule[]> {
-  if (isUsingRealApi()) {
-    const res = await authFetchJson<AutomationRule[]>('/api/automations');
-    return Array.isArray(res) ? res : [];
-  }
-  await delay(140);
-  return [...ruleStore.list()].sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc));
+  return apiWithFallback(
+    async () => { const res = await authFetchJson<AutomationRule[]>('/api/automations'); return Array.isArray(res) ? res : []; },
+    async () => { await delay(140); return [...ruleStore.list()].sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc)); },
+  );
 }
 
 export interface AutomationInput {
@@ -109,37 +107,39 @@ export interface AutomationInput {
 }
 
 export async function createAutomation(input: AutomationInput): Promise<AutomationRule | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<AutomationRule>('/api/automations', { method: 'POST', body: JSON.stringify(input) });
-  }
-  await delay(180);
-  return ruleStore.add({
-    id: mockId('auto'),
-    name: input.name,
-    enabled: input.enabled ?? true,
-    trigger: input.trigger,
-    triggerConfig: input.triggerConfig,
-    actions: input.actions.map((a) => ({ ...a, id: mockId('act') })),
-    runCount: 0,
-    createdAtUtc: new Date().toISOString(),
-  });
+  return apiWithFallback(
+    () => authFetchJson<AutomationRule>('/api/automations', { method: 'POST', body: JSON.stringify(input) }),
+    async () => {
+      await delay(180);
+      return ruleStore.add({
+        id: mockId('auto'),
+        name: input.name,
+        enabled: input.enabled ?? true,
+        trigger: input.trigger,
+        triggerConfig: input.triggerConfig,
+        actions: input.actions.map((a) => ({ ...a, id: mockId('act') })),
+        runCount: 0,
+        createdAtUtc: new Date().toISOString(),
+      });
+    },
+  );
 }
 
 export async function updateAutomation(id: string, input: Partial<AutomationInput>): Promise<AutomationRule | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<AutomationRule>(`/api/automations/${id}`, { method: 'PUT', body: JSON.stringify(input) });
-  }
-  await delay(140);
-  const patch: Partial<AutomationRule> = { ...input } as Partial<AutomationRule>;
-  if (input.actions) patch.actions = input.actions.map((a) => ({ ...a, id: mockId('act') }));
-  return ruleStore.update(id, patch);
+  return apiWithFallback(
+    () => authFetchJson<AutomationRule>(`/api/automations/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+    async () => {
+      await delay(140);
+      const patch: Partial<AutomationRule> = { ...input } as Partial<AutomationRule>;
+      if (input.actions) patch.actions = input.actions.map((a) => ({ ...a, id: mockId('act') }));
+      return ruleStore.update(id, patch);
+    },
+  );
 }
 
 export async function deleteAutomation(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch(`/api/automations/${id}`, { method: 'DELETE' });
-    return res.status === 204 || res.ok;
-  }
-  await delay(120);
-  return ruleStore.remove(id);
+  return apiWithFallback(
+    async () => { const res = await authFetch(`/api/automations/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { await delay(120); return ruleStore.remove(id); },
+  );
 }
