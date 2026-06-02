@@ -4,6 +4,8 @@ import {
   Handshake,
   Trophy,
   XCircle,
+  Send,
+  FileSignature,
 } from 'lucide-react';
 
 export const STAGE_COLORS = [
@@ -19,16 +21,20 @@ export const DEFAULT_STAGES = [
   { name: 'Qualification', probability: 10 },
   { name: 'Proposal', probability: 30 },
   { name: 'Negotiation', probability: 60 },
+  { name: 'Contract Sent', probability: 80 },
+  { name: 'Contract Signed', probability: 95 },
   { name: 'Closed Won', probability: 100 },
   { name: 'Closed Lost', probability: 0 },
 ] as const;
 
-export const FALLBACK_STAGES = ['Qualification', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'] as const;
+export const FALLBACK_STAGES = ['Qualification', 'Proposal', 'Negotiation', 'Contract Sent', 'Contract Signed', 'Closed Won', 'Closed Lost'] as const;
 
 export const STAGE_COLORS_MAP: Record<string, { bar: string; accent: string; bg: string; border: string }> = {
   Qualification: { bar: '#3b82f6', accent: 'text-blue-600', bg: 'bg-blue-500/10', border: 'border-l-blue-500' },
   Proposal: { bar: '#f59e0b', accent: 'text-amber-600', bg: 'bg-amber-500/10', border: 'border-l-amber-500' },
   Negotiation: { bar: '#8b5cf6', accent: 'text-violet-600', bg: 'bg-violet-500/10', border: 'border-l-violet-500' },
+  'Contract Sent': { bar: '#0ea5e9', accent: 'text-sky-600', bg: 'bg-sky-500/10', border: 'border-l-sky-500' },
+  'Contract Signed': { bar: '#14b8a6', accent: 'text-teal-600', bg: 'bg-teal-500/10', border: 'border-l-teal-500' },
   'Closed Won': { bar: '#10b981', accent: 'text-emerald-600', bg: 'bg-emerald-500/10', border: 'border-l-emerald-500' },
   'Closed Lost': { bar: '#64748b', accent: 'text-slate-500', bg: 'bg-slate-500/10', border: 'border-l-slate-400' },
 };
@@ -37,6 +43,8 @@ export const STAGE_ICONS: Record<string, typeof Briefcase> = {
   Qualification: Target,
   Proposal: Briefcase,
   Negotiation: Handshake,
+  'Contract Sent': Send,
+  'Contract Signed': FileSignature,
   'Closed Won': Trophy,
   'Closed Lost': XCircle,
 };

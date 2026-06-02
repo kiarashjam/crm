@@ -42,6 +42,8 @@ export const STAGE_COLORS: Record<string, { bar: string; accent: string; bg: str
   Qualification: { bar: '#3b82f6', accent: 'text-blue-600', bg: 'bg-blue-500/10', border: 'border-l-blue-500' },
   Proposal: { bar: '#f59e0b', accent: 'text-amber-600', bg: 'bg-amber-500/10', border: 'border-l-amber-500' },
   Negotiation: { bar: '#8b5cf6', accent: 'text-violet-600', bg: 'bg-violet-500/10', border: 'border-l-violet-500' },
+  'Contract Sent': { bar: '#0ea5e9', accent: 'text-sky-600', bg: 'bg-sky-500/10', border: 'border-l-sky-500' },
+  'Contract Signed': { bar: '#14b8a6', accent: 'text-teal-600', bg: 'bg-teal-500/10', border: 'border-l-teal-500' },
   'Closed Won': { bar: '#10b981', accent: 'text-emerald-600', bg: 'bg-emerald-500/10', border: 'border-l-emerald-500' },
   'Closed Lost': { bar: '#64748b', accent: 'text-slate-500', bg: 'bg-slate-500/10', border: 'border-l-slate-400' },
 };
@@ -157,7 +159,9 @@ export function DealCard({
         stageName === 'Qualification' && 'bg-gradient-to-r from-blue-400 to-cyan-400',
         stageName === 'Proposal' && 'bg-gradient-to-r from-amber-400 to-orange-400',
         stageName === 'Negotiation' && 'bg-gradient-to-r from-violet-400 to-purple-400',
-        !['Closed Won', 'Closed Lost', 'Qualification', 'Proposal', 'Negotiation'].includes(stageName) && 'bg-gradient-to-r from-slate-400 to-slate-500'
+        stageName === 'Contract Sent' && 'bg-gradient-to-r from-sky-400 to-blue-400',
+        stageName === 'Contract Signed' && 'bg-gradient-to-r from-teal-400 to-emerald-400',
+        !['Closed Won', 'Closed Lost', 'Qualification', 'Proposal', 'Negotiation', 'Contract Sent', 'Contract Signed'].includes(stageName) && 'bg-gradient-to-r from-slate-400 to-slate-500'
       )} />
       
       <div className="p-4">

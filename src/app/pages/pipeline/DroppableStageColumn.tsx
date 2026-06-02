@@ -5,6 +5,8 @@ import {
   Handshake,
   Trophy,
   XCircle,
+  Send,
+  FileSignature,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/app/components/ui/utils';
@@ -19,6 +21,8 @@ const STAGE_COLORS: Record<string, { bar: string; accent: string; bg: string; bo
   Qualification: { bar: '#3b82f6', accent: 'text-blue-600', bg: 'bg-blue-500/10', border: 'border-l-blue-500' },
   Proposal: { bar: '#f59e0b', accent: 'text-amber-600', bg: 'bg-amber-500/10', border: 'border-l-amber-500' },
   Negotiation: { bar: '#8b5cf6', accent: 'text-violet-600', bg: 'bg-violet-500/10', border: 'border-l-violet-500' },
+  'Contract Sent': { bar: '#0ea5e9', accent: 'text-sky-600', bg: 'bg-sky-500/10', border: 'border-l-sky-500' },
+  'Contract Signed': { bar: '#14b8a6', accent: 'text-teal-600', bg: 'bg-teal-500/10', border: 'border-l-teal-500' },
   'Closed Won': { bar: '#10b981', accent: 'text-emerald-600', bg: 'bg-emerald-500/10', border: 'border-l-emerald-500' },
   'Closed Lost': { bar: '#64748b', accent: 'text-slate-500', bg: 'bg-slate-500/10', border: 'border-l-slate-400' },
 };
@@ -28,6 +32,8 @@ const STAGE_ICONS: Record<string, typeof Briefcase> = {
   Qualification: Target,
   Proposal: Briefcase,
   Negotiation: Handshake,
+  'Contract Sent': Send,
+  'Contract Signed': FileSignature,
   'Closed Won': Trophy,
   'Closed Lost': XCircle,
 };
@@ -114,8 +120,10 @@ export function DroppableStageColumn({
               stageName === 'Qualification' && 'bg-gradient-to-br from-blue-500 to-cyan-500 shadow-blue-200/50',
               stageName === 'Proposal' && 'bg-gradient-to-br from-amber-500 to-orange-500 shadow-amber-200/50',
               stageName === 'Negotiation' && 'bg-gradient-to-br from-violet-500 to-purple-500 shadow-violet-200/50',
+              stageName === 'Contract Sent' && 'bg-gradient-to-br from-sky-500 to-blue-500 shadow-sky-200/50',
+              stageName === 'Contract Signed' && 'bg-gradient-to-br from-teal-500 to-emerald-500 shadow-teal-200/50',
               stageName === 'Unset' && 'bg-gradient-to-br from-slate-400 to-slate-500 shadow-slate-200/50',
-              !['Closed Won', 'Closed Lost', 'Qualification', 'Proposal', 'Negotiation', 'Unset'].includes(stageName) && 'bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-200/50'
+              !['Closed Won', 'Closed Lost', 'Qualification', 'Proposal', 'Negotiation', 'Contract Sent', 'Contract Signed', 'Unset'].includes(stageName) && 'bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-200/50'
             )}>
               <StageIcon className="w-5 h-5 text-white" aria-hidden />
             </div>
