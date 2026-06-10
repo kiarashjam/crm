@@ -47,9 +47,17 @@ const Contacts = lazy(() => import('@/app/pages/Contacts'));
 const ContactDetail = lazy(() => import('@/app/pages/ContactDetail'));
 const Team = lazy(() => import('@/app/pages/Team'));
 const Members = lazy(() => import('@/app/pages/Members'));
+const MemberDetail = lazy(() => import('@/app/pages/MemberDetail'));
 const Events = lazy(() => import('@/app/pages/Events'));
+const EventDetail = lazy(() => import('@/app/pages/EventDetail'));
 const Reservations = lazy(() => import('@/app/pages/Reservations'));
 const Loyalty = lazy(() => import('@/app/pages/Loyalty'));
+const Applications = lazy(() => import('@/app/pages/Applications'));
+const Charges = lazy(() => import('@/app/pages/Charges'));
+const Visits = lazy(() => import('@/app/pages/Visits'));
+const GiftCards = lazy(() => import('@/app/pages/GiftCards'));
+const Communications = lazy(() => import('@/app/pages/Communications'));
+const MemberPortal = lazy(() => import('@/app/pages/MemberPortal'));
 
 function ProtectedLayout() {
   return (
@@ -136,9 +144,17 @@ export default function App() {
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
                     <Route path="/members" element={<Members />} />
+                    <Route path="/members/:id" element={<MemberDetail />} />
                     <Route path="/events" element={<Events />} />
+                    <Route path="/events/:id" element={<EventDetail />} />
                     <Route path="/reservations" element={<Reservations />} />
                     <Route path="/loyalty" element={<Loyalty />} />
+                    <Route path="/applications" element={<Applications />} />
+                    <Route path="/charges" element={<Charges />} />
+                    <Route path="/visits" element={<Visits />} />
+                    <Route path="/gift-cards" element={<GiftCards />} />
+                    <Route path="/communications" element={<Communications />} />
+                    <Route path="/portal" element={<MemberPortal />} />
                     <Route path="/settings" element={<Settings />} />
                   </Route>
                 </Route>

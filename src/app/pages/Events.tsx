@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   CalendarHeart,
   Plus,
@@ -11,6 +12,7 @@ import {
   DollarSign,
   Ticket,
   Loader2,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -387,7 +389,13 @@ export default function Events() {
                     </div>
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <h3 className="font-semibold text-slate-900 leading-snug">{e.name}</h3>
+                        <Link
+                          to={`/events/${e.id}`}
+                          className="font-semibold text-slate-900 leading-snug hover:text-pink-600 inline-flex items-start gap-1 group"
+                        >
+                          {e.name}
+                          <ExternalLink className="w-3 h-3 mt-1 opacity-0 group-hover:opacity-100 transition" />
+                        </Link>
                       </div>
                       <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
                         {VISIBILITY_LABELS[e.visibility]}

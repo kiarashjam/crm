@@ -31,6 +31,11 @@ import {
   CalendarHeart,
   CalendarClock,
   Gift,
+  ClipboardList,
+  Receipt,
+  ScanLine,
+  MessageSquareText,
+  LayoutGrid,
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
@@ -59,9 +64,15 @@ const allNavItems = [
   { path: '/tasks', label: 'Tasks', icon: CheckSquare },
   { path: '/contacts', label: 'Contacts', icon: UserCircle },
   { path: '/members', label: 'Members', icon: Crown },
+  { path: '/applications', label: 'Applications', icon: ClipboardList },
   { path: '/events', label: 'Events', icon: CalendarHeart },
   { path: '/reservations', label: 'Reservations', icon: CalendarClock },
+  { path: '/visits', label: 'Visits', icon: ScanLine },
+  { path: '/charges', label: 'House Accounts', icon: Receipt },
   { path: '/loyalty', label: 'Loyalty', icon: Gift },
+  { path: '/gift-cards', label: 'Gift Cards', icon: Gift },
+  { path: '/communications', label: 'Comms', icon: MessageSquareText },
+  { path: '/portal', label: 'Portal', icon: LayoutGrid },
   { path: '/activities', label: 'Activities', icon: Activity },
   { path: '/sequences', label: 'Sequences', icon: Workflow },
   { path: '/reports', label: 'Reports', icon: BarChart3 },

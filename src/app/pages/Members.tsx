@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Crown,
   Plus,
@@ -12,6 +13,7 @@ import {
   Sparkles,
   AlertCircle,
   Loader2,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -441,6 +443,13 @@ export default function Members() {
                           </p>
                         </div>
                         <div className="flex items-center gap-1">
+                          <Link
+                            to={`/members/${m.id}`}
+                            className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            aria-label="Open member"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Link>
                           <button
                             type="button"
                             onClick={() => openEdit(m)}
