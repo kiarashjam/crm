@@ -42,6 +42,9 @@ import {
   HeartHandshake,
   CalendarDays,
   FileText,
+  Wine,
+  Calculator,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
@@ -69,6 +72,8 @@ const allNavItems = [
   { path: '/deals', label: 'Deals', icon: Kanban },
   { path: '/tasks', label: 'Tasks', icon: CheckSquare },
   { path: '/contacts', label: 'Contacts', icon: UserCircle },
+  { path: '/hospitality', label: 'Club', icon: LayoutDashboard },
+  { path: '/pos', label: 'POS', icon: Calculator },
   { path: '/members', label: 'Members', icon: Crown },
   { path: '/households', label: 'Households', icon: HomeIcon },
   { path: '/applications', label: 'Applications', icon: ClipboardList },
@@ -76,6 +81,7 @@ const allNavItems = [
   { path: '/events', label: 'Events', icon: CalendarHeart },
   { path: '/reservations', label: 'Reservations', icon: CalendarClock },
   { path: '/visits', label: 'Visits', icon: ScanLine },
+  { path: '/tabs', label: 'Tabs', icon: Wine },
   { path: '/charges', label: 'House Accounts', icon: Receipt },
   { path: '/subscriptions', label: 'Subscriptions', icon: Repeat2 },
   { path: '/statements', label: 'Statements', icon: FileText },
@@ -85,6 +91,7 @@ const allNavItems = [
   { path: '/campaigns', label: 'Campaigns', icon: Megaphone },
   { path: '/communications', label: 'Comms', icon: MessageSquareText },
   { path: '/club-reports', label: 'Club Reports', icon: BarChart3 },
+  { path: '/hospitality-settings', label: 'Club Settings', icon: SlidersHorizontal },
   { path: '/portal', label: 'Portal', icon: LayoutGrid },
   { path: '/activities', label: 'Activities', icon: Activity },
   { path: '/sequences', label: 'Sequences', icon: Workflow },

@@ -65,6 +65,11 @@ const Donations = lazy(() => import('@/app/pages/Donations'));
 const Calendar = lazy(() => import('@/app/pages/Calendar'));
 const Statements = lazy(() => import('@/app/pages/Statements'));
 const HospitalityReports = lazy(() => import('@/app/pages/HospitalityReports'));
+const TabsPage = lazy(() => import('@/app/pages/Tabs'));
+const PosTerminal = lazy(() => import('@/app/pages/PosTerminal'));
+const HospitalitySettings = lazy(() => import('@/app/pages/HospitalitySettings'));
+const HospitalityDashboard = lazy(() => import('@/app/pages/HospitalityDashboard'));
+const MemberImport = lazy(() => import('@/app/pages/MemberImport'));
 
 function ProtectedLayout() {
   return (
@@ -169,6 +174,11 @@ export default function App() {
                     <Route path="/calendar" element={<Calendar />} />
                     <Route path="/statements" element={<Statements />} />
                     <Route path="/club-reports" element={<HospitalityReports />} />
+                    <Route path="/tabs" element={<TabsPage />} />
+                    <Route path="/pos" element={<PosTerminal />} />
+                    <Route path="/hospitality-settings" element={<HospitalitySettings />} />
+                    <Route path="/hospitality" element={<HospitalityDashboard />} />
+                    <Route path="/members/import" element={<MemberImport />} />
                     <Route path="/settings" element={<Settings />} />
                   </Route>
                 </Route>
