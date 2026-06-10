@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   History, Loader2, Plus, Pencil, Trash2, ArrowRightCircle, Mail, GitMerge, UserPlus, RefreshCw,
+  Clock, CalendarDays,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import PageHero from '@/app/components/PageHero';
 import { cn } from '@/app/components/ui/utils';
 import { getAuditLog, type AuditEvent, type AuditEntity, type AuditAction } from '@/app/api';
 
@@ -68,12 +70,17 @@ export default function AuditLog() {
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          <div className="mb-6">
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-              <History className="h-6 w-6 text-indigo-600" /> Audit log
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">A chronological record of changes across your CRM.</p>
-          </div>
+          <PageHero
+            icon={History}
+            iconGradient="from-slate-500 to-slate-700"
+            title="Audit log"
+            subtitle="A chronological record of changes across your CRM."
+            stats={[
+              { label: 'Total events', value: events.length, icon: History, tone: 'slate' },
+              { label: 'Last 7 days', value: events.filter((e) => Date.now() - Date.parse(e.createdAtUtc) <= 7 * 86_400_000).length, icon: CalendarDays, tone: 'indigo' },
+              { label: 'Today', value: events.filter((e) => Date.now() - Date.parse(e.createdAtUtc) <= 86_400_000).length, icon: Clock, tone: 'emerald' },
+            ]}
+          />
 
           <div className="mb-4 flex flex-wrap gap-2">
             {FILTERS.map((f) => (

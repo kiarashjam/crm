@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import PageHero from '@/app/components/PageHero';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { cn } from '@/app/components/ui/utils';
@@ -36,17 +37,22 @@ export default function Duplicates() {
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <div>
-              <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-                <Copy className="h-6 w-6 text-indigo-600" /> Duplicates
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">Find and merge duplicate contacts and companies.</p>
-            </div>
-            <Button variant="outline" onClick={scan} disabled={loading} className="gap-1.5">
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Re-scan
-            </Button>
-          </div>
+          <PageHero
+            icon={Copy}
+            iconGradient="from-rose-500 to-pink-500"
+            title="Duplicates"
+            subtitle="Find and merge duplicate contacts and companies."
+            actions={
+              <Button onClick={scan} disabled={loading} className="gap-2 h-10 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30 disabled:opacity-60">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Re-scan
+              </Button>
+            }
+            stats={[
+              { label: 'Contact duplicates', value: contactGroups.length, icon: Users, tone: 'rose' },
+              { label: 'Company duplicates', value: companyGroups.length, icon: Building2, tone: 'violet' },
+              { label: 'Groups found', value: contactGroups.length + companyGroups.length, icon: Copy, tone: 'amber' },
+            ]}
+          />
 
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>

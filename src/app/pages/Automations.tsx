@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import PageHero from '@/app/components/PageHero';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -62,15 +63,22 @@ export default function Automations() {
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <div>
-              <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-                <Zap className="h-6 w-6 text-indigo-600" /> Automations
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">Run actions automatically when something happens in your CRM.</p>
-            </div>
-            <Button onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-1.5"><Plus className="h-4 w-4" /> New automation</Button>
-          </div>
+          <PageHero
+            icon={Zap}
+            iconGradient="from-amber-500 to-orange-500"
+            title="Automations"
+            subtitle="Run actions automatically when something happens in your CRM."
+            actions={
+              <Button onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
+                <Plus className="h-4 w-4" /> New automation
+              </Button>
+            }
+            stats={[
+              { label: 'Automations', value: rules.length, icon: Zap, tone: 'amber' },
+              { label: 'Active', value: rules.filter((r) => r.enabled).length, icon: CheckSquare, tone: 'emerald' },
+              { label: 'Total runs', value: rules.reduce((s, r) => s + (r.runCount ?? 0), 0), icon: ArrowRight, tone: 'indigo' },
+            ]}
+          />
 
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
