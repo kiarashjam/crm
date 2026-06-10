@@ -239,9 +239,10 @@ export default function Leads() {
     const v = new URLSearchParams(window.location.search).get('converted');
     return v === 'all' || v === 'converted' || v === 'active' ? v : 'active';
   });
-  const [filterAssignment, setFilterAssignment] = useState<'all' | 'me' | 'unassigned'>(() => {
+  // 'all' (no filter), 'me' (current user), 'unassigned', or an org member's userId.
+  const [filterAssignment, setFilterAssignment] = useState<string>(() => {
     const v = new URLSearchParams(window.location.search).get('assignment');
-    return v === 'me' || v === 'unassigned' ? v : 'all';
+    return v && v.length > 0 ? v : 'all';
   });
   const [sortField, setSortField] = useState<'name' | 'email' | 'status' | 'createdAt'>(() => {
     const v = new URLSearchParams(window.location.search).get('sort');
@@ -372,13 +373,14 @@ export default function Leads() {
 
   const applyAssignmentFilter = useCallback(
     (list: Lead[]) => {
-      if (filterAssignment === 'me' && currentUser?.id) {
-        return list.filter((l) => l.assignedToId === currentUser.id);
-      }
+      if (filterAssignment === 'all') return list;
       if (filterAssignment === 'unassigned') {
         return list.filter((l) => !l.assignedToId);
       }
-      return list;
+      // 'me' resolves to the current user's id; any other value is treated as a userId.
+      const targetUserId = filterAssignment === 'me' ? currentUser?.id : filterAssignment;
+      if (!targetUserId) return list;
+      return list.filter((l) => l.assignedToId === targetUserId);
     },
     [filterAssignment, currentUser?.id],
   );
@@ -1635,14 +1637,40 @@ export default function Leads() {
                     <User className="w-3.5 h-3.5 text-orange-300/80" />
                     Assignment
                   </label>
-                  <Select value={filterAssignment} onValueChange={(v) => setFilterAssignment(v as typeof filterAssignment)}>
+                  <Select value={filterAssignment} onValueChange={setFilterAssignment}>
                     <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
                       <SelectValue placeholder="All assignments" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All assignments</SelectItem>
-                      <SelectItem value="me">Assigned to me</SelectItem>
-                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {currentUser?.id && (
+                        <SelectItem value="me">
+                          <span className="flex items-center gap-2">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white">
+                              {(currentUser.name?.[0] ?? '?').toUpperCase()}
+                            </span>
+                            Assigned to me
+                          </span>
+                        </SelectItem>
+                      )}
+                      <SelectItem value="unassigned">
+                        <span className="flex items-center gap-2">
+                          <UserCircle className="w-3.5 h-3.5 text-slate-400" />
+                          Unassigned
+                        </span>
+                      </SelectItem>
+                      {orgMembers
+                        .filter((m) => m.userId !== currentUser?.id)
+                        .map((m) => (
+                          <SelectItem key={m.userId} value={m.userId}>
+                            <span className="flex items-center gap-2">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white">
+                                {(m.name?.[0] ?? '?').toUpperCase()}
+                              </span>
+                              {m.name}
+                            </span>
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1697,7 +1725,11 @@ export default function Leads() {
               {filterAssignment !== 'all' && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-medium border border-indigo-400/30">
                   <User className="w-3 h-3" />
-                  {filterAssignment === 'me' ? 'Assigned to me' : 'Unassigned'}
+                  {filterAssignment === 'me'
+                    ? 'Assigned to me'
+                    : filterAssignment === 'unassigned'
+                      ? 'Unassigned'
+                      : `Assigned to ${orgMembersById.get(filterAssignment)?.name ?? 'member'}`}
                   <button onClick={() => setFilterAssignment('all')} className="ml-0.5 hover:text-indigo-100 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
