@@ -27,6 +27,10 @@ import {
   Zap,
   Copy,
   ScrollText,
+  Crown,
+  CalendarHeart,
+  CalendarClock,
+  Gift,
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
@@ -54,6 +58,10 @@ const allNavItems = [
   { path: '/deals', label: 'Deals', icon: Kanban },
   { path: '/tasks', label: 'Tasks', icon: CheckSquare },
   { path: '/contacts', label: 'Contacts', icon: UserCircle },
+  { path: '/members', label: 'Members', icon: Crown },
+  { path: '/events', label: 'Events', icon: CalendarHeart },
+  { path: '/reservations', label: 'Reservations', icon: CalendarClock },
+  { path: '/loyalty', label: 'Loyalty', icon: Gift },
   { path: '/activities', label: 'Activities', icon: Activity },
   { path: '/sequences', label: 'Sequences', icon: Workflow },
   { path: '/reports', label: 'Reports', icon: BarChart3 },

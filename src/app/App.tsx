@@ -46,6 +46,10 @@ const CompanyDetail = lazy(() => import('@/app/pages/CompanyDetail'));
 const Contacts = lazy(() => import('@/app/pages/Contacts'));
 const ContactDetail = lazy(() => import('@/app/pages/ContactDetail'));
 const Team = lazy(() => import('@/app/pages/Team'));
+const Members = lazy(() => import('@/app/pages/Members'));
+const Events = lazy(() => import('@/app/pages/Events'));
+const Reservations = lazy(() => import('@/app/pages/Reservations'));
+const Loyalty = lazy(() => import('@/app/pages/Loyalty'));
 
 function ProtectedLayout() {
   return (
@@ -131,6 +135,10 @@ export default function App() {
                     <Route path="/companies" element={<Companies />} />
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
+                    <Route path="/members" element={<Members />} />
+                    <Route path="/events" element={<Events />} />
+                    <Route path="/reservations" element={<Reservations />} />
+                    <Route path="/loyalty" element={<Loyalty />} />
                     <Route path="/settings" element={<Settings />} />
                   </Route>
                 </Route>
