@@ -58,6 +58,13 @@ const Visits = lazy(() => import('@/app/pages/Visits'));
 const GiftCards = lazy(() => import('@/app/pages/GiftCards'));
 const Communications = lazy(() => import('@/app/pages/Communications'));
 const MemberPortal = lazy(() => import('@/app/pages/MemberPortal'));
+const Households = lazy(() => import('@/app/pages/Households'));
+const Subscriptions = lazy(() => import('@/app/pages/Subscriptions'));
+const Campaigns = lazy(() => import('@/app/pages/Campaigns'));
+const Donations = lazy(() => import('@/app/pages/Donations'));
+const Calendar = lazy(() => import('@/app/pages/Calendar'));
+const Statements = lazy(() => import('@/app/pages/Statements'));
+const HospitalityReports = lazy(() => import('@/app/pages/HospitalityReports'));
 
 function ProtectedLayout() {
   return (
@@ -155,6 +162,13 @@ export default function App() {
                     <Route path="/gift-cards" element={<GiftCards />} />
                     <Route path="/communications" element={<Communications />} />
                     <Route path="/portal" element={<MemberPortal />} />
+                    <Route path="/households" element={<Households />} />
+                    <Route path="/subscriptions" element={<Subscriptions />} />
+                    <Route path="/campaigns" element={<Campaigns />} />
+                    <Route path="/donations" element={<Donations />} />
+                    <Route path="/calendar" element={<Calendar />} />
+                    <Route path="/statements" element={<Statements />} />
+                    <Route path="/club-reports" element={<HospitalityReports />} />
                     <Route path="/settings" element={<Settings />} />
                   </Route>
                 </Route>
