@@ -10,7 +10,6 @@ import {
   markAllNotificationsRead,
   syncTaskReminders,
   getTasks,
-  isUsingRealApi,
   type AppNotification,
   type NotificationType,
 } from '@/app/api';
@@ -61,9 +60,10 @@ export default function NotificationBell() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      // Demo-mode reminder engine: synthesize due/overdue task reminders once
-      // per session before listing (the real backend pushes these itself).
-      if (!isUsingRealApi() && !synced.current) {
+      // Reminder engine: synthesize due/overdue task reminders once per session
+      // before listing. Harmless if the backend also pushes reminders; essential
+      // when it doesn't (notifications then live in the local store).
+      if (!synced.current) {
         synced.current = true;
         try {
           syncTaskReminders(await getTasks());

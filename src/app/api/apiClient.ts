@@ -60,3 +60,19 @@ export async function authFetchJson<T>(path: string, options: AuthFetchOptions =
     throw new Error('Invalid JSON response');
   }
 }
+
+/**
+ * Run a real-API call, falling back to a local implementation when the backend
+ * isn't connected OR doesn't implement the endpoint (e.g. 404). Used by
+ * frontend-built features (sequences, automations, custom fields, …) so they
+ * keep working — backed by local storage — until the backend gains support.
+ */
+export async function apiWithFallback<T>(real: () => Promise<T>, local: () => Promise<T>): Promise<T> {
+  if (!isUsingRealApi()) return local();
+  try {
+    return await real();
+  } catch {
+    return local();
+  }
+}
+

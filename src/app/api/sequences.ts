@@ -5,7 +5,7 @@
 // actually fires each step; in demo mode we persist sequences + enrollments
 // locally and track progress so the UI is fully exercisable offline.
 
-import { isUsingRealApi, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -104,22 +104,21 @@ const enrollmentStore = createMockStore<SequenceEnrollment>({
 function nowIso() { return new Date().toISOString(); }
 
 // ---- Sequences CRUD ----
+// Each call tries the backend, then falls back to the local store so these
+// features work even when the API doesn't implement the endpoint yet.
 
 export async function getSequences(): Promise<Sequence[]> {
-  if (isUsingRealApi()) {
-    const res = await authFetchJson<Sequence[]>('/api/sequences');
-    return Array.isArray(res) ? res : [];
-  }
-  await delay(150);
-  return [...sequenceStore.list()].sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc));
+  return apiWithFallback(
+    async () => { const res = await authFetchJson<Sequence[]>('/api/sequences'); return Array.isArray(res) ? res : []; },
+    async () => { await delay(150); return [...sequenceStore.list()].sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc)); },
+  );
 }
 
 export async function getSequence(id: string): Promise<Sequence | null> {
-  if (isUsingRealApi()) {
-    try { return await authFetchJson<Sequence>(`/api/sequences/${id}`); } catch { return null; }
-  }
-  await delay(100);
-  return sequenceStore.byId(id) ?? null;
+  return apiWithFallback(
+    () => authFetchJson<Sequence>(`/api/sequences/${id}`),
+    async () => { await delay(100); return sequenceStore.byId(id) ?? null; },
+  );
 }
 
 export interface SequenceInput {
@@ -130,49 +129,52 @@ export interface SequenceInput {
 }
 
 export async function createSequence(input: SequenceInput): Promise<Sequence | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<Sequence>('/api/sequences', { method: 'POST', body: JSON.stringify(input) });
-  }
-  await delay(200);
-  return sequenceStore.add({
-    id: mockId('seq'),
-    name: input.name,
-    description: input.description,
-    status: input.status ?? 'draft',
-    steps: input.steps.map((s, i) => ({ ...s, id: mockId('st'), order: i })),
-    createdAtUtc: nowIso(),
-  });
+  return apiWithFallback(
+    () => authFetchJson<Sequence>('/api/sequences', { method: 'POST', body: JSON.stringify(input) }),
+    async () => {
+      await delay(200);
+      return sequenceStore.add({
+        id: mockId('seq'),
+        name: input.name,
+        description: input.description,
+        status: input.status ?? 'draft',
+        steps: input.steps.map((s, i) => ({ ...s, id: mockId('st'), order: i })),
+        createdAtUtc: nowIso(),
+      });
+    },
+  );
 }
 
 export async function updateSequence(id: string, input: Partial<SequenceInput>): Promise<Sequence | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<Sequence>(`/api/sequences/${id}`, { method: 'PUT', body: JSON.stringify(input) });
-  }
-  await delay(200);
-  const patch: Partial<Sequence> = { ...input, updatedAtUtc: nowIso() } as Partial<Sequence>;
-  if (input.steps) patch.steps = input.steps.map((s, i) => ({ ...s, id: mockId('st'), order: i }));
-  return sequenceStore.update(id, patch);
+  return apiWithFallback(
+    () => authFetchJson<Sequence>(`/api/sequences/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+    async () => {
+      await delay(200);
+      const patch: Partial<Sequence> = { ...input, updatedAtUtc: nowIso() } as Partial<Sequence>;
+      if (input.steps) patch.steps = input.steps.map((s, i) => ({ ...s, id: mockId('st'), order: i }));
+      return sequenceStore.update(id, patch);
+    },
+  );
 }
 
 export async function deleteSequence(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch(`/api/sequences/${id}`, { method: 'DELETE' });
-    return res.status === 204 || res.ok;
-  }
-  await delay(150);
-  return sequenceStore.remove(id);
+  return apiWithFallback(
+    async () => { const res = await authFetch(`/api/sequences/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { await delay(150); return sequenceStore.remove(id); },
+  );
 }
 
 // ---- Enrollments ----
 
 export async function getEnrollments(sequenceId?: string): Promise<SequenceEnrollment[]> {
-  if (isUsingRealApi()) {
-    const q = sequenceId ? `?sequenceId=${sequenceId}` : '';
-    const res = await authFetchJson<SequenceEnrollment[]>(`/api/sequences/enrollments${q}`);
-    return Array.isArray(res) ? res : [];
-  }
-  await delay(120);
-  return enrollmentStore.list().filter((e) => !sequenceId || e.sequenceId === sequenceId);
+  return apiWithFallback(
+    async () => {
+      const q = sequenceId ? `?sequenceId=${sequenceId}` : '';
+      const res = await authFetchJson<SequenceEnrollment[]>(`/api/sequences/enrollments${q}`);
+      return Array.isArray(res) ? res : [];
+    },
+    async () => { await delay(120); return enrollmentStore.list().filter((e) => !sequenceId || e.sequenceId === sequenceId); },
+  );
 }
 
 export interface EnrollInput {
@@ -184,40 +186,38 @@ export interface EnrollInput {
 }
 
 export async function enrollInSequence(input: EnrollInput): Promise<SequenceEnrollment | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<SequenceEnrollment>('/api/sequences/enroll', { method: 'POST', body: JSON.stringify(input) });
-  }
-  await delay(180);
-  const seq = sequenceStore.byId(input.sequenceId);
-  const firstOffset = seq?.steps?.[0]?.dayOffset ?? 0;
-  return enrollmentStore.add({
-    id: mockId('enr'),
-    sequenceId: input.sequenceId,
-    targetType: input.targetType,
-    targetId: input.targetId,
-    targetName: input.targetName,
-    targetEmail: input.targetEmail,
-    status: 'active',
-    currentStep: 0,
-    enrolledAtUtc: nowIso(),
-    nextActionAtUtc: new Date(Date.now() + firstOffset * DAY_MS).toISOString(),
-  });
+  return apiWithFallback(
+    () => authFetchJson<SequenceEnrollment>('/api/sequences/enroll', { method: 'POST', body: JSON.stringify(input) }),
+    async () => {
+      await delay(180);
+      const seq = sequenceStore.byId(input.sequenceId);
+      const firstOffset = seq?.steps?.[0]?.dayOffset ?? 0;
+      return enrollmentStore.add({
+        id: mockId('enr'),
+        sequenceId: input.sequenceId,
+        targetType: input.targetType,
+        targetId: input.targetId,
+        targetName: input.targetName,
+        targetEmail: input.targetEmail,
+        status: 'active',
+        currentStep: 0,
+        enrolledAtUtc: nowIso(),
+        nextActionAtUtc: new Date(Date.now() + firstOffset * DAY_MS).toISOString(),
+      });
+    },
+  );
 }
 
 export async function setEnrollmentStatus(id: string, status: EnrollmentStatus): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch(`/api/sequences/enrollments/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
-    return res.ok;
-  }
-  await delay(100);
-  return enrollmentStore.update(id, { status }) != null;
+  return apiWithFallback(
+    async () => { const res = await authFetch(`/api/sequences/enrollments/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); if (!res.ok) throw new Error('failed'); return true; },
+    async () => { await delay(100); return enrollmentStore.update(id, { status }) != null; },
+  );
 }
 
 export async function unenroll(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch(`/api/sequences/enrollments/${id}`, { method: 'DELETE' });
-    return res.status === 204 || res.ok;
-  }
-  await delay(100);
-  return enrollmentStore.remove(id);
+  return apiWithFallback(
+    async () => { const res = await authFetch(`/api/sequences/enrollments/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { await delay(100); return enrollmentStore.remove(id); },
+  );
 }

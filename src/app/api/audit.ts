@@ -4,7 +4,7 @@
 // server-side on every mutation; `logAudit` also lets the client record
 // notable actions. Demo mode seeds a realistic history and appends locally.
 
-import { isUsingRealApi, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetchJson } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { getCurrentUser } from '@/app/lib/auth';
 
@@ -51,38 +51,39 @@ export interface AuditQuery {
 }
 
 export async function getAuditLog(query: AuditQuery = {}): Promise<AuditEvent[]> {
-  if (isUsingRealApi()) {
-    const q = new URLSearchParams();
-    if (query.entityType) q.set('entityType', query.entityType);
-    if (query.entityId) q.set('entityId', query.entityId);
-    if (query.limit) q.set('limit', String(query.limit));
-    const res = await authFetchJson<AuditEvent[]>(`/api/audit?${q.toString()}`);
-    return Array.isArray(res) ? res : [];
-  }
-  await delay(120);
-  let rows = [...store.list()].sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc));
-  if (query.entityType) rows = rows.filter((r) => r.entityType === query.entityType);
-  if (query.entityId) rows = rows.filter((r) => r.entityId === query.entityId);
-  if (query.limit) rows = rows.slice(0, query.limit);
-  return rows;
+  return apiWithFallback(
+    async () => {
+      const q = new URLSearchParams();
+      if (query.entityType) q.set('entityType', query.entityType);
+      if (query.entityId) q.set('entityId', query.entityId);
+      if (query.limit) q.set('limit', String(query.limit));
+      const res = await authFetchJson<AuditEvent[]>(`/api/audit?${q.toString()}`);
+      return Array.isArray(res) ? res : [];
+    },
+    async () => {
+      await delay(120);
+      let rows = [...store.list()].sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc));
+      if (query.entityType) rows = rows.filter((r) => r.entityType === query.entityType);
+      if (query.entityId) rows = rows.filter((r) => r.entityId === query.entityId);
+      if (query.limit) rows = rows.slice(0, query.limit);
+      return rows;
+    },
+  );
 }
 
 export async function logAudit(
   input: Omit<AuditEvent, 'id' | 'createdAtUtc' | 'actorName'> & { actorName?: string },
 ): Promise<AuditEvent | null> {
-  if (isUsingRealApi()) {
-    // The backend records audit server-side; client logging is best-effort.
-    try {
-      return await authFetchJson<AuditEvent>('/api/audit', { method: 'POST', body: JSON.stringify(input) });
-    } catch {
-      return null;
-    }
-  }
-  await delay(40);
-  return store.add({
-    id: mockId('au'),
-    createdAtUtc: new Date().toISOString(),
-    actorName: input.actorName ?? getCurrentUser()?.name ?? 'You',
-    ...input,
-  });
+  return apiWithFallback(
+    () => authFetchJson<AuditEvent>('/api/audit', { method: 'POST', body: JSON.stringify(input) }),
+    async () => {
+      await delay(40);
+      return store.add({
+        id: mockId('au'),
+        createdAtUtc: new Date().toISOString(),
+        actorName: input.actorName ?? getCurrentUser()?.name ?? 'You',
+        ...input,
+      });
+    },
+  );
 }

@@ -4,7 +4,7 @@
 // Line items add that breakdown; the catalog provides reusable products. Both
 // have real-backend and demo (localStorage) implementations.
 
-import { isUsingRealApi, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -48,40 +48,33 @@ const lineItemStore = createMockStore<DealLineItem>({
 // ---- Catalog ----
 
 export async function getProducts(): Promise<Product[]> {
-  if (isUsingRealApi()) {
-    const res = await authFetchJson<Product[]>('/api/products');
-    return Array.isArray(res) ? res : [];
-  }
-  await delay(120);
-  return [...productStore.list()].sort((a, b) => a.name.localeCompare(b.name));
+  return apiWithFallback(
+    async () => { const res = await authFetchJson<Product[]>('/api/products'); return Array.isArray(res) ? res : []; },
+    async () => { await delay(120); return [...productStore.list()].sort((a, b) => a.name.localeCompare(b.name)); },
+  );
 }
 
 export async function createProduct(input: Omit<Product, 'id'>): Promise<Product | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<Product>('/api/products', { method: 'POST', body: JSON.stringify(input) });
-  }
-  await delay(150);
-  return productStore.add({ id: mockId('prod'), ...input });
+  return apiWithFallback(
+    () => authFetchJson<Product>('/api/products', { method: 'POST', body: JSON.stringify(input) }),
+    async () => { await delay(150); return productStore.add({ id: mockId('prod'), ...input }); },
+  );
 }
 
 export async function deleteProduct(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch(`/api/products/${id}`, { method: 'DELETE' });
-    return res.status === 204 || res.ok;
-  }
-  await delay(120);
-  return productStore.remove(id);
+  return apiWithFallback(
+    async () => { const res = await authFetch(`/api/products/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { await delay(120); return productStore.remove(id); },
+  );
 }
 
 // ---- Line items ----
 
 export async function getDealLineItems(dealId: string): Promise<DealLineItem[]> {
-  if (isUsingRealApi()) {
-    const res = await authFetchJson<DealLineItem[]>(`/api/deals/${dealId}/line-items`);
-    return Array.isArray(res) ? res : [];
-  }
-  await delay(120);
-  return lineItemStore.list().filter((l) => l.dealId === dealId);
+  return apiWithFallback(
+    async () => { const res = await authFetchJson<DealLineItem[]>(`/api/deals/${dealId}/line-items`); return Array.isArray(res) ? res : []; },
+    async () => { await delay(120); return lineItemStore.list().filter((l) => l.dealId === dealId); },
+  );
 }
 
 export interface LineItemInput {
@@ -92,28 +85,24 @@ export interface LineItemInput {
 }
 
 export async function addDealLineItem(dealId: string, input: LineItemInput): Promise<DealLineItem | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<DealLineItem>(`/api/deals/${dealId}/line-items`, { method: 'POST', body: JSON.stringify(input) });
-  }
-  await delay(150);
-  return lineItemStore.add({ id: mockId('li'), dealId, ...input });
+  return apiWithFallback(
+    () => authFetchJson<DealLineItem>(`/api/deals/${dealId}/line-items`, { method: 'POST', body: JSON.stringify(input) }),
+    async () => { await delay(150); return lineItemStore.add({ id: mockId('li'), dealId, ...input }); },
+  );
 }
 
 export async function updateDealLineItem(id: string, patch: Partial<LineItemInput>): Promise<DealLineItem | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<DealLineItem>(`/api/deals/line-items/${id}`, { method: 'PUT', body: JSON.stringify(patch) });
-  }
-  await delay(100);
-  return lineItemStore.update(id, patch);
+  return apiWithFallback(
+    () => authFetchJson<DealLineItem>(`/api/deals/line-items/${id}`, { method: 'PUT', body: JSON.stringify(patch) }),
+    async () => { await delay(100); return lineItemStore.update(id, patch); },
+  );
 }
 
 export async function deleteDealLineItem(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch(`/api/deals/line-items/${id}`, { method: 'DELETE' });
-    return res.status === 204 || res.ok;
-  }
-  await delay(100);
-  return lineItemStore.remove(id);
+  return apiWithFallback(
+    async () => { const res = await authFetch(`/api/deals/line-items/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { await delay(100); return lineItemStore.remove(id); },
+  );
 }
 
 export function lineItemsTotal(items: DealLineItem[]): number {

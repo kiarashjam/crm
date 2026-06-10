@@ -4,7 +4,7 @@
 // Merge uses a dedicated backend endpoint when available; in demo mode it
 // fills empty fields on the primary from the duplicates, then deletes them.
 
-import { isUsingRealApi, authFetch } from './apiClient';
+import { apiWithFallback, authFetch } from './apiClient';
 import { getContacts, updateContact, deleteContact } from './contacts';
 import { getCompanies, updateCompany, deleteCompany } from './companies';
 import type { Contact, Company } from './types';
@@ -82,10 +82,13 @@ export async function findDuplicateCompanies(): Promise<DuplicateGroup<Company>[
 }
 
 export async function mergeContacts(primaryId: string, duplicateIds: string[]): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch('/api/contacts/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) });
-    return res.ok;
-  }
+  return apiWithFallback(
+    async () => { const res = await authFetch('/api/contacts/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) }); if (!res.ok) throw new Error('failed'); return true; },
+    () => mergeContactsLocal(primaryId, duplicateIds),
+  );
+}
+
+async function mergeContactsLocal(primaryId: string, duplicateIds: string[]): Promise<boolean> {
   const contacts = await getContacts();
   const primary = contacts.find((c) => c.id === primaryId);
   if (!primary) return false;
@@ -103,10 +106,13 @@ export async function mergeContacts(primaryId: string, duplicateIds: string[]): 
 }
 
 export async function mergeCompanies(primaryId: string, duplicateIds: string[]): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch('/api/companies/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) });
-    return res.ok;
-  }
+  return apiWithFallback(
+    async () => { const res = await authFetch('/api/companies/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) }); if (!res.ok) throw new Error('failed'); return true; },
+    () => mergeCompaniesLocal(primaryId, duplicateIds),
+  );
+}
+
+async function mergeCompaniesLocal(primaryId: string, duplicateIds: string[]): Promise<boolean> {
   const companies = await getCompanies();
   const primary = companies.find((c) => c.id === primaryId);
   if (!primary) return false;

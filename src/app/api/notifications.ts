@@ -6,7 +6,7 @@
 // the most important ones — overdue / due-today tasks — from the local task
 // store via `syncTaskReminders`, deduped by a stable `sourceKey`.
 
-import { isUsingRealApi, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import type { TaskItem } from './types';
 
@@ -75,68 +75,54 @@ const byNewest = (a: AppNotification, b: AppNotification) =>
   Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc);
 
 export async function getNotifications(): Promise<AppNotification[]> {
-  if (isUsingRealApi()) {
-    const res = await authFetchJson<AppNotification[]>('/api/notifications');
-    return Array.isArray(res) ? res : [];
-  }
-  await delay(120);
-  return [...notificationStore.list()].sort(byNewest);
+  return apiWithFallback(
+    async () => { const res = await authFetchJson<AppNotification[]>('/api/notifications'); return Array.isArray(res) ? res : []; },
+    async () => { await delay(120); return [...notificationStore.list()].sort(byNewest); },
+  );
 }
 
 export async function getUnreadNotificationCount(): Promise<number> {
-  if (isUsingRealApi()) {
-    try {
-      const res = await authFetchJson<{ count: number }>('/api/notifications/unread-count');
-      return res?.count ?? 0;
-    } catch {
-      return 0;
-    }
-  }
-  await delay(60);
-  return notificationStore.list().filter((n) => !n.read).length;
+  return apiWithFallback(
+    async () => { const res = await authFetchJson<{ count: number }>('/api/notifications/unread-count'); return res?.count ?? 0; },
+    async () => { await delay(60); return notificationStore.list().filter((n) => !n.read).length; },
+  );
 }
 
 export async function markNotificationRead(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch(`/api/notifications/${id}/read`, { method: 'POST' });
-    return res.ok;
-  }
-  await delay(60);
-  return notificationStore.update(id, { read: true }) != null;
+  return apiWithFallback(
+    async () => { const res = await authFetch(`/api/notifications/${id}/read`, { method: 'POST' }); if (!res.ok) throw new Error('failed'); return true; },
+    async () => { await delay(60); return notificationStore.update(id, { read: true }) != null; },
+  );
 }
 
 export async function markAllNotificationsRead(): Promise<boolean> {
-  if (isUsingRealApi()) {
-    const res = await authFetch('/api/notifications/read-all', { method: 'POST' });
-    return res.ok;
-  }
-  await delay(80);
-  for (const n of notificationStore.list()) {
-    if (!n.read) notificationStore.update(n.id, { read: true });
-  }
-  return true;
+  return apiWithFallback(
+    async () => { const res = await authFetch('/api/notifications/read-all', { method: 'POST' }); if (!res.ok) throw new Error('failed'); return true; },
+    async () => {
+      await delay(80);
+      for (const n of notificationStore.list()) {
+        if (!n.read) notificationStore.update(n.id, { read: true });
+      }
+      return true;
+    },
+  );
 }
 
 export async function createNotification(
   input: Omit<AppNotification, 'id' | 'read' | 'createdAtUtc'> & { read?: boolean; createdAtUtc?: string },
 ): Promise<AppNotification | null> {
-  if (isUsingRealApi()) {
-    try {
-      return await authFetchJson<AppNotification>('/api/notifications', {
-        method: 'POST',
-        body: JSON.stringify(input),
+  return apiWithFallback(
+    () => authFetchJson<AppNotification>('/api/notifications', { method: 'POST', body: JSON.stringify(input) }),
+    async () => {
+      await delay(40);
+      return notificationStore.add({
+        id: mockId('ntf'),
+        read: input.read ?? false,
+        createdAtUtc: input.createdAtUtc ?? nowIso(),
+        ...input,
       });
-    } catch {
-      return null;
-    }
-  }
-  await delay(40);
-  return notificationStore.add({
-    id: mockId('ntf'),
-    read: input.read ?? false,
-    createdAtUtc: input.createdAtUtc ?? nowIso(),
-    ...input,
-  });
+    },
+  );
 }
 
 /**
@@ -145,7 +131,6 @@ export async function createNotification(
  * `sourceKey` so the same task doesn't pile up notifications on every poll.
  */
 export function syncTaskReminders(tasks: TaskItem[]): void {
-  if (isUsingRealApi()) return;
   const existing = new Set(
     notificationStore.list().map((n) => n.sourceKey).filter(Boolean) as string[],
   );
