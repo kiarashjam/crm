@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import PageHero from '@/app/components/PageHero';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -97,15 +98,22 @@ export default function Sequences() {
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          <div className="mb-6 flex items-center justify-between gap-3">
-            <div>
-              <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-                <Workflow className="h-6 w-6 text-indigo-600" /> Sequences
-              </h1>
-              <p className="mt-1 text-sm text-slate-500">Automated, multi-step outreach cadences for leads and contacts.</p>
-            </div>
-            <Button onClick={openNew} className="gap-1.5"><Plus className="h-4 w-4" /> New sequence</Button>
-          </div>
+          <PageHero
+            icon={Workflow}
+            iconGradient="from-indigo-500 to-violet-500"
+            title="Sequences"
+            subtitle="Automated, multi-step outreach cadences for leads and contacts."
+            actions={
+              <Button onClick={openNew} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 shadow-lg shadow-indigo-500/30 font-semibold text-white">
+                <Plus className="h-4 w-4" /> New sequence
+              </Button>
+            }
+            stats={[
+              { label: 'Sequences', value: sequences.length, icon: Workflow, tone: 'indigo' },
+              { label: 'Active', value: sequences.filter((s) => s.status === 'active').length, icon: Play, tone: 'emerald' },
+              { label: 'Active enrollments', value: Object.values(enrollmentsBySeq).flat().filter((e) => e.status === 'active').length, icon: Users, tone: 'blue' },
+            ]}
+          />
 
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>

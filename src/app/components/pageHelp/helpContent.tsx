@@ -1,25 +1,15 @@
 // Per-page help content for the floating "?" button. Keyed by the first path
-// segment (with explicit entries for detail pages). Each entry renders as an
-// illustrated modal: a hero icon + tagline, then a grid of "what you can do"
-// feature cards, and optional tips.
-
-import {
-  LayoutDashboard, Users, UserCircle, Building2, Kanban, CheckSquare, Activity,
-  Workflow, BarChart3, Zap, Copy, ScrollText, UsersRound, Settings, LayoutTemplate,
-  History, Send, Sparkles, Mail, Plus, Filter,
-  MessageSquarePlus, ArrowRightCircle, UserPlus, Paperclip, SlidersHorizontal,
-  Bell, FileText, FileSpreadsheet, Pencil, GitMerge, Target, TrendingUp,
-  Building, Briefcase, Clock, Download, Search, Bot,
-} from 'lucide-react';
+// segment (with explicit entries for detail/sub pages). Plain-language copy and
+// an emoji "picture" per item so the modal reads as a friendly, illustrated guide.
 
 export interface HelpFeature {
-  icon: React.ElementType;
+  emoji: string;
   title: string;
   body: string;
 }
 
 export interface HelpEntry {
-  icon: React.ElementType;
+  emoji: string;
   /** Tailwind gradient classes for the hero badge, e.g. "from-indigo-500 to-violet-500". */
   gradient: string;
   title: string;
@@ -30,200 +20,218 @@ export interface HelpEntry {
 
 const HELP: Record<string, HelpEntry> = {
   dashboard: {
-    icon: LayoutDashboard, gradient: 'from-indigo-500 to-violet-500',
-    title: 'Dashboard', tagline: 'Your home base — a snapshot of the pipeline and a launchpad to everything.',
+    emoji: '🏠', gradient: 'from-indigo-500 to-violet-500',
+    title: 'Dashboard', tagline: 'Your home base — a quick look at how things are going.',
     features: [
-      { icon: TrendingUp, title: 'At-a-glance stats', body: 'See active leads, open deals, pipeline value and what’s won/lost.' },
-      { icon: Bot, title: 'AI Sales Writer', body: 'Generate emails, follow-ups and notes in your brand voice, right here.' },
-      { icon: ArrowRightCircle, title: 'Quick navigation', body: 'Jump straight to Leads, Deals, Tasks and the rest from the shortcuts.' },
+      { emoji: '📊', title: 'See your numbers', body: 'Leads, deals and pipeline value, all in one glance.' },
+      { emoji: '✍️', title: 'Write with AI', body: 'Create emails and notes in seconds.' },
+      { emoji: '🧭', title: 'Go anywhere', body: 'Jump to any part of the app from here.' },
     ],
-    tips: ['Use the top nav (or the search) to move between sections fast.'],
+    tips: ['Use the top menu to move between sections.'],
   },
   leads: {
-    icon: Users, gradient: 'from-orange-500 to-amber-500',
-    title: 'Leads', tagline: 'Capture, qualify and route inbound interest before it becomes a deal.',
+    emoji: '🧲', gradient: 'from-orange-500 to-amber-500',
+    title: 'Leads', tagline: 'New people who might buy from you.',
     features: [
-      { icon: Plus, title: 'Add leads', body: 'Create one manually, or bring many in via CSV Import or the inbound Webhook.' },
-      { icon: Filter, title: 'Filter & sort', body: 'Filter by status, source, assignment or conversion; sort by date, name, status.' },
-      { icon: MessageSquarePlus, title: 'Log without leaving', body: 'Hit “Log” on a card to record a call/email/meeting/note inline.' },
-      { icon: UserPlus, title: 'Assign owners', body: 'Click the owner chip on a card to (re)assign the lead to a teammate.' },
-      { icon: Download, title: 'Export', body: 'Export the filtered list to CSV for Sheets/Excel.' },
+      { emoji: '➕', title: 'Add leads', body: 'One by one, from a file, or automatically from a web form.' },
+      { emoji: '🔎', title: 'Find them fast', body: 'Filter and sort the list however you like.' },
+      { emoji: '📝', title: 'Log a touch', body: 'Note a call, email or meeting right on the card.' },
+      { emoji: '👤', title: 'Pick an owner', body: 'Choose who looks after each lead.' },
+      { emoji: '📤', title: 'Download', body: 'Export the list to a spreadsheet.' },
     ],
-    tips: ['Click a lead to open its full detail page.', 'Press “n” to add a lead, “/” to focus search.'],
+    tips: ['Click a lead to open everything about it.', 'Tip: press “n” to add, “/” to search.'],
   },
   leadDetail: {
-    icon: UserCircle, gradient: 'from-orange-500 to-amber-500',
-    title: 'Lead detail', tagline: 'Everything about one lead — edit, log, assign, and move it forward.',
+    emoji: '🧑', gradient: 'from-orange-500 to-amber-500',
+    title: 'Lead details', tagline: 'Everything about one lead, in one place.',
     features: [
-      { icon: Pencil, title: 'Edit every field', body: 'Use Edit for the full editor (incl. “Referred by”), or edit inline.' },
-      { icon: Mail, title: 'Email & log', body: 'Send an email (logged to the timeline) or quick-log any activity.' },
-      { icon: UserPlus, title: 'Owner', body: 'Set the owner from the sidebar — it stays in sync with the list.' },
-      { icon: Sparkles, title: 'AI assist', body: 'A derived score and the recommended next best action.' },
-      { icon: ArrowRightCircle, title: 'Convert / Save as contact', body: 'Promote to a deal, or create a contact from the lead’s details.' },
+      { emoji: '✏️', title: 'Edit anything', body: 'Change any detail with the editor or right inline.' },
+      { emoji: '✉️', title: 'Email & log', body: 'Send an email or note what happened.' },
+      { emoji: '👤', title: 'Set the owner', body: 'Decide who handles this lead.' },
+      { emoji: '✨', title: 'AI suggests', body: 'A score and the best next thing to do.' },
+      { emoji: '🤝', title: 'Convert', body: 'Turn it into a deal, or save it as a contact.' },
     ],
   },
   deals: {
-    icon: Kanban, gradient: 'from-emerald-500 to-teal-500',
-    title: 'Deals pipeline', tagline: 'A drag-and-drop board of open opportunities from qualification to close.',
+    emoji: '📋', gradient: 'from-emerald-500 to-teal-500',
+    title: 'Deals', tagline: 'Your sales board, from first chat to closed.',
     features: [
-      { icon: Kanban, title: 'Drag to move stages', body: 'Drag a deal card between columns to update its stage.' },
-      { icon: Plus, title: 'Create & edit', body: 'Add deals with value, owner, stage and expected close date.' },
-      { icon: Filter, title: 'Filter & focus', body: 'Filter by owner, value, close date or “my deals”.' },
-      { icon: TrendingUp, title: 'Pipeline value', body: 'See totals and a stage funnel update as you work.' },
+      { emoji: '🖐️', title: 'Drag to move', body: 'Slide a deal between stages as it progresses.' },
+      { emoji: '➕', title: 'Add a deal', body: 'Set its value, owner and close date.' },
+      { emoji: '🔎', title: 'Focus', body: 'Filter by owner, value or close date.' },
+      { emoji: '💰', title: 'See the total', body: 'Pipeline value updates as you work.' },
     ],
   },
   dealDetail: {
-    icon: Briefcase, gradient: 'from-emerald-500 to-teal-500',
-    title: 'Deal detail', tagline: 'Manage one opportunity end to end.',
+    emoji: '💼', gradient: 'from-emerald-500 to-teal-500',
+    title: 'Deal details', tagline: 'Manage one deal from start to finish.',
     features: [
-      { icon: Briefcase, title: 'Products & line items', body: 'Break the deal into products/quantities; sync the total to the value.' },
-      { icon: SlidersHorizontal, title: 'Custom fields', body: 'Fill any custom fields your workspace defined for deals.' },
-      { icon: Paperclip, title: 'Attachments', body: 'Attach contracts, proposals and docs.' },
-      { icon: MessageSquarePlus, title: 'Activity & tasks', body: 'Log activity and track linked tasks.' },
+      { emoji: '🛒', title: 'Products', body: 'List what’s being sold and the total adds up.' },
+      { emoji: '🧩', title: 'Custom fields', body: 'Fill any extra fields your team set up.' },
+      { emoji: '📎', title: 'Attach files', body: 'Keep contracts and docs with the deal.' },
+      { emoji: '📝', title: 'Activity & tasks', body: 'Log what happened and track to-dos.' },
     ],
   },
   tasks: {
-    icon: CheckSquare, gradient: 'from-cyan-500 to-blue-500',
-    title: 'Tasks', tagline: 'Stay on top of follow-ups so nothing slips.',
+    emoji: '✅', gradient: 'from-cyan-500 to-blue-500',
+    title: 'Tasks', tagline: 'Your to-do list so nothing slips.',
     features: [
-      { icon: Plus, title: 'Create tasks', body: 'Add tasks with a title, due date, reminder and priority.' },
-      { icon: Clock, title: 'Due & overdue', body: 'Overdue and due-today tasks are flagged and surface in notifications.' },
-      { icon: CheckSquare, title: 'Track status', body: 'Move tasks through to-do, in-progress, completed or cancelled.' },
+      { emoji: '➕', title: 'Add a task', body: 'Give it a due date, reminder and priority.' },
+      { emoji: '⏰', title: 'Never miss', body: 'Overdue and due-today tasks get flagged.' },
+      { emoji: '☑️', title: 'Track it', body: 'Move tasks from to-do to done.' },
     ],
   },
   contacts: {
-    icon: UserCircle, gradient: 'from-blue-500 to-cyan-500',
-    title: 'Contacts', tagline: 'Your people — the humans behind the deals.',
+    emoji: '🧑‍💼', gradient: 'from-blue-500 to-cyan-500',
+    title: 'Contacts', tagline: 'The people you talk to.',
     features: [
-      { icon: Plus, title: 'Add contacts', body: 'Create contacts with role, company and preferences.' },
-      { icon: Mail, title: 'Email & log', body: 'Email a contact (with an AI draft) and keep the history.' },
-      { icon: SlidersHorizontal, title: 'Custom fields & files', body: 'Capture custom fields and attach documents per contact.' },
-      { icon: Download, title: 'Export', body: 'Export the filtered contacts to CSV.' },
+      { emoji: '➕', title: 'Add contacts', body: 'Save names, roles and how they like to be reached.' },
+      { emoji: '✉️', title: 'Email & log', body: 'Email a contact and keep the history.' },
+      { emoji: '📎', title: 'Fields & files', body: 'Add custom fields and attach documents.' },
+      { emoji: '📤', title: 'Download', body: 'Export your contacts to a spreadsheet.' },
     ],
   },
   companies: {
-    icon: Building2, gradient: 'from-violet-500 to-purple-500',
-    title: 'Companies', tagline: 'The accounts your contacts and deals belong to.',
+    emoji: '🏢', gradient: 'from-violet-500 to-purple-500',
+    title: 'Companies', tagline: 'The businesses your contacts work for.',
     features: [
-      { icon: Building, title: 'Manage accounts', body: 'Add companies with domain, industry, size and location.' },
-      { icon: Users, title: 'Linked records', body: 'See the contacts and deals tied to each company.' },
-      { icon: Download, title: 'Export', body: 'Export the filtered companies to CSV.' },
+      { emoji: '➕', title: 'Add companies', body: 'Save domain, industry, size and location.' },
+      { emoji: '🔗', title: 'See links', body: 'View the contacts and deals at each company.' },
+      { emoji: '📤', title: 'Download', body: 'Export your companies to a spreadsheet.' },
     ],
   },
   activities: {
-    icon: Activity, gradient: 'from-amber-500 to-orange-500',
-    title: 'Activities', tagline: 'The full history of calls, emails, meetings and notes.',
+    emoji: '📒', gradient: 'from-amber-500 to-orange-500',
+    title: 'Activities', tagline: 'A history of every call, email and note.',
     features: [
-      { icon: MessageSquarePlus, title: 'Log anything', body: 'Record calls, emails, meetings, demos, notes and more.' },
-      { icon: Filter, title: 'Filter the feed', body: 'Filter by type, search, or a specific contact/deal/lead.' },
-      { icon: FileText, title: 'Export as PDF', body: 'Generate a clean, print-ready report of the history.' },
-      { icon: FileSpreadsheet, title: 'Export to Sheets', body: 'Download a CSV that opens in Google Sheets or Excel.' },
+      { emoji: '📝', title: 'Log anything', body: 'Record calls, emails, meetings and notes.' },
+      { emoji: '🔎', title: 'Filter', body: 'Narrow by type, person or search.' },
+      { emoji: '📄', title: 'Save as PDF', body: 'Make a clean, printable report.' },
+      { emoji: '📊', title: 'Send to Sheets', body: 'Download a CSV for Google Sheets or Excel.' },
     ],
   },
   sequences: {
-    icon: Workflow, gradient: 'from-indigo-500 to-blue-500',
-    title: 'Sequences', tagline: 'Automated, multi-step outreach cadences for leads and contacts.',
+    emoji: '🔁', gradient: 'from-indigo-500 to-blue-500',
+    title: 'Sequences', tagline: 'Set up follow-ups that run on their own.',
     features: [
-      { icon: Plus, title: 'Build a cadence', body: 'Chain email / call / task / wait steps with day offsets.' },
-      { icon: UserPlus, title: 'Enroll people', body: 'Add leads to a sequence; track who’s active.' },
-      { icon: Zap, title: 'Activate / pause', body: 'Toggle a sequence on or off and edit steps anytime.' },
+      { emoji: '🧱', title: 'Build the steps', body: 'Chain emails, calls, tasks and waits.' },
+      { emoji: '👥', title: 'Add people', body: 'Enroll leads and watch their progress.' },
+      { emoji: '⏯️', title: 'Turn on/off', body: 'Pause or resume any sequence anytime.' },
     ],
   },
   reports: {
-    icon: BarChart3, gradient: 'from-indigo-500 to-violet-500',
-    title: 'Reports', tagline: 'Pipeline, forecast, lead and activity analytics.',
+    emoji: '📈', gradient: 'from-indigo-500 to-violet-500',
+    title: 'Reports', tagline: 'See how sales and leads are doing.',
     features: [
-      { icon: TrendingUp, title: 'Pipeline & forecast', body: 'Open pipeline, weighted forecast, win rate and avg deal size.' },
-      { icon: Target, title: 'Lead analytics', body: 'Conversion rate, lead funnel, new-leads trend and lifecycle.' },
-      { icon: BarChart3, title: 'Breakdowns', body: 'By stage, owner, status and source — with charts.' },
+      { emoji: '💰', title: 'Pipeline & forecast', body: 'Open value, win rate and what’s likely to close.' },
+      { emoji: '🧲', title: 'Lead insights', body: 'Conversion rate, the lead funnel and new-lead trend.' },
+      { emoji: '📊', title: 'Charts', body: 'Breakdowns by stage, owner, status and source.' },
     ],
   },
   automations: {
-    icon: Zap, gradient: 'from-amber-500 to-orange-500',
-    title: 'Automations', tagline: 'Run actions automatically when something happens.',
+    emoji: '⚡', gradient: 'from-amber-500 to-orange-500',
+    title: 'Automations', tagline: 'Let the app do repetitive work for you.',
     features: [
-      { icon: Zap, title: 'Trigger → actions', body: 'e.g. “When a lead is created → send email + create a task”.' },
-      { icon: Plus, title: 'Build rules', body: 'Pick a trigger, then one or more actions to run.' },
-      { icon: CheckSquare, title: 'Enable / disable', body: 'Toggle any rule on or off without deleting it.' },
+      { emoji: '🪝', title: 'When this…', body: 'Pick a trigger, like “a new lead arrives”.' },
+      { emoji: '🎯', title: '…do that', body: 'Send an email, make a task, notify someone.' },
+      { emoji: '🔌', title: 'On or off', body: 'Switch any rule without deleting it.' },
     ],
   },
   duplicates: {
-    icon: Copy, gradient: 'from-rose-500 to-pink-500',
-    title: 'Duplicates', tagline: 'Keep your data clean by finding and merging duplicates.',
+    emoji: '🧹', gradient: 'from-rose-500 to-pink-500',
+    title: 'Duplicates', tagline: 'Tidy up repeated contacts and companies.',
     features: [
-      { icon: Search, title: 'Auto-detect', body: 'Scans contacts (email/name) and companies (domain/name).' },
-      { icon: GitMerge, title: 'Pick & merge', body: 'Choose which record to keep; the rest merge into it.' },
+      { emoji: '🔍', title: 'Find copies', body: 'We spot likely duplicates for you.' },
+      { emoji: '🔗', title: 'Merge them', body: 'Keep one record; the rest fold in.' },
     ],
   },
   audit: {
-    icon: ScrollText, gradient: 'from-slate-500 to-slate-600',
-    title: 'Audit log', tagline: 'A chronological record of changes across the CRM.',
+    emoji: '🧾', gradient: 'from-slate-500 to-slate-600',
+    title: 'Audit log', tagline: 'A record of who changed what, and when.',
     features: [
-      { icon: ScrollText, title: 'Change history', body: 'See created/updated/deleted, status changes, merges and more.' },
-      { icon: Filter, title: 'Filter by type', body: 'Focus on leads, contacts, companies or deals.' },
+      { emoji: '🕒', title: 'History', body: 'See edits, additions, deletes and more.' },
+      { emoji: '🔎', title: 'Filter', body: 'Focus on leads, contacts, companies or deals.' },
     ],
   },
   team: {
-    icon: UsersRound, gradient: 'from-teal-500 to-emerald-500',
-    title: 'Team', tagline: 'Your workspace members and what they can do.',
+    emoji: '👥', gradient: 'from-teal-500 to-emerald-500',
+    title: 'Team', tagline: 'The people in your workspace.',
     features: [
-      { icon: UsersRound, title: 'Members', body: 'See everyone in the organization and their roles.' },
-      { icon: UserPlus, title: 'Assignment', body: 'Members become available as owners on leads and deals.' },
+      { emoji: '🧑‍🤝‍🧑', title: 'Members', body: 'See everyone and their role.' },
+      { emoji: '🎯', title: 'Assigning', body: 'Members can own leads and deals.' },
     ],
   },
   templates: {
-    icon: LayoutTemplate, gradient: 'from-fuchsia-500 to-pink-500',
-    title: 'Templates', tagline: 'Reusable recipes for the AI Sales Writer.',
+    emoji: '🗂️', gradient: 'from-fuchsia-500 to-pink-500',
+    title: 'Templates', tagline: 'Starting points for the AI writer.',
     features: [
-      { icon: Sparkles, title: 'Start faster', body: 'Pick a template to seed the AI generator with a goal and tone.' },
-      { icon: LayoutTemplate, title: 'Browse by type', body: 'Find templates by category and copy type.' },
+      { emoji: '✨', title: 'Start faster', body: 'Pick a template to set the goal and tone.' },
+      { emoji: '🔎', title: 'Browse', body: 'Find templates by type and category.' },
     ],
   },
   history: {
-    icon: History, gradient: 'from-slate-500 to-slate-600',
-    title: 'Copy history', tagline: 'Everything the AI Sales Writer has generated for you.',
+    emoji: '🕘', gradient: 'from-slate-500 to-slate-600',
+    title: 'Copy history', tagline: 'Everything the AI has written for you.',
     features: [
-      { icon: History, title: 'Revisit & reuse', body: 'Find past generations and copy them again.' },
+      { emoji: '♻️', title: 'Reuse it', body: 'Find past results and copy them again.' },
     ],
   },
   send: {
-    icon: Send, gradient: 'from-orange-500 to-rose-500',
-    title: 'Send to CRM', tagline: 'Push generated copy and details into your CRM records.',
+    emoji: '📨', gradient: 'from-orange-500 to-rose-500',
+    title: 'Send to CRM', tagline: 'Push your AI copy into the right record.',
     features: [
-      { icon: Send, title: 'Route content', body: 'Send drafted copy into the right record as a note or message.' },
+      { emoji: '🎯', title: 'Route content', body: 'Drop a draft onto a contact, lead or deal.' },
     ],
   },
   settings: {
-    icon: Settings, gradient: 'from-slate-600 to-slate-700',
-    title: 'Settings', tagline: 'Configure your profile, brand, pipeline and custom fields.',
+    emoji: '⚙️', gradient: 'from-slate-600 to-slate-700',
+    title: 'Settings', tagline: 'Set up the app the way you work.',
     features: [
-      { icon: Sparkles, title: 'Brand & AI', body: 'Set your brand voice/tone for the AI writer.' },
-      { icon: SlidersHorizontal, title: 'Custom fields', body: 'Add your own fields to leads, contacts, companies and deals.' },
-      { icon: Kanban, title: 'Pipelines', body: 'Customize your deal pipeline stages.' },
-      { icon: Bell, title: 'Notifications & more', body: 'Tune notifications, appearance, security and account.' },
+      { emoji: '✨', title: 'Brand & AI', body: 'Set your voice and tone for the AI writer.' },
+      { emoji: '🧩', title: 'Custom fields', body: 'Add your own fields to any record.' },
+      { emoji: '📋', title: 'Pipelines', body: 'Customize your deal stages.' },
+      { emoji: '🔔', title: 'More', body: 'Notifications, appearance, security and account.' },
     ],
   },
   organizations: {
-    icon: Building2, gradient: 'from-orange-500 to-amber-500',
-    title: 'Organizations', tagline: 'Switch between or manage your workspaces.',
+    emoji: '🏬', gradient: 'from-orange-500 to-amber-500',
+    title: 'Workspaces', tagline: 'Switch between or manage your organizations.',
     features: [
-      { icon: Building2, title: 'Workspaces', body: 'Each organization has its own leads, deals and team.' },
+      { emoji: '🏢', title: 'Workspaces', body: 'Each one has its own leads, deals and team.' },
+    ],
+  },
+  leadWebhook: {
+    emoji: '🌐', gradient: 'from-orange-500 to-amber-500',
+    title: 'Lead webhook', tagline: 'Auto-capture leads from your website or forms.',
+    features: [
+      { emoji: '🔗', title: 'Your inbox URL', body: 'Send form data here and a lead is created.' },
+      { emoji: '🧪', title: 'Test it', body: 'Try a sample to see how data maps in.' },
+    ],
+  },
+  leadImport: {
+    emoji: '📥', gradient: 'from-orange-500 to-amber-500',
+    title: 'Import leads', tagline: 'Bring in lots of leads from a spreadsheet.',
+    features: [
+      { emoji: '📄', title: 'Upload a CSV', body: 'Drop in your file to get started.' },
+      { emoji: '🔀', title: 'Match columns', body: 'Line up your columns with lead fields.' },
     ],
   },
 };
 
 const DEFAULT_HELP: HelpEntry = {
-  icon: Sparkles, gradient: 'from-indigo-500 to-violet-500',
+  emoji: '💡', gradient: 'from-indigo-500 to-violet-500',
   title: 'About this page', tagline: 'Here’s what you can do here.',
   features: [
-    { icon: ArrowRightCircle, title: 'Navigate', body: 'Use the top navigation to move between sections.' },
-    { icon: Search, title: 'Find anything', body: 'Use search to jump to contacts, companies and deals.' },
+    { emoji: '🧭', title: 'Get around', body: 'Use the top menu to move between sections.' },
+    { emoji: '🔎', title: 'Find anything', body: 'Search for contacts, companies and deals.' },
   ],
 };
 
-/** Resolve the help entry for a pathname (handles /section/:id detail pages). */
+/** Resolve the help entry for a pathname (handles sub-pages and /section/:id detail pages). */
 export function resolvePageHelp(pathname: string): HelpEntry {
-  if (/^\/leads\/[^/]+$/.test(pathname) && !/\/(webhook|import)$/.test(pathname)) return HELP.leadDetail ?? DEFAULT_HELP;
+  if (pathname === '/leads/webhook') return HELP.leadWebhook ?? DEFAULT_HELP;
+  if (pathname === '/leads/import') return HELP.leadImport ?? DEFAULT_HELP;
+  if (/^\/leads\/[^/]+$/.test(pathname)) return HELP.leadDetail ?? DEFAULT_HELP;
   if (/^\/deals\/[^/]+$/.test(pathname)) return HELP.dealDetail ?? DEFAULT_HELP;
   if (/^\/contacts\/[^/]+$/.test(pathname)) return HELP.contacts ?? DEFAULT_HELP;
   if (/^\/companies\/[^/]+$/.test(pathname)) return HELP.companies ?? DEFAULT_HELP;

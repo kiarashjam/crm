@@ -10,6 +10,7 @@ import {
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import PageHero from '@/app/components/PageHero';
 import { cn } from '@/app/components/ui/utils';
 import { getDeals, getLeads, getActivities } from '@/app/api';
 import type { Deal, Lead, Activity } from '@/app/api/types';
@@ -152,12 +153,12 @@ export default function Reports() {
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          <div className="mb-6">
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
-              <BarChart3 className="h-6 w-6 text-indigo-600" /> Reports
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">Pipeline, forecast and activity analytics across your CRM.</p>
-          </div>
+          <PageHero
+            icon={BarChart3}
+            iconGradient="from-indigo-500 to-violet-500"
+            title="Reports"
+            subtitle="Pipeline, forecast, lead and activity analytics across your CRM."
+          />
 
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>

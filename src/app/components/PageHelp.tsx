@@ -15,7 +15,6 @@ export default function PageHelp() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const help = resolvePageHelp(pathname);
-  const Hero = help.icon;
 
   return (
     <>
@@ -33,8 +32,8 @@ export default function PageHelp() {
         <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-[580px]">
           <DialogHeader>
             <div className="flex items-start gap-4">
-              <span className={cn('flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-lg', help.gradient)}>
-                <Hero className="h-7 w-7" />
+              <span className={cn('flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-3xl shadow-lg', help.gradient)}>
+                {help.emoji}
               </span>
               <div className="min-w-0">
                 <DialogTitle className="text-left text-xl">{help.title}</DialogTitle>
@@ -48,8 +47,8 @@ export default function PageHelp() {
             <div className="grid gap-2.5 sm:grid-cols-2">
               {help.features.map((f) => (
                 <div key={f.title} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">
-                  <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-                    <f.icon className="h-4 w-4" />
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-xl">
+                    {f.emoji}
                   </span>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-800">{f.title}</p>
