@@ -5,6 +5,7 @@ import SkipLink from '@/app/components/SkipLink';
 import RequireAuth from '@/app/components/RequireAuth';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { PageLoader } from '@/app/components/PageLoader';
+import PageHelp from '@/app/components/PageHelp';
 import { QueryProvider } from '@/app/providers';
 import { OrgProvider, useOrgOptional } from '@/app/contexts/OrgContext';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
@@ -52,6 +53,7 @@ function ProtectedLayout() {
       <Suspense fallback={<PageLoader />}>
         <Outlet />
       </Suspense>
+      <PageHelp />
     </RequireAuth>
   );
 }
