@@ -64,6 +64,7 @@ import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { AssignPopover } from './leads/components/AssignPopover';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
+import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignmentMigrationDialog';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
 import { isValidGuid } from './leads/utils';
@@ -1239,6 +1240,7 @@ export default function Leads() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
+      <LeadAssignmentMigrationDialog onMigrated={fetchLeads} />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           {/* Enhanced Header Section with Dark Decorative Elements */}
