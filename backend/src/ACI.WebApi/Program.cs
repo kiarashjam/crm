@@ -539,6 +539,11 @@ try
                     ALTER TABLE [Leads] ADD [ConvertedToDealId] uniqueidentifier NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'ConvertedToCompanyId')
                     ALTER TABLE [Leads] ADD [ConvertedToCompanyId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'AssignedToUserId')
+                BEGIN
+                    ALTER TABLE [Leads] ADD [AssignedToUserId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_Leads_AssignedToUserId] ON [Leads] ([AssignedToUserId]);
+                END;
             ");
             
             // Fix Deals table columns

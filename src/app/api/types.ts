@@ -94,6 +94,8 @@ export interface Lead {
   isConverted?: boolean;
   convertedAtUtc?: string;
   assignedToId?: string;
+  /** Display name of the assigned user, resolved server-side. */
+  assignedToName?: string;
   tags?: string[];
   createdAtUtc?: string;
 }

@@ -47,6 +47,11 @@ public interface ILeadService
     Task<Result<LeadDto>> UpdateAsync(Guid id, Guid userId, Guid? organizationId, UpdateLeadRequest request, CancellationToken ct = default);
 
     /// <summary>
+    /// Assigns (or unassigns, when <paramref name="assignedToUserId"/> is null) a lead to an org member.
+    /// </summary>
+    Task<Result<LeadDto>> AssignAsync(Guid id, Guid userId, Guid? organizationId, Guid? assignedToUserId, CancellationToken ct = default);
+
+    /// <summary>
     /// Deletes a lead.
     /// </summary>
     Task<Result> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);

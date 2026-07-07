@@ -247,6 +247,43 @@ public class LeadsController : ControllerBase
     }
 
     /// <summary>
+    /// Assigns a lead to an organization member (or unassigns it).
+    /// </summary>
+    /// <remarks>
+    /// Any organization member can (re)assign a lead. Pass a null
+    /// <c>assignedToUserId</c> to clear the assignment. The assignment is
+    /// org-wide, so every member sees the same owner.
+    /// </remarks>
+    /// <param name="id">The lead ID to (re)assign.</param>
+    /// <param name="request">The assignment request.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The updated lead.</returns>
+    /// <response code="200">Lead assignment updated.</response>
+    /// <response code="401">User is not authenticated.</response>
+    /// <response code="404">Lead not found.</response>
+    [HttpPut("{id:guid}/assign")]
+    [ProducesResponseType(typeof(LeadDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<LeadDto>> Assign(
+        Guid id,
+        [FromBody] AssignLeadRequest request,
+        CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var result = await _leadService.AssignAsync(
+            id,
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
+            request.AssignedToUserId,
+            ct);
+
+        return result.ToActionResult();
+    }
+
+    /// <summary>
     /// Deletes a lead.
     /// </summary>
     /// <param name="id">The lead ID to delete.</param>
@@ -315,4 +352,15 @@ public class LeadsController : ControllerBase
         
         return result.ToActionResult();
     }
+}
+
+/// <summary>
+/// Request to assign (or unassign) a lead to an organization member.
+/// </summary>
+public record AssignLeadRequest
+{
+    /// <summary>
+    /// The user to assign the lead to. Null clears the assignment.
+    /// </summary>
+    public Guid? AssignedToUserId { get; init; }
 }

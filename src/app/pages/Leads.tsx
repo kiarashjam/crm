@@ -21,6 +21,7 @@ import {
   getLeadById,
   createLead,
   updateLead,
+  assignLead,
   deleteLead,
   getCompanies,
   getContacts,
@@ -338,7 +339,7 @@ export default function Leads() {
   }, [searchParams]);
 
   const mergeLeadsWithLocalData = useCallback(
-    (rawLeads: Lead[], contactsById: Map<string, Contact>) => {
+    (rawLeads: Lead[], contactsById: Map<string, Contact>): Lead[] => {
       const assignments = loadLeadAssignments();
       const referrals = loadLeadReferrals();
       const createdAtByLeadId = loadLeadCreatedAtMap();
@@ -355,7 +356,10 @@ export default function Leads() {
         return {
           ...lead,
           createdAtUtc: resolvedCreatedAt || createdAtByLeadId[lead.id],
-          assignedToId: assignments[lead.id] || lead.assignedToId,
+          // The server is the source of truth for assignment (shared across the
+          // whole org). The local map is only a fallback for demo mode / older
+          // assignments made before the backend persisted them.
+          assignedToId: lead.assignedToId ?? assignments[lead.id],
           referredByContactId: referrals[lead.id] || lead.referredByContactId,
           referredByContactName:
             (referrals[lead.id] || lead.referredByContactId
@@ -468,14 +472,18 @@ export default function Leads() {
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
+      // Load the ancillary lookups independently so a failure in any one of them
+      // (e.g. a permission error on statuses/sources/stats) can't blank out the
+      // entire leads list — the list itself, with each lead's status, must still
+      // render for every org member regardless of role.
       const [statuses, sources, stats] = await Promise.all([
-        getLeadStatuses(),
-        getLeadSources(),
-        getLeadStats(),
+        getLeadStatuses().catch(() => [] as LeadStatus[]),
+        getLeadSources().catch(() => [] as LeadSource[]),
+        getLeadStats().catch(() => null),
       ]);
       setLeadStatuses(statuses ?? []);
       setLeadSources(sources ?? []);
-      setLeadStats(stats);
+      if (stats) setLeadStats(stats);
 
       const contactsById = new Map(contacts.map((c) => [c.id, c]));
       // The paged API takes a single status. When the user picks more than one
@@ -1007,8 +1015,9 @@ export default function Leads() {
     }
   };
 
-  // Reassign a lead's owner inline from its card. assignedToId isn't part of the
-  // backend update contract, so it's mirrored to the shared local store.
+  // Reassign a lead's owner inline from its card. Persisted server-side so the
+  // whole org sees the same owner; the local store is kept as a demo-mode /
+  // offline fallback and mirrors the optimistic update.
   const handleAssignLead = (lead: Lead, userId: string) => {
     const next = userId || undefined;
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, assignedToId: next } : l)));
@@ -1020,6 +1029,13 @@ export default function Leads() {
       return updated;
     });
     const member = userId ? orgMembersById.get(userId) : null;
+    // Persist to the backend. On failure the optimistic state above still shows
+    // the change locally; surface an error so the user knows it wasn't saved.
+    assignLead(lead.id, next ?? null)
+      .then((updated) => {
+        if (!updated) toast.error('Failed to save assignment');
+      })
+      .catch(() => toast.error('Failed to save assignment'));
     createActivity({ type: 'system', subject: member ? `Assigned to ${member.name}` : 'Unassigned', leadId: lead.id }).catch(() => {});
     toast.success(member ? `Assigned to ${member.name}` : 'Lead unassigned');
   };
