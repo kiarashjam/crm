@@ -29,5 +29,6 @@ public interface ILeadRepository
     // CRUD methods
     Task<Lead> AddAsync(Lead lead, CancellationToken ct = default);
     Task<Lead?> UpdateAsync(Lead lead, Guid userId, Guid? organizationId, CancellationToken ct = default);
+    Task<Lead?> AssignAsync(Guid id, Guid userId, Guid? organizationId, Guid? assignedToUserId, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

@@ -25,11 +25,13 @@ internal sealed class LeadConfiguration : IEntityTypeConfiguration<Lead>
         builder.HasOne(e => e.LeadSource).WithMany().HasForeignKey(e => e.LeadSourceId).IsRequired(false);
         builder.HasOne(e => e.LeadStatus).WithMany().HasForeignKey(e => e.LeadStatusId).IsRequired(false);
         builder.HasOne(e => e.UpdatedByUser).WithMany().HasForeignKey(e => e.UpdatedByUserId).IsRequired(false);
+        builder.HasOne(e => e.AssignedToUser).WithMany().HasForeignKey(e => e.AssignedToUserId).IsRequired(false);
         // ConvertedToContact is configured in ContactConfiguration (one-to-one)
         builder.HasOne(e => e.ConvertedToDeal).WithMany().HasForeignKey(e => e.ConvertedToDealId).IsRequired(false);
 
         // Indexes
         builder.HasIndex(e => e.OrganizationId);
         builder.HasIndex(e => e.IsConverted);
+        builder.HasIndex(e => e.AssignedToUserId);
     }
 }

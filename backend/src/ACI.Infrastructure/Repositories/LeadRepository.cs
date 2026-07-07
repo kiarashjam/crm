@@ -104,6 +104,7 @@ public sealed class LeadRepository : ILeadRepository
         var totalCount = await query.CountAsync(ct);
         var items = await query
             .Include(l => l.Company)
+            .Include(l => l.AssignedToUser)
             .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
@@ -141,6 +142,7 @@ public sealed class LeadRepository : ILeadRepository
                 ApplySearch(FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId), null),
                 new LeadQueryOptions { SortBy = "name", SortDir = "asc" })
             .Include(l => l.Company)
+            .Include(l => l.AssignedToUser)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Lead>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default)
@@ -154,12 +156,14 @@ public sealed class LeadRepository : ILeadRepository
                                 (l.Phone != null && l.Phone.Contains(q))),
                 new LeadQueryOptions { SortBy = "name", SortDir = "asc" })
             .Include(l => l.Company)
+            .Include(l => l.AssignedToUser)
             .ToListAsync(ct);
     }
 
     public async Task<Lead?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
             .Include(l => l.Company)
+            .Include(l => l.AssignedToUser)
             .FirstOrDefaultAsync(l => l.Id == id, ct);
 
     public async Task<Lead> AddAsync(Lead lead, CancellationToken ct = default)
@@ -191,6 +195,18 @@ public sealed class LeadRepository : ILeadRepository
         existing.UpdatedByUserId = userId;
         await _db.SaveChangesAsync(ct);
         return existing;
+    }
+
+    public async Task<Lead?> AssignAsync(Guid id, Guid userId, Guid? organizationId, Guid? assignedToUserId, CancellationToken ct = default)
+    {
+        var existing = await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (existing == null) return null;
+        existing.AssignedToUserId = assignedToUserId;
+        existing.UpdatedAtUtc = DateTime.UtcNow;
+        existing.UpdatedByUserId = userId;
+        await _db.SaveChangesAsync(ct);
+        // Re-read with the assignee navigation so the returned DTO carries the name.
+        return await GetByIdAsync(id, userId, organizationId, ct);
     }
 
     public async Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)

@@ -255,10 +255,33 @@ public class LeadService : ILeadService
     }
 
     /// <inheritdoc />
+    public async Task<Result<LeadDto>> AssignAsync(
+        Guid id,
+        Guid userId,
+        Guid? organizationId,
+        Guid? assignedToUserId,
+        CancellationToken ct = default)
+    {
+        _logger.LogInformation(
+            "Assigning lead {LeadId} to user {AssignedToUserId} (requested by {UserId})",
+            id, assignedToUserId, userId);
+
+        var updated = await _repository.AssignAsync(id, userId, organizationId, assignedToUserId, ct);
+
+        if (updated == null)
+        {
+            _logger.LogWarning("Lead assignment failed: Lead {LeadId} not found", id);
+            return DomainErrors.Lead.NotFound;
+        }
+
+        return Map(updated);
+    }
+
+    /// <inheritdoc />
     public async Task<Result> DeleteAsync(
-        Guid id, 
-        Guid userId, 
-        Guid? organizationId, 
+        Guid id,
+        Guid userId,
+        Guid? organizationId,
         CancellationToken ct = default)
     {
         _logger.LogInformation(
@@ -504,5 +527,7 @@ public class LeadService : ILeadService
             e.LifecycleStage,
             e.IsConverted,
             e.ConvertedAtUtc,
-            e.CreatedAtUtc);
+            e.CreatedAtUtc,
+            e.AssignedToUserId,
+            e.AssignedToUser?.Name);
 }

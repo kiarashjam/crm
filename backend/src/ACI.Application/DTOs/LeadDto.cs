@@ -17,4 +17,6 @@ public record LeadDto(
     string? LifecycleStage,
     bool IsConverted,
     DateTime? ConvertedAtUtc,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    Guid? AssignedToUserId = null,
+    string? AssignedToName = null);

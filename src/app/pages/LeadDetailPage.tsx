@@ -11,7 +11,7 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
-  getLeadById, updateLead, deleteLead,
+  getLeadById, updateLead, assignLead, deleteLead,
   getCompanies, getContacts, getLeadStatuses, getLeadSources,
   getActivitiesByLead, createActivity,
   getTasksByLead, createTask, updateTask, deleteTask,
@@ -310,10 +310,15 @@ export default function LeadDetailPage() {
     if (!lead) return;
     const next = userId || undefined;
     const m = orgMembers.find((x) => x.userId === userId);
-    // assignedToId isn't part of the backend update contract — mirror it to the
-    // shared local store (and local state) like the leads list does.
+    // Persist server-side so the whole org sees the same owner. The local store
+    // is kept as a demo-mode / offline fallback and mirrors the optimistic state.
     setLeadAssignment(lead.id, next);
     setLead((prev) => (prev ? { ...prev, assignedToId: next } : prev));
+    assignLead(lead.id, next ?? null)
+      .then((updated) => {
+        if (!updated) toast.error('Failed to save assignment');
+      })
+      .catch(() => toast.error('Failed to save assignment'));
     createActivity({ type: 'system', subject: m ? `Assigned to ${m.name}` : 'Unassigned', leadId: lead.id })
       .then((a) => a && setActivities((prev) => [a, ...prev]))
       .catch(() => { /* non-fatal */ });

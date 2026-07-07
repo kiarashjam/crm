@@ -31,6 +31,8 @@ type LeadRaw = {
   isConverted?: boolean;
   convertedAtUtc?: string | null;
   createdAtUtc?: string | null;
+  assignedToUserId?: string | null;
+  assignedToName?: string | null;
 };
 
 function mapLead(d: LeadRaw): Lead {
@@ -52,6 +54,8 @@ function mapLead(d: LeadRaw): Lead {
     isConverted: d.isConverted ?? false,
     convertedAtUtc: d.convertedAtUtc ?? undefined,
     createdAtUtc: d.createdAtUtc ?? undefined,
+    assignedToId: d.assignedToUserId ?? undefined,
+    assignedToName: d.assignedToName ?? undefined,
   };
 }
 
@@ -350,6 +354,23 @@ export async function updateLead(
   }
   await delay(200);
   return leadStore.update(id, params as Partial<Lead>);
+}
+
+/**
+ * Assign (or unassign) a lead's owner. Persisted server-side so every member of
+ * the organization sees the same assignment — pass null to clear it. Falls back
+ * to the local mock store in demo mode (no backend configured).
+ */
+export async function assignLead(id: string, assignedToUserId: string | null): Promise<Lead | null> {
+  if (isUsingRealApi()) {
+    const lead = await authFetchJson<LeadRaw>(`/api/leads/${id}/assign`, {
+      method: 'PUT',
+      body: JSON.stringify({ assignedToUserId }),
+    });
+    return lead ? mapLead(lead) : null;
+  }
+  await delay(200);
+  return leadStore.update(id, { assignedToId: assignedToUserId ?? undefined } as Partial<Lead>);
 }
 
 /** Delete a lead. */

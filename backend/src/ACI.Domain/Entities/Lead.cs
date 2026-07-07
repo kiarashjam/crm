@@ -7,6 +7,8 @@ public class Lead : Common.BaseEntity
 {
     public Guid UserId { get; set; }
     public Guid? OrganizationId { get; set; }
+    /// <summary>User this lead is assigned to (its owner within the org). Null = unassigned.</summary>
+    public Guid? AssignedToUserId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string? Phone { get; set; }
@@ -34,6 +36,7 @@ public class Lead : Common.BaseEntity
 
     public User User { get; set; } = null!;
     public User? UpdatedByUser { get; set; }
+    public User? AssignedToUser { get; set; }
     public Organization? Organization { get; set; }
     public Company? Company { get; set; }
     public LeadSource? LeadSource { get; set; }
