@@ -33,6 +33,7 @@ type LeadRaw = {
   createdAtUtc?: string | null;
   assignedToUserId?: string | null;
   assignedToName?: string | null;
+  pipelineState?: string | null;
 };
 
 function mapLead(d: LeadRaw): Lead {
@@ -56,6 +57,7 @@ function mapLead(d: LeadRaw): Lead {
     createdAtUtc: d.createdAtUtc ?? undefined,
     assignedToId: d.assignedToUserId ?? undefined,
     assignedToName: d.assignedToName ?? undefined,
+    pipelineState: d.pipelineState ?? undefined,
   };
 }
 
@@ -343,6 +345,7 @@ export async function updateLead(
     lastContactedAt: string;
     description: string;
     lifecycleStage: string;
+    pipelineState: string;
   }>,
 ): Promise<Lead | null> {
   if (isUsingRealApi()) {

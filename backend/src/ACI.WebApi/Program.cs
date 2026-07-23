@@ -544,6 +544,8 @@ try
                     ALTER TABLE [Leads] ADD [AssignedToUserId] uniqueidentifier NULL;
                     CREATE INDEX [IX_Leads_AssignedToUserId] ON [Leads] ([AssignedToUserId]);
                 END;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'PipelineState')
+                    ALTER TABLE [Leads] ADD [PipelineState] nvarchar(max) NULL;
             ");
             
             // Fix Deals table columns

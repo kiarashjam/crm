@@ -189,6 +189,7 @@ public sealed class LeadRepository : ILeadRepository
         existing.LastContactedAt = lead.LastContactedAt;
         existing.Description = lead.Description;
         existing.LifecycleStage = lead.LifecycleStage;
+        existing.PipelineState = lead.PipelineState;
         existing.IsConverted = lead.IsConverted;
         existing.ConvertedAtUtc = lead.ConvertedAtUtc;
         existing.UpdatedAtUtc = DateTime.UtcNow;

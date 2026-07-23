@@ -233,7 +233,8 @@ public class LeadService : ILeadService
         if (request.LastContactedAt.HasValue) existing.LastContactedAt = request.LastContactedAt;
         if (request.Description != null) existing.Description = request.Description.Trim();
         if (request.LifecycleStage != null) existing.LifecycleStage = request.LifecycleStage.Trim();
-        
+        if (request.PipelineState != null) existing.PipelineState = request.PipelineState;
+
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
 
@@ -529,5 +530,6 @@ public class LeadService : ILeadService
             e.ConvertedAtUtc,
             e.CreatedAtUtc,
             e.AssignedToUserId,
-            e.AssignedToUser?.Name);
+            e.AssignedToUser?.Name,
+            e.PipelineState);
 }
