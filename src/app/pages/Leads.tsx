@@ -65,6 +65,26 @@ import { AssignPopover } from './leads/components/AssignPopover';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
 import { SalesTrackerBadges } from './leads/components/SalesTrackerBadges';
+import { InlineSalesEditorPopover } from './leads/components/InlineSalesEditorPopover';
+import {
+  SalesTrackerFilters,
+  SalesTrackerFiltersHeader,
+  SalesTrackerFilterChips,
+  EMPTY_SALES_TRACKER_FILTERS,
+  activeSalesTrackerFilterCount,
+  type SalesTrackerFilterState,
+} from './leads/components/SalesTrackerFilters';
+import { SalesTrackerPanel } from './leads/salesTracker/SalesTrackerPanel';
+import {
+  loadAllSalesExtras,
+  onSalesExtrasChange,
+  EMPTY_SALES_EXTRAS,
+} from './leads/salesExtrasStore';
+import type { SalesExtras } from './leads/salesExtrasStore';
+import {
+  declineStage,
+  daysContractOutstanding,
+} from './salesTracker/computed';
 import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignmentMigrationDialog';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
@@ -256,6 +276,32 @@ export default function Leads() {
   });
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // Sales-tracker filter axes (Excel-parity). Serialised into the URL under
+  // `st.*` so refreshes / shared links preserve the tracker filters.
+  const [salesFilters, setSalesFilters] = useState<SalesTrackerFilterState>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = <K extends keyof SalesTrackerFilterState>(key: K): string =>
+      params.get(`st.${key}`) ?? EMPTY_SALES_TRACKER_FILTERS[key];
+    return {
+      outreachStatus: v('outreachStatus'),
+      meetingScheduled: v('meetingScheduled'),
+      contractSent: v('contractSent'),
+      contractSigned: v('contractSigned'),
+      depositPaid: v('depositPaid'),
+      declineStage: v('declineStage'),
+      overdue: v('overdue'),
+    };
+  });
+  // Snapshot of the per-lead sales extras map. Refreshed whenever the store
+  // signals a change (Lead detail Save, or an inline popover autosaves).
+  const [salesExtrasMap, setSalesExtrasMap] = useState<Record<string, SalesExtras>>(() => loadAllSalesExtras());
+  useEffect(() => onSalesExtrasChange(() => setSalesExtrasMap(loadAllSalesExtras())), []);
+
+  const patchSalesFilters = useCallback(
+    (patch: Partial<SalesTrackerFilterState>) => setSalesFilters((prev) => ({ ...prev, ...patch })),
+    [],
+  );
+  const activeSalesFilterCount = activeSalesTrackerFilterCount(salesFilters);
   const [leadAssignments, setLeadAssignments] = useState<Record<string, string>>(() => loadLeadAssignments());
   const [leadReferrals, setLeadReferrals] = useState<Record<string, string>>(() => loadLeadReferrals());
   const [leadCreatedAtMap, setLeadCreatedAtMap] = useState<Record<string, string>>(() => loadLeadCreatedAtMap());
@@ -300,7 +346,7 @@ export default function Leads() {
   // ref) so this effect re-running for other reasons can't clobber pagination.
   const prevFilterSigRef = useRef<string | null>(null);
   useEffect(() => {
-    const sig = JSON.stringify([filterStatuses, filterSource, filterConverted, filterAssignment, sortField, sortDirection]);
+    const sig = JSON.stringify([filterStatuses, filterSource, filterConverted, filterAssignment, sortField, sortDirection, salesFilters]);
     const filtersChanged = prevFilterSigRef.current !== null && prevFilterSigRef.current !== sig;
     prevFilterSigRef.current = sig;
     setSearchParams(
@@ -319,11 +365,17 @@ export default function Leads() {
         else params.delete('sort');
         if (sortDirection !== 'desc') params.set('dir', sortDirection);
         else params.delete('dir');
+        // Mirror sales-tracker filters into the URL under `st.*` keys.
+        (Object.keys(EMPTY_SALES_TRACKER_FILTERS) as (keyof SalesTrackerFilterState)[]).forEach((key) => {
+          const value = salesFilters[key];
+          if (value && value !== 'all') params.set(`st.${key}`, value);
+          else params.delete(`st.${key}`);
+        });
         return params.toString() === prev.toString() ? prev : params;
       },
       { replace: true }
     );
-  }, [filterStatuses, filterSource, filterConverted, filterAssignment, sortField, sortDirection, setSearchParams]);
+  }, [filterStatuses, filterSource, filterConverted, filterAssignment, sortField, sortDirection, salesFilters, setSearchParams]);
 
   // Browser back/forward or opening a shared link: align committed search with the URL.
   // Compare against a ref so this effect fires only on external URL changes — depending on
@@ -389,6 +441,38 @@ export default function Leads() {
       return list.filter((l) => l.assignedToId === targetUserId);
     },
     [filterAssignment, currentUser?.id],
+  );
+
+  // Sales-tracker filter — applied against the per-lead extras map. Runs
+  // client-side because the extras never touch the server.
+  const applySalesTrackerFilter = useCallback(
+    (list: Lead[]) => {
+      if (activeSalesFilterCount === 0) return list;
+      return list.filter((l) => {
+        const ex = salesExtrasMap[l.id] ?? EMPTY_SALES_EXTRAS;
+        if (salesFilters.outreachStatus !== 'all' && ex.outreachStatus !== salesFilters.outreachStatus) return false;
+        if (salesFilters.meetingScheduled !== 'all' && ex.meetingScheduled !== salesFilters.meetingScheduled) return false;
+        if (salesFilters.contractSent !== 'all' && ex.contractSent !== salesFilters.contractSent) return false;
+        if (salesFilters.contractSigned !== 'all' && ex.contractSigned !== salesFilters.contractSigned) return false;
+        if (salesFilters.depositPaid !== 'all' && ex.depositPaid !== salesFilters.depositPaid) return false;
+        if (salesFilters.declineStage !== 'all') {
+          const stage = declineStage(ex);
+          if (salesFilters.declineStage === 'any') {
+            if (stage === '') return false;
+          } else if (stage !== salesFilters.declineStage) {
+            return false;
+          }
+        }
+        if (salesFilters.overdue !== 'all') {
+          const days = daysContractOutstanding(ex);
+          if (days == null) return false;
+          if (salesFilters.overdue === 'over30' && days < 30) return false;
+          if (salesFilters.overdue === 'over14' && days < 14) return false;
+        }
+        return true;
+      });
+    },
+    [activeSalesFilterCount, salesFilters, salesExtrasMap],
   );
 
   const applyClientLeadFilters = useCallback(
@@ -489,14 +573,19 @@ export default function Leads() {
 
       const contactsById = new Map(contacts.map((c) => [c.id, c]));
       // The paged API takes a single status. When the user picks more than one
-      // status (or filters by assignment), filter client-side instead.
-      const useClientMode = filterAssignment !== 'all' || filterStatuses.length > 1;
+      // status, filters by assignment, or applies a sales-tracker axis (all
+      // client-side data), filter client-side instead.
+      const useClientMode =
+        filterAssignment !== 'all'
+        || filterStatuses.length > 1
+        || activeSalesFilterCount > 0;
 
       if (useClientMode) {
         const allLeadsRaw = await getLeads();
         let merged = mergeLeadsWithLocalData(Array.isArray(allLeadsRaw) ? allLeadsRaw : [], contactsById);
         merged = applyClientLeadFilters(merged);
         merged = applyAssignmentFilter(merged);
+        merged = applySalesTrackerFilter(merged);
         const count = merged.length;
         const pages = Math.ceil(count / pageSize) || 0;
         const start = (currentPage - 1) * pageSize;
@@ -557,6 +646,8 @@ export default function Leads() {
     mergeLeadsWithLocalData,
     applyClientLeadFilters,
     applyAssignmentFilter,
+    applySalesTrackerFilter,
+    activeSalesFilterCount,
     loadPageActivities,
   ]);
 
@@ -620,13 +711,14 @@ export default function Leads() {
     [orgMembers],
   );
 
-  // Count active filters
+  // Count active filters — includes each sales-tracker axis so the badge
+  // on the "Filters" button reflects the true number applied.
   const activeFilterCount = [
     filterStatuses.length > 0,
     filterSource !== 'all',
     filterConverted !== 'all',
     filterAssignment !== 'all',
-  ].filter(Boolean).length;
+  ].filter(Boolean).length + activeSalesFilterCount;
 
   // Clear all filters
   const clearFilters = () => {
@@ -634,6 +726,7 @@ export default function Leads() {
     setFilterSource('all');
     setFilterConverted('all');
     setFilterAssignment('all');
+    setSalesFilters(EMPTY_SALES_TRACKER_FILTERS);
     setSearchQuery('');
   };
 
@@ -1412,6 +1505,11 @@ export default function Leads() {
             </div>
           )}
 
+        {/* Sales Tracker dashboard — collapsible KPI + charts panel that
+            mirrors the P46 Excel workbook. Sits above the filter bar so
+            it's the first thing a user sees when opening Leads. */}
+        <SalesTrackerPanel leads={leads} />
+
         {/* Search, Filter & Sort Bar - Modern Dark Theme */}
         <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-4 mb-6 shadow-xl overflow-hidden">
           {/* Decorative elements */}
@@ -1693,6 +1791,14 @@ export default function Leads() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Sales Tracker filters — one axis per Excel enum */}
+                <div className="col-span-full pt-3 border-t border-white/10">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <SalesTrackerFiltersHeader activeCount={activeSalesFilterCount} />
+                    <SalesTrackerFilters value={salesFilters} onChange={patchSalesFilters} />
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -1754,6 +1860,10 @@ export default function Leads() {
                   </button>
                 </span>
               )}
+              <SalesTrackerFilterChips
+                filters={salesFilters}
+                onClear={(key) => patchSalesFilters({ [key]: EMPTY_SALES_TRACKER_FILTERS[key] })}
+              />
               <span className="text-xs text-slate-400">
                 {filteredLeads.length} of {totalCount} leads
               </span>
@@ -2227,20 +2337,38 @@ export default function Leads() {
                             </button>
                           }
                         />
-                        <QuickLogPopover
-                          onSubmit={(payload) => handleQuickLogActivity(lead, payload)}
-                          trigger={
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-emerald-200/70 hover:border-emerald-300 shadow-sm font-medium rounded-lg"
-                              aria-label={`Log activity for ${lead.name}`}
-                            >
-                              <MessageSquarePlus className="w-4 h-4" />
-                              Log
-                            </Button>
-                          }
-                        />
+                        <div className="flex items-center gap-2 shrink-0">
+                          <InlineSalesEditorPopover
+                            leadId={lead.id}
+                            leadName={lead.name}
+                            onSaved={() => setSalesExtrasMap(loadAllSalesExtras())}
+                            trigger={
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-indigo-200/70 hover:border-indigo-300 shadow-sm font-medium rounded-lg"
+                                aria-label={`Sales tracker for ${lead.name}`}
+                              >
+                                <Sparkles className="w-4 h-4" />
+                                Track
+                              </Button>
+                            }
+                          />
+                          <QuickLogPopover
+                            onSubmit={(payload) => handleQuickLogActivity(lead, payload)}
+                            trigger={
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-emerald-200/70 hover:border-emerald-300 shadow-sm font-medium rounded-lg"
+                                aria-label={`Log activity for ${lead.name}`}
+                              >
+                                <MessageSquarePlus className="w-4 h-4" />
+                                Log
+                              </Button>
+                            }
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

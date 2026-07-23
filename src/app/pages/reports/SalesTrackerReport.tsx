@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
-  PieChart, Pie, LineChart, Line, Legend, Area, AreaChart,
+  PieChart, Pie, Legend, Area, AreaChart,
 } from 'recharts';
 import type { Lead } from '@/app/api/types';
 import { Input } from '@/app/components/ui/input';
