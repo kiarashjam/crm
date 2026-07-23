@@ -64,6 +64,7 @@ import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { AssignPopover } from './leads/components/AssignPopover';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
+import { SalesTrackerBadges } from './leads/components/SalesTrackerBadges';
 import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignmentMigrationDialog';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
@@ -2061,6 +2062,9 @@ export default function Leads() {
                           </span>
                         )}
                       </div>
+
+                      {/* Sales Tracker Badges (only rendered when populated) */}
+                      <SalesTrackerBadges leadId={lead.id} />
 
                       {/* Tags Row */}
                       {lead.tags && lead.tags.length > 0 && (

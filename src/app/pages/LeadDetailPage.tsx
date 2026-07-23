@@ -40,6 +40,7 @@ import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
+import { SalesTrackerCard } from './leads/detail/SalesTrackerCard';
 import AiNextActionCard from '@/app/components/AiNextActionCard';
 import SaveLeadAsContactDialog from '@/app/components/SaveLeadAsContactDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
@@ -1188,6 +1189,9 @@ export default function LeadDetailPage() {
                   UpdateLeadRequest has no Tags field, so any add/remove would
                   silently fail to persist. Re-enable once the backend gains
                   Lead.Tags support. */}
+
+              {/* Sales Tracker (Excel-parity fields for pre-sales pipeline) */}
+              <SalesTrackerCard leadId={lead.id} className="mt-4" />
 
               {/* Custom fields (renders only when defined for leads) */}
               <CustomFieldsCard entityType="lead" recordId={lead.id} className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" />

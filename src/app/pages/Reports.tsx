@@ -14,6 +14,7 @@ import PageHero from '@/app/components/PageHero';
 import { cn } from '@/app/components/ui/utils';
 import { getDeals, getLeads, getActivities } from '@/app/api';
 import type { Deal, Lead, Activity } from '@/app/api/types';
+import { SalesTrackerReport } from './reports/SalesTrackerReport';
 
 const PALETTE = ['#6366f1', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
 
@@ -335,6 +336,9 @@ export default function Reports() {
                   )}
                 </div>
               </div>
+
+              {/* ---- Sales Tracker (P46 workbook parity) ---- */}
+              <SalesTrackerReport leads={leads} />
             </div>
           )}
         </main>
