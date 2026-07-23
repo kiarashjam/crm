@@ -7,28 +7,19 @@
 // live Leads list, so every field the user edits on the Lead detail page
 // is picked up here immediately.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Users, Target, PhoneCall, Handshake, FileSignature, CircleDollarSign,
   XCircle, UserCheck, Clock, AlertOctagon, TrendingUp, TrendingDown,
-  Calendar, Sparkles, Percent, Save, RotateCcw,
+  Calendar, Sparkles, Percent,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
   PieChart, Pie, Legend, Area, AreaChart,
 } from 'recharts';
 import type { Lead } from '@/app/api/types';
-import { Input } from '@/app/components/ui/input';
-import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
-import {
-  loadAllSalesExtras,
-  loadWaitlistTotal,
-  saveWaitlistTotal,
-  onSalesExtrasChange,
-  EMPTY_SALES_EXTRAS,
-  type SalesExtras,
-} from '../leads/salesExtrasStore';
+import { buildTrackedRowsFromLeads, leadHasTrackerData } from '../leads/leadTrackerMap';
 import {
   computeKpis,
   computeRates,
@@ -42,7 +33,6 @@ import {
   computeDropOffBreakdown,
   computeMembershipStatus,
   computeOutcomeBreakdown,
-  type TrackedRow,
 } from '../salesTracker/computed';
 
 const PALETTE = ['#6366f1', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
@@ -55,11 +45,6 @@ const fmtDate = (d: Date) =>
 
 interface Props {
   leads: Lead[];
-}
-
-/** Every field the Excel CONTACTS sheet tracks — assembled per lead. */
-function buildRows(leads: Lead[], extrasMap: Record<string, SalesExtras>): TrackedRow[] {
-  return leads.map((l) => ({ ...EMPTY_SALES_EXTRAS, ...(extrasMap[l.id] ?? {}) }));
 }
 
 /** Small reusable KPI tile shared across the section. */
@@ -101,25 +86,9 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle?: st
 }
 
 export function SalesTrackerReport({ leads }: Props) {
-  const [extrasMap, setExtrasMap] = useState<Record<string, SalesExtras>>(() => loadAllSalesExtras());
-  const [waitlistTotal, setWaitlistTotal] = useState<number>(() => loadWaitlistTotal());
-  const [waitlistDraft, setWaitlistDraft] = useState<string>(() => String(loadWaitlistTotal() || ''));
-
-  // Keep the dashboard live when the Lead detail editor saves.
-  useEffect(() => {
-    return onSalesExtrasChange(() => {
-      setExtrasMap(loadAllSalesExtras());
-      const total = loadWaitlistTotal();
-      setWaitlistTotal(total);
-      setWaitlistDraft(String(total || ''));
-    });
-  }, []);
-
-  const rows = useMemo(() => buildRows(leads, extrasMap), [leads, extrasMap]);
-  const trackedCount = useMemo(
-    () => rows.filter((r) => Object.values(r).some((v) => v && String(v).trim() !== '')).length,
-    [rows],
-  );
+  const rows = useMemo(() => buildTrackedRowsFromLeads(leads), [leads]);
+  const waitlistTotal = leads.length;
+  const trackedCount = useMemo(() => leads.filter(leadHasTrackerData).length, [leads]);
 
   const kpis = useMemo(() => computeKpis(rows), [rows]);
   const rates = useMemo(() => computeRates(kpis, waitlistTotal), [kpis, waitlistTotal]);
@@ -134,13 +103,7 @@ export function SalesTrackerReport({ leads }: Props) {
   const membership = useMemo(() => computeMembershipStatus(rows), [rows]);
   const outcome = useMemo(() => computeOutcomeBreakdown(rows), [rows]);
 
-  const commitWaitlist = () => {
-    const n = Number(waitlistDraft.replace(/[^0-9]/g, ''));
-    saveWaitlistTotal(Number.isFinite(n) ? n : 0);
-    setWaitlistTotal(Number.isFinite(n) ? n : 0);
-  };
-
-  const notYetContacted = Math.max((waitlistTotal || 0) - kpis.outreachAttempts, 0);
+  const notYetContacted = Math.max(waitlistTotal - kpis.outreachAttempts, 0);
 
   return (
     <div className="pt-4">
@@ -154,9 +117,9 @@ export function SalesTrackerReport({ leads }: Props) {
               <Sparkles className="w-7 h-7 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">Sales Tracker</h2>
+              <h2 className="text-xl font-bold text-white tracking-tight">Lead funnel</h2>
               <p className="text-slate-400 mt-0.5 text-sm">
-                Founding Membership Pre-sales · matches the P46 Sales Tracker workbook cell-for-cell
+                Built from lead pipeline data (same stages as the P46 tracker workbook)
               </p>
             </div>
           </div>
@@ -168,45 +131,18 @@ export function SalesTrackerReport({ leads }: Props) {
         </div>
       </div>
 
-      {/* Inputs: waitlist total */}
+      {/* Waitlist = all leads */}
       <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-amber-50/30 to-orange-50/40 p-5 shadow-sm mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Inputs</p>
-            <h3 className="mt-0.5 text-base font-bold text-slate-900">Total waitlist size</h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Denominator for the “Contacted / Waitlist” conversion — matches cell F7 of the Excel Inputs section.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="number"
-              min={0}
-              value={waitlistDraft}
-              onChange={(e) => setWaitlistDraft(e.target.value)}
-              className="h-10 w-40 rounded-lg border-amber-200 bg-white text-sm"
-              placeholder="e.g. 377"
-            />
-            <Button
-              onClick={commitWaitlist}
-              disabled={String(waitlistTotal) === waitlistDraft || (!waitlistDraft && waitlistTotal === 0)}
-              className="h-10 px-4 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm shadow-sm"
-            >
-              <Save className="w-3.5 h-3.5 mr-1" />
-              Save
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => { setWaitlistDraft(String(waitlistTotal || '')); }}
-              className="h-10 px-3 rounded-lg text-slate-500 hover:bg-slate-50"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </Button>
-          </div>
+        <div className="mb-4">
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Leads</p>
+          <h3 className="mt-0.5 text-base font-bold text-slate-900">Waitlist = all leads in this org</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Funnel numbers come from each lead&apos;s pipeline fields — not a separate sales spreadsheet.
+          </p>
         </div>
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <KpiTile label="Waitlist" value={waitlistTotal || 0} sub="Manual input" icon={Users} tone="bg-slate-100 text-slate-600" />
-          <KpiTile label="Contacted" value={kpis.contactedSuccessfully + dropOff.notInterestedInMeeting >= 0 ? kpis.outreachAttempts : 0} sub="Successful + attempted" icon={PhoneCall} tone="bg-blue-50 text-blue-600" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <KpiTile label="Waitlist" value={waitlistTotal} sub="Total leads" icon={Users} tone="bg-slate-100 text-slate-600" />
+          <KpiTile label="Contacted" value={kpis.outreachAttempts} sub="Successful + attempted" icon={PhoneCall} tone="bg-blue-50 text-blue-600" />
           <KpiTile label="Not yet contacted" value={notYetContacted} sub="Waitlist − outreach" icon={Users} tone="bg-slate-100 text-slate-600" />
           <KpiTile label="Meetings held" value={kpis.meetingsHeld} sub="Scheduled = Yes" icon={Calendar} tone="bg-violet-50 text-violet-600" />
         </div>

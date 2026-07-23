@@ -15,27 +15,19 @@ import {
   Sparkles, ChevronDown, ChevronUp, Target, Percent, Clock,
   Users, PhoneCall, Calendar, Handshake, FileSignature, CircleDollarSign,
   AlertOctagon, TrendingUp, TrendingDown, ExternalLink, XCircle,
-  Save, RotateCcw, ChevronsUpDown,
+  ChevronsUpDown,
 } from 'lucide-react';
 import type { Lead } from '@/app/api/types';
+import { getLeads } from '@/app/api/leads';
 import { Link } from 'react-router-dom';
 import { Button } from '@/app/components/ui/button';
-import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
-import {
-  loadAllSalesExtras,
-  loadWaitlistTotal,
-  saveWaitlistTotal,
-  onSalesExtrasChange,
-  EMPTY_SALES_EXTRAS,
-  type SalesExtras,
-} from '../salesExtrasStore';
+import { buildTrackedRowsFromLeads, leadHasTrackerData } from '../leadTrackerMap';
 import {
   computeKpis, computeRates, computeContractTiming, computeDropOff,
   computeWeeklyMeetings, computeMeetingPipeline, computeFunnel,
   computeMonthlyCumulative, computeContractStatusBreakdown,
   computeDropOffBreakdown, computeMembershipStatus,
-  type TrackedRow,
 } from '../../salesTracker/computed';
 
 const FUNNEL_COLORS = ['#3b82f6', '#8b5cf6', '#a855f7', '#d946ef', '#f59e0b', '#10b981', '#14b8a6'];
@@ -48,11 +40,6 @@ const fmtDate = (d: Date) =>
 
 interface Props {
   leads: Lead[];
-}
-
-/** Merges Lead[] with per-lead extras into TrackedRow[]. */
-function buildRows(leads: Lead[], extrasMap: Record<string, SalesExtras>): TrackedRow[] {
-  return leads.map((l) => ({ ...EMPTY_SALES_EXTRAS, ...(extrasMap[l.id] ?? {}) }));
 }
 
 /** Tone-styled compact KPI tile. Tighter than the Reports tile so the strip fits 6-8 on desktop. */
@@ -103,9 +90,8 @@ function RateBar({
 }
 
 export function SalesTrackerPanel({ leads }: Props) {
-  const [extrasMap, setExtrasMap] = useState<Record<string, SalesExtras>>(() => loadAllSalesExtras());
-  const [waitlistTotal, setWaitlistTotal] = useState<number>(() => loadWaitlistTotal());
-  const [waitlistDraft, setWaitlistDraft] = useState<string>(() => String(loadWaitlistTotal() || ''));
+  // Always compute against the full lead list (paged `leads` prop is only the current page).
+  const [allLeads, setAllLeads] = useState<Lead[]>(leads);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('crm.salesTracker.panel.collapsed') === '1';
@@ -117,13 +103,17 @@ export function SalesTrackerPanel({ leads }: Props) {
     } catch { return false; }
   });
 
-  // Keep dashboard live when the Lead detail editor saves.
-  useEffect(() => onSalesExtrasChange(() => {
-    setExtrasMap(loadAllSalesExtras());
-    const total = loadWaitlistTotal();
-    setWaitlistTotal(total);
-    setWaitlistDraft(String(total || ''));
-  }), []);
+  useEffect(() => {
+    let cancelled = false;
+    getLeads()
+      .then((list) => {
+        if (!cancelled && Array.isArray(list)) setAllLeads(list);
+      })
+      .catch(() => {
+        if (!cancelled) setAllLeads(leads);
+      });
+    return () => { cancelled = true; };
+  }, [leads]);
 
   useEffect(() => {
     try { localStorage.setItem('crm.salesTracker.panel.collapsed', collapsed ? '1' : '0'); } catch { /* ignore */ }
@@ -132,11 +122,10 @@ export function SalesTrackerPanel({ leads }: Props) {
     try { localStorage.setItem('crm.salesTracker.panel.expanded', expanded ? '1' : '0'); } catch { /* ignore */ }
   }, [expanded]);
 
-  const rows = useMemo(() => buildRows(leads, extrasMap), [leads, extrasMap]);
-  const trackedCount = useMemo(
-    () => rows.filter((r) => Object.values(r).some((v) => v && String(v).trim() !== '')).length,
-    [rows],
-  );
+  // Funnel KPIs come from each lead's server-side pipelineState — not a separate sales store.
+  const rows = useMemo(() => buildTrackedRowsFromLeads(allLeads), [allLeads]);
+  const waitlistTotal = allLeads.length;
+  const trackedCount = useMemo(() => allLeads.filter(leadHasTrackerData).length, [allLeads]);
 
   const kpis = useMemo(() => computeKpis(rows), [rows]);
   const rates = useMemo(() => computeRates(kpis, waitlistTotal), [kpis, waitlistTotal]);
@@ -150,13 +139,7 @@ export function SalesTrackerPanel({ leads }: Props) {
   const dropOffBreakdown = useMemo(() => computeDropOffBreakdown(rows), [rows]);
   const membership = useMemo(() => computeMembershipStatus(rows), [rows]);
 
-  const commitWaitlist = () => {
-    const n = Number((waitlistDraft || '').replace(/[^0-9]/g, ''));
-    saveWaitlistTotal(Number.isFinite(n) ? n : 0);
-    setWaitlistTotal(Number.isFinite(n) ? n : 0);
-  };
-
-  const notYetContacted = Math.max((waitlistTotal || 0) - kpis.outreachAttempts, 0);
+  const notYetContacted = Math.max(waitlistTotal - kpis.outreachAttempts, 0);
 
   // Collapsed pill view (opt-in tiny footprint).
   if (collapsed) {
@@ -199,13 +182,13 @@ export function SalesTrackerPanel({ leads }: Props) {
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-white truncate">Sales Tracker</h2>
+              <h2 className="text-base font-bold text-white truncate">Lead funnel</h2>
               <span className="rounded-full bg-white/10 border border-white/20 text-white text-[10px] px-2 py-0.5 font-semibold">
-                Excel parity
+                From leads
               </span>
             </div>
             <p className="text-[11px] text-white/60 mt-0.5 truncate">
-              {trackedCount} of {leads.length} leads · {kpis.outreachAttempts} outreach · {kpis.signed} signed · Same formulas as the P46 workbook
+              {trackedCount} of {allLeads.length} leads with pipeline data · {kpis.outreachAttempts} outreach · {kpis.signed} signed
             </p>
           </div>
         </div>
@@ -238,44 +221,10 @@ export function SalesTrackerPanel({ leads }: Props) {
         </div>
       </div>
 
-      {/* Waitlist input */}
-      <div className="relative px-5 py-3 border-b border-white/10 flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-white/50">Inputs · Cell F7 of the Excel</p>
-          <p className="text-sm font-medium text-white">Total waitlist size</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Input
-            type="number"
-            min={0}
-            value={waitlistDraft}
-            onChange={(e) => setWaitlistDraft(e.target.value)}
-            placeholder="e.g. 377"
-            className="h-9 w-32 rounded-lg bg-white/10 border-white/20 text-white text-sm placeholder:text-white/40"
-          />
-          <Button
-            size="sm"
-            onClick={commitWaitlist}
-            disabled={String(waitlistTotal) === waitlistDraft || (!waitlistDraft && waitlistTotal === 0)}
-            className="h-9 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-white font-medium shadow-md shadow-orange-900/30"
-          >
-            <Save className="w-3.5 h-3.5 mr-1" /> Save
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setWaitlistDraft(String(waitlistTotal || ''))}
-            className="h-9 w-9 p-0 rounded-lg text-white/60 hover:text-white hover:bg-white/10"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      {/* KPI grid */}
+      {/* KPI grid — derived from lead.pipelineState */}
       <div className="relative px-5 py-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2">
-          <CompactTile label="Waitlist" value={waitlistTotal || 0} sub={`${notYetContacted} not yet contacted`} icon={Users} tone="bg-slate-500/30" />
+          <CompactTile label="Waitlist" value={waitlistTotal} sub={`${notYetContacted} not yet contacted`} icon={Users} tone="bg-slate-500/30" />
           <CompactTile label="Contacted" value={kpis.contactedSuccessfully} sub={`+${kpis.outreachAttempts - kpis.contactedSuccessfully} attempted`} icon={PhoneCall} tone="bg-blue-500/30" />
           <CompactTile label="Meetings held" value={kpis.meetingsHeld} sub={`${kpis.showedUp} showed up`} icon={Calendar} tone="bg-violet-500/30" />
           <CompactTile label="Interested" value={kpis.interested} sub={`${kpis.noShows} no-shows`} icon={TrendingUp} tone="bg-amber-500/30" />
@@ -294,7 +243,7 @@ export function SalesTrackerPanel({ leads }: Props) {
               <h3 className="text-xs font-bold uppercase tracking-wider text-white/80">Conversion rates</h3>
             </div>
             <div className="space-y-2.5">
-              <RateBar label="Contacted / Waitlist" value={rates.contactedOverWaitlist} sub="% of waitlist contacted" colorClass="bg-gradient-to-r from-blue-500 to-cyan-400" />
+              <RateBar label="Contacted / Waitlist" value={rates.contactedOverWaitlist} sub="% of leads contacted" colorClass="bg-gradient-to-r from-blue-500 to-cyan-400" />
               <RateBar label="Meeting rate" value={rates.meetingRate} sub="Meetings held / contacted" colorClass="bg-gradient-to-r from-violet-500 to-purple-400" />
               <RateBar label="Interest rate" value={rates.interestRate} sub="Interested / showed up" colorClass="bg-gradient-to-r from-amber-500 to-orange-400" />
               <RateBar label="Contract rate" value={rates.contractRate} sub="Contracts sent / interested" colorClass="bg-gradient-to-r from-indigo-500 to-violet-400" />
@@ -309,7 +258,7 @@ export function SalesTrackerPanel({ leads }: Props) {
               <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white/10">
                 <Target className="w-3.5 h-3.5 text-white/80" />
               </div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-white/80">Sales funnel</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-white/80">Lead funnel</h3>
             </div>
             <ResponsiveContainer width="100%" height={230}>
               <BarChart data={funnel} layout="vertical" margin={{ top: 4, right: 24, left: 8, bottom: 0 }}>

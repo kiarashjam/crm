@@ -1219,7 +1219,11 @@ export default function LeadDetailPage() {
                   Lead.Tags support. */}
 
               {/* Sales Tracker (Excel-parity fields for pre-sales pipeline) */}
-              <SalesTrackerCard leadId={lead.id} className="mt-4" />
+              <SalesTrackerCard
+                lead={lead}
+                className="mt-4"
+                onSaved={(updated) => setLead((prev) => (prev ? { ...prev, ...updated } : prev))}
+              />
 
               {/* Custom fields (renders only when defined for leads) */}
               <CustomFieldsCard entityType="lead" recordId={lead.id} className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" />

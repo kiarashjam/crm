@@ -1,10 +1,6 @@
-// Editable "Sales Tracker" section on the Lead detail page.
-//
-// Surfaces every field from the P46 Sales Tracker Excel CONTACTS sheet
-// (outreach status/date, meeting scheduled/date, met, interested after mtg,
-// contract sent/date, contract signed/date, deposit paid, last contact,
-// sales notes) alongside the three computed columns from the sheet
-// (decline stage, days contract outstanding, days to sign).
+// Editable lead-pipeline section on the Lead detail page.
+// Fields match the P46 tracker workbook and persist on lead.pipelineState
+// so the org-wide lead funnel reads the same data.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Save, Check, Clock, AlertTriangle, Sparkles, TrendingUp } from 'lucide-react';
@@ -17,12 +13,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
-import {
-  EMPTY_SALES_EXTRAS,
-  getSalesExtras,
-  setSalesExtras,
-  type SalesExtras,
-} from '../salesExtrasStore';
+import { updateLead } from '@/app/api/leads';
+import type { Lead } from '@/app/api/types';
+import { EMPTY_SALES_EXTRAS, type SalesExtras } from '../salesExtrasStore';
 import {
   OUTREACH_STATUS_OPTIONS,
   MEETING_SCHEDULED_OPTIONS,
@@ -41,13 +34,19 @@ import {
   ddMmYyyyToIso,
   isoToDdMmYyyy,
 } from '../../salesTracker/dateUtils';
+import {
+  leadToTrackedRow,
+  salesExtrasToTrackedRow,
+  serializeTrackedRowAsPipeline,
+  trackedRowToSalesExtras,
+} from '../leadTrackerMap';
 
 interface SalesTrackerCardProps {
-  leadId: string;
+  lead: Lead;
   className?: string;
+  onSaved?: (updated: Lead) => void;
 }
 
-/** Dropdown wrapper for a set of Excel enum literals. Empty string = cleared. */
 function EnumSelect<T extends string>({
   value,
   options,
@@ -82,7 +81,6 @@ function EnumSelect<T extends string>({
   );
 }
 
-/** dd.mm.yyyy field backed by a native date input (converts on the fly). */
 function DateField({
   value,
   onChange,
@@ -98,28 +96,40 @@ function DateField({
   );
 }
 
-export function SalesTrackerCard({ leadId, className }: SalesTrackerCardProps) {
-  const [extras, setExtras] = useState<SalesExtras>(() => getSalesExtras(leadId));
+function extrasFromLead(lead: Lead): SalesExtras {
+  return trackedRowToSalesExtras(leadToTrackedRow(lead));
+}
+
+export function SalesTrackerCard({ lead, className, onSaved }: SalesTrackerCardProps) {
+  const [extras, setExtras] = useState<SalesExtras>(() => extrasFromLead(lead));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Reload when the lead id changes (SPA navigation between leads).
   useEffect(() => {
-    setExtras(getSalesExtras(leadId));
+    setExtras(extrasFromLead(lead));
     setDirty(false);
-  }, [leadId]);
+  }, [lead.id, lead.pipelineState]);
 
   const update = useCallback((patch: Partial<SalesExtras>) => {
     setExtras((prev) => ({ ...prev, ...patch }));
     setDirty(true);
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    setSalesExtras(leadId, extras);
-    setDirty(false);
-    setTimeout(() => setSaving(false), 250);
-    toast.success('Sales tracker saved');
+    try {
+      const row = salesExtrasToTrackedRow(extras);
+      const pipelineState = serializeTrackedRowAsPipeline(row, lead.pipelineState);
+      const updated = await updateLead(lead.id, { pipelineState });
+      if (!updated) throw new Error('update failed');
+      setDirty(false);
+      onSaved?.(updated);
+      toast.success('Lead pipeline saved');
+    } catch {
+      toast.error('Failed to save lead pipeline');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -147,8 +157,8 @@ export function SalesTrackerCard({ leadId, className }: SalesTrackerCardProps) {
             <Sparkles className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Sales Tracker</h3>
-            <p className="text-[11px] text-slate-500">Founding membership pre-sales pipeline</p>
+            <h3 className="text-sm font-semibold text-slate-900">Lead pipeline</h3>
+            <p className="text-[11px] text-slate-500">Outreach → meeting → contract → signature</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -168,7 +178,7 @@ export function SalesTrackerCard({ leadId, className }: SalesTrackerCardProps) {
           </Button>
           <Button
             size="sm"
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={!dirty || saving}
             className="h-8 px-3 rounded-lg text-xs bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
           >
@@ -178,168 +188,116 @@ export function SalesTrackerCard({ leadId, className }: SalesTrackerCardProps) {
         </div>
       </header>
 
-      {/* Outreach row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Outreach status</Label>
-          <div className="mt-1">
-            <EnumSelect
-              value={extras.outreachStatus}
-              options={OUTREACH_STATUS_OPTIONS}
-              onChange={(v) => update({ outreachStatus: v })}
-              placeholder="Not yet contacted"
-            />
-          </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Outreach status</Label>
+          <EnumSelect
+            value={extras.outreachStatus}
+            options={OUTREACH_STATUS_OPTIONS}
+            onChange={(v) => update({ outreachStatus: v })}
+          />
         </div>
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Outreach date</Label>
-          <div className="mt-1"><DateField value={extras.outreachDate} onChange={(v) => update({ outreachDate: v })} /></div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Outreach date</Label>
+          <DateField value={extras.outreachDate} onChange={(v) => update({ outreachDate: v })} />
         </div>
-      </div>
-
-      {/* Meeting row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Meeting scheduled</Label>
-          <div className="mt-1">
-            <EnumSelect
-              value={extras.meetingScheduled}
-              options={MEETING_SCHEDULED_OPTIONS}
-              onChange={(v) => update({ meetingScheduled: v })}
-            />
-          </div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Meeting scheduled</Label>
+          <EnumSelect
+            value={extras.meetingScheduled}
+            options={MEETING_SCHEDULED_OPTIONS}
+            onChange={(v) => update({ meetingScheduled: v })}
+          />
         </div>
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Meeting date</Label>
-          <div className="mt-1"><DateField value={extras.meetingDate} onChange={(v) => update({ meetingDate: v })} /></div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Meeting date</Label>
+          <DateField value={extras.meetingDate} onChange={(v) => update({ meetingDate: v })} />
         </div>
-      </div>
-
-      {/* Met + Interested row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Met (showed up)</Label>
-          <div className="mt-1">
-            <EnumSelect value={extras.met} options={YES_NO_OPTIONS} onChange={(v) => update({ met: v })} />
-          </div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Met (showed up)</Label>
+          <EnumSelect value={extras.met} options={YES_NO_OPTIONS} onChange={(v) => update({ met: v })} />
         </div>
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Interested after mtg</Label>
-          <div className="mt-1">
-            <EnumSelect
-              value={extras.interestedAfterMtg}
-              options={YES_NO_PENDING_OPTIONS}
-              onChange={(v) => update({ interestedAfterMtg: v })}
-            />
-          </div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Interested after meeting</Label>
+          <EnumSelect
+            value={extras.interestedAfterMtg}
+            options={YES_NO_PENDING_OPTIONS}
+            onChange={(v) => update({ interestedAfterMtg: v })}
+          />
         </div>
-      </div>
-
-      {/* Contract sent row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Contract sent</Label>
-          <div className="mt-1">
-            <EnumSelect
-              value={extras.contractSent}
-              options={CONTRACT_SENT_OPTIONS}
-              onChange={(v) => update({ contractSent: v })}
-            />
-          </div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Contract sent</Label>
+          <EnumSelect
+            value={extras.contractSent}
+            options={CONTRACT_SENT_OPTIONS}
+            onChange={(v) => update({ contractSent: v })}
+          />
         </div>
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Contract sent date</Label>
-          <div className="mt-1"><DateField value={extras.contractSentDate} onChange={(v) => update({ contractSentDate: v })} /></div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Contract sent date</Label>
+          <DateField value={extras.contractSentDate} onChange={(v) => update({ contractSentDate: v })} />
         </div>
-      </div>
-
-      {/* Contract signed row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Contract signed</Label>
-          <div className="mt-1">
-            <EnumSelect
-              value={extras.contractSigned}
-              options={CONTRACT_SIGNED_OPTIONS}
-              onChange={(v) => update({ contractSigned: v })}
-            />
-          </div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Contract signed</Label>
+          <EnumSelect
+            value={extras.contractSigned}
+            options={CONTRACT_SIGNED_OPTIONS}
+            onChange={(v) => update({ contractSigned: v })}
+          />
         </div>
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Signature date</Label>
-          <div className="mt-1"><DateField value={extras.signatureDate} onChange={(v) => update({ signatureDate: v })} /></div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Signature date</Label>
+          <DateField value={extras.signatureDate} onChange={(v) => update({ signatureDate: v })} />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Deposit paid</Label>
+          <EnumSelect
+            value={extras.depositPaid}
+            options={YES_NO_OPTIONS}
+            onChange={(v) => update({ depositPaid: v })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-[11px] text-slate-500">Last contact date</Label>
+          <DateField value={extras.lastContactDate} onChange={(v) => update({ lastContactDate: v })} />
         </div>
       </div>
 
-      {/* Deposit + last contact */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Deposit paid</Label>
-          <div className="mt-1">
-            <EnumSelect value={extras.depositPaid} options={YES_NO_OPTIONS} onChange={(v) => update({ depositPaid: v })} />
-          </div>
-        </div>
-        <div>
-          <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Last contact date</Label>
-          <div className="mt-1"><DateField value={extras.lastContactDate} onChange={(v) => update({ lastContactDate: v })} /></div>
-        </div>
-      </div>
-
-      {/* Sales notes */}
-      <div className="mb-3">
-        <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Sales notes</Label>
+      <div className="mt-3 space-y-1.5">
+        <Label className="text-[11px] text-slate-500">Notes</Label>
         <Textarea
           value={extras.salesNotes}
           onChange={(e) => update({ salesNotes: e.target.value })}
-          placeholder="Anything worth remembering from calls, meetings, or follow-ups…"
-          className="mt-1 min-h-[70px] rounded-lg border-slate-200 bg-white text-sm"
+          rows={3}
+          className="rounded-lg bg-white border-slate-200 text-sm"
         />
       </div>
 
-      {/* Computed row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pt-4 border-t border-slate-200/70">
-        <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Meeting week</p>
-          <p className="text-lg font-bold text-slate-900 tabular-nums mt-0.5">
-            {computed.week ?? '—'}
+      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="rounded-lg bg-white/70 border border-slate-200 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Decline stage</p>
+          <p className="text-sm font-semibold text-slate-800 mt-0.5">{computed.stage || '—'}</p>
+        </div>
+        <div className="rounded-lg bg-white/70 border border-slate-200 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1">
+            <Clock className="w-3 h-3" /> Days outstanding
+          </p>
+          <p className="text-sm font-semibold text-slate-800 mt-0.5">
+            {computed.outstanding == null ? '—' : computed.outstanding}
           </p>
         </div>
-        <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Days outstanding</p>
-          <p
-            className={cn(
-              'text-lg font-bold tabular-nums mt-0.5 flex items-center gap-1',
-              computed.outstanding != null && computed.outstanding >= 30
-                ? 'text-rose-600'
-                : computed.outstanding != null && computed.outstanding >= 14
-                  ? 'text-amber-600'
-                  : 'text-slate-900',
-            )}
-          >
-            {computed.outstanding != null && <Clock className="w-3.5 h-3.5" />}
-            {computed.outstanding ?? '—'}
+        <div className="rounded-lg bg-white/70 border border-slate-200 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1">
+            <TrendingUp className="w-3 h-3" /> Days to sign
+          </p>
+          <p className="text-sm font-semibold text-slate-800 mt-0.5">
+            {computed.toSign == null ? '—' : computed.toSign}
           </p>
         </div>
-        <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Days to sign</p>
-          <p className="text-lg font-bold text-slate-900 tabular-nums mt-0.5 flex items-center gap-1">
-            {computed.toSign != null && <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />}
-            {computed.toSign ?? '—'}
-          </p>
-        </div>
-        <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Decline stage</p>
-          <p
-            className={cn(
-              'text-sm font-semibold mt-1',
-              computed.stage === 'After Meeting'
-                ? 'text-amber-600'
-                : computed.stage === 'After Contract'
-                  ? 'text-rose-600'
-                  : 'text-slate-400',
-            )}
-          >
-            {computed.stage || '—'}
+        <div className="rounded-lg bg-white/70 border border-slate-200 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Meeting week</p>
+          <p className="text-sm font-semibold text-slate-800 mt-0.5">
+            {computed.week == null ? '—' : computed.week}
           </p>
         </div>
       </div>

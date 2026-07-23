@@ -1,11 +1,10 @@
-// Compact status pills for the Sales Tracker fields on a Lead card.
-// Shows only the badges that are populated so the card stays tidy for
-// leads not yet in the pipeline.
+// Compact status pills for lead pipeline fields on a Lead card.
 
 import { Calendar, FileCheck2, PenSquare, CircleDollarSign, AlertOctagon, Clock } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
-import { getSalesExtras } from '../salesExtrasStore';
 import { declineStage, daysContractOutstanding } from '../../salesTracker/computed';
+import { leadToTrackedRow } from '../leadTrackerMap';
+import type { Lead } from '@/app/api/types';
 
 const YES = new Set(['Yes']);
 
@@ -37,8 +36,8 @@ function Badge({
   );
 }
 
-export function SalesTrackerBadges({ leadId, className }: { leadId: string; className?: string }) {
-  const extras = getSalesExtras(leadId);
+export function SalesTrackerBadges({ lead, className }: { lead: Lead; className?: string }) {
+  const extras = leadToTrackedRow(lead);
   const stage = declineStage(extras);
   const outstanding = daysContractOutstanding(extras);
 

@@ -75,12 +75,7 @@ import {
   type SalesTrackerFilterState,
 } from './leads/components/SalesTrackerFilters';
 import { SalesTrackerPanel } from './leads/salesTracker/SalesTrackerPanel';
-import {
-  loadAllSalesExtras,
-  onSalesExtrasChange,
-  EMPTY_SALES_EXTRAS,
-} from './leads/salesExtrasStore';
-import type { SalesExtras } from './leads/salesExtrasStore';
+import { leadToTrackedRow } from './leads/leadTrackerMap';
 import {
   declineStage,
   daysContractOutstanding,
@@ -293,10 +288,6 @@ export default function Leads() {
       overdue: v('overdue'),
     };
   });
-  // Snapshot of the per-lead sales extras map. Refreshed whenever the store
-  // signals a change (Lead detail Save, or an inline popover autosaves).
-  const [salesExtrasMap, setSalesExtrasMap] = useState<Record<string, SalesExtras>>(() => loadAllSalesExtras());
-  useEffect(() => onSalesExtrasChange(() => setSalesExtrasMap(loadAllSalesExtras())), []);
 
   const patchSalesFilters = useCallback(
     (patch: Partial<SalesTrackerFilterState>) => setSalesFilters((prev) => ({ ...prev, ...patch })),
@@ -444,13 +435,12 @@ export default function Leads() {
     [filterAssignment, currentUser?.id],
   );
 
-  // Sales-tracker filter — applied against the per-lead extras map. Runs
-  // client-side because the extras never touch the server.
+  // Lead-pipeline filter — applied against each lead's server pipelineState.
   const applySalesTrackerFilter = useCallback(
     (list: Lead[]) => {
       if (activeSalesFilterCount === 0) return list;
       return list.filter((l) => {
-        const ex = salesExtrasMap[l.id] ?? EMPTY_SALES_EXTRAS;
+        const ex = leadToTrackedRow(l);
         if (salesFilters.outreachStatus !== 'all' && ex.outreachStatus !== salesFilters.outreachStatus) return false;
         if (salesFilters.meetingScheduled !== 'all' && ex.meetingScheduled !== salesFilters.meetingScheduled) return false;
         if (salesFilters.contractSent !== 'all' && ex.contractSent !== salesFilters.contractSent) return false;
@@ -473,7 +463,7 @@ export default function Leads() {
         return true;
       });
     },
-    [activeSalesFilterCount, salesFilters, salesExtrasMap],
+    [activeSalesFilterCount, salesFilters],
   );
 
   const applyClientLeadFilters = useCallback(
@@ -2190,7 +2180,7 @@ export default function Leads() {
                       </div>
 
                       {/* Sales Tracker Badges (only rendered when populated) */}
-                      <SalesTrackerBadges leadId={lead.id} />
+                      <SalesTrackerBadges lead={lead} />
 
                       {/* Tags Row */}
                       {lead.tags && lead.tags.length > 0 && (
@@ -2355,15 +2345,17 @@ export default function Leads() {
                         />
                         <div className="flex items-center gap-2 shrink-0">
                           <InlineSalesEditorPopover
-                            leadId={lead.id}
+                            lead={lead}
                             leadName={lead.name}
-                            onSaved={() => setSalesExtrasMap(loadAllSalesExtras())}
+                            onSaved={(updated) => {
+                              setLeads((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
+                            }}
                             trigger={
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="gap-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-indigo-200/70 hover:border-indigo-300 shadow-sm font-medium rounded-lg"
-                                aria-label={`Sales tracker for ${lead.name}`}
+                                aria-label={`Lead pipeline for ${lead.name}`}
                               >
                                 <Sparkles className="w-4 h-4" />
                                 Track
