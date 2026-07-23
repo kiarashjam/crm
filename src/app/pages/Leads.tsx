@@ -70,6 +70,7 @@ import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } 
 import { isValidGuid } from './leads/utils';
 import { loadLeadReferrals, saveLeadReferrals } from './leads/leadReferralStore';
 import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignmentStore';
+import { parsePipeline, pipelineBadge } from './leads/leadPipeline';
 import type { LeadForm } from './leads/types';
 
 /** Fallback row style when activity type is unknown (matches `note` in config). */
@@ -1851,6 +1852,7 @@ export default function Leads() {
           <div className="space-y-3">
             {filteredLeads.map((lead) => {
               const statusStyle = LEAD_STATUS_COLORS[lead.status] || DEFAULT_STATUS_STYLE;
+              const phaseBadge = pipelineBadge(parsePipeline(lead.pipelineState));
 
               const avatarGradient = lead.isConverted
                 ? 'from-emerald-600 to-teal-500'
@@ -2007,6 +2009,20 @@ export default function Leads() {
                             <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border backdrop-blur-sm font-semibold ${sourceBadgeClass}`}>
                               <span className="text-sm drop-shadow-sm">{sourceIcons[sourceKey] || '📌'}</span>
                               <span className="capitalize">{(lead.source || '').replace(/_/g, ' ')}</span>
+                            </span>
+                          )}
+                          {!lead.isConverted && phaseBadge.tone !== 'idle' && (
+                            <span
+                              className={`inline-flex items-center text-xs font-bold px-2.5 py-1.5 rounded-lg border shadow-sm ${
+                                phaseBadge.tone === 'lost'
+                                  ? 'bg-rose-50 text-rose-600 border-rose-200'
+                                  : phaseBadge.tone === 'complete'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              }`}
+                              title="Lead lifecycle phase"
+                            >
+                              {phaseBadge.label}
                             </span>
                           )}
                           <StatusChangePopover

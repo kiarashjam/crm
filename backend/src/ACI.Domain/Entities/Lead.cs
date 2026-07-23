@@ -23,6 +23,12 @@ public class Lead : Common.BaseEntity
     public DateTime? LastContactedAt { get; set; }
     public string? Description { get; set; }
     public string? LifecycleStage { get; set; }
+    /// <summary>
+    /// Serialized JSON of the lead's structured sales-lifecycle progression
+    /// (outreach → meeting → contract → signature → deposit). The frontend owns
+    /// the shape; the backend just persists it so the whole org shares one view.
+    /// </summary>
+    public string? PipelineState { get; set; }
     public bool IsConverted { get; set; }
     public DateTime? ConvertedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; }

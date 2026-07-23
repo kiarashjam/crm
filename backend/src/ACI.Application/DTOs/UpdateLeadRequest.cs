@@ -76,4 +76,11 @@ public record UpdateLeadRequest
     /// </summary>
     [StringLength(50, ErrorMessage = "Lifecycle stage cannot exceed 50 characters")]
     public string? LifecycleStage { get; init; }
+
+    /// <summary>
+    /// Serialized JSON of the lead's structured sales-lifecycle progression
+    /// (outreach → meeting → contract → signature → deposit). Owned by the client.
+    /// </summary>
+    [StringLength(8000, ErrorMessage = "Pipeline state is too large")]
+    public string? PipelineState { get; init; }
 }

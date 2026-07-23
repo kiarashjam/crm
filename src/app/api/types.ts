@@ -96,6 +96,8 @@ export interface Lead {
   assignedToId?: string;
   /** Display name of the assigned user, resolved server-side. */
   assignedToName?: string;
+  /** Serialized JSON of the structured sales-lifecycle progression (see leadPipeline.ts). */
+  pipelineState?: string;
   tags?: string[];
   createdAtUtc?: string;
 }

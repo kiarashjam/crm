@@ -19,4 +19,5 @@ public record LeadDto(
     DateTime? ConvertedAtUtc,
     DateTime CreatedAtUtc,
     Guid? AssignedToUserId = null,
-    string? AssignedToName = null);
+    string? AssignedToName = null,
+    string? PipelineState = null);

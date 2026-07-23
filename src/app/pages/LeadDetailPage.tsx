@@ -31,6 +31,8 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { StatusChangePopover } from './leads/components/StatusChangePopover';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
+import { LeadPipelineTracker } from './leads/components/LeadPipelineTracker';
+import { parsePipeline, serializePipeline, type LeadPipeline } from './leads/leadPipeline';
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES, EMPTY_LEAD_FORM } from './leads/config';
 import { isValidGuid } from './leads/utils';
@@ -286,6 +288,22 @@ export default function LeadDetailPage() {
       return false;
     }
   }, [lead]);
+
+  // Structured 5-phase lifecycle (outreach → meeting → contract → signature →
+  // deposit), persisted as JSON on the lead so the whole org shares one view.
+  const pipeline = useMemo<LeadPipeline>(() => parsePipeline(lead?.pipelineState), [lead?.pipelineState]);
+
+  const savePipeline = useCallback(
+    (next: LeadPipeline, log?: { subject: string; body?: string }) => {
+      if (!lead) return;
+      const json = serializePipeline(next);
+      // Optimistic so the tracker reflects the choice instantly; patchLead then
+      // persists it and (with `log`) records the change on the activity timeline.
+      setLead((prev) => (prev ? { ...prev, pipelineState: json } : prev));
+      void patchLead({ pipelineState: json }, log);
+    },
+    [lead, patchLead],
+  );
 
   const setStatus = async (status: string) => {
     if (!lead) return;
@@ -848,6 +866,16 @@ export default function LeadDetailPage() {
               </div>
             </div>
           </section>
+
+          {/* Lead lifecycle pipeline (full-width, under the hero) */}
+          <div className="w-full px-[var(--page-padding)] pt-6">
+            <LeadPipelineTracker
+              value={pipeline}
+              disabled={lead.isConverted}
+              onChange={savePipeline}
+              onConvert={() => navigate(`/leads?convertLeadId=${lead.id}`)}
+            />
+          </div>
 
           {/* Body: tabs + sidebar */}
           <div className="grid w-full gap-6 px-[var(--page-padding)] py-6 lg:grid-cols-[1fr_320px]">
