@@ -3,7 +3,7 @@
 // Every selector below traces to a specific Excel formula in the source
 // workbook so the numbers a user reads here match what they'd read there.
 
-import { daysBetween, isoWeekNumber, parseDdMmYyyy, todayUtc } from './dateUtils';
+import { daysBetween, excelWeekNumber, parseDdMmYyyy, todayUtc } from './dateUtils';
 
 /** Every field the Excel CONTACTS sheet tracks per row — the minimum shape
  *  computed metrics work with. Callers pass either raw sheet rows or the
@@ -51,7 +51,7 @@ export function daysToSign(c: TrackedRow): number | null {
 
 export function meetingWeek(c: TrackedRow): number | null {
   const d = parseDdMmYyyy(c.meetingDate);
-  return d ? isoWeekNumber(d) : null;
+  return d ? excelWeekNumber(d) : null;
 }
 
 // ---- KPI counts ----------------------------------------------------------
@@ -191,10 +191,18 @@ export interface WeeklyRow {
   signed: number;
 }
 
-/** Last N ISO weeks up to and including the current week. */
+/** Last N Excel weeks up to and including the current week — mirrors the
+ *  Excel dashboard's WEEKLY MEETINGS table (rows 49-57):
+ *    F = COUNTIF(P, weekNum)                           — meetings held
+ *    H = COUNTIFS(I,"Yes", P, weekNum)                 — contracts sent
+ *    J = COUNTIFS(K,"Yes", P, weekNum)                 — signed
+ *  Excel's P column is `WEEKNUM(F, 2)`, only populated when the meeting
+ *  date (F) is set — so filtering by `meetingWeek(c) === weekNumber`
+ *  matches Excel's semantics without an extra `meetingScheduled === 'Yes'`
+ *  clause. */
 export function computeWeeklyMeetings(contacts: TrackedRow[], weeksBack = 10): WeeklyRow[] {
   const today = todayUtc();
-  const currentWeek = isoWeekNumber(today);
+  const currentWeek = excelWeekNumber(today);
   const monday = new Date(today);
   const day = monday.getUTCDay() || 7;
   monday.setUTCDate(monday.getUTCDate() - (day - 1));
@@ -204,11 +212,7 @@ export function computeWeeklyMeetings(contacts: TrackedRow[], weeksBack = 10): W
     const weekStart = new Date(monday);
     weekStart.setUTCDate(monday.getUTCDate() - i * 7);
     const weekNumber = currentWeek - i;
-    // Filter contacts by meeting week
-    const meetingsHeld = countBy(
-      contacts,
-      (c) => meetingWeek(c) === weekNumber && c.meetingScheduled === 'Yes',
-    );
+    const meetingsHeld = countBy(contacts, (c) => meetingWeek(c) === weekNumber);
     const contractsSent = countBy(
       contacts,
       (c) => meetingWeek(c) === weekNumber && c.contractSent === 'Yes',
@@ -249,6 +253,10 @@ export interface FunnelStep {
   value: number;
 }
 
+/** Funnel stages Q28-Q34 of the Excel workbook:
+ *    Contacted → Mtg Scheduled → Showed Up → Interested → Contract Sent
+ *    → Signed → Deposit Paid
+ *  Contract Sent matches Q32 which unions "Yes" + "To be sent".            */
 export function computeFunnel(contacts: TrackedRow[]): FunnelStep[] {
   const contacted = countBy(
     contacts,
@@ -267,6 +275,7 @@ export function computeFunnel(contacts: TrackedRow[]): FunnelStep[] {
       ),
     },
     { name: 'Signed', value: countBy(contacts, (c) => c.contractSigned === 'Yes') },
+    { name: 'Deposit Paid', value: countBy(contacts, (c) => c.depositPaid === 'Yes') },
   ];
 }
 

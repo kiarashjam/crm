@@ -38,13 +38,17 @@ export function ddMmYyyyToIso(value: string): string {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
-/** ISO week number (WEEKNUM(date, 2) — Monday start). */
-export function isoWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+/** Excel's `WEEKNUM(date, 2)`: weeks start on Monday and week 1 is the week
+ *  containing January 1 (NOT the ISO 8601 Thursday rule). This matches the
+ *  source workbook's `P4 = WEEKNUM(F4, 2)` and the weekly-meetings table's
+ *  `WEEKNUM(TODAY(), 2) - N` labels. */
+export function excelWeekNumber(date: Date): number {
+  const year = date.getUTCFullYear();
+  const jan1 = new Date(Date.UTC(year, 0, 1));
+  const daysFromJan1 = Math.floor((date.getTime() - jan1.getTime()) / 86400000);
+  // JS getUTCDay(): Sun=0..Sat=6. Convert to Monday=0..Sunday=6.
+  const jan1WeekdayMondayStart = (jan1.getUTCDay() + 6) % 7;
+  return Math.floor((daysFromJan1 + jan1WeekdayMondayStart) / 7) + 1;
 }
 
 export function daysBetween(from: Date, to: Date): number {
