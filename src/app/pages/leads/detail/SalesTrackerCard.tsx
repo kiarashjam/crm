@@ -13,7 +13,6 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
-import { updateLead } from '@/app/api/leads';
 import type { Lead } from '@/app/api/types';
 import { EMPTY_SALES_EXTRAS, type SalesExtras } from '../salesExtrasStore';
 import {
@@ -37,14 +36,18 @@ import {
 import {
   leadToTrackedRow,
   salesExtrasToTrackedRow,
-  serializeTrackedRowAsPipeline,
+  trackedRowToPipeline,
   trackedRowToSalesExtras,
 } from '../leadTrackerMap';
+import { parsePipeline } from '../leadPipeline';
+import type { useLeadStatusSync } from '../useLeadStatusSync';
 
 interface SalesTrackerCardProps {
   lead: Lead;
   className?: string;
   onSaved?: (updated: Lead) => void;
+  /** Shared status-sync instance, so this editor behaves like the other two. */
+  statusSync: ReturnType<typeof useLeadStatusSync>;
 }
 
 function EnumSelect<T extends string>({
@@ -100,7 +103,7 @@ function extrasFromLead(lead: Lead): SalesExtras {
   return trackedRowToSalesExtras(leadToTrackedRow(lead));
 }
 
-export function SalesTrackerCard({ lead, className, onSaved }: SalesTrackerCardProps) {
+export function SalesTrackerCard({ lead, className, onSaved, statusSync }: SalesTrackerCardProps) {
   const [extras, setExtras] = useState<SalesExtras>(() => extrasFromLead(lead));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -119,14 +122,17 @@ export function SalesTrackerCard({ lead, className, onSaved }: SalesTrackerCardP
     setSaving(true);
     try {
       const row = salesExtrasToTrackedRow(extras);
-      const pipelineState = serializeTrackedRowAsPipeline(row, lead.pipelineState);
-      const updated = await updateLead(lead.id, { pipelineState });
-      if (!updated) throw new Error('update failed');
-      setDirty(false);
-      onSaved?.(updated);
-      toast.success('Lead pipeline saved');
-    } catch {
-      toast.error('Failed to save lead pipeline');
+      // One PUT for the pipeline and any status it now implies. The hook owns
+      // the toast, so a status change is announced with its Undo affordance.
+      const pipeline = trackedRowToPipeline(row, parsePipeline(lead.pipelineState));
+      const outcome = await statusSync.save(lead, pipeline, {
+        onApplied: (updated) => onSaved?.(updated),
+      });
+      if (outcome.stale) return;
+      if (outcome.ok) {
+        setDirty(false);
+        if (outcome.plan.kind !== 'apply') toast.success('Lead pipeline saved');
+      }
     } finally {
       setSaving(false);
     }
