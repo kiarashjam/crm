@@ -19,20 +19,17 @@ namespace ACI.WebApi.Middleware;
 /// </summary>
 public sealed class ReadOnlyMemberMiddleware
 {
+    private const StringComparison Ignore = StringComparison.OrdinalIgnoreCase;
+
     /// <summary>
-    /// Endpoints a Viewer may still write to, because they concern the viewer's own
-    /// account rather than the organization's data:
-    ///  - api/auth      → own password / 2FA setup
-    ///  - api/settings  → own preferences (theme, notifications, defaults)
-    ///  - api/joinrequests → asking to join an organization (self-service)
-    ///  - api/webhook   → API-key ingestion, not a user session (never reaches here authenticated)
+    /// Own-account areas a Viewer may always write to: credentials / 2FA, and their
+    /// personal preferences (theme, notifications, defaults). Neither touches
+    /// organization data.
     /// </summary>
-    private static readonly string[] AllowedPrefixes =
+    private static readonly string[] OwnAccountPrefixes =
     {
         "/api/auth",
         "/api/settings",
-        "/api/joinrequests",
-        "/api/webhook",
     };
 
     private readonly RequestDelegate _next;
@@ -49,7 +46,7 @@ public sealed class ReadOnlyMemberMiddleware
         ICurrentUserService currentUser,
         IOrganizationRepository organizationRepository)
     {
-        if (!IsStateChanging(context.Request.Method) || IsAlwaysAllowed(context.Request.Path))
+        if (!IsStateChanging(context.Request.Method) || IsSelfServiceWrite(context.Request))
         {
             await _next(context);
             return;
@@ -72,14 +69,6 @@ public sealed class ReadOnlyMemberMiddleware
             return;
         }
 
-        // Creating a brand-new organization of their own does not modify the
-        // organization they are merely a viewer of, so it stays permitted.
-        if (IsCreateOwnOrganization(context.Request))
-        {
-            await _next(context);
-            return;
-        }
-
         _logger.LogInformation(
             "Blocked {Method} {Path} for user {UserId}: read-only (Viewer) in organization {OrganizationId}",
             context.Request.Method, context.Request.Path, userId, organizationId);
@@ -93,14 +82,48 @@ public sealed class ReadOnlyMemberMiddleware
           || HttpMethods.IsOptions(method)
           || HttpMethods.IsTrace(method));
 
-    private static bool IsAlwaysAllowed(PathString path) =>
-        AllowedPrefixes.Any(prefix => path.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase));
-
-    private static bool IsCreateOwnOrganization(HttpRequest request)
+    /// <summary>
+    /// Writes that only ever affect the caller's own account or their own membership,
+    /// so they stay open to a Viewer. Everything else — including administering the
+    /// organization they view — is refused.
+    ///
+    /// Deliberately matched precisely rather than by controller prefix: several
+    /// administrative routes live under otherwise self-service controllers
+    /// (creating an invite, accepting/rejecting someone else's join request,
+    /// rotating the organization's webhook key), and a blanket prefix would exempt
+    /// exactly the actions a read-only member must not perform.
+    /// </summary>
+    private static bool IsSelfServiceWrite(HttpRequest request)
     {
+        if (OwnAccountPrefixes.Any(prefix => request.Path.StartsWithSegments(prefix, Ignore)))
+        {
+            return true;
+        }
+
+        // Everything below is a POST; nothing else is self-service.
         if (!HttpMethods.IsPost(request.Method)) return false;
-        var path = request.Path.Value?.TrimEnd('/');
-        return string.Equals(path, "/api/organizations", StringComparison.OrdinalIgnoreCase);
+
+        var path = request.Path.Value?.TrimEnd('/') ?? string.Empty;
+
+        // Creating a brand-new organization of their own does not change the
+        // organization they are merely a viewer of.
+        if (string.Equals(path, "/api/organizations", Ignore)) return true;
+
+        // Accepting an invitation — /api/invites/accept or /api/invites/{id}/accept —
+        // concerns only their own membership. Creating an invite
+        // (/api/invites/{organizationId}) is administrative and is NOT included.
+        if (path.StartsWith("/api/invites/", Ignore) && path.EndsWith("/accept", Ignore)) return true;
+
+        // Asking to join an organization: /api/joinrequests/{organizationId}.
+        // Accepting or rejecting somebody else's request is administrative.
+        if (path.StartsWith("/api/joinrequests/", Ignore)
+            && !path.EndsWith("/accept", Ignore)
+            && !path.EndsWith("/reject", Ignore))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static async Task WriteForbiddenAsync(HttpContext context)
