@@ -16,6 +16,7 @@ import {
   type UpdateTemplateRequest 
 } from '@/app/api/templates';
 import type { Template, CopyTypeId } from '@/app/api/types';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 const categoryIcons: Record<string, typeof Mail> = {
   Sales: Mail,
@@ -220,14 +221,16 @@ export default function Templates() {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={openCreateModal}
-                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Create Template
-                  </button>
+                  <WriteOnly>
+                    <button
+                      type="button"
+                      onClick={openCreateModal}
+                      className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create Template
+                    </button>
+                  </WriteOnly>
                 </div>
               </div>
             </div>
@@ -249,29 +252,31 @@ export default function Templates() {
                   >
                     {/* Edit/Delete buttons (only for non-system templates) */}
                     {!isSystemTemplate && (
-                      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(template)}
-                          className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                          aria-label="Edit template"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(template)}
-                          disabled={deleting === template.id}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                          aria-label="Delete template"
-                        >
-                          {deleting === template.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
+                      <WriteOnly>
+                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(template)}
+                            className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            aria-label="Edit template"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(template)}
+                            disabled={deleting === template.id}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            aria-label="Delete template"
+                          >
+                            {deleting === template.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                      </WriteOnly>
                     )}
 
                     <div className="flex items-start justify-between mb-4">

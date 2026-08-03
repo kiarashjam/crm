@@ -49,6 +49,7 @@ import {
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
 import { getCurrencySymbol, UrgencyBadge, getDaysUntilClose, STAGE_COLORS } from './pipeline/DealCard';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 export default function DealDetail() {
   const { id } = useParams<{ id: string }>();
@@ -249,41 +250,49 @@ export default function DealDetail() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate(`/deals`)}
-                    className="gap-1.5"
-                  >
-                    <Pencil className="w-3.5 h-3.5" /> Edit
-                  </Button>
+                  <WriteOnly>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(`/deals`)}
+                      className="gap-1.5"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Edit
+                    </Button>
+                  </WriteOnly>
                   {deal.isWon == null && (
                     <>
-                      <Button
-                        size="sm"
-                        className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
-                        onClick={() => { setCloseOpen(true); setCloseAsWon(true); }}
-                      >
-                        <Trophy className="w-3.5 h-3.5" /> Won
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 text-slate-600"
-                        onClick={() => { setCloseOpen(true); setCloseAsWon(false); }}
-                      >
-                        <X className="w-3.5 h-3.5" /> Lost
-                      </Button>
+                      <WriteOnly>
+                        <Button
+                          size="sm"
+                          className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() => { setCloseOpen(true); setCloseAsWon(true); }}
+                        >
+                          <Trophy className="w-3.5 h-3.5" /> Won
+                        </Button>
+                      </WriteOnly>
+                      <WriteOnly>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-slate-600"
+                          onClick={() => { setCloseOpen(true); setCloseAsWon(false); }}
+                        >
+                          <X className="w-3.5 h-3.5" /> Lost
+                        </Button>
+                      </WriteOnly>
                     </>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-red-600 hover:bg-red-50"
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                  <WriteOnly>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 hover:bg-red-50"
+                      onClick={() => setDeleteOpen(true)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </WriteOnly>
                 </div>
               </div>
             </div>

@@ -53,6 +53,7 @@ import {
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
 import { cn } from '@/app/components/ui/utils';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 const STATUS_OPTIONS: { value: TaskStatusType; label: string; icon: typeof Circle; color: string }[] = [
   { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-400' },
@@ -305,14 +306,16 @@ export default function TaskDetail() {
                 )}
               </div>
               {!editing && (
-                <div className="flex gap-2 shrink-0">
-                  <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                    <Pencil className="w-4 h-4 mr-1" /> Edit
-                  </Button>
-                  <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>
-                    <Trash2 className="w-4 h-4 mr-1" /> Delete
-                  </Button>
-                </div>
+                <WriteOnly>
+                  <div className="flex gap-2 shrink-0">
+                    <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+                      <Pencil className="w-4 h-4 mr-1" /> Edit
+                    </Button>
+                    <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>
+                      <Trash2 className="w-4 h-4 mr-1" /> Delete
+                    </Button>
+                  </div>
+                </WriteOnly>
               )}
             </div>
 
@@ -492,14 +495,16 @@ export default function TaskDetail() {
                 className="flex-1 resize-none"
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddComment(); }}
               />
-              <Button
-                onClick={handleAddComment}
-                disabled={addingComment || !commentText.trim()}
-                size="sm"
-                className="self-end"
-              >
-                {addingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              </Button>
+              <WriteOnly>
+                <Button
+                  onClick={handleAddComment}
+                  disabled={addingComment || !commentText.trim()}
+                  size="sm"
+                  className="self-end"
+                >
+                  {addingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </Button>
+              </WriteOnly>
             </div>
             <p className="text-xs text-slate-400 mt-2">Press Ctrl+Enter to send</p>
           </div>

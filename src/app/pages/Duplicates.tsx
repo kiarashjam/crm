@@ -13,6 +13,7 @@ import {
   type DuplicateGroup,
 } from '@/app/api';
 import type { Contact, Company } from '@/app/api/types';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 interface Row { id: string; title: string; subtitle: string }
 
@@ -127,9 +128,11 @@ function GroupCard({ reason, rows, onMerge }: { reason: string; rows: Row[]; onM
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">{reason}</Badge>
-        <Button size="sm" onClick={handleMerge} disabled={merging || rows.length < 2} className="gap-1.5">
-          {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />} Merge {rows.length} → 1
-        </Button>
+        <WriteOnly>
+          <Button size="sm" onClick={handleMerge} disabled={merging || rows.length < 2} className="gap-1.5">
+            {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />} Merge {rows.length} → 1
+          </Button>
+        </WriteOnly>
       </div>
       <p className="mb-2 text-xs text-slate-400">Choose the record to keep; the others are merged into it.</p>
       <ul className="space-y-1.5">

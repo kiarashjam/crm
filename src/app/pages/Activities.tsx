@@ -48,6 +48,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 const ACTIVITY_TYPES = [
   { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-600', borderColor: 'border-emerald-200' },
@@ -538,10 +539,12 @@ export default function Activities() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                <Button onClick={() => { setEditingActivity(null); setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '' }); setDialogOpen(true); }} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
-                  <Plus className="w-4 h-4" />
-                  Log Activity
-                </Button>
+                <WriteOnly>
+                  <Button onClick={() => { setEditingActivity(null); setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '' }); setDialogOpen(true); }} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
+                    <Plus className="w-4 h-4" />
+                    Log Activity
+                  </Button>
+                </WriteOnly>
               </div>
             </div>
           </div>
@@ -646,13 +649,15 @@ export default function Activities() {
                     Consistent activity logging helps track your sales progress. Log a call, meeting, or note to keep your CRM up to date.
                   </p>
                 </div>
-                <Button 
-                  onClick={() => setDialogOpen(true)}
-                  size="sm"
-                  className="shrink-0 bg-indigo-600 hover:bg-indigo-700"
-                >
-                  Log Now
-                </Button>
+                <WriteOnly>
+                  <Button 
+                    onClick={() => setDialogOpen(true)}
+                    size="sm"
+                    className="shrink-0 bg-indigo-600 hover:bg-indigo-700"
+                  >
+                    Log Now
+                  </Button>
+                </WriteOnly>
               </div>
             </div>
           )}
@@ -890,10 +895,12 @@ export default function Activities() {
                 </div>
                 
                 <div className="flex justify-center">
-                  <Button onClick={() => setDialogOpen(true)} className="gap-2 h-11 px-6 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 shadow-lg shadow-indigo-200/50">
-                    <Plus className="w-4 h-4" />
-                    Log Your First Activity
-                  </Button>
+                  <WriteOnly>
+                    <Button onClick={() => setDialogOpen(true)} className="gap-2 h-11 px-6 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 shadow-lg shadow-indigo-200/50">
+                      <Plus className="w-4 h-4" />
+                      Log Your First Activity
+                    </Button>
+                  </WriteOnly>
                 </div>
               </div>
             </div>
@@ -1025,24 +1032,28 @@ export default function Activities() {
 
                               {/* HP-2: Edit & Delete Buttons */}
                               <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleEditActivity(activity)}
-                                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                                  aria-label={`Edit activity ${activity.subject || label}`}
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setDeleteConfirmActivity(activity)}
-                                  className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 hover:bg-red-50"
-                                  aria-label={`Delete activity ${activity.subject || label}`}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
+                                <WriteOnly>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditActivity(activity)}
+                                    className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                    aria-label={`Edit activity ${activity.subject || label}`}
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                </WriteOnly>
+                                <WriteOnly>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setDeleteConfirmActivity(activity)}
+                                    className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 hover:bg-red-50"
+                                    aria-label={`Delete activity ${activity.subject || label}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </WriteOnly>
                               </div>
                             </div>
                           </div>

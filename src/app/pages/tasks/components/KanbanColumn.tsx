@@ -5,6 +5,7 @@ import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
 import { ScrollArea } from '@/app/components/ui/scroll-area';
 import type { TaskItem, TaskStatusType } from '@/app/api/types';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 export type KanbanColumn = 'todo' | 'in_progress' | 'completed';
 
@@ -156,14 +157,16 @@ export function KanbanColumnComponent({
                 </div>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => setQuickAddColumn(column.id)}
-                className="w-full text-left px-4 py-3 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-white/40 dark:bg-slate-800/40 hover:bg-white/80 dark:hover:bg-slate-700/80 border border-dashed border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 rounded-xl transition-all duration-200 flex items-center gap-2 group"
-              >
-                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-                <span>Add task</span>
-              </button>
+              <WriteOnly>
+                <button
+                  type="button"
+                  onClick={() => setQuickAddColumn(column.id)}
+                  className="w-full text-left px-4 py-3 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-white/40 dark:bg-slate-800/40 hover:bg-white/80 dark:hover:bg-slate-700/80 border border-dashed border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 rounded-xl transition-all duration-200 flex items-center gap-2 group"
+                >
+                  <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                  <span>Add task</span>
+                </button>
+              </WriteOnly>
             )}
 
             {/* Task cards */}

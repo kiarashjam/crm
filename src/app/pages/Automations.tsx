@@ -24,6 +24,7 @@ import {
   TRIGGER_LABELS, ACTION_LABELS,
   type AutomationRule, type TriggerType, type ActionType, type AutomationAction,
 } from '@/app/api';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 const ACTION_ICON: Record<ActionType, React.ElementType> = {
   create_task: CheckSquare, send_email: Mail, notify: Bell, assign: UserPlus, add_to_sequence: Workflow,
@@ -69,9 +70,11 @@ export default function Automations() {
             title="Automations"
             subtitle="Run actions automatically when something happens in your CRM."
             actions={
-              <Button onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
-                <Plus className="h-4 w-4" /> New automation
-              </Button>
+              <WriteOnly>
+                <Button onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
+                  <Plus className="h-4 w-4" /> New automation
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Automations', value: rules.length, icon: Zap, tone: 'amber' },
@@ -113,11 +116,13 @@ export default function Automations() {
                         })}
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Switch checked={r.enabled} onCheckedChange={() => toggle(r)} aria-label="Enabled" />
-                      <button type="button" onClick={() => { setEditing(r); setEditorOpen(true); }} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
-                      <button type="button" onClick={() => remove(r)} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-                    </div>
+                    <WriteOnly>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Switch checked={r.enabled} onCheckedChange={() => toggle(r)} aria-label="Enabled" />
+                        <button type="button" onClick={() => { setEditing(r); setEditorOpen(true); }} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => remove(r)} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </WriteOnly>
                   </div>
                 </div>
               ))}
