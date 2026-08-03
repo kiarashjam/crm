@@ -95,8 +95,13 @@ export function isPipelineComplete(p: LeadPipeline): boolean {
  */
 export function lostReason(p: LeadPipeline): string | null {
   if (p.contactOutcome === 'not_interested') return 'Not interested';
-  if (p.meetingAttended === false) return 'No-show at meeting';
+  // `stillInterested` is recorded after attendance, so it is the more recent
+  // word on the lead's intent: a no-show who has since confirmed interest
+  // (rescheduled, answered by email) has NOT dropped out. Checking interest
+  // first keeps this in agreement with the derived lead status — otherwise the
+  // detail page renders "dropped out: No-show" directly above a Qualified badge.
   if (p.stillInterested === false) return 'Not interested after meeting';
+  if (p.stillInterested !== true && p.meetingAttended === false) return 'No-show at meeting';
   if (p.contractStatus === 'profile_rejected') return 'Profile rejected';
   if (p.contractStatus === 'no_longer_interested') return 'No longer interested';
   if (p.contractSigned === 'no') return 'Contract declined';

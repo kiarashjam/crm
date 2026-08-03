@@ -22,6 +22,12 @@ interface Props {
   disabled?: boolean;
   /** Persist a new pipeline state; `log` (if given) is written to the activity timeline. */
   onChange: (next: LeadPipeline, log?: LogHint) => void;
+  /**
+   * The lead status the given edit would produce, or null when it would not move
+   * the status. Rendered inline on the chip so the consequence is visible BEFORE
+   * the click — a hover-only hint is no use on touch or to a fast clicker.
+   */
+  previewStatus?: (patch: Partial<LeadPipeline>) => string | null;
   /** Fired when the user chooses to turn the completed lead into a deal. */
   onConvert?: () => void;
 }
@@ -30,7 +36,7 @@ interface Props {
 function Choices<T extends string>({
   options, value, disabled, onPick,
 }: {
-  options: { value: T; label: string; tone?: 'default' | 'danger' | 'success' }[];
+  options: { value: T; label: string; tone?: 'default' | 'danger' | 'success'; hint?: string | null }[];
   value?: T;
   disabled?: boolean;
   onPick: (v: T) => void;
@@ -54,6 +60,11 @@ function Choices<T extends string>({
             )}
           >
             {o.label}
+            {!active && o.hint && (
+              <span className="ml-1.5 text-[10px] font-semibold text-slate-400">
+                → {o.hint}
+              </span>
+            )}
           </button>
         );
       })}
@@ -122,13 +133,15 @@ function PhaseShell({
   );
 }
 
-export function LeadPipelineTracker({ value, disabled = false, onChange, onConvert }: Props) {
+export function LeadPipelineTracker({ value, disabled = false, onChange, previewStatus, onConvert }: Props) {
   const done = useMemo(() => phaseCompletion(value), [value]);
   const phase = useMemo(() => currentPhase(value), [value]);
   const lost = useMemo(() => lostReason(value), [value]);
   const complete = useMemo(() => isPipelineComplete(value), [value]);
 
   const patch = (partial: Partial<LeadPipeline>, log?: LogHint) => onChange({ ...value, ...partial }, log);
+  /** Status this choice would produce, for the inline consequence label. */
+  const hint = (partial: Partial<LeadPipeline>) => previewStatus?.(partial) ?? null;
 
   const contacted = value.outreachStatus === 'contacted';
   const wantsMeeting = contacted && (value.contactOutcome === 'meeting_scheduled' || value.contactOutcome === 'follow_up');
@@ -186,8 +199,8 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, onConve
               disabled={disabled}
               value={value.outreachStatus}
               options={[
-                { value: 'attempted_no_answer', label: OUTREACH_LABELS.attempted_no_answer },
-                { value: 'contacted', label: OUTREACH_LABELS.contacted, tone: 'success' },
+                { value: 'attempted_no_answer', label: OUTREACH_LABELS.attempted_no_answer, hint: hint({ outreachStatus: 'attempted_no_answer' }) },
+                { value: 'contacted', label: OUTREACH_LABELS.contacted, tone: 'success', hint: hint({ outreachStatus: 'contacted' }) },
               ]}
               onPick={(v) => patch({ outreachStatus: v }, { subject: `Outreach: ${OUTREACH_LABELS[v]}`, body: value.outreachDate ? `Interaction date: ${value.outreachDate}` : undefined })}
             />
@@ -202,9 +215,9 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, onConve
                 disabled={disabled}
                 value={value.contactOutcome}
                 options={[
-                  { value: 'meeting_scheduled', label: OUTCOME_LABELS.meeting_scheduled, tone: 'success' },
-                  { value: 'follow_up', label: OUTCOME_LABELS.follow_up },
-                  { value: 'not_interested', label: OUTCOME_LABELS.not_interested, tone: 'danger' },
+                  { value: 'meeting_scheduled', label: OUTCOME_LABELS.meeting_scheduled, tone: 'success', hint: hint({ contactOutcome: 'meeting_scheduled' }) },
+                  { value: 'follow_up', label: OUTCOME_LABELS.follow_up, hint: hint({ contactOutcome: 'follow_up' }) },
+                  { value: 'not_interested', label: OUTCOME_LABELS.not_interested, tone: 'danger', hint: hint({ contactOutcome: 'not_interested' }) },
                 ]}
                 onPick={(v) => patch({ contactOutcome: v }, { subject: `Contact result: ${OUTCOME_LABELS[v]}` })}
               />
@@ -230,7 +243,10 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, onConve
               <Choices<'yes' | 'no'>
                 disabled={disabled}
                 value={value.meetingAttended === undefined ? undefined : value.meetingAttended ? 'yes' : 'no'}
-                options={[{ value: 'yes', label: 'Yes', tone: 'success' }, { value: 'no', label: 'No', tone: 'danger' }]}
+                options={[
+                  { value: 'yes', label: 'Yes', tone: 'success', hint: hint({ meetingAttended: true }) },
+                  { value: 'no', label: 'No', tone: 'danger', hint: hint({ meetingAttended: false }) },
+                ]}
                 onPick={(v) => patch({ meetingAttended: v === 'yes' }, { subject: `Meeting attended: ${v === 'yes' ? 'Yes' : 'No'}` })}
               />
             </div>
@@ -239,7 +255,10 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, onConve
               <Choices<'yes' | 'no'>
                 disabled={disabled}
                 value={value.stillInterested === undefined ? undefined : value.stillInterested ? 'yes' : 'no'}
-                options={[{ value: 'yes', label: 'Yes', tone: 'success' }, { value: 'no', label: 'No', tone: 'danger' }]}
+                options={[
+                  { value: 'yes', label: 'Yes', tone: 'success', hint: hint({ stillInterested: true }) },
+                  { value: 'no', label: 'No', tone: 'danger', hint: hint({ stillInterested: false }) },
+                ]}
                 onPick={(v) => patch({ stillInterested: v === 'yes' }, { subject: `Still interested: ${v === 'yes' ? 'Yes' : 'No'}` })}
               />
             </div>
@@ -254,10 +273,10 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, onConve
               disabled={disabled}
               value={value.contractStatus}
               options={[
-                { value: 'yes', label: CONTRACT_LABELS.yes, tone: 'success' },
-                { value: 'to_be_sent', label: CONTRACT_LABELS.to_be_sent },
-                { value: 'profile_rejected', label: CONTRACT_LABELS.profile_rejected, tone: 'danger' },
-                { value: 'no_longer_interested', label: CONTRACT_LABELS.no_longer_interested, tone: 'danger' },
+                { value: 'yes', label: CONTRACT_LABELS.yes, tone: 'success', hint: hint({ contractStatus: 'yes' }) },
+                { value: 'to_be_sent', label: CONTRACT_LABELS.to_be_sent, hint: hint({ contractStatus: 'to_be_sent' }) },
+                { value: 'profile_rejected', label: CONTRACT_LABELS.profile_rejected, tone: 'danger', hint: hint({ contractStatus: 'profile_rejected' }) },
+                { value: 'no_longer_interested', label: CONTRACT_LABELS.no_longer_interested, tone: 'danger', hint: hint({ contractStatus: 'no_longer_interested' }) },
               ]}
               onPick={(v) => patch({ contractStatus: v }, { subject: `Contract: ${CONTRACT_LABELS[v]}` })}
             />
@@ -274,9 +293,9 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, onConve
               disabled={disabled}
               value={value.contractSigned}
               options={[
-                { value: 'yes', label: SIGNED_LABELS.yes, tone: 'success' },
-                { value: 'pending', label: SIGNED_LABELS.pending },
-                { value: 'no', label: SIGNED_LABELS.no, tone: 'danger' },
+                { value: 'yes', label: SIGNED_LABELS.yes, tone: 'success', hint: hint({ contractSigned: 'yes' }) },
+                { value: 'pending', label: SIGNED_LABELS.pending, hint: hint({ contractSigned: 'pending' }) },
+                { value: 'no', label: SIGNED_LABELS.no, tone: 'danger', hint: hint({ contractSigned: 'no' }) },
               ]}
               onPick={(v) => patch({ contractSigned: v }, { subject: `Contract signature: ${SIGNED_LABELS[v]}` })}
             />
@@ -292,7 +311,10 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, onConve
             <Choices<'yes' | 'no'>
               disabled={disabled}
               value={value.depositPaid === undefined ? undefined : value.depositPaid ? 'yes' : 'no'}
-              options={[{ value: 'yes', label: 'Yes', tone: 'success' }, { value: 'no', label: 'No', tone: 'danger' }]}
+              options={[
+                { value: 'yes', label: 'Yes', tone: 'success', hint: hint({ depositPaid: true }) },
+                { value: 'no', label: 'No', tone: 'danger', hint: hint({ depositPaid: false }) },
+              ]}
               onPick={(v) => patch({ depositPaid: v === 'yes' }, { subject: `Deposit paid: ${v === 'yes' ? 'Yes' : 'No'}` })}
             />
           </div>

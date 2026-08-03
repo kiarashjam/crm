@@ -33,6 +33,10 @@ import { StatusChangePopover } from './leads/components/StatusChangePopover';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { LeadPipelineTracker } from './leads/components/LeadPipelineTracker';
 import { parsePipeline, serializePipeline, type LeadPipeline } from './leads/leadPipeline';
+import { useLeadStatusSync } from './leads/useLeadStatusSync';
+import { clearAutoStatus } from './leads/leadStatusSyncStore';
+import type { StatusDrift, SuggestReason } from './leads/leadStatusSync';
+import { StatusSyncStrip } from './leads/components/StatusSyncStrip';
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES, EMPTY_LEAD_FORM } from './leads/config';
 import { isValidGuid } from './leads/utils';
@@ -118,6 +122,9 @@ export default function LeadDetailPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [statuses, setStatuses] = useState<LeadStatus[]>([]);
+  // Auto status sync must not run against FALLBACK_STATUSES while the org's real
+  // list is still in flight — it could write a status this org does not have.
+  const [statusesLoaded, setStatusesLoaded] = useState(false);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -188,7 +195,9 @@ export default function LeadDetailPage() {
     let cancelled = false;
     getCompanies().then((v) => { if (!cancelled) setCompanies(v); }).catch(() => { if (!cancelled) setCompanies([]); });
     getContacts().then((v) => { if (!cancelled) setContacts(v); }).catch(() => { if (!cancelled) setContacts([]); });
-    getLeadStatuses().then((v) => { if (!cancelled) setStatuses(v); }).catch(() => { if (!cancelled) setStatuses([]); });
+    getLeadStatuses()
+      .then((v) => { if (!cancelled) { setStatuses(v); setStatusesLoaded(true); } })
+      .catch(() => { if (!cancelled) { setStatuses([]); setStatusesLoaded(true); } });
     getLeadSources().then((v) => { if (!cancelled) setSources(v); }).catch(() => { if (!cancelled) setSources([]); });
     return () => { cancelled = true; };
   }, []);
@@ -294,16 +303,78 @@ export default function LeadDetailPage() {
   // deposit), persisted as JSON on the lead so the whole org shares one view.
   const pipeline = useMemo<LeadPipeline>(() => parsePipeline(lead?.pipelineState), [lead?.pipelineState]);
 
+  // Keeps lead.status honest as the pipeline advances.
+  const statusSync = useLeadStatusSync({
+    statusOptions: useMemo(
+      () => statusOptions.map((s) => ({
+        id: s.id,
+        name: s.name,
+        displayOrder: statuses.find((x) => x.id === s.id)?.displayOrder,
+      })),
+      [statusOptions, statuses],
+    ),
+    statusesLoaded,
+  });
+
+  // Memoised so the strip does not re-read localStorage on every render.
+  const statusSyncView = useMemo<{
+    drift: StatusDrift | null;
+    reasons: SuggestReason[] | undefined;
+  }>(() => {
+    if (!lead) return { drift: null, reasons: undefined };
+    const p = statusSync.plan(lead, pipeline);
+    return {
+      drift: statusSync.drift(lead, pipeline),
+      reasons: p.kind === 'suggest' ? p.reasons : undefined,
+    };
+  }, [lead, pipeline, statusSync]);
+
   const savePipeline = useCallback(
     (next: LeadPipeline, log?: { subject: string; body?: string }) => {
       if (!lead) return;
       const json = serializePipeline(next);
-      // Optimistic so the tracker reflects the choice instantly; patchLead then
-      // persists it and (with `log`) records the change on the activity timeline.
+      // Snapshot for rollback: without this a rejected PUT leaves the tracker
+      // rendering a phase the server refused, and the next click builds its
+      // patch from that phantom base.
+      const prevPipelineState = lead.pipelineState;
+      const prevStatus = lead.status;
+      const prevStatusId = lead.leadStatusId;
+
+      // Optimistic so the tracker reflects the choice instantly.
       setLead((prev) => (prev ? { ...prev, pipelineState: json } : prev));
-      void patchLead({ pipelineState: json }, log);
+
+      void statusSync
+        .save(lead, next, {
+          log,
+          onApplied: (updated) => {
+            setLead((prev) => (prev ? {
+              ...prev,
+              ...updated,
+              referredByContactId: updated.referredByContactId ?? prev.referredByContactId,
+              referredByContactName: updated.referredByContactName ?? prev.referredByContactName,
+              assignedToId: updated.assignedToId ?? prev.assignedToId,
+            } : prev));
+          },
+        })
+        .then((outcome) => {
+          if (outcome.stale) return;
+          if (!outcome.ok) {
+            setLead((prev) => (prev ? {
+              ...prev,
+              pipelineState: prevPipelineState,
+              status: prevStatus,
+              leadStatusId: prevStatusId,
+            } : prev));
+            return;
+          }
+          // Refresh the timeline so the auto-status entry appears without a reload.
+          if (outcome.plan.kind === 'apply') {
+            getActivitiesByLead(lead.id).then(setActivities).catch(() => { /* non-fatal */ });
+          }
+        });
     },
-    [lead, patchLead],
+    // `statusSync` is stable via useMemo; listing it keeps the closure honest.
+    [lead, statusSync],
   );
 
   const setStatus = async (status: string) => {
@@ -311,6 +382,10 @@ export default function LeadDetailPage() {
     const opt = statusOptions.find((s) => s.name === status);
     const patch: Record<string, unknown> = { status };
     if (opt && isValidGuid(opt.id)) patch.leadStatusId = opt.id;
+    // A deliberate pick outranks the tracker's opinion: forget the last
+    // auto-written status so the next pipeline edit suggests rather than
+    // silently overwriting this choice.
+    clearAutoStatus(lead.id);
     await patchLead(patch, { subject: `Status set to ${status}`, body: `From "${lead.status}" to "${status}"` });
   };
 
@@ -870,10 +945,22 @@ export default function LeadDetailPage() {
 
           {/* Lead lifecycle pipeline (full-width, under the hero) */}
           <div className="w-full px-[var(--page-padding)] pt-6">
+            {/* Status ↔ pipeline relationship: how the automation is behaving,
+                or a one-click resolution when the two disagree. */}
+            <StatusSyncStrip
+              className="mb-3"
+              drift={statusSyncView.drift}
+              reasons={statusSyncView.reasons}
+              enabled={statusSync.enabled}
+              onToggleEnabled={statusSync.setEnabled}
+              disabled={lead.isConverted}
+              onApply={(name) => setStatus(name)}
+            />
             <LeadPipelineTracker
               value={pipeline}
               disabled={lead.isConverted}
               onChange={savePipeline}
+              previewStatus={(patch) => statusSync.preview(lead, pipeline, patch)}
               onConvert={() => navigate(`/leads?convertLeadId=${lead.id}`)}
             />
           </div>
@@ -1222,6 +1309,7 @@ export default function LeadDetailPage() {
               <SalesTrackerCard
                 lead={lead}
                 className="mt-4"
+                statusSync={statusSync}
                 onSaved={(updated) => setLead((prev) => (prev ? { ...prev, ...updated } : prev))}
               />
 

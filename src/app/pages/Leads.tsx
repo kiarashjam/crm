@@ -66,6 +66,8 @@ import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
 import { SalesTrackerBadges } from './leads/components/SalesTrackerBadges';
 import { InlineSalesEditorPopover } from './leads/components/InlineSalesEditorPopover';
+import { useLeadStatusSync } from './leads/useLeadStatusSync';
+import { clearAutoStatus } from './leads/leadStatusSyncStore';
 import {
   SalesTrackerFilters,
   SalesTrackerFiltersHeader,
@@ -201,6 +203,9 @@ export default function Leads() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [leadStatuses, setLeadStatuses] = useState<LeadStatus[]>([]);
+  // Gate auto status sync until the org's real status list has arrived —
+  // FALLBACK_STATUSES is handed out synchronously and may not match this org.
+  const [statusesLoaded, setStatusesLoaded] = useState(false);
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
@@ -300,6 +305,16 @@ export default function Leads() {
   const [pageActivities, setPageActivities] = useState<Map<string, Activity[]>>(new Map());
 
   const statusOptions = leadStatuses.length > 0 ? leadStatuses : FALLBACK_STATUSES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
+
+  // Keeps lead.status honest as pipeline steps change from the list cards.
+  const statusSync = useLeadStatusSync({
+    statusOptions: useMemo(
+      () => statusOptions.map((s) => ({ id: s.id, name: s.name, displayOrder: s.displayOrder })),
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- derived from leadStatuses
+      [leadStatuses],
+    ),
+    statusesLoaded,
+  });
   const sourceOptions = leadSources.length > 0 ? leadSources : FALLBACK_SOURCES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
 
   // Debounce search input
@@ -559,6 +574,7 @@ export default function Leads() {
         getLeadStats().catch(() => null),
       ]);
       setLeadStatuses(statuses ?? []);
+      setStatusesLoaded(true);
       setLeadSources(sources ?? []);
       if (stats) setLeadStats(stats);
 
@@ -1065,7 +1081,16 @@ export default function Leads() {
   // Inline status change from the card — saves a round-trip through the detail modal.
   const handleInlineStatusChange = async (lead: Lead, newStatus: string) => {
     try {
-      const updated = await updateLead(lead.id, { status: newStatus });
+      // A deliberate pick outranks the tracker: forget the last auto-written
+      // status so the next pipeline edit suggests rather than overwrites.
+      clearAutoStatus(lead.id);
+      const opt = statusOptions.find((o) => o.name === newStatus);
+      const updated = await updateLead(lead.id, {
+        status: newStatus,
+        // Manual picks on the detail page send leadStatusId too; matching that
+        // here stops the server keeping an id that contradicts the name.
+        ...(opt && isValidGuid(opt.id) ? { leadStatusId: opt.id } : {}),
+      });
       if (updated) {
         handleLeadUpdate({ ...lead, ...updated, status: newStatus });
         toast.success(`Status set to ${newStatus}`);
@@ -2347,7 +2372,12 @@ export default function Leads() {
                           <InlineSalesEditorPopover
                             lead={lead}
                             leadName={lead.name}
+                            statusSync={statusSync}
                             onSaved={(updated) => {
+                              // Merge in place and deliberately do NOT re-apply
+                              // the client filters: an auto status change could
+                              // otherwise drop this row (and the popover the
+                              // user is still typing in) out of a filtered list.
                               setLeads((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
                             }}
                             trigger={
