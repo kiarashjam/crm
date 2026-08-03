@@ -5,10 +5,34 @@
 // deal changes, …). In demo/mock mode there's no server clock, so we synthesize
 // the most important ones — overdue / due-today tasks — from the local task
 // store via `syncTaskReminders`, deduped by a stable `sourceKey`.
+//
+// Backends that don't (yet) implement notifications return 404 for these
+// endpoints. `apiWithFallback` already recovers by going local, but the
+// browser still logs the failed fetch on every 60-second poll, and the
+// polling wrapper below can't suppress that. To keep the console clean, we
+// remember which endpoints have returned 404 for this session and skip
+// them on subsequent calls until the tab reloads.
 
 import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import type { TaskItem } from './types';
+
+/** Endpoints known to be unimplemented for this session — skip real, go local. */
+const unavailableEndpoints = new Set<string>();
+
+/** Wrap a real-API call so a 404 (endpoint not implemented) is remembered
+ *  for this session; subsequent calls skip the real request entirely. */
+async function realOrCache404<T>(endpoint: string, real: () => Promise<T>): Promise<T> {
+  if (unavailableEndpoints.has(endpoint)) throw new Error('endpoint-unavailable');
+  try {
+    return await real();
+  } catch (err) {
+    if (err instanceof Error && /\b404\b|Not Found/i.test(err.message)) {
+      unavailableEndpoints.add(endpoint);
+    }
+    throw err;
+  }
+}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -76,28 +100,47 @@ const byNewest = (a: AppNotification, b: AppNotification) =>
 
 export async function getNotifications(): Promise<AppNotification[]> {
   return apiWithFallback(
-    async () => { const res = await authFetchJson<AppNotification[]>('/api/notifications'); return Array.isArray(res) ? res : []; },
+    () => realOrCache404('GET /api/notifications', async () => {
+      const res = await authFetchJson<AppNotification[]>('/api/notifications');
+      return Array.isArray(res) ? res : [];
+    }),
     async () => { await delay(120); return [...notificationStore.list()].sort(byNewest); },
   );
 }
 
 export async function getUnreadNotificationCount(): Promise<number> {
   return apiWithFallback(
-    async () => { const res = await authFetchJson<{ count: number }>('/api/notifications/unread-count'); return res?.count ?? 0; },
+    () => realOrCache404('GET /api/notifications/unread-count', async () => {
+      const res = await authFetchJson<{ count: number }>('/api/notifications/unread-count');
+      return res?.count ?? 0;
+    }),
     async () => { await delay(60); return notificationStore.list().filter((n) => !n.read).length; },
   );
 }
 
 export async function markNotificationRead(id: string): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch(`/api/notifications/${id}/read`, { method: 'POST' }); if (!res.ok) throw new Error('failed'); return true; },
+    () => realOrCache404('POST /api/notifications/:id/read', async () => {
+      const res = await authFetch(`/api/notifications/${id}/read`, { method: 'POST' });
+      if (!res.ok) {
+        // Preserve the status so realOrCache404 can spot 404s.
+        throw new Error(res.status === 404 ? 'HTTP 404 Not Found' : `HTTP ${res.status}`);
+      }
+      return true;
+    }),
     async () => { await delay(60); return notificationStore.update(id, { read: true }) != null; },
   );
 }
 
 export async function markAllNotificationsRead(): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch('/api/notifications/read-all', { method: 'POST' }); if (!res.ok) throw new Error('failed'); return true; },
+    () => realOrCache404('POST /api/notifications/read-all', async () => {
+      const res = await authFetch('/api/notifications/read-all', { method: 'POST' });
+      if (!res.ok) {
+        throw new Error(res.status === 404 ? 'HTTP 404 Not Found' : `HTTP ${res.status}`);
+      }
+      return true;
+    }),
     async () => {
       await delay(80);
       for (const n of notificationStore.list()) {
@@ -112,7 +155,9 @@ export async function createNotification(
   input: Omit<AppNotification, 'id' | 'read' | 'createdAtUtc'> & { read?: boolean; createdAtUtc?: string },
 ): Promise<AppNotification | null> {
   return apiWithFallback(
-    () => authFetchJson<AppNotification>('/api/notifications', { method: 'POST', body: JSON.stringify(input) }),
+    () => realOrCache404('POST /api/notifications', () =>
+      authFetchJson<AppNotification>('/api/notifications', { method: 'POST', body: JSON.stringify(input) }),
+    ),
     async () => {
       await delay(40);
       return notificationStore.add({

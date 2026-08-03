@@ -50,8 +50,12 @@ export async function authFetchJson<T>(path: string, options: AuthFetchOptions =
   const res = await authFetch(path, options);
   const text = await res.text();
   if (!res.ok) {
-    const msg = text || res.statusText || `HTTP ${res.status}`;
-    throw new Error(msg);
+    // Include the HTTP status in the error message so callers can distinguish
+    // 4xx from 5xx (e.g. notifications short-circuits on 404, Team.tsx falls
+    // back to an empty list on 403). The response body may still contain the
+    // backend's structured error text — preserved as a suffix.
+    const detail = text ? `: ${text}` : res.statusText ? `: ${res.statusText}` : '';
+    throw new Error(`HTTP ${res.status}${detail}`);
   }
   if (!text) return undefined as T;
   try {
