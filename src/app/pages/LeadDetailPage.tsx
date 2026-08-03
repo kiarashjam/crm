@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2, ArrowRightCircle,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
-  MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle,
+  MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -104,7 +104,7 @@ export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentOrgId } = useOrg();
+  const { currentOrgId, isReadOnly } = useOrg();
 
   // When the user arrives from the leads list, Leads.tsx stashes the source
   // URL (including filters/sort) here so Back / breadcrumb can return there
@@ -662,55 +662,63 @@ export default function LeadDetailPage() {
                 <span className="truncate text-sm font-medium text-slate-700">{lead.name}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                {lead.email && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEmailOpen(true)}
-                    className="gap-1.5 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  >
-                    <Mail className="w-4 h-4" />
-                    <span className="hidden sm:inline">Email</span>
-                  </Button>
+                {isReadOnly ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-700">
+                    <Eye className="h-3.5 w-3.5" /> View only
+                  </span>
+                ) : (
+                  <>
+                    {lead.email && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEmailOpen(true)}
+                        className="gap-1.5 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      >
+                        <Mail className="w-4 h-4" />
+                        <span className="hidden sm:inline">Email</span>
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openEdit}
+                      className="gap-1.5 border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+                    >
+                      <Pencil className="w-4 h-4" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSaveContactOpen(true)}
+                      className="gap-1.5 border-violet-200 bg-white text-violet-700 hover:bg-violet-50 hover:text-violet-800"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span className="hidden sm:inline">Save as contact</span>
+                    </Button>
+                    {!lead.isConverted && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate(`/leads?convertLeadId=${lead.id}`)}
+                        className="gap-1.5 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                      >
+                        <ArrowRightCircle className="w-4 h-4" />
+                        <span className="hidden sm:inline">Convert</span>
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDeleteOpen(true)}
+                      className="gap-1.5 border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span className="hidden sm:inline">Delete</span>
+                    </Button>
+                  </>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={openEdit}
-                  className="gap-1.5 border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
-                >
-                  <Pencil className="w-4 h-4" />
-                  <span className="hidden sm:inline">Edit</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSaveContactOpen(true)}
-                  className="gap-1.5 border-violet-200 bg-white text-violet-700 hover:bg-violet-50 hover:text-violet-800"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Save as contact</span>
-                </Button>
-                {!lead.isConverted && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate(`/leads?convertLeadId=${lead.id}`)}
-                    className="gap-1.5 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-                  >
-                    <ArrowRightCircle className="w-4 h-4" />
-                    <span className="hidden sm:inline">Convert</span>
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setDeleteOpen(true)}
-                  className="gap-1.5 border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span className="hidden sm:inline">Delete</span>
-                </Button>
               </div>
             </div>
           </div>
@@ -872,9 +880,9 @@ export default function LeadDetailPage() {
           <div className="w-full px-[var(--page-padding)] pt-6">
             <LeadPipelineTracker
               value={pipeline}
-              disabled={lead.isConverted}
+              disabled={lead.isConverted || isReadOnly}
               onChange={savePipeline}
-              onConvert={() => navigate(`/leads?convertLeadId=${lead.id}`)}
+              onConvert={isReadOnly ? undefined : () => navigate(`/leads?convertLeadId=${lead.id}`)}
             />
           </div>
 

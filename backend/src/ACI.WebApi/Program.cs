@@ -223,7 +223,10 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
     app.UseMiddleware<ACI.WebApi.Middleware.OrganizationAccessMiddleware>();
-    
+    // Must follow OrganizationAccessMiddleware: the organization header is validated
+    // (and stripped when forged) before the read-only role is resolved from it.
+    app.UseMiddleware<ACI.WebApi.Middleware.ReadOnlyMemberMiddleware>();
+
     // Health check endpoint
     app.MapHealthChecks("/health");
     

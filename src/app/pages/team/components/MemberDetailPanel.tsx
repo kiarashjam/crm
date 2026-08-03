@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import {
   Mail, X, Copy, BarChart3, Target, Check, Activity,
   TrendingUp, Clock, UserPlus, Phone, Handshake, Trash2,
-  UserCircle, ShieldCheck
+  UserCircle, ShieldCheck, Eye
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import { Label } from '@/app/components/ui/label';
@@ -216,6 +216,12 @@ export function MemberDetailPanel({
                     <span className="flex items-center gap-2">
                       <ShieldCheck className="w-4 h-4 text-blue-500" />
                       Manager
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="3">
+                    <span className="flex items-center gap-2">
+                      <Eye className="w-4 h-4 text-violet-500" />
+                      Viewer — read-only
                     </span>
                   </SelectItem>
                 </SelectContent>

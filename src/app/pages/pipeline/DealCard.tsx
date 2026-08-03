@@ -109,6 +109,8 @@ export interface DealCardProps {
   isDragging?: boolean;
   taskCount?: number;
   onAddTask?: (dealId: string) => void;
+  /** View-only member: no drag, no edit/delete, stage cannot be changed. */
+  readOnly?: boolean;
 }
 
 export function DealCard({
@@ -124,6 +126,7 @@ export function DealCard({
   isDragging,
   taskCount,
   onAddTask,
+  readOnly = false,
 }: DealCardProps) {
   const lastActivity = formatLastActivity(deal.lastActivityAtUtc);
   const daysToClose = getDaysUntilClose(deal.expectedCloseDateUtc);
@@ -131,8 +134,9 @@ export function DealCard({
   const [{ isDragging: drag }, dragRef] = useDrag(() => ({
     type: DEAL_CARD_TYPE,
     item: { dealId: deal.id, fromStageId: stageId },
+    canDrag: !readOnly,
     collect: (monitor) => ({ isDragging: monitor.isDragging() }),
-  }), [deal.id, stageId]);
+  }), [deal.id, stageId, readOnly]);
 
   const isActuallyDragging = isDragging ?? drag;
 
@@ -167,9 +171,11 @@ export function DealCard({
       <div className="p-4">
         {/* Header with Drag Handle */}
         <div className="flex items-start gap-3">
-          <div className="mt-1 shrink-0 text-slate-300 dark:text-slate-600 group-hover:text-slate-500 dark:group-hover:text-slate-400 transition-colors cursor-grab active:cursor-grabbing">
-            <GripVertical className="w-5 h-5" />
-          </div>
+          {!readOnly && (
+            <div className="mt-1 shrink-0 text-slate-300 dark:text-slate-600 group-hover:text-slate-500 dark:group-hover:text-slate-400 transition-colors cursor-grab active:cursor-grabbing">
+              <GripVertical className="w-5 h-5" />
+            </div>
+          )}
           
           <div className="flex-1 min-w-0">
             {/* Deal Name */}
@@ -216,7 +222,7 @@ export function DealCard({
               <div className="mt-2 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
                 <ListTodo className="w-3 h-3" />
                 <span>{taskCount ?? 0} task{taskCount !== 1 ? 's' : ''}</span>
-                {onAddTask && (
+                {onAddTask && !readOnly && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onAddTask(deal.id); }}
                     className="ml-auto flex items-center gap-1 text-orange-500 hover:text-orange-400 transition-colors"
@@ -238,8 +244,8 @@ export function DealCard({
             )}
           </div>
           
-          {/* Action Buttons */}
-          <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0">
+          {/* Action Buttons — hidden for view-only members */}
+          <div className={cn('flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-all shrink-0', readOnly && 'hidden')}>
             <Button
               type="button"
               variant="ghost"
@@ -267,7 +273,9 @@ export function DealCard({
         <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700">
           <Select
             value={stageId}
+            disabled={readOnly}
             onValueChange={(v) => {
+              if (readOnly) return;
               const s = stageList.find((x) => x.id === v);
               if (s) onMoveStage(deal.id, s.id, s.name);
             }}

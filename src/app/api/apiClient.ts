@@ -46,12 +46,30 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
   return res;
 }
 
+/**
+ * Pull a human-readable message out of an error body. The backend returns
+ * RFC-9110 problem+json for failures (e.g. the read-only role rejection), which
+ * would otherwise surface to the user as a wall of raw JSON.
+ */
+function errorMessageFrom(text: string, res: Response): string {
+  if (text) {
+    try {
+      const problem = JSON.parse(text) as { detail?: string; title?: string };
+      const message = problem?.detail || problem?.title;
+      if (message) return message;
+    } catch {
+      // not JSON — fall through and use the raw text
+    }
+    return text;
+  }
+  return res.statusText || `HTTP ${res.status}`;
+}
+
 export async function authFetchJson<T>(path: string, options: AuthFetchOptions = {}): Promise<T> {
   const res = await authFetch(path, options);
   const text = await res.text();
   if (!res.ok) {
-    const msg = text || res.statusText || `HTTP ${res.status}`;
-    throw new Error(msg);
+    throw new Error(errorMessageFrom(text, res));
   }
   if (!text) return undefined as T;
   try {
