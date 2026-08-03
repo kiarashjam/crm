@@ -45,7 +45,16 @@ export interface LeadSyncMeta {
   dismissed?: string[];
 }
 
-const BURST_WINDOW_MS = 5 * 60_000;
+/**
+ * How long consecutive auto-status writes count as ONE burst for Undo.
+ *
+ * The inline popover commits per field, so a user filling six selects produces
+ * six writes in a few seconds; Undo should return them to where they started,
+ * not to intermediate value #5. But two *deliberate* edits a minute apart are
+ * separate acts, and Undo on the second must not silently revert the first as
+ * well. Seconds, therefore — not minutes.
+ */
+const BURST_WINDOW_MS = 20_000;
 
 function notify(): void {
   try {

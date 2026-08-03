@@ -574,7 +574,9 @@ export default function Leads() {
         getLeadStats().catch(() => null),
       ]);
       setLeadStatuses(statuses ?? []);
-      setStatusesLoaded(true);
+      // See LeadDetailPage: an empty list means we are rendering
+      // FALLBACK_STATUSES, so auto-sync must not act on it.
+      setStatusesLoaded((statuses?.length ?? 0) > 0);
       setLeadSources(sources ?? []);
       if (stats) setLeadStats(stats);
 

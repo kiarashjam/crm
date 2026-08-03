@@ -388,6 +388,17 @@ describe('resolveStatus — richer and stranger vocabularies', () => {
     expect(resolved?.name).toBe('Qualifié');
   });
 
+  it('overrides are honoured on the downgrade path too', () => {
+    // A renamed vocabulary pins several stages; if only the derived stage
+    // consulted the pins, the very orgs overrides exist for would still get
+    // nothing back for a stage they had not pinned.
+    const french = opts(['Nouveau', 'Contacté', 'Qualifié', 'Perdu']);
+    const resolved = resolveStatus('deposit_paid', french, { qualified: 'Qualifié' });
+    expect(resolved?.name).toBe('Qualifié');
+    expect(resolved?.match).toBe('fallback');
+    expect(resolved?.canonical).toBe('qualified');
+  });
+
   it('matching ignores case, spacing and separators', () => {
     expect(resolveStatus('qualified', opts(['  QUALIFIED  ']))?.name).toBe('  QUALIFIED  ');
     expect(resolveStatus('attempted', opts(['attempted-contact']))?.name).toBe('attempted-contact');
@@ -723,6 +734,31 @@ describe('planStatusSync — releasable manual pin', () => {
       lastAutoStatus: 'Contacted',
     }));
     expect(plan.kind).toBe('apply');
+  });
+
+  it('holds for good on a hand-set terminal, even when the pipeline advances', () => {
+    // Terminals are off-ladder (tier null) so the release condition can never be
+    // met. Deliberate: a human writing a lead off outranks our inference, and
+    // the drift strip still offers one-click revival.
+    const plan = planStatusSync(ctx({
+      pipeline: { depositPaid: true },
+      currentStatus: 'Lost',
+      lastAutoStatus: 'Contacted',
+    }));
+    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
+  });
+});
+
+describe('statusDrift stays visible when auto-sync is switched off', () => {
+  it('still reports the disagreement, because the strip is then the only fix', () => {
+    // Drift is a statement about the data, not about the automation.
+    const drift = statusDrift({
+      pipeline: { depositPaid: true },
+      currentStatus: 'New',
+      statusOptions: DEFAULT_OPTS,
+      statusesLoaded: true,
+    });
+    expect(drift?.suggested.name).toBe('Open Deal');
   });
 });
 

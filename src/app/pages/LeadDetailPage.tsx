@@ -196,8 +196,16 @@ export default function LeadDetailPage() {
     getCompanies().then((v) => { if (!cancelled) setCompanies(v); }).catch(() => { if (!cancelled) setCompanies([]); });
     getContacts().then((v) => { if (!cancelled) setContacts(v); }).catch(() => { if (!cancelled) setContacts([]); });
     getLeadStatuses()
-      .then((v) => { if (!cancelled) { setStatuses(v); setStatusesLoaded(true); } })
-      .catch(() => { if (!cancelled) { setStatuses([]); setStatusesLoaded(true); } });
+      .then((v) => {
+        if (cancelled) return;
+        setStatuses(v);
+        // Only open the auto-sync gate once we hold the org's OWN list. On a
+        // failure or an empty result `statusOptions` falls back to
+        // FALLBACK_STATUSES, which is precisely the case this gate exists to
+        // keep auto-sync away from — so it stays shut.
+        setStatusesLoaded(Array.isArray(v) && v.length > 0);
+      })
+      .catch(() => { if (!cancelled) { setStatuses([]); setStatusesLoaded(false); } });
     getLeadSources().then((v) => { if (!cancelled) setSources(v); }).catch(() => { if (!cancelled) setSources([]); });
     return () => { cancelled = true; };
   }, []);
@@ -367,8 +375,10 @@ export default function LeadDetailPage() {
             } : prev));
             return;
           }
-          // Refresh the timeline so the auto-status entry appears without a reload.
-          if (outcome.plan.kind === 'apply') {
+          // Refresh the timeline whenever an activity was written — that is any
+          // edit carrying a `log`, not just one that moved the status. Gating on
+          // 'apply' alone hid the pipeline-edit entry until a reload.
+          if (log || outcome.plan.kind === 'apply') {
             getActivitiesByLead(lead.id).then(setActivities).catch(() => { /* non-fatal */ });
           }
         });

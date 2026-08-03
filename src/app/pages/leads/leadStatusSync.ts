@@ -419,6 +419,21 @@ export function resolveStatus(
   if (start === -1) return null;
   for (let i = start + 1; i < DOWNGRADE_CHAIN.length; i += 1) {
     const weaker = DOWNGRADE_CHAIN[i]!;
+    // Consult overrides on the way down as well: an org that renamed its whole
+    // vocabulary pins several stages, and honouring them only for the derived
+    // stage would strand exactly the case overrides exist for.
+    const pinnedWeaker = overrides?.[weaker];
+    if (pinnedWeaker) {
+      const pinnedHit = findOption(options, pinnedWeaker);
+      if (pinnedHit) {
+        return {
+          name: pinnedHit.name,
+          id: GUID_RE.test(pinnedHit.id) ? pinnedHit.id : undefined,
+          match: 'fallback',
+          canonical: weaker,
+        };
+      }
+    }
     const hit = resolveExactStage(weaker, options);
     if (hit) return { ...hit, match: 'fallback', canonical: weaker };
   }
@@ -577,6 +592,11 @@ export function planStatusSync(ctx: StatusSyncContext): StatusSyncPlan {
   // RELEASABLE: it lasts only while the pipeline has not moved past the status
   // they chose. Otherwise a lead someone once touched by hand would sit in
   // suggest-mode forever — exactly the leads that get worked the most.
+  //
+  // One deliberate exception: a hand-set TERMINAL (Lost / Unqualified) has tier
+  // `null`, so `advancesBeyond` can never be true and the hold holds for good.
+  // That is the intent — a human writing off a lead outranks any inference we
+  // could make — and the drift strip still offers one-click revival.
   if (ctx.lastAutoStatus && norm(from) !== norm(ctx.lastAutoStatus) && !advancesBeyond) {
     reasons.push('manual_change');
   }
@@ -629,7 +649,12 @@ export interface StatusDrift {
  * and covers the cases `planStatusSync` deliberately declines to write
  * (regressions, no-shows, cleared pipelines, parked statuses).
  */
-export function statusDrift(ctx: Omit<StatusSyncContext, 'lastAutoStatus'>): StatusDrift | null {
+export function statusDrift(
+  // `enabled` is intentionally absent: drift is a statement about the data, not
+  // about the automation, so it stays visible when auto-sync is switched off —
+  // that is when it is the user's only route to reconciling the two.
+  ctx: Omit<StatusSyncContext, 'lastAutoStatus' | 'enabled'>,
+): StatusDrift | null {
   const derived = deriveStage(ctx.pipeline);
   if (!ctx.statusesLoaded || ctx.isConverted) return null;
 

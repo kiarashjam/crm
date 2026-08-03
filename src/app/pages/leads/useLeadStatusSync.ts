@@ -19,7 +19,9 @@ import {
 } from './leadStatusSync';
 import {
   loadStatusSyncPrefs,
+  loadAllSyncMeta,
   getLeadSyncMeta,
+  recordAutoStatus,
   onStatusSyncChange,
   setStatusSyncEnabled,
 } from './leadStatusSyncStore';
@@ -41,7 +43,19 @@ export interface SavePipelineOutcome {
 
 export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStatusSyncArgs) {
   const [prefs, setPrefs] = useState(() => loadStatusSyncPrefs());
-  useEffect(() => onStatusSyncChange(() => setPrefs(loadStatusSyncPrefs())), []);
+  const [refreshToken, setRefreshToken] = useState(0);
+  useEffect(() => onStatusSyncChange(() => {
+    setRefreshToken((n) => n + 1);
+    // The store fires one event for prefs AND per-lead meta writes, so compare
+    // before replacing: handing back a fresh object on every meta write would
+    // invalidate this hook's whole API (and every consumer's memo) needlessly.
+    setPrefs((prev) => {
+      const next = loadStatusSyncPrefs();
+      const same = prev.enabled === next.enabled
+        && JSON.stringify(prev.overrides) === JSON.stringify(next.overrides);
+      return same ? prev : next;
+    });
+  }), []);
 
   // Monotonic sequence per lead. The inline popover fires one PUT per field
   // change, so without this a late response from an earlier edit can overwrite
@@ -50,6 +64,16 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
 
   const enabled = prefs.enabled;
   const overrides = prefs.overrides;
+
+  // LeadPipelineTracker calls `preview` once per chip during render (17 call
+  // sites). Reading the whole meta map per call meant 17 synchronous
+  // JSON.parse-es per render on the keystroke path, so snapshot it once and let
+  // the callbacks close over it. Refreshed by the subscription above.
+  const metaSnapshot = useMemo(() => loadAllSyncMeta(), [prefs, refreshToken]);
+  const lastAutoFor = useCallback(
+    (leadId: string) => metaSnapshot[leadId]?.lastAutoStatus,
+    [metaSnapshot],
+  );
 
   /** What auto-sync would do right now, without writing anything. */
   const plan = useCallback(
@@ -61,10 +85,10 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         statusesLoaded,
         isConverted: lead.isConverted,
         enabled,
-        lastAutoStatus: getLeadSyncMeta(lead.id).lastAutoStatus,
+        lastAutoStatus: lastAutoFor(lead.id),
         overrides,
       }),
-    [statusOptions, statusesLoaded, enabled, overrides],
+    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
   );
 
   /** Standing disagreement between status and pipeline, computed from state. */
@@ -76,10 +100,11 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         statusOptions,
         statusesLoaded,
         isConverted: lead.isConverted,
-        enabled,
+        // No `enabled`: drift describes the data, so it stays visible when
+        // auto-sync is off — that is when the strip is the only way to fix it.
         overrides,
       }),
-    [statusOptions, statusesLoaded, enabled, overrides],
+    [statusOptions, statusesLoaded, overrides],
   );
 
   /** The status a pending edit would produce, for inline hints on the control. */
@@ -95,10 +120,10 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         statusesLoaded,
         isConverted: lead.isConverted,
         enabled,
-        lastAutoStatus: getLeadSyncMeta(lead.id).lastAutoStatus,
+        lastAutoStatus: lastAutoFor(lead.id),
         overrides,
       })?.name ?? null,
-    [statusOptions, statusesLoaded, enabled, overrides],
+    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
   );
 
   /**
@@ -128,7 +153,7 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         statusOptions,
         statusesLoaded,
         enabled,
-        lastAutoStatus: getLeadSyncMeta(lead.id).lastAutoStatus,
+        lastAutoStatus: lastAutoFor(lead.id),
         overrides,
         log: opts?.log,
       });
@@ -141,6 +166,17 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
       if (!result.ok) {
         toast.error('Could not save the pipeline change');
         return { ok: false, plan: result.plan, stale: false };
+      }
+
+      // Recorded here, not in saveLeadPipeline: only this layer knows the
+      // response was not superseded.
+      if (result.plan.kind === 'apply') {
+        recordAutoStatus(lead.id, {
+          from: result.previousStatus,
+          to: result.plan.to.name,
+          rule: result.plan.derived.rule,
+          because: result.plan.derived.because,
+        });
       }
 
       if (result.lead) opts?.onApplied?.(result.lead);
@@ -175,7 +211,7 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
 
       return { ok: true, lead: result.lead, plan: result.plan, stale: false };
     },
-    [statusOptions, statusesLoaded, enabled, overrides],
+    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
   );
 
   return useMemo(

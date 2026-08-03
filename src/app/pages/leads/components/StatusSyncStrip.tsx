@@ -92,6 +92,13 @@ export function StatusSyncStrip({
                 ))}
               </ul>
             )}
+            {/* Without this the strip prompts for a change while offering no
+                clue why nothing happened on its own. */}
+            {!enabled && (
+              <p className="mt-1 text-[11px] text-amber-700">
+                · Automatic status updates are off for you, so this is yours to apply.
+              </p>
+            )}
             {drift.derived.conflicts.length > 0 && (
               <p className="mt-1 text-[11px] text-amber-700">
                 Overrides: {drift.derived.conflicts.join('; ')}.
@@ -111,6 +118,15 @@ export function StatusSyncStrip({
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
             Set to {target}
           </button>
+          {!enabled && (
+            <button
+              type="button"
+              onClick={() => onToggleEnabled(true)}
+              className="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-50"
+            >
+              Turn on
+            </button>
+          )}
           {onDismiss && (
             <button
               type="button"

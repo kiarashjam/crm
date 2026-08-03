@@ -19,7 +19,7 @@ import {
   type StatusSyncPlan,
   type CanonicalStage,
 } from './leadStatusSync';
-import { clearAutoStatus, recordAutoStatus } from './leadStatusSyncStore';
+import { clearAutoStatus } from './leadStatusSyncStore';
 
 export interface SavePipelineArgs {
   lead: Pick<Lead, 'id' | 'status' | 'isConverted'>;
@@ -85,14 +85,11 @@ export async function saveLeadPipeline(args: SavePipelineArgs): Promise<SavePipe
   }
   if (!updated) return { ok: false, plan, previousStatus };
 
-  if (plan.kind === 'apply') {
-    recordAutoStatus(lead.id, {
-      from: previousStatus,
-      to: plan.to.name,
-      rule: plan.derived.rule,
-      because: plan.derived.because,
-    });
-  }
+  // NB: `lastAutoStatus` is deliberately NOT recorded here. Only the caller
+  // knows whether this response was superseded by a newer save, and recording
+  // it for a stale response would leave the memory out of step with the status
+  // actually on the lead — which the next edit would read as a manual change.
+  // `useLeadStatusSync` records it after its sequence check.
 
   // Activity writes are best-effort: the timeline is an audit convenience, and a
   // failed log must never make a successful save look broken.
