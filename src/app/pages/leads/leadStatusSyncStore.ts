@@ -25,8 +25,19 @@ export interface StatusSyncPrefs {
 const DEFAULT_PREFS: StatusSyncPrefs = { enabled: true, overrides: {} };
 
 export interface LeadSyncMeta {
-  /** The status auto-sync last wrote. Divergence ⇒ a human changed it by hand. */
+  /** The status auto-sync last wrote. Divergence ⇒ someone changed it by hand,
+   *  possibly on another device where we have no local record. */
   lastAutoStatus?: string;
+  /**
+   * A status a human picked deliberately, and when. This is the primary hold:
+   * it works even for a lead auto-sync has never touched, whereas
+   * `lastAutoStatus` divergence only helps once we have written at least once.
+   */
+  manualStatus?: string;
+  manualAt?: string;
+  /** Pipeline tier at the moment of the pick — the baseline the hold releases
+   *  above. See `planStatusSync`. */
+  manualHeldTier?: number | null;
   /** Whichever rule produced it, for the "why is this Qualified?" tooltip. */
   lastRule?: string;
   /** Human cause, e.g. "Still interested after the meeting". */
@@ -145,15 +156,37 @@ export function recordAutoStatus(
     lastRule: args.rule,
     lastBecause: args.because,
     lastAt: new Date(now).toISOString(),
+    // The hold released and we wrote over it, so the human's pick no longer
+    // describes the live status.
+    manualStatus: undefined,
+    manualAt: undefined,
+    manualHeldTier: undefined,
     undoBase: burstLive ? meta.undoBase : args.from,
     undoBaseAt: burstLive ? meta.undoBaseAt : new Date(now).toISOString(),
   });
 }
 
-/** Called after a manual status pick so the next sync suggests rather than writes. */
-export function clearAutoStatus(leadId: string): void {
+/**
+ * Record that a human chose this status, so the next pipeline edit suggests
+ * rather than overwrites.
+ *
+ * NB: `lastAutoStatus` is deliberately left intact. It used to be *cleared*
+ * here, which removed the very hold it was meant to arm — `planStatusSync`
+ * requires it to be truthy — so a hand-picked status was silently overwritten
+ * by the next save. Keeping it means its divergence from the live status is
+ * still a second, independent signal that someone intervened.
+ */
+export function recordManualStatus(
+  leadId: string,
+  status: string,
+  heldTier: number | null,
+  now?: number,
+): void {
   putLeadSyncMeta(leadId, {
-    lastAutoStatus: undefined,
+    manualStatus: status,
+    manualHeldTier: heldTier,
+    manualAt: new Date(now ?? Date.now()).toISOString(),
+    // The undo base described an automatic burst that this pick supersedes.
     undoBase: undefined,
     undoBaseAt: undefined,
   });
@@ -190,8 +223,11 @@ export function describeStatusOrigin(meta: LeadSyncMeta, currentStatus: string):
   const stamp = Number.isNaN(when.getTime())
     ? ''
     : ` · ${when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
-  if (meta.lastAutoStatus !== currentStatus) {
+  if (meta.manualStatus && meta.manualStatus === currentStatus) {
     return `Set by hand. The tracker last set it to "${meta.lastAutoStatus}"${stamp}.`;
+  }
+  if (meta.lastAutoStatus !== currentStatus) {
+    return `Changed since the tracker last set it to "${meta.lastAutoStatus}"${stamp}.`;
   }
   return `Set automatically from the lead pipeline — ${meta.lastBecause ?? 'pipeline progress'}${stamp}.`;
 }
