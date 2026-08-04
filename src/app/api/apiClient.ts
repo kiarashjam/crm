@@ -51,6 +51,18 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
  * RFC-9110 problem+json for failures (e.g. the read-only role rejection), which
  * would otherwise surface to the user as a wall of raw JSON.
  */
+/** An unsuccessful API response. `status` lets callers branch on the HTTP code
+ *  without pattern-matching the human-readable message. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 function errorMessageFrom(text: string, res: Response): string {
   if (text) {
     try {
@@ -69,7 +81,12 @@ export async function authFetchJson<T>(path: string, options: AuthFetchOptions =
   const res = await authFetch(path, options);
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(errorMessageFrom(text, res));
+    // The message stays human-readable (problem+json `detail`/`title`) because it
+    // surfaces directly in toasts — a Viewer's refusal should read as a sentence.
+    // The status rides along as a property instead of being prefixed onto the
+    // text, so callers that need to branch on it (notifications skips endpoints
+    // that 404) can do so without parsing prose.
+    throw new ApiError(errorMessageFrom(text, res), res.status);
   }
   if (!text) return undefined as T;
   try {

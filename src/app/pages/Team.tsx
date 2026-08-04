@@ -347,10 +347,19 @@ export default function Team() {
     if (!currentOrgId) return;
     setLoading(true);
     try {
+      // Every member can list org members. Pending invites and join requests
+      // are admin-only on the backend (owner / manager) — guarding by role
+      // avoids the 403 that regular members would otherwise see in the
+      // console every time the Team page loads.
+      const membersPromise = getOrgMembers(currentOrgId);
+      const invitesPromise = isAdmin
+        ? listPendingInvitesForOrg(currentOrgId).catch(() => [] as InviteDto[])
+        : Promise.resolve([] as InviteDto[]);
+      const requestsPromise = isAdmin
+        ? listPendingJoinRequestsForOrg(currentOrgId).catch(() => [] as JoinRequestDto[])
+        : Promise.resolve([] as JoinRequestDto[]);
       const [membersData, invitesData, requestsData] = await Promise.all([
-        getOrgMembers(currentOrgId),
-        listPendingInvitesForOrg(currentOrgId),
-        listPendingJoinRequestsForOrg(currentOrgId),
+        membersPromise, invitesPromise, requestsPromise,
       ]);
       setMembers(membersData);
       setPendingInvites(invitesData);

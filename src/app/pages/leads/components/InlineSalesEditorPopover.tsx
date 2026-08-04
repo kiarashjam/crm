@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Sparkles } from 'lucide-react';
-import { toast } from 'sonner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover';
 import { Label } from '@/app/components/ui/label';
 import { Input } from '@/app/components/ui/input';
@@ -11,7 +10,6 @@ import { Textarea } from '@/app/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/app/components/ui/select';
-import { updateLead } from '@/app/api/leads';
 import type { Lead } from '@/app/api/types';
 import {
   EMPTY_SALES_EXTRAS,
@@ -32,9 +30,11 @@ import { ddMmYyyyToIso, isoToDdMmYyyy } from '../../salesTracker/dateUtils';
 import {
   leadToTrackedRow,
   salesExtrasToTrackedRow,
-  serializeTrackedRowAsPipeline,
+  trackedRowToPipeline,
   trackedRowToSalesExtras,
 } from '../leadTrackerMap';
+import { parsePipeline } from '../leadPipeline';
+import type { useLeadStatusSync } from '../useLeadStatusSync';
 
 const SENTINEL = '__cleared__';
 
@@ -80,16 +80,22 @@ interface Props {
   leadName?: string;
   trigger: React.ReactNode;
   onSaved?: (updated: Lead) => void;
+  /** Shared status-sync instance from the Leads page, so behaviour and copy
+   *  match the detail page exactly. */
+  statusSync: ReturnType<typeof useLeadStatusSync>;
 }
 
-export function InlineSalesEditorPopover({ lead, leadName, trigger, onSaved }: Props) {
+export function InlineSalesEditorPopover({ lead, leadName, trigger, onSaved, statusSync }: Props) {
   const [open, setOpen] = useState(false);
   const [extras, setExtras] = useState<SalesExtras>(() => trackedRowToSalesExtras(leadToTrackedRow(lead)));
   const [saving, setSaving] = useState(false);
 
+  // Reseed only when the popover OPENS. Re-seeding on every `lead` change would
+  // snap the user's in-progress edits back each time a save round-tripped.
   useEffect(() => {
     if (open) setExtras(trackedRowToSalesExtras(leadToTrackedRow(lead)));
-  }, [open, lead]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally open-only
+  }, [open]);
 
   const commit = async (patch: Partial<SalesExtras>) => {
     const next = { ...extras, ...patch };
@@ -97,12 +103,13 @@ export function InlineSalesEditorPopover({ lead, leadName, trigger, onSaved }: P
     setSaving(true);
     try {
       const row = salesExtrasToTrackedRow(next);
-      const pipelineState = serializeTrackedRowAsPipeline(row, lead.pipelineState);
-      const updated = await updateLead(lead.id, { pipelineState });
-      if (!updated) throw new Error('update failed');
-      onSaved?.(updated);
-    } catch {
-      toast.error('Failed to save lead pipeline');
+      // One PUT carries the pipeline AND any status the pipeline now implies;
+      // the hook's sequence guard drops responses from superseded edits.
+      const pipeline = trackedRowToPipeline(row, parsePipeline(lead.pipelineState));
+      const outcome = await statusSync.save(lead, pipeline, {
+        onApplied: (updated) => onSaved?.(updated),
+      });
+      if (!outcome.ok && !outcome.stale) setExtras(extras);
     } finally {
       setSaving(false);
     }
