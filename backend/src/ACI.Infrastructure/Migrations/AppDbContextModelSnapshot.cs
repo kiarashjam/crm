@@ -730,6 +730,60 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("OrgSettings", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Link")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Read")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SourceKey")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAtUtc");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("UserId", "OrganizationId", "Read");
+
+                    b.HasIndex("UserId", "SourceKey")
+                        .IsUnique()
+                        .HasFilter("[SourceKey] IS NOT NULL");
+
+                    b.ToTable("Notifications", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.Organization", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1508,6 +1562,23 @@ namespace ACI.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.Notification", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId");
+
+                    b.HasOne("ACI.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("ACI.Domain.Entities.Organization", b =>

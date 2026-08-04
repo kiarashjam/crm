@@ -26,6 +26,7 @@ public class AppDbContext : DbContext
     public DbSet<TaskItem> TaskItems => Set<TaskItem>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
     public DbSet<Activity> Activities => Set<Activity>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<CopyHistoryItem> CopyHistoryItems => Set<CopyHistoryItem>();
 

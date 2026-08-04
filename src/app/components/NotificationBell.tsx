@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, CheckSquare, Briefcase, AtSign, Sparkles, UserPlus } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/app/components/ui/popover';
 import { cn } from '@/app/components/ui/utils';
+import { isUsingRealApi } from '@/app/api/apiClient';
 import {
   getNotifications,
   getUnreadNotificationCount,
@@ -60,10 +61,11 @@ export default function NotificationBell() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      // Reminder engine: synthesize due/overdue task reminders once per session
-      // before listing. Harmless if the backend also pushes reminders; essential
-      // when it doesn't (notifications then live in the local store).
-      if (!synced.current) {
+      // Reminder engine for demo/mock mode only. The backend now generates task
+      // reminders itself when listing notifications, so against a real API this
+      // would just fetch every task on each mount to write into a store nothing
+      // reads.
+      if (!synced.current && !isUsingRealApi()) {
         synced.current = true;
         try {
           syncTaskReminders(await getTasks());
