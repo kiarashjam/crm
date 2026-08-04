@@ -110,6 +110,11 @@ extra code or package is needed, only configuration. Two features depend on it:
 |---------|------------|
 | **Login → "Forgot password?"** | the password-reset link (expires in 1 hour) |
 | **Team → Invite member** | the invitation email telling someone to sign in and accept |
+| **Task reminders** | a reminder once a task's reminder time passes — checked every 5 minutes in the background |
+
+Task reminders go to the task's **assignee**, or its owner when unassigned, and respect
+each person's **Settings → Notifications** toggles (`Email notifications` and
+`Email me when a task is due`). Each reminder is sent at most once.
 
 > If email is **not** configured, both still behave safely: the reset endpoint returns a
 > generic success without sending (and the token is not stored), and an invitation is

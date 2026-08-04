@@ -18,4 +18,20 @@ public interface IEmailSender
         string invitedByName,
         string acceptUrl,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Reminds someone about a task whose reminder time has arrived.
+    /// </summary>
+    /// <param name="toEmail">Recipient — the task's assignee, or its owner when unassigned.</param>
+    /// <param name="recipientName">Recipient's display name (may be empty).</param>
+    /// <param name="taskTitle">Task title.</param>
+    /// <param name="dueDateUtc">When the task is due, if it has a due date.</param>
+    /// <param name="taskUrl">Absolute URL of the task.</param>
+    Task<bool> SendTaskReminderEmailAsync(
+        string toEmail,
+        string recipientName,
+        string taskTitle,
+        DateTime? dueDateUtc,
+        string taskUrl,
+        CancellationToken ct = default);
 }

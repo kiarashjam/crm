@@ -90,6 +90,43 @@ public sealed class SmtpEmailSender : IEmailSender
         return await SendAsync(toEmail, recipientName: "", subject: $"You have been invited to {organizationName} on Cadence", body: body, ct: ct);
     }
 
+    public async Task<bool> SendTaskReminderEmailAsync(
+        string toEmail,
+        string recipientName,
+        string taskTitle,
+        DateTime? dueDateUtc,
+        string taskUrl,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SmtpHost))
+        {
+            if (_options.LogResetLinksWhenSmtpNotConfigured)
+            {
+                _logger.LogWarning(
+                    "Email:SmtpHost is not set; logging task reminder for {Email}: {TaskTitle} ({TaskUrl})",
+                    toEmail, taskTitle, taskUrl);
+                return true;
+            }
+
+            _logger.LogError("Email:SmtpHost is not configured; cannot send task reminder to {Email}", toEmail);
+            return false;
+        }
+
+        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName;
+        var due = dueDateUtc.HasValue
+            ? $"Due: {dueDateUtc.Value:dddd d MMMM yyyy 'at' HH:mm} UTC\n"
+            : string.Empty;
+        var body =
+            $"Hi{greeting},\n\n" +
+            $"Reminder about your task:\n\n" +
+            $"  {taskTitle}\n\n" +
+            due +
+            $"\nOpen it here:\n{taskUrl}\n\n" +
+            "You are receiving this because task reminders are on in your notification settings.\n";
+
+        return await SendAsync(toEmail, recipientName, $"Reminder: {taskTitle}", body, ct);
+    }
+
     /// <summary>
     /// Builds and delivers one plain-text message. Returns false (never throws) so a
     /// delivery problem cannot fail the caller's operation.
