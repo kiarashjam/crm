@@ -1,13 +1,19 @@
+using ACI.Application.Configuration;
+using ACI.Application.Interfaces;
+using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using TaskStatusEnum = ACI.Domain.Enums.TaskStatus;
 
 namespace ACI.WebApi.Services;
 
 /// <summary>
-/// Background service that checks for tasks with overdue reminders and logs them.
-/// In production, this would send emails or push notifications. For now it marks reminders as "sent"
-/// so the system is ready for notification delivery when an email service is integrated.
+/// Emails task reminders once their reminder time has passed.
+///
+/// A task is picked up when ReminderDateUtc has arrived, it is still open, and
+/// ReminderSentAtUtc is null — that last column is what stops a reminder being sent
+/// twice, since this runs every few minutes.
 /// </summary>
 public class TaskReminderBackgroundService : BackgroundService
 {
@@ -44,10 +50,13 @@ public class TaskReminderBackgroundService : BackgroundService
     {
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var emailSender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
+        var emailSettings = scope.ServiceProvider.GetRequiredService<IOptions<EmailSettings>>().Value;
 
         var now = DateTime.UtcNow;
         var dueTasks = await db.TaskItems
             .Include(t => t.User)
+            .Include(t => t.Assignee)
             .Where(t => t.ReminderDateUtc != null
                 && t.ReminderDateUtc <= now
                 && t.ReminderSentAtUtc == null
@@ -60,20 +69,49 @@ public class TaskReminderBackgroundService : BackgroundService
 
         _logger.LogInformation("Processing {Count} task reminders", dueTasks.Count);
 
+        // One query for everyone's notification preferences rather than one per task.
+        var recipientIds = dueTasks.Select(RecipientId).Distinct().ToList();
+        var settingsByUserId = await db.UserSettings
+            .Where(s => recipientIds.Contains(s.UserId))
+            .ToDictionaryAsync(s => s.UserId, ct);
+
+        var baseUrl = (emailSettings.FrontendBaseUrl ?? string.Empty).Trim().TrimEnd('/');
+        var sent = 0;
+        var skipped = 0;
+        var failed = 0;
+
         foreach (var task in dueTasks)
         {
-            // TODO: When an IEmailService is registered, send actual email here:
-            // var settings = await db.UserSettings.FirstOrDefaultAsync(s => s.UserId == task.UserId, ct);
-            // if (settings?.EmailOnTaskDue == true)
-            //     await emailService.SendTaskDueReminderAsync(task, task.User);
+            var recipient = task.Assignee ?? task.User;
 
+            // No settings row means defaults, which have reminders on.
+            var wantsEmail = !settingsByUserId.TryGetValue(RecipientId(task), out var settings)
+                || (settings.EmailNotificationsEnabled && settings.EmailOnTaskDue);
+
+            if (!wantsEmail || string.IsNullOrWhiteSpace(recipient.Email))
+            {
+                skipped++;
+            }
+            else
+            {
+                var taskUrl = baseUrl.Length == 0 ? $"/tasks/{task.Id}" : $"{baseUrl}/tasks/{task.Id}";
+                var ok = await emailSender.SendTaskReminderEmailAsync(
+                    recipient.Email, recipient.Name, task.Title, task.DueDateUtc, taskUrl, ct);
+                if (ok) sent++; else failed++;
+            }
+
+            // Marked either way: a reminder is a point-in-time nudge, so retrying it every
+            // few minutes for as long as the task lives would be worse than missing one.
+            // Failures are logged by the sender and counted below.
             task.ReminderSentAtUtc = now;
-            _logger.LogInformation(
-                "Reminder processed for task {TaskId} '{Title}' (user {UserId})",
-                task.Id, task.Title, task.UserId);
         }
 
         await db.SaveChangesAsync(ct);
-        _logger.LogInformation("Processed {Count} task reminders", dueTasks.Count);
+        _logger.LogInformation(
+            "Processed {Count} task reminders: {Sent} emailed, {Skipped} skipped (notifications off or no address), {Failed} failed to send",
+            dueTasks.Count, sent, skipped, failed);
     }
+
+    /// <summary>Reminders go to whoever the task is assigned to, else its owner.</summary>
+    private static Guid RecipientId(TaskItem task) => task.AssigneeId ?? task.UserId;
 }
