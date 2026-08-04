@@ -123,39 +123,55 @@ extra code or package is needed, only configuration. Two features depend on it:
 | Port | `587` |
 | Username | the literal string `apikey` (**not** your email) |
 | Password | your SendGrid API key |
-| From address | a sender **verified** in SendGrid — the relay rejects anything else |
+| From address | `kia@bonapp.group` — and it must be **verified** in SendGrid (see below) |
+
+### Verify the sender first (otherwise nothing sends)
+
+SendGrid refuses mail from an unverified sender, so do this once before testing:
+
+**SendGrid → Settings → Sender Authentication**, then either
+
+- **Single Sender Verification** — quickest: add `kia@bonapp.group`, click the link in the
+  confirmation email SendGrid sends to it; or
+- **Authenticate Your Domain** (`bonapp.group`) — more DNS work, but far better
+  deliverability because the mail is then SPF/DKIM-signed and much less likely to land in spam.
+
+A `403 Forbidden` from the relay almost always means the from-address is not verified.
 
 ### Azure deployment
 
 Add to **Azure Portal → Web Apps → \<your-backend\> → Configuration → Application settings**
 (the `__` double underscore is how .NET maps `Email:SmtpHost` to an environment variable):
 
-| Name | Value |
-|------|-------|
-| `Email__SmtpHost` | `smtp.sendgrid.net` |
-| `Email__SmtpPort` | `587` |
-| `Email__SmtpUser` | `apikey` |
-| `Email__SmtpPassword` | your SendGrid API key |
-| `Email__UseSsl` | `true` |
-| `Email__FromAddress` | your verified sender, e.g. `no-reply@yourdomain.com` |
-| `Email__FromName` | `Cadence` |
-| `Email__FrontendBaseUrl` | SPA origin, no trailing slash, e.g. `https://mango-moss-0804bb403.1.azurestaticapps.net` |
+Host, username and sender are already committed as defaults in `appsettings.json`
+(`smtp.sendgrid.net` / `apikey` / `kia@bonapp.group`), so in practice only the
+**API key** and the **SPA URL** need setting:
+
+| Name | Value | Required? |
+|------|-------|-----------|
+| `Email__SmtpPassword` | your SendGrid API key | **yes** — never committed |
+| `Email__FrontendBaseUrl` | SPA origin, no trailing slash, e.g. `https://mango-moss-0804bb403.1.azurestaticapps.net` | **yes** in production (default points at localhost) |
+| `Email__FromAddress` | overrides the committed default `kia@bonapp.group` | only to change the sender |
+| `Email__SmtpHost` | overrides `smtp.sendgrid.net` | only for a different relay |
+| `Email__SmtpUser` | overrides `apikey` | only for a different relay |
+| `Email__FromName` | overrides `Cadence` | optional |
+| `Email__UseSsl` | `true` (default) | no |
+| `Email__SmtpPort` | `587` (default) | no |
 
 `Email__FrontendBaseUrl` matters: it builds the links in both emails. If it is empty or
 not an absolute http(s) URL, password reset is skipped and logged.
 
 ### Local development
 
+By default local development **does not send email**: `appsettings.Development.json`
+blanks `Email:SmtpHost`, which makes the sender log the link instead. To test real
+delivery locally, supply the key and re-enable the host:
+
 ```bash
 cd backend/src/ACI.WebApi
 dotnet user-secrets set "Email:SmtpHost" "smtp.sendgrid.net"
-dotnet user-secrets set "Email:SmtpUser" "apikey"
 dotnet user-secrets set "Email:SmtpPassword" "<your-sendgrid-api-key>"
-dotnet user-secrets set "Email:FromAddress" "<your-verified-sender>"
 ```
-
-Or, to develop without sending anything, set `Email:LogResetLinksWhenSmtpNotConfigured`
-to `true` and leave `Email:SmtpHost` empty — the link is written to the log instead.
 
 **Never commit the API key.** Keep it in Application settings / user-secrets only; this
 repository is public. If a key is ever pasted into a chat, an issue, a screenshot or a
@@ -172,7 +188,8 @@ commit, treat it as compromised and rotate it in the SendGrid dashboard
 - [ ] `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_SECRET` added  
 - [ ] `VITE_API_URL` added as **variable** (optional)
 - [ ] `OpenAI__ApiKey` added (optional, for Intelligent Sales Writer)
-- [ ] `Email__SmtpHost` / `Email__SmtpUser` / `Email__SmtpPassword` / `Email__FromAddress` / `Email__FrontendBaseUrl` added (for password reset + invitations)
+- [ ] `Email__SmtpPassword` (SendGrid API key) added, and `kia@bonapp.group` verified in SendGrid
+- [ ] `Email__FrontendBaseUrl` set to the deployed SPA origin
 
 ---
 
