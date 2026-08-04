@@ -19,7 +19,7 @@ import {
   type StatusSyncPlan,
   type CanonicalStage,
 } from './leadStatusSync';
-import { clearAutoStatus } from './leadStatusSyncStore';
+import { recordManualStatus } from './leadStatusSyncStore';
 
 export interface SavePipelineArgs {
   lead: Pick<Lead, 'id' | 'status' | 'isConverted'>;
@@ -29,6 +29,8 @@ export interface SavePipelineArgs {
   statusesLoaded: boolean;
   enabled: boolean;
   lastAutoStatus?: string;
+  manualStatus?: string;
+  manualHeldTier?: number | null;
   overrides?: Partial<Record<CanonicalStage, string>>;
   /** Activity line describing the pipeline edit itself, if the caller wants one. */
   log?: { subject: string; body?: string };
@@ -64,6 +66,8 @@ export async function saveLeadPipeline(args: SavePipelineArgs): Promise<SavePipe
     isConverted: lead.isConverted,
     enabled: args.enabled,
     lastAutoStatus: args.lastAutoStatus,
+    manualStatus: args.manualStatus,
+    manualHeldTier: args.manualHeldTier,
     overrides: args.overrides,
   });
 
@@ -117,6 +121,9 @@ export async function undoAutoStatus(
   leadId: string,
   toStatus: string,
   statusOptions: StatusOption[],
+  /** Pipeline tier at the time of the undo, so the hold has a baseline to
+   *  release above rather than voiding itself on the next save. */
+  heldTier: number | null,
 ): Promise<Lead | null> {
   const match = statusOptions.find((o) => o.name === toStatus);
   const patch: Parameters<typeof updateLead>[1] = { status: toStatus };
@@ -126,9 +133,11 @@ export async function undoAutoStatus(
   try {
     const updated = await updateLead(leadId, patch);
     if (updated) {
-      // Forget that we ever wrote a status here, so the next pipeline edit
-      // treats this lead as hand-managed and suggests instead of overwriting.
-      clearAutoStatus(leadId);
+      // Reverting is itself a deliberate choice, so record it as one. This is
+      // what makes the undo STICK — the activity copy below has always claimed
+      // it would, but clearing the memory used to remove the hold instead of
+      // arming it, so the next save re-applied the status we just reverted.
+      recordManualStatus(leadId, toStatus, heldTier);
       void createActivity({
         type: 'system',
         subject: `Status reverted to ${toStatus}`,

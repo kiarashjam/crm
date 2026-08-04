@@ -541,7 +541,7 @@ describe('planStatusSync — refuses to write when a human might disagree', () =
     const plan = planStatusSync(ctx({
       pipeline: { outreachStatus: 'contacted' },
       currentStatus: 'Lost',
-      lastAutoStatus: 'Contacted',
+      manualStatus: 'Lost',
     }));
     expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
   });
@@ -722,7 +722,8 @@ describe('planStatusSync — releasable manual pin', () => {
     const plan = planStatusSync(ctx({
       pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' },
       currentStatus: 'In Progress',   // human moved it ahead of Connected
-      lastAutoStatus: 'Contacted',
+      manualStatus: 'In Progress',
+      manualHeldTier: STAGE_TIER.meeting_scheduled,
     }));
     expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
   });
@@ -731,7 +732,8 @@ describe('planStatusSync — releasable manual pin', () => {
     const plan = planStatusSync(ctx({
       pipeline: { depositPaid: true },
       currentStatus: 'In Progress',
-      lastAutoStatus: 'Contacted',
+      manualStatus: 'In Progress',
+      manualHeldTier: STAGE_TIER.meeting_scheduled,
     }));
     expect(plan.kind).toBe('apply');
   });
@@ -743,7 +745,8 @@ describe('planStatusSync — releasable manual pin', () => {
     const plan = planStatusSync(ctx({
       pipeline: { depositPaid: true },
       currentStatus: 'Lost',
-      lastAutoStatus: 'Contacted',
+      manualStatus: 'Lost',
+      manualHeldTier: STAGE_TIER.deposit_paid,   // already banked when written off
     }));
     expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
   });
@@ -768,7 +771,7 @@ describe('planStatusSync — reports every applicable hold', () => {
       pipeline: { outreachStatus: 'contacted' },
       currentStatus: 'Cold Outreach Q3',
       statusOptions: opts([...FALLBACK, 'Cold Outreach Q3']),
-      lastAutoStatus: 'Contacted',
+      manualStatus: 'Cold Outreach Q3',
     }));
     if (plan.kind !== 'suggest') throw new Error('expected suggest');
     expect(plan.reasons).toContain('unrecognised_status');
@@ -800,6 +803,98 @@ describe('planStatusSync — defers to an org whose ladder is shaped differently
       pipeline: { meetingAttended: true, stillInterested: true },
       currentStatus: 'Contacted',
       statusOptions: sane,
+    }));
+    expect(plan.kind).toBe('apply');
+  });
+});
+
+
+// ── Regression: the manual hold must be ARMED by a pick, not destroyed by it ──
+
+describe('a hand-picked status survives later pipeline edits', () => {
+  // The hold used to be keyed on `lastAutoStatus` being truthy, while a manual
+  // pick *cleared* that field — so picking a status removed the only thing
+  // protecting it, and the next save wrote straight over the human's choice.
+  it('a rep who writes a lead off as Lost is not overruled by an unrelated edit', () => {
+    const plan = planStatusSync(ctx({
+      pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' },
+      currentStatus: 'Lost',
+      manualStatus: 'Lost',
+    }));
+    expect(plan.kind).not.toBe('apply');
+    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
+  });
+
+  it('holds even for a lead auto-sync has never written to', () => {
+    // `lastAutoStatus` divergence cannot help here — there is no sync history —
+    // so only an explicit record of the pick protects it.
+    const plan = planStatusSync(ctx({
+      pipeline: { meetingAttended: true, stillInterested: true },
+      currentStatus: 'Contacted',
+      manualStatus: 'Contacted',
+      manualHeldTier: STAGE_TIER.qualified,
+      lastAutoStatus: undefined,
+    }));
+    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
+  });
+
+  it('a date-only edit never overrules a hand-set status', () => {
+    // Invariant 1 says dates cannot move the status; combined with the hold, a
+    // bookkeeping edit must be inert.
+    const base = { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' } as const;
+    for (const dateField of ['outreachDate', 'meetingDate', 'contractSentDate'] as const) {
+      const plan = planStatusSync(ctx({
+        pipeline: { ...base, [dateField]: '2026-05-13' },
+        currentStatus: 'Lost',
+        manualStatus: 'Lost',
+      }));
+      expect(plan.kind, dateField).not.toBe('apply');
+    }
+  });
+
+  it('still catches a change made on another device, with no local record', () => {
+    // Cross-client backstop: we last wrote "Connected" but the live status is
+    // something else, so someone intervened where we cannot see it.
+    const plan = planStatusSync(ctx({
+      pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' },
+      currentStatus: 'Lost',
+      lastAutoStatus: 'Connected',
+    }));
+    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
+  });
+
+  it('an undone status stays undone', () => {
+    // undoAutoStatus records the revert as a manual pick, which is what makes
+    // its own activity copy ("will suggest, not apply") true.
+    const plan = planStatusSync(ctx({
+      pipeline: { meetingAttended: true, stillInterested: true },
+      currentStatus: 'New',
+      manualStatus: 'New',
+      // Baseline = what the pipeline already derived when they undid it.
+      manualHeldTier: STAGE_TIER.qualified,
+    }));
+    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
+  });
+
+  it('a hold measured against the picked status would void itself instantly', () => {
+    // Auto-sync only wrote because the pipeline derived something ABOVE the
+    // status, so releasing on "derived > current status" can never hold. The
+    // baseline must be the pipeline's tier at intervention time.
+    const held = planStatusSync(ctx({
+      pipeline: { meetingAttended: true, stillInterested: true },  // qualified (5)
+      currentStatus: 'New',                                        // tier 0
+      manualStatus: 'New',
+      manualHeldTier: STAGE_TIER.qualified,
+    }));
+    expect(held.kind).toBe('suggest');
+  });
+
+  it('releases once the pipeline records something deeper than at intervention', () => {
+    const plan = planStatusSync(ctx({
+      pipeline: { depositPaid: true },                 // deposit_paid (9)
+      currentStatus: 'New',
+      manualStatus: 'New',
+      manualHeldTier: STAGE_TIER.qualified,            // was 5 when they intervened
     }));
     expect(plan.kind).toBe('apply');
   });

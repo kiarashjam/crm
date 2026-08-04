@@ -67,7 +67,8 @@ import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
 import { SalesTrackerBadges } from './leads/components/SalesTrackerBadges';
 import { InlineSalesEditorPopover } from './leads/components/InlineSalesEditorPopover';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
-import { clearAutoStatus } from './leads/leadStatusSyncStore';
+import { recordManualStatus } from './leads/leadStatusSyncStore';
+import { derivedTier } from './leads/leadStatusSync';
 import {
   SalesTrackerFilters,
   SalesTrackerFiltersHeader,
@@ -1083,9 +1084,9 @@ export default function Leads() {
   // Inline status change from the card — saves a round-trip through the detail modal.
   const handleInlineStatusChange = async (lead: Lead, newStatus: string) => {
     try {
-      // A deliberate pick outranks the tracker: forget the last auto-written
-      // status so the next pipeline edit suggests rather than overwrites.
-      clearAutoStatus(lead.id);
+      // A deliberate pick outranks the tracker: record it so the next pipeline
+      // edit suggests rather than overwrites.
+      recordManualStatus(lead.id, newStatus, derivedTier(parsePipeline(lead.pipelineState)));
       const opt = statusOptions.find((o) => o.name === newStatus);
       const updated = await updateLead(lead.id, {
         status: newStatus,
