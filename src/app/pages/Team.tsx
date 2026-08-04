@@ -16,6 +16,8 @@ import { useOrg } from '@/app/contexts/OrgContext';
 import {
   getOrgMembers,
   createInvite,
+  resendInvite,
+  addOrgMember,
   listPendingInvitesForOrg,
   listPendingJoinRequestsForOrg,
   acceptJoinRequest,
@@ -457,6 +459,56 @@ export default function Team() {
   };
 
   // Handle role change
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
+  // Direct add: bring in someone who already has an account, without waiting on an
+  // invitation email or their acceptance.
+  const [addOpen, setAddOpen] = useState(false);
+  const [addEmail, setAddEmail] = useState('');
+  const [addRole, setAddRole] = useState('3'); // default to the safest role: Viewer
+  const [adding, setAdding] = useState(false);
+
+  const handleAddExisting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrgId || !addEmail.trim() || adding) return;
+    setAdding(true);
+    try {
+      const member = await addOrgMember(currentOrgId, addEmail, parseInt(addRole, 10));
+      if (member) {
+        setMembers((prev) => [...prev, member]);
+        toast.success(`${member.name} added as ${getRoleInfo(member.role).label}`);
+        setAddOpen(false);
+        setAddEmail('');
+        setAddRole('3');
+      }
+    } catch (err) {
+      // The server says exactly why — most usefully "no account with that email yet".
+      const message = err instanceof Error ? err.message : 'Could not add that person';
+      toast.error(message.replace(/^HTTP \d+: /, ''));
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleResendInvite = async (invite: InviteDto) => {
+    if (resendingId) return;
+    setResendingId(invite.id);
+    try {
+      const updated = await resendInvite(invite.id);
+      if (updated) {
+        setPendingInvites((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+        toast.success(`Invitation re-sent to ${invite.email}`);
+      }
+    } catch (err) {
+      // The server explains why (most often: email is not configured, or the
+      // sender address is not verified in SendGrid), so show that verbatim.
+      const message = err instanceof Error ? err.message : 'Could not resend the invitation';
+      toast.error(message.replace(/^HTTP \d+: /, ''));
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   const handleRoleChange = async (member: OrgMemberDto, newRole: number) => {
     if (!currentOrgId) return;
     setChangingRole(member.userId);
@@ -573,6 +625,16 @@ export default function Team() {
                   <RefreshCw className="w-4 h-4" />
                   Refresh
                 </Button>
+                {isAdmin && (
+                  <Button
+                    onClick={() => setAddOpen(true)}
+                    variant="outline"
+                    className="gap-2 h-10 px-4 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    Add existing user
+                  </Button>
+                )}
                 {isAdmin && (
                   <Button
                     onClick={() => setInviteDialogOpen(true)}
@@ -910,10 +972,24 @@ export default function Team() {
                           </p>
                         </div>
                       </div>
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                        <Send className="w-3 h-3" />
-                        Pending
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                          <Send className="w-3 h-3" />
+                          Pending
+                        </span>
+                        {isAdmin && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            disabled={resendingId === invite.id}
+                            onClick={() => handleResendInvite(invite)}
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${resendingId === invite.id ? 'animate-spin' : ''}`} />
+                            {resendingId === invite.id ? 'Sending…' : 'Resend email'}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1121,6 +1197,59 @@ export default function Team() {
                     Send {inviteEmails.length + (inviteEmail.trim() ? 1 : 0) || ''} Invitation{(inviteEmails.length + (inviteEmail.trim() ? 1 : 0)) !== 1 ? 's' : ''}
                   </span>
                 )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add an existing user directly (no invitation email needed) */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogTitle>Add an existing user</DialogTitle>
+          <p className="text-sm text-slate-500">
+            Adds someone straight to this organization — no invitation email, and nothing for them
+            to accept. They must already have a Cadence account with this email address.
+          </p>
+          <form onSubmit={handleAddExisting} className="mt-3 space-y-4">
+            <div>
+              <Label htmlFor="add-email">Email address</Label>
+              <Input
+                id="add-email"
+                type="email"
+                required
+                value={addEmail}
+                onChange={(e) => setAddEmail(e.target.value)}
+                placeholder="name@example.com"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="add-role">Role</Label>
+              <Select value={addRole} onValueChange={setAddRole}>
+                <SelectTrigger id="add-role" className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="3">
+                    <span className="flex items-center gap-2"><Eye className="w-4 h-4 text-violet-500" /> Viewer — read-only</span>
+                  </SelectItem>
+                  <SelectItem value="1">
+                    <span className="flex items-center gap-2"><UserCircle className="w-4 h-4 text-slate-500" /> Member</span>
+                  </SelectItem>
+                  <SelectItem value="2">
+                    <span className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-blue-500" /> Manager</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" onClick={() => setAddOpen(false)} disabled={adding}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={adding || !addEmail.trim()} className="gap-1.5">
+                {adding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                {adding ? 'Adding…' : 'Add to organization'}
               </Button>
             </div>
           </form>

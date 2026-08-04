@@ -168,6 +168,29 @@ environment variable):
 `Email__FrontendBaseUrl` matters: it builds the links in all three emails. If it is empty
 or not an absolute http(s) URL, password reset is skipped and logged.
 
+### Option: let the deploy configure Azure for you (one GitHub secret)
+
+Instead of typing the settings into the Azure Portal, add a single repository secret
+and the backend deploy applies them on every run:
+
+**GitHub → Settings → Secrets and variables → Actions → New repository secret**
+
+| Secret | Value |
+|--------|-------|
+| `SENDGRID_API_KEY` | your SendGrid API key |
+
+The `Configure email settings (SendGrid)` step in `.github/workflows/deploy-backend.yml`
+then sets `Email__SmtpPassword` and `Email__FrontendBaseUrl` on the Web App, using the
+Azure service principal the workflow already logs in with. Notes:
+
+- The step is skipped entirely while the secret is absent, so nothing changes until you add it.
+- It **merges** settings — only those two keys are touched, so the database connection
+  string and every other setting are left alone.
+- The SPA origin defaults to the current Static Web App URL. To point somewhere else, add a
+  repository **variable** named `SPA_BASE_URL`.
+- Re-deploy (or **Actions → Build and deploy backend → Run workflow**) to apply it. Rotating
+  the key later means updating the secret and re-running — nothing else.
+
 ### Local development
 
 By default local development **does not send email**: `appsettings.Development.json`
@@ -195,7 +218,7 @@ commit, treat it as compromised and rotate it in the SendGrid dashboard
 - [ ] `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_SECRET` added  
 - [ ] `VITE_API_URL` added as **variable** (optional)
 - [ ] `OpenAI__ApiKey` added (optional, for Intelligent Sales Writer)
-- [ ] `Email__SmtpPassword` (SendGrid API key) added, and `kia@bonapp.group` verified in SendGrid
+- [ ] `Email__SmtpPassword` set in Azure **or** `SENDGRID_API_KEY` added as a GitHub secret, and `kia@bonapp.group` verified in SendGrid
 - [ ] `Email__FrontendBaseUrl` set to the deployed SPA origin
 
 ---

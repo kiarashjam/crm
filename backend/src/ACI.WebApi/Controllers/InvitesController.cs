@@ -135,4 +135,34 @@ public class InvitesController : ControllerBase
         var result = await _inviteService.CreateInviteAsync(organizationId, userId.Value, request, ct);
         return result.ToActionResult();
     }
+
+    /// <summary>
+    /// Re-sends the invitation email for a pending invite and refreshes its 7-day expiry.
+    /// </summary>
+    /// <remarks>
+    /// Only the organization's owner or a manager can resend. Unlike creating an invite,
+    /// this fails when the email cannot be sent — so an unconfigured mail server is
+    /// reported rather than silently ignored.
+    /// </remarks>
+    /// <param name="inviteId">The pending invite to re-send.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The invite, with its refreshed expiry.</returns>
+    /// <response code="200">Invitation e-mailed again.</response>
+    /// <response code="400">Already accepted, or the email could not be sent.</response>
+    /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="404">Invite not found.</response>
+    [HttpPost("{inviteId:guid}/resend")]
+    [ProducesResponseType(typeof(InviteDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<InviteDto>> Resend(Guid inviteId, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await _inviteService.ResendInviteAsync(inviteId, userId.Value, ct);
+        return result.ToActionResult();
+    }
 }

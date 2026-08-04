@@ -16,6 +16,7 @@ public class OrganizationServiceTests
     private readonly Mock<IOrganizationRepository> _organizationRepositoryMock;
     private readonly Mock<ILeadStatusRepository> _leadStatusRepositoryMock;
     private readonly Mock<ILeadSourceRepository> _leadSourceRepositoryMock;
+    private readonly Mock<IUserRepository> _userRepositoryMock;
     private readonly Mock<ILogger<OrganizationService>> _loggerMock;
     private readonly OrganizationService _sut;
 
@@ -24,12 +25,14 @@ public class OrganizationServiceTests
         _organizationRepositoryMock = new Mock<IOrganizationRepository>();
         _leadStatusRepositoryMock = new Mock<ILeadStatusRepository>();
         _leadSourceRepositoryMock = new Mock<ILeadSourceRepository>();
+        _userRepositoryMock = new Mock<IUserRepository>();
         _loggerMock = new Mock<ILogger<OrganizationService>>();
 
         _sut = new OrganizationService(
             _organizationRepositoryMock.Object,
             _leadStatusRepositoryMock.Object,
             _leadSourceRepositoryMock.Object,
+            _userRepositoryMock.Object,
             _loggerMock.Object);
     }
 

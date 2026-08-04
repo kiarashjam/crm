@@ -116,6 +116,39 @@ public class OrganizationsController : ControllerBase
     }
 
     /// <summary>
+    /// Adds an existing registered user to the organization directly, with a role.
+    /// </summary>
+    /// <remarks>
+    /// For when waiting on an invitation email is not wanted. Owner or manager only.
+    /// The person must already have an account — a membership has to point at a user —
+    /// so if no account exists yet, send an invitation instead. Owner cannot be granted
+    /// here; ownership is transferred separately.
+    /// </remarks>
+    /// <param name="id">The organization ID.</param>
+    /// <param name="request">Email of the existing user, and the role to grant.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The newly added member.</returns>
+    /// <response code="200">Member added.</response>
+    /// <response code="400">No account with that email, already a member, or Owner requested.</response>
+    /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="404">Organization not found.</response>
+    [HttpPost("{id:guid}/members")]
+    [ProducesResponseType(typeof(OrgMemberDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgMemberDto>> AddMember(Guid id, [FromBody] AddMemberRequest request, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var result = await _organizationService.AddMemberByEmailAsync(id, userId.Value, request.Email, request.Role, ct);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
     /// Updates a member's role in the organization.
     /// </summary>
     /// <remarks>

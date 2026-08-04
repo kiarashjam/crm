@@ -105,6 +105,18 @@ export async function createInvite(organizationId: string, email: string): Promi
   return invite ?? null;
 }
 
+/**
+ * Re-send the invitation email for a pending invite (and refresh its expiry).
+ * Throws when the server could not send — the message explains why, which is how
+ * an unconfigured mail server becomes visible in the UI.
+ */
+export async function resendInvite(inviteId: string): Promise<InviteDto | null> {
+  const invite = await authFetchJson<InviteDto>(`/api/invites/${inviteId}/resend`, {
+    method: 'POST',
+  });
+  return invite ?? null;
+}
+
 export async function listPendingInvitesForOrg(organizationId: string): Promise<InviteDto[]> {
   if (!isUsingRealApi()) return [];
   const list = await authFetchJson<InviteDto[]>(`/api/invites/organization/${organizationId}`);
@@ -147,6 +159,19 @@ export async function getOrgMembers(organizationId: string): Promise<OrgMemberDt
   }
   const list = await authFetchJson<OrgMemberDto[]>(`/api/organizations/${organizationId}/members`);
   return Array.isArray(list) ? list : [];
+}
+
+/**
+ * Add an existing registered user to the organization directly, skipping the
+ * invitation + acceptance round trip. Owner/manager only. Throws with the
+ * server's explanation when the person has no account yet or is already a member.
+ */
+export async function addOrgMember(organizationId: string, email: string, role: number): Promise<OrgMemberDto | null> {
+  const member = await authFetchJson<OrgMemberDto>(`/api/organizations/${organizationId}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ email: email.trim().toLowerCase(), role }),
+  });
+  return member ?? null;
 }
 
 export async function updateMemberRole(organizationId: string, memberUserId: string, role: number): Promise<boolean> {

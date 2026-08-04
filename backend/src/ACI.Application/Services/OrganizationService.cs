@@ -16,17 +16,20 @@ public sealed class OrganizationService : IOrganizationService
     private readonly IOrganizationRepository _organizationRepository;
     private readonly ILeadStatusRepository _leadStatusRepository;
     private readonly ILeadSourceRepository _leadSourceRepository;
+    private readonly IUserRepository _userRepository;
     private readonly ILogger<OrganizationService> _logger;
 
     public OrganizationService(
         IOrganizationRepository organizationRepository, 
         ILeadStatusRepository leadStatusRepository, 
         ILeadSourceRepository leadSourceRepository,
+        IUserRepository userRepository,
         ILogger<OrganizationService> logger)
     {
         _organizationRepository = organizationRepository;
         _leadStatusRepository = leadStatusRepository;
         _leadSourceRepository = leadSourceRepository;
+        _userRepository = userRepository;
         _logger = logger;
     }
 
@@ -151,6 +154,57 @@ public sealed class OrganizationService : IOrganizationService
         _logger.LogDebug("Found {Count} members for organization {OrganizationId}", result.Count, organizationId);
         return result;
     }
+
+    public async Task<Result<OrgMemberDto>> AddMemberByEmailAsync(
+        Guid organizationId, Guid requestingUserId, string email, OrgMemberRole role, CancellationToken ct = default)
+    {
+        var normalized = (email ?? string.Empty).Trim().ToLowerInvariant();
+        _logger.LogInformation(
+            "User {RequestingUserId} adding {Email} to organization {OrganizationId} as {Role}",
+            requestingUserId, normalized, organizationId, role);
+
+        var requesterRole = await _organizationRepository.GetMemberRoleAsync(requestingUserId, organizationId, ct);
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        {
+            _logger.LogWarning("User {RequestingUserId} is not owner or manager of organization {OrganizationId}", requestingUserId, organizationId);
+            return Result.Failure<OrgMemberDto>(DomainErrors.Organization.NotOwnerOrManager);
+        }
+
+        if (string.IsNullOrEmpty(normalized))
+            return Result.Failure<OrgMemberDto>(DomainErrors.Contact.EmailRequired);
+
+        // Ownership is transferred deliberately, never granted here.
+        if (role == OrgMemberRole.Owner)
+            return Result.Failure<OrgMemberDto>(new Error("Organization.CannotAssignOwner", "Use transfer ownership to change the owner"));
+
+        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+        if (org == null)
+            return Result.Failure<OrgMemberDto>(DomainErrors.Organization.NotFound);
+
+        var user = await _userRepository.GetByEmailAsync(normalized, ct);
+        if (user == null)
+        {
+            _logger.LogWarning("Cannot add {Email}: no account exists with that address", normalized);
+            return Result.Failure<OrgMemberDto>(NoAccountForEmail);
+        }
+
+        if (await _organizationRepository.IsMemberAsync(user.Id, organizationId, ct))
+        {
+            _logger.LogWarning("User {UserId} is already a member of organization {OrganizationId}", user.Id, organizationId);
+            return Result.Failure<OrgMemberDto>(DomainErrors.Organization.AlreadyMember);
+        }
+
+        await _organizationRepository.AddMemberAsync(organizationId, user.Id, role, ct);
+
+        _logger.LogInformation(
+            "Added user {UserId} to organization {OrganizationId} as {Role}",
+            user.Id, organizationId, role);
+        return Result.Success(new OrgMemberDto(user.Id, user.Name, user.Email, role));
+    }
+
+    private static readonly Error NoAccountForEmail = new(
+        "Organization.NoAccountForEmail",
+        "No account exists with that email address yet. Ask them to sign up first, then add them — or send an invitation instead.");
 
     public async Task<Result> UpdateMemberRoleAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, OrgMemberRole newRole, CancellationToken ct = default)
     {
