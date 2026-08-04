@@ -161,6 +161,19 @@ export async function getOrgMembers(organizationId: string): Promise<OrgMemberDt
   return Array.isArray(list) ? list : [];
 }
 
+/**
+ * Add an existing registered user to the organization directly, skipping the
+ * invitation + acceptance round trip. Owner/manager only. Throws with the
+ * server's explanation when the person has no account yet or is already a member.
+ */
+export async function addOrgMember(organizationId: string, email: string, role: number): Promise<OrgMemberDto | null> {
+  const member = await authFetchJson<OrgMemberDto>(`/api/organizations/${organizationId}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ email: email.trim().toLowerCase(), role }),
+  });
+  return member ?? null;
+}
+
 export async function updateMemberRole(organizationId: string, memberUserId: string, role: number): Promise<boolean> {
   const res = await authFetch(`/api/organizations/${organizationId}/members/${memberUserId}/role`, {
     method: 'PUT',

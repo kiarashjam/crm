@@ -53,6 +53,14 @@ public interface IOrganizationService
     /// <param name="newRole">The new role.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Success or failure result.</returns>
+    /// <summary>
+    /// Adds an existing registered user to the organization with the given role, without an
+    /// invitation. Owner/manager only. Lets an administrator bring somebody in directly when
+    /// waiting on an invitation email is not wanted — the person must already have an account,
+    /// because a membership needs a user to point at.
+    /// </summary>
+    Task<Result<OrgMemberDto>> AddMemberByEmailAsync(Guid organizationId, Guid requestingUserId, string email, OrgMemberRole role, CancellationToken ct = default);
+
     Task<Result> UpdateMemberRoleAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, OrgMemberRole newRole, CancellationToken ct = default);
     
     /// <summary>
