@@ -1,5 +1,6 @@
 using ACI.Application.Configuration;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -9,17 +10,27 @@ using TaskStatusEnum = ACI.Domain.Enums.TaskStatus;
 namespace ACI.WebApi.Services;
 
 /// <summary>
-/// Emails task reminders once their reminder time has passed.
+/// The single reminder engine for tasks. Decides that a task needs chasing, then
+/// delivers on both channels the user has enabled:
 ///
-/// A task is picked up when ReminderDateUtc has arrived, it is still open, and
-/// ReminderSentAtUtc is null — that last column is what stops a reminder being sent
-/// twice, since this runs every few minutes.
+///   · Email  — when the explicit ReminderDateUtc has passed. Deduped by
+///              ReminderSentAtUtc, since an email is a point-in-time nudge.
+///   · In-app — when the task is overdue or falls due within a day. Deduped by the
+///              notification's SourceKey, since the bell is a standing list.
+///
+/// The triggers differ deliberately (see TaskReminderPolicy) so email is not sent
+/// for every due task and the bell is not left blank for tasks with no reminder
+/// time. What is shared is the decision itself: previously the in-app side lived on
+/// the notifications read path, which meant reminders only appeared if someone
+/// opened the bell, went to whoever was looking rather than the assignee, and
+/// ignored the user's in-app preference.
 /// </summary>
 public class TaskReminderBackgroundService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TaskReminderBackgroundService> _logger;
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
+    private const int BatchSize = 200;
 
     public TaskReminderBackgroundService(IServiceScopeFactory scopeFactory, ILogger<TaskReminderBackgroundService> logger)
     {
@@ -51,53 +62,96 @@ public class TaskReminderBackgroundService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var emailSender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
+        var notifications = scope.ServiceProvider.GetRequiredService<INotificationService>();
         var emailSettings = scope.ServiceProvider.GetRequiredService<IOptions<EmailSettings>>().Value;
 
         var now = DateTime.UtcNow;
-        var dueTasks = await db.TaskItems
+        var dueSoon = now.Add(TaskReminderPolicy.DueSoonWindow);
+
+        // One query covering candidates for EITHER channel. The predicates are
+        // inlined rather than calling TaskReminderPolicy because EF has to translate
+        // them to SQL; the policy is then applied in memory below, so the two can
+        // only disagree by being over-inclusive here, never under-inclusive.
+        var candidates = await db.TaskItems
             .Include(t => t.User)
             .Include(t => t.Assignee)
-            .Where(t => t.ReminderDateUtc != null
-                && t.ReminderDateUtc <= now
-                && t.ReminderSentAtUtc == null
-                && t.Status != TaskStatusEnum.Completed
-                && t.Status != TaskStatusEnum.Cancelled)
-            .Take(100) // Process in batches
+            .Where(t => t.Status != TaskStatusEnum.Completed
+                && t.Status != TaskStatusEnum.Cancelled
+                && !t.Completed
+                && ((t.ReminderDateUtc != null && t.ReminderDateUtc <= now && t.ReminderSentAtUtc == null)
+                    || (t.DueDateUtc != null && t.DueDateUtc <= dueSoon)))
+            // Deterministic order so a backlog larger than the batch drains steadily
+            // instead of re-processing an arbitrary slice each pass.
+            .OrderBy(t => t.ReminderDateUtc ?? t.DueDateUtc)
+            .Take(BatchSize)
             .ToListAsync(ct);
 
-        if (dueTasks.Count == 0) return;
-
-        _logger.LogInformation("Processing {Count} task reminders", dueTasks.Count);
+        if (candidates.Count == 0) return;
 
         // One query for everyone's notification preferences rather than one per task.
-        var recipientIds = dueTasks.Select(RecipientId).Distinct().ToList();
+        var recipientIds = candidates.Select(TaskReminderPolicy.RecipientId).Distinct().ToList();
         var settingsByUserId = await db.UserSettings
             .Where(s => recipientIds.Contains(s.UserId))
             .ToDictionaryAsync(s => s.UserId, ct);
 
         var baseUrl = (emailSettings.FrontendBaseUrl ?? string.Empty).Trim().TrimEnd('/');
-        var sent = 0;
-        var skipped = 0;
-        var failed = 0;
+        var emailed = 0;
+        var emailSkipped = 0;
+        var emailFailed = 0;
+        var raised = 0;
+        var inAppSkipped = 0;
 
-        foreach (var task in dueTasks)
+        foreach (var task in candidates)
         {
+            var recipientId = TaskReminderPolicy.RecipientId(task);
             var recipient = task.Assignee ?? task.User;
+            // No settings row means defaults, which have both channels on.
+            settingsByUserId.TryGetValue(recipientId, out var settings);
 
-            // No settings row means defaults, which have reminders on.
-            var wantsEmail = !settingsByUserId.TryGetValue(RecipientId(task), out var settings)
+            // ── In-app ──
+            if (TaskReminderPolicy.NeedsInAppReminder(task, now))
+            {
+                if (settings != null && !settings.InAppNotificationsEnabled)
+                {
+                    inAppSkipped++;
+                }
+                else
+                {
+                    try
+                    {
+                        var created = await notifications.CreateTaskReminderAsync(
+                            recipientId,
+                            task.OrganizationId,
+                            task,
+                            TaskReminderPolicy.IsOverdue(task, now),
+                            ct);
+                        if (created) raised++;
+                    }
+                    catch (Exception ex)
+                    {
+                        // One bad notification must not stop the email side or the
+                        // rest of the batch.
+                        _logger.LogWarning(ex, "Failed to raise in-app reminder for task {TaskId}", task.Id);
+                    }
+                }
+            }
+
+            // ── Email ──
+            if (!TaskReminderPolicy.NeedsEmailReminder(task, now)) continue;
+
+            var wantsEmail = settings == null
                 || (settings.EmailNotificationsEnabled && settings.EmailOnTaskDue);
 
             if (!wantsEmail || string.IsNullOrWhiteSpace(recipient.Email))
             {
-                skipped++;
+                emailSkipped++;
             }
             else
             {
                 var taskUrl = baseUrl.Length == 0 ? $"/tasks/{task.Id}" : $"{baseUrl}/tasks/{task.Id}";
                 var ok = await emailSender.SendTaskReminderEmailAsync(
                     recipient.Email, recipient.Name, task.Title, task.DueDateUtc, taskUrl, ct);
-                if (ok) sent++; else failed++;
+                if (ok) emailed++; else emailFailed++;
             }
 
             // Marked either way: a reminder is a point-in-time nudge, so retrying it every
@@ -108,10 +162,8 @@ public class TaskReminderBackgroundService : BackgroundService
 
         await db.SaveChangesAsync(ct);
         _logger.LogInformation(
-            "Processed {Count} task reminders: {Sent} emailed, {Skipped} skipped (notifications off or no address), {Failed} failed to send",
-            dueTasks.Count, sent, skipped, failed);
+            "Task reminders: {Raised} in-app raised, {InAppSkipped} in-app skipped (preference off); "
+            + "{Emailed} emailed, {EmailSkipped} email skipped (preference off or no address), {EmailFailed} email failed",
+            raised, inAppSkipped, emailed, emailSkipped, emailFailed);
     }
-
-    /// <summary>Reminders go to whoever the task is assigned to, else its owner.</summary>
-    private static Guid RecipientId(TaskItem task) => task.AssigneeId ?? task.UserId;
 }

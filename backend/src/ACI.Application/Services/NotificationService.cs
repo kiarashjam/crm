@@ -8,16 +8,16 @@ namespace ACI.Application.Services;
 /// <summary>
 /// Notifications for the header bell.
 ///
-/// The reminder generator lives here rather than in a background job so the
-/// feature needs no scheduler to be useful: listing notifications first brings
-/// task reminders up to date. That is safe because every generated row carries a
-/// SourceKey and duplicates are rejected by a unique index, so the operation is
-/// idempotent no matter how often the bell is opened.
+/// Reminder TIMING is not decided here. TaskReminderBackgroundService owns it for
+/// both channels (email and in-app) so one place decides that a task needs
+/// chasing; this service only persists and reads the in-app side. Generating
+/// reminders on the read path — as an earlier version did — meant the bell had to
+/// be opened for anything to appear, notified whoever happened to be looking
+/// rather than the task's assignee, and ignored the user's in-app preference.
 /// </summary>
 public class NotificationService : INotificationService
 {
     private readonly INotificationRepository _repository;
-    private readonly ITaskRepository _taskRepository;
     private readonly ILogger<NotificationService> _logger;
 
     /// <summary>Matches the frontend's NotificationType union.</summary>
@@ -27,11 +27,9 @@ public class NotificationService : INotificationService
 
     public NotificationService(
         INotificationRepository repository,
-        ITaskRepository taskRepository,
         ILogger<NotificationService> logger)
     {
         _repository = repository;
-        _taskRepository = taskRepository;
         _logger = logger;
     }
 
@@ -48,17 +46,8 @@ public class NotificationService : INotificationService
     public async Task<IReadOnlyList<NotificationDto>> GetForUserAsync(
         Guid userId, Guid? organizationId, int take = DefaultTake, CancellationToken ct = default)
     {
-        // Bring reminders up to date before listing, so opening the bell always
-        // reflects current task state. Failure here must not blank the list.
-        try
-        {
-            await SyncTaskRemindersAsync(userId, organizationId, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Task reminder sync failed for user {UserId}; returning stored notifications", userId);
-        }
-
+        // A pure read. Reminders are produced by the background service, so listing
+        // never writes and the bell is cheap to poll.
         var items = await _repository.GetForUserAsync(userId, organizationId, Math.Clamp(take, 1, 200), ct);
         return items.Select(ToDto).ToList();
     }
@@ -98,75 +87,45 @@ public class NotificationService : INotificationService
     public Task<int> MarkAllReadAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         _repository.MarkAllReadAsync(userId, organizationId, ct);
 
-    public async Task SyncTaskRemindersAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    public async Task<bool> CreateTaskReminderAsync(
+        Guid recipientId,
+        Guid? organizationId,
+        TaskItem task,
+        bool overdue,
+        CancellationToken ct = default)
     {
-        var tasks = await _taskRepository.GetByUserIdAsync(userId, organizationId, ct);
-        if (tasks.Count == 0) return;
+        var sourceKey = TaskReminderPolicy.SourceKey(task, overdue);
 
-        var now = DateTime.UtcNow;
-        var dayAhead = now.AddDays(1);
+        // Cheap pre-check so the common case does not rely on catching a unique-index
+        // violation; the catch below still covers a concurrent insert.
+        var existing = await _repository.GetExistingSourceKeysAsync(recipientId, new[] { sourceKey }, ct);
+        if (existing.Count > 0) return false;
 
-        // Build the candidate set first, then filter against the keys already
-        // stored — one query instead of one per task.
-        var candidates = new List<Notification>();
-        foreach (var t in tasks)
+        var entity = new Notification
         {
-            if (t.Status == Domain.Enums.TaskStatus.Completed) continue;
-            if (t.Status == Domain.Enums.TaskStatus.Cancelled) continue;
-            if (t.Completed) continue;
-            if (t.DueDateUtc == null) continue;
+            Id = Guid.NewGuid(),
+            UserId = recipientId,
+            OrganizationId = organizationId,
+            Type = "task",
+            Title = TaskReminderPolicy.Title(overdue),
+            Message = task.Title,
+            Link = TaskReminderPolicy.Link(task),
+            Read = false,
+            CreatedAtUtc = DateTime.UtcNow,
+            SourceKey = sourceKey,
+        };
 
-            var due = t.DueDateUtc.Value;
-            var overdue = due < now;
-            var dueToday = !overdue && due <= dayAhead;
-            if (!overdue && !dueToday) continue;
-
-            candidates.Add(new Notification
-            {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                OrganizationId = organizationId,
-                Type = "task",
-                Title = overdue ? "Task overdue" : "Task due today",
-                Message = t.Title,
-                Link = LinkForTask(t),
-                Read = false,
-                CreatedAtUtc = now,
-                // Includes the overdue/due distinction, so a task that slips from
-                // "due today" to "overdue" legitimately raises a second reminder.
-                SourceKey = $"task-{(overdue ? "overdue" : "due")}-{t.Id}",
-            });
-        }
-
-        if (candidates.Count == 0) return;
-
-        var existing = await _repository.GetExistingSourceKeysAsync(
-            userId, candidates.Select(c => c.SourceKey!), ct);
-        var existingSet = new HashSet<string>(existing, StringComparer.Ordinal);
-
-        foreach (var candidate in candidates)
+        try
         {
-            if (existingSet.Contains(candidate.SourceKey!)) continue;
-            try
-            {
-                await _repository.AddAsync(candidate, ct);
-                existingSet.Add(candidate.SourceKey!);
-            }
-            catch (Exception ex)
-            {
-                // A concurrent request may have inserted the same SourceKey between
-                // our read and write; the unique index rejects it, which is the
-                // intended outcome. Log and carry on with the remaining candidates.
-                _logger.LogDebug(ex, "Skipped duplicate reminder {SourceKey}", candidate.SourceKey);
-            }
+            await _repository.AddAsync(entity, ct);
+            return true;
         }
-    }
-
-    private static string LinkForTask(TaskItem t)
-    {
-        if (t.LeadId != null) return $"/leads/{t.LeadId}";
-        if (t.DealId != null) return $"/deals/{t.DealId}";
-        if (t.ContactId != null) return $"/contacts/{t.ContactId}";
-        return "/tasks";
+        catch (Exception ex)
+        {
+            // Another run inserted the same SourceKey between our check and write.
+            // The unique index rejecting it is the intended outcome, not an error.
+            _logger.LogDebug(ex, "Skipped duplicate task reminder {SourceKey}", sourceKey);
+            return false;
+        }
     }
 }
