@@ -105,6 +105,18 @@ export async function createInvite(organizationId: string, email: string): Promi
   return invite ?? null;
 }
 
+/**
+ * Re-send the invitation email for a pending invite (and refresh its expiry).
+ * Throws when the server could not send — the message explains why, which is how
+ * an unconfigured mail server becomes visible in the UI.
+ */
+export async function resendInvite(inviteId: string): Promise<InviteDto | null> {
+  const invite = await authFetchJson<InviteDto>(`/api/invites/${inviteId}/resend`, {
+    method: 'POST',
+  });
+  return invite ?? null;
+}
+
 export async function listPendingInvitesForOrg(organizationId: string): Promise<InviteDto[]> {
   if (!isUsingRealApi()) return [];
   const list = await authFetchJson<InviteDto[]>(`/api/invites/organization/${organizationId}`);

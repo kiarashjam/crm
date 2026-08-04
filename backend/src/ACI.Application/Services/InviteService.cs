@@ -96,6 +96,62 @@ public sealed class InviteService : IInviteService
         return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
     }
 
+    public async Task<Result<InviteDto>> ResendInviteAsync(Guid inviteId, Guid userId, CancellationToken ct = default)
+    {
+        _logger.LogInformation("User {UserId} resending invite {InviteId}", userId, inviteId);
+
+        var invite = await _inviteRepository.GetByIdAsync(inviteId, ct);
+        if (invite == null)
+        {
+            _logger.LogWarning("Resend failed: invite {InviteId} not found", inviteId);
+            return Result.Failure<InviteDto>(DomainErrors.Invite.NotFound);
+        }
+
+        if (invite.AcceptedByUserId != null)
+        {
+            _logger.LogWarning("Resend failed: invite {InviteId} has already been accepted", inviteId);
+            return Result.Failure<InviteDto>(DomainErrors.Invite.AlreadyAccepted);
+        }
+
+        var org = await _organizationRepository.GetByIdAsync(invite.OrganizationId, ct);
+        if (org == null)
+        {
+            _logger.LogWarning("Resend failed: organization {OrganizationId} not found", invite.OrganizationId);
+            return Result.Failure<InviteDto>(DomainErrors.Organization.NotFound);
+        }
+
+        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, invite.OrganizationId, ct);
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        {
+            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, invite.OrganizationId);
+            return Result.Failure<InviteDto>(DomainErrors.Organization.NotOwnerOrManager);
+        }
+
+        // Give the recipient a full window again — an invitation worth re-sending is
+        // usually one that sat unseen, and an already-expired link would be useless.
+        invite.ExpiresAtUtc = DateTime.UtcNow.AddDays(7);
+        await _inviteRepository.UpdateAsync(invite, ct);
+
+        var inviter = await _userRepository.GetByIdAsync(userId, ct);
+        var sent = await _emailSender.SendOrganizationInviteEmailAsync(
+            invite.Email, org.Name, inviter?.Name ?? string.Empty, BuildAcceptUrl(), ct);
+
+        if (!sent)
+        {
+            // Surfaced to the caller on purpose: "resend" that silently does nothing is
+            // indistinguishable from a mail server that is not configured at all.
+            _logger.LogError("Resend failed: could not send invitation email to {Email}", invite.Email);
+            return Result.Failure<InviteDto>(EmailNotSent);
+        }
+
+        _logger.LogInformation("Invite {InviteId} re-sent to {Email}", inviteId, invite.Email);
+        return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
+    }
+
+    private static readonly Error EmailNotSent = new(
+        "Invite.EmailNotSent",
+        "The invitation could not be emailed. Check the server's email settings (SendGrid API key and a verified sender address).");
+
     public async Task<Result<IReadOnlyList<InviteDto>>> ListPendingInvitesAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
         _logger.LogInformation("Listing pending invites for organization {OrganizationId} by user {UserId}", organizationId, userId);

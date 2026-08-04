@@ -16,6 +16,7 @@ import { useOrg } from '@/app/contexts/OrgContext';
 import {
   getOrgMembers,
   createInvite,
+  resendInvite,
   listPendingInvitesForOrg,
   listPendingJoinRequestsForOrg,
   acceptJoinRequest,
@@ -457,6 +458,27 @@ export default function Team() {
   };
 
   // Handle role change
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
+  const handleResendInvite = async (invite: InviteDto) => {
+    if (resendingId) return;
+    setResendingId(invite.id);
+    try {
+      const updated = await resendInvite(invite.id);
+      if (updated) {
+        setPendingInvites((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+        toast.success(`Invitation re-sent to ${invite.email}`);
+      }
+    } catch (err) {
+      // The server explains why (most often: email is not configured, or the
+      // sender address is not verified in SendGrid), so show that verbatim.
+      const message = err instanceof Error ? err.message : 'Could not resend the invitation';
+      toast.error(message.replace(/^HTTP \d+: /, ''));
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   const handleRoleChange = async (member: OrgMemberDto, newRole: number) => {
     if (!currentOrgId) return;
     setChangingRole(member.userId);
@@ -910,10 +932,24 @@ export default function Team() {
                           </p>
                         </div>
                       </div>
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                        <Send className="w-3 h-3" />
-                        Pending
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                          <Send className="w-3 h-3" />
+                          Pending
+                        </span>
+                        {isAdmin && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            disabled={resendingId === invite.id}
+                            onClick={() => handleResendInvite(invite)}
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${resendingId === invite.id ? 'animate-spin' : ''}`} />
+                            {resendingId === invite.id ? 'Sending…' : 'Resend email'}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
