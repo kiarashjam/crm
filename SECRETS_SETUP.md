@@ -116,9 +116,10 @@ Task reminders go to the task's **assignee**, or its owner when unassigned, and 
 each person's **Settings → Notifications** toggles (`Email notifications` and
 `Email me when a task is due`). Each reminder is sent at most once.
 
-> If email is **not** configured, both still behave safely: the reset endpoint returns a
-> generic success without sending (and the token is not stored), and an invitation is
-> still created and visible in-app — only the notification email is skipped.
+> If email is **not** configured, all three still behave safely: the reset endpoint returns
+> a generic success without sending (and the token is not stored), an invitation is still
+> created and visible in-app, and a reminder is still marked processed — only the
+> notification email is skipped.
 
 ### Values to use with SendGrid
 
@@ -145,12 +146,13 @@ A `403 Forbidden` from the relay almost always means the from-address is not ver
 
 ### Azure deployment
 
-Add to **Azure Portal → Web Apps → \<your-backend\> → Configuration → Application settings**
-(the `__` double underscore is how .NET maps `Email:SmtpHost` to an environment variable):
-
 Host, username and sender are already committed as defaults in `appsettings.json`
 (`smtp.sendgrid.net` / `apikey` / `kia@bonapp.group`), so in practice only the
-**API key** and the **SPA URL** need setting:
+**API key** and the **SPA URL** need setting.
+
+Add them in **Azure Portal → Web Apps → \<your-backend\> → Configuration → Application
+settings** (the `__` double underscore is how .NET maps `Email:SmtpHost` to an
+environment variable):
 
 | Name | Value | Required? |
 |------|-------|-----------|
@@ -163,8 +165,8 @@ Host, username and sender are already committed as defaults in `appsettings.json
 | `Email__UseSsl` | `true` (default) | no |
 | `Email__SmtpPort` | `587` (default) | no |
 
-`Email__FrontendBaseUrl` matters: it builds the links in both emails. If it is empty or
-not an absolute http(s) URL, password reset is skipped and logged.
+`Email__FrontendBaseUrl` matters: it builds the links in all three emails. If it is empty
+or not an absolute http(s) URL, password reset is skipped and logged.
 
 ### Local development
 
