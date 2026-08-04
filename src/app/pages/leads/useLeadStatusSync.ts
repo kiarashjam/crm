@@ -13,6 +13,7 @@ import {
   planStatusSync,
   statusDrift,
   previewStatusChange,
+  derivedTier,
   type StatusOption,
   type StatusSyncPlan,
   type StatusDrift,
@@ -74,6 +75,14 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
     (leadId: string) => metaSnapshot[leadId]?.lastAutoStatus,
     [metaSnapshot],
   );
+  const manualFor = useCallback(
+    (leadId: string) => metaSnapshot[leadId]?.manualStatus,
+    [metaSnapshot],
+  );
+  const heldTierFor = useCallback(
+    (leadId: string) => metaSnapshot[leadId]?.manualHeldTier,
+    [metaSnapshot],
+  );
 
   /** What auto-sync would do right now, without writing anything. */
   const plan = useCallback(
@@ -86,9 +95,11 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         isConverted: lead.isConverted,
         enabled,
         lastAutoStatus: lastAutoFor(lead.id),
+        manualStatus: manualFor(lead.id),
+        manualHeldTier: heldTierFor(lead.id),
         overrides,
       }),
-    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
+    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor, manualFor, heldTierFor],
   );
 
   /** Standing disagreement between status and pipeline, computed from state. */
@@ -121,9 +132,11 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         isConverted: lead.isConverted,
         enabled,
         lastAutoStatus: lastAutoFor(lead.id),
+        manualStatus: manualFor(lead.id),
+        manualHeldTier: heldTierFor(lead.id),
         overrides,
       })?.name ?? null,
-    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
+    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor, manualFor, heldTierFor],
   );
 
   /**
@@ -154,6 +167,8 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         statusesLoaded,
         enabled,
         lastAutoStatus: lastAutoFor(lead.id),
+        manualStatus: manualFor(lead.id),
+        manualHeldTier: heldTierFor(lead.id),
         overrides,
         log: opts?.log,
       });
@@ -198,7 +213,7 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
                   // Invalidate on dismiss so a stale handle cannot resurrect an
                   // old status minutes later.
                   if (!live) return;
-                  void undoAutoStatus(lead.id, undoTo, statusOptions).then((rev) => {
+                  void undoAutoStatus(lead.id, undoTo, statusOptions, derivedTier(pipeline)).then((rev) => {
                     if (rev) opts?.onApplied?.(rev);
                   });
                 },
@@ -211,7 +226,7 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
 
       return { ok: true, lead: result.lead, plan: result.plan, stale: false };
     },
-    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
+    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor, manualFor, heldTierFor],
   );
 
   return useMemo(

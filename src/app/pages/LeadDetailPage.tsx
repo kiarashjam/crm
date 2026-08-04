@@ -34,7 +34,8 @@ import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { LeadPipelineTracker } from './leads/components/LeadPipelineTracker';
 import { parsePipeline, serializePipeline, type LeadPipeline } from './leads/leadPipeline';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
-import { clearAutoStatus } from './leads/leadStatusSyncStore';
+import { recordManualStatus } from './leads/leadStatusSyncStore';
+import { derivedTier } from './leads/leadStatusSync';
 import type { StatusDrift, SuggestReason } from './leads/leadStatusSync';
 import { StatusSyncStrip } from './leads/components/StatusSyncStrip';
 import { AddLeadDialog } from './leads/AddLeadDialog';
@@ -392,10 +393,9 @@ export default function LeadDetailPage() {
     const opt = statusOptions.find((s) => s.name === status);
     const patch: Record<string, unknown> = { status };
     if (opt && isValidGuid(opt.id)) patch.leadStatusId = opt.id;
-    // A deliberate pick outranks the tracker's opinion: forget the last
-    // auto-written status so the next pipeline edit suggests rather than
-    // silently overwriting this choice.
-    clearAutoStatus(lead.id);
+    // A deliberate pick outranks the tracker's opinion: record it so the next
+    // pipeline edit suggests rather than silently overwriting this choice.
+    recordManualStatus(lead.id, status, derivedTier(pipeline));
     await patchLead(patch, { subject: `Status set to ${status}`, body: `From "${lead.status}" to "${status}"` });
   };
 

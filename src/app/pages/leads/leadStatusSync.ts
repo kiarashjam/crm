@@ -440,6 +440,12 @@ export function resolveStatus(
   return null;
 }
 
+/** The tier a pipeline currently derives to — the baseline to record when a user
+ *  overrides the status by hand. Null for terminal / unrankable stages. */
+export function derivedTier(p: LeadPipeline): number | null {
+  return STAGE_TIER[deriveStage(p).stage];
+}
+
 /** Best-guess canonical stage for an arbitrary status string, or null when the
  *  label is not one we recognise (a custom or parking status). */
 export function classifyStatusLabel(label: string): CanonicalStage | null {
@@ -521,6 +527,17 @@ export interface StatusSyncContext {
    *  since diverged, a human changed it by hand (possibly on another device) —
    *  so we suggest instead of overwriting their decision. */
   lastAutoStatus?: string;
+  /** A status the user picked deliberately. Unlike `lastAutoStatus` divergence,
+   *  this also protects a lead auto-sync has never written to. */
+  manualStatus?: string;
+  /**
+   * The pipeline's derived tier at the moment of that pick, or null if it was
+   * terminal / unrankable. The hold releases only when the pipeline climbs
+   * ABOVE this — not above the picked status itself, which would void the hold
+   * immediately: auto-sync had already derived something higher, which is why it
+   * wrote in the first place.
+   */
+  manualHeldTier?: number | null;
   /** Org-level stage → status-name pins. */
   overrides?: Partial<Record<CanonicalStage, string>>;
 }
@@ -588,17 +605,35 @@ export function planStatusSync(ctx: StatusSyncContext): StatusSyncPlan {
   // complete, so anything we cannot classify gets the same protection.
   if (from && fromStage === null) reasons.push('unrecognised_status');
 
-  // Someone hand-picked the current status since our last write. The hold is
-  // RELEASABLE: it lasts only while the pipeline has not moved past the status
-  // they chose. Otherwise a lead someone once touched by hand would sit in
-  // suggest-mode forever — exactly the leads that get worked the most.
+  // A human chose the current status. Two independent signals, because either
+  // alone leaves a hole:
+  //   · `manualStatus` — we recorded the pick here. Works even for a lead
+  //     auto-sync has never written to.
+  //   · `lastAutoStatus` divergence — the live status is not what we last wrote,
+  //     so *someone* changed it, including on a device whose localStorage we
+  //     cannot see.
   //
-  // One deliberate exception: a hand-set TERMINAL (Lost / Unqualified) has tier
-  // `null`, so `advancesBeyond` can never be true and the hold holds for good.
-  // That is the intent — a human writing off a lead outranks any inference we
-  // could make — and the drift strip still offers one-click revival.
-  if (ctx.lastAutoStatus && norm(from) !== norm(ctx.lastAutoStatus) && !advancesBeyond) {
-    reasons.push('manual_change');
+  // The hold is RELEASABLE: it lasts only while the pipeline has not moved past
+  // the status they chose, so a lead someone once touched by hand does not sit
+  // in suggest-mode forever — exactly the leads that get worked the most.
+  //
+  // A hand-set TERMINAL (Lost / Unqualified) therefore holds until the pipeline
+  // records something genuinely deeper than it had when the lead was written
+  // off — a banked deposit does outrank a write-off, but merely re-saving the
+  // same phases does not. The drift strip offers one-click revival regardless.
+  const humanPicked = !!ctx.manualStatus && norm(from) === norm(ctx.manualStatus);
+  const divergedFromOurWrite = !!ctx.lastAutoStatus && norm(from) !== norm(ctx.lastAutoStatus);
+  if (humanPicked || divergedFromOurWrite) {
+    // Release only on genuine NEW progress since the intervention. Measuring
+    // against the picked status instead would void every hold on creation, and
+    // would make Undo revert for exactly one render.
+    const held = ctx.manualHeldTier;
+    const releasedByProgress = held !== undefined && held !== null
+      && toTier !== null && toTier > held;
+    // With no recorded baseline (a status changed on another device), fall back
+    // to the coarser check so the hold can still release eventually.
+    const releasedWithoutBaseline = held === undefined && advancesBeyond;
+    if (!releasedByProgress && !releasedWithoutBaseline) reasons.push('manual_change');
   }
 
   // A bare no-show is real but ambiguous — never mark a lead dead for one
