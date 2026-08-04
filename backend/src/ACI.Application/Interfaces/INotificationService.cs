@@ -1,4 +1,5 @@
 using ACI.Application.DTOs;
+using ACI.Domain.Entities;
 
 namespace ACI.Application.Interfaces;
 
@@ -19,8 +20,16 @@ public interface INotificationService
     Task<int> MarkAllReadAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     /// <summary>
-    /// Turns the user's overdue / due-today tasks into notifications, deduped by
-    /// SourceKey. Safe to call on every list request: re-running raises nothing new.
+    /// Raises the in-app reminder for a due/overdue task, unless one with the same
+    /// SourceKey already exists. Returns true when a notification was created.
+    ///
+    /// Called only by TaskReminderBackgroundService, which owns reminder timing for
+    /// both channels — see TaskReminderPolicy.
     /// </summary>
-    Task SyncTaskRemindersAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    Task<bool> CreateTaskReminderAsync(
+        Guid recipientId,
+        Guid? organizationId,
+        TaskItem task,
+        bool overdue,
+        CancellationToken ct = default);
 }
