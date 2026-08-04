@@ -191,7 +191,7 @@ export default function Leads() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentOrgId } = useOrg();
+  const { currentOrgId, isReadOnly } = useOrg();
 
   const searchFromUrl = searchParams.get('search') || '';
   const currentPage = Number(searchParams.get('page')) || 1;
@@ -1381,22 +1381,29 @@ export default function Leads() {
               </div>
               
               <div className="flex items-center gap-3">
-                <Button onClick={() => navigate('/leads/webhook')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
-                  <Link2 className="w-4 h-4" />
-                  <span className="hidden sm:inline">Webhook</span>
-                </Button>
-                <Button onClick={() => navigate('/leads/import')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
-                  <Upload className="w-4 h-4" />
-                  <span className="hidden sm:inline">Import</span>
-                </Button>
+                {!isReadOnly && (
+                  <>
+                    <Button onClick={() => navigate('/leads/webhook')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
+                      <Link2 className="w-4 h-4" />
+                      <span className="hidden sm:inline">Webhook</span>
+                    </Button>
+                    <Button onClick={() => navigate('/leads/import')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
+                      <Upload className="w-4 h-4" />
+                      <span className="hidden sm:inline">Import</span>
+                    </Button>
+                  </>
+                )}
+                {/* Export is read-only, so viewers keep it. */}
                 <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30 disabled:opacity-60">
                   <Download className={`w-4 h-4 ${exporting ? 'animate-pulse' : ''}`} />
                   <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export CSV'}</span>
                 </Button>
-                <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
-                  <Plus className="w-4 h-4" />
-                  Add Lead
-                </Button>
+                {!isReadOnly && (
+                  <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
+                    <Plus className="w-4 h-4" />
+                    Add Lead
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -1969,7 +1976,7 @@ export default function Leads() {
           null /* No results message is shown in the filter panel above */
         ) : (
           <>
-          {selectedIds.size > 0 && (
+          {selectedIds.size > 0 && !isReadOnly && (
             <BulkActionsBar
               count={selectedIds.size}
               statuses={statusOptions.map((s) => s.name)}
@@ -2040,9 +2047,10 @@ export default function Leads() {
                     'bg-gradient-to-b from-slate-500 to-slate-300'
                   }`} />
 
-                  {/* Bulk-select checkbox: visible on hover, or always when any are selected. */}
+                  {/* Bulk-select checkbox: visible on hover, or always when any are selected.
+                      Hidden for view-only members since every bulk action is a write. */}
                   <div
-                    className={`absolute top-3 left-3 z-20 transition-opacity ${
+                    className={`absolute top-3 left-3 z-20 transition-opacity ${isReadOnly ? 'hidden' : ''} ${
                       selectedIds.size > 0 || selectedIds.has(lead.id)
                         ? 'opacity-100'
                         : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
@@ -2157,7 +2165,7 @@ export default function Leads() {
                           <StatusChangePopover
                             currentStatus={lead.status}
                             statuses={statusOptions.map((s) => s.name)}
-                            disabled={lead.isConverted}
+                            disabled={lead.isConverted || isReadOnly}
                             onChange={(s) => handleInlineStatusChange(lead, s)}
                             className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border shadow-sm ring-1 ring-slate-900/[0.04] ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}
                             prefix={<span className={`w-2 h-2 rounded-full ${statusStyle.dot} shadow-sm`} />}
@@ -2347,69 +2355,91 @@ export default function Leads() {
                         className="flex items-center justify-between gap-2 pt-3 mt-0.5 border-t border-slate-200/70 -mx-1 px-1 pb-0.5"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <AssignPopover
-                          assigneeId={lead.assignedToId}
-                          members={orgMembers}
-                          onAssign={(userId) => handleAssignLead(lead, userId)}
-                          trigger={
-                            <button
-                              type="button"
-                              aria-label={assignee ? `Assigned to ${assignee.name} — change owner` : 'Assign owner'}
-                              className="group/assign inline-flex max-w-[55%] items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 text-sm text-slate-600 shadow-sm hover:border-indigo-300 hover:bg-indigo-50/50"
-                            >
-                              {assignee ? (
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white ring-2 ring-white">
-                                  {assignee.name.charAt(0).toUpperCase()}
-                                </span>
-                              ) : (
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                                  <UserCircle className="h-4 w-4" />
-                                </span>
-                              )}
-                              <span className="truncate font-medium">{assignee ? assignee.name : 'Unassigned'}</span>
-                              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                            </button>
-                          }
-                        />
-                        <div className="flex items-center gap-2 shrink-0">
-                          <InlineSalesEditorPopover
-                            lead={lead}
-                            leadName={lead.name}
-                            statusSync={statusSync}
-                            onSaved={(updated) => {
-                              // Merge in place and deliberately do NOT re-apply
-                              // the client filters: an auto status change could
-                              // otherwise drop this row (and the popover the
-                              // user is still typing in) out of a filtered list.
-                              setLeads((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
-                            }}
-                            trigger={
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-indigo-200/70 hover:border-indigo-300 shadow-sm font-medium rounded-lg"
-                                aria-label={`Lead pipeline for ${lead.name}`}
-                              >
-                                <Sparkles className="w-4 h-4" />
-                                Track
-                              </Button>
-                            }
-                          />
-                          <QuickLogPopover
-                            onSubmit={(payload) => handleQuickLogActivity(lead, payload)}
-                            trigger={
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-emerald-200/70 hover:border-emerald-300 shadow-sm font-medium rounded-lg"
-                                aria-label={`Log activity for ${lead.name}`}
-                              >
-                                <MessageSquarePlus className="w-4 h-4" />
-                                Log
-                              </Button>
-                            }
-                          />
-                        </div>
+                        {isReadOnly ? (
+                          /* View-only: the owner is still shown (that is information a
+                             viewer needs) but is not changeable, and logging is hidden. */
+                          <span
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 text-sm text-slate-600 shadow-sm"
+                            title={assignee ? `Assigned to ${assignee.name}` : 'Unassigned'}
+                          >
+                            {assignee ? (
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white ring-2 ring-white">
+                                {assignee.name.charAt(0).toUpperCase()}
+                              </span>
+                            ) : (
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                                <UserCircle className="h-4 w-4" />
+                              </span>
+                            )}
+                            <span className="truncate font-medium">{assignee ? assignee.name : 'Unassigned'}</span>
+                          </span>
+                        ) : (
+                          <>
+                            <AssignPopover
+                              assigneeId={lead.assignedToId}
+                              members={orgMembers}
+                              onAssign={(userId) => handleAssignLead(lead, userId)}
+                              trigger={
+                                <button
+                                  type="button"
+                                  aria-label={assignee ? `Assigned to ${assignee.name} — change owner` : 'Assign owner'}
+                                  className="group/assign inline-flex max-w-[55%] items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 text-sm text-slate-600 shadow-sm hover:border-indigo-300 hover:bg-indigo-50/50"
+                                >
+                                  {assignee ? (
+                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white ring-2 ring-white">
+                                      {assignee.name.charAt(0).toUpperCase()}
+                                    </span>
+                                  ) : (
+                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                                      <UserCircle className="h-4 w-4" />
+                                    </span>
+                                  )}
+                                  <span className="truncate font-medium">{assignee ? assignee.name : 'Unassigned'}</span>
+                                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                                </button>
+                              }
+                            />
+                            <div className="flex items-center gap-2 shrink-0">
+                              <InlineSalesEditorPopover
+                                lead={lead}
+                                leadName={lead.name}
+                                statusSync={statusSync}
+                                onSaved={(updated) => {
+                                  // Merge in place and deliberately do NOT re-apply
+                                  // the client filters: an auto status change could
+                                  // otherwise drop this row (and the popover the
+                                  // user is still typing in) out of a filtered list.
+                                  setLeads((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
+                                }}
+                                trigger={
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-indigo-200/70 hover:border-indigo-300 shadow-sm font-medium rounded-lg"
+                                    aria-label={`Lead pipeline for ${lead.name}`}
+                                  >
+                                    <Sparkles className="w-4 h-4" />
+                                    Track
+                                  </Button>
+                                }
+                              />
+                              <QuickLogPopover
+                                onSubmit={(payload) => handleQuickLogActivity(lead, payload)}
+                                trigger={
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-emerald-200/70 hover:border-emerald-300 shadow-sm font-medium rounded-lg"
+                                    aria-label={`Log activity for ${lead.name}`}
+                                  >
+                                    <MessageSquarePlus className="w-4 h-4" />
+                                    Log
+                                  </Button>
+                                }
+                              />
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>

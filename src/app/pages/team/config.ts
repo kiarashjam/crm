@@ -1,10 +1,11 @@
-import { Crown, UserCircle, ShieldCheck } from 'lucide-react';
+import { Crown, UserCircle, ShieldCheck, Eye } from 'lucide-react';
 
 // Role mapping with icons and styles
 export const ROLES = {
   0: { label: 'Owner', icon: Crown, color: 'text-amber-600', bg: 'bg-amber-100', bgGradient: 'from-amber-500 to-orange-500' },
   1: { label: 'Member', icon: UserCircle, color: 'text-slate-600', bg: 'bg-slate-100', bgGradient: 'from-slate-500 to-slate-600' },
   2: { label: 'Manager', icon: ShieldCheck, color: 'text-blue-600', bg: 'bg-blue-100', bgGradient: 'from-blue-500 to-indigo-500' },
+  3: { label: 'Viewer', icon: Eye, color: 'text-violet-600', bg: 'bg-violet-100', bgGradient: 'from-violet-500 to-purple-500' },
 } as const;
 
 export function getRoleInfo(role: number) {

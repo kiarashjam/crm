@@ -10,6 +10,7 @@ import {
 import {
   listMyOrganizations,
   listMyPendingInvites,
+  isOrgViewer,
   type Organization,
   type InviteDto,
 } from '@/app/api/organizations';
@@ -32,6 +33,11 @@ type OrgContextValue = {
   pendingInvites: InviteDto[];
   currentOrgId: string | null;
   currentOrg: Organization | null;
+  /**
+   * True when the user may only view the current organization. The backend
+   * rejects every write for this role, so the UI hides/disables editing.
+   */
+  isReadOnly: boolean;
   setCurrentOrg: (orgId: string | null) => void;
   refreshOrgs: () => Promise<void>;
   loading: boolean;
@@ -133,19 +139,22 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     [organizations, currentOrgId]
   );
 
+  const isReadOnly = useMemo(() => isOrgViewer(currentOrg), [currentOrg]);
+
   const value = useMemo<OrgContextValue>(
     () => ({
       organizations,
       pendingInvites,
       currentOrgId,
       currentOrg,
+      isReadOnly,
       setCurrentOrg,
       refreshOrgs,
       loading,
       hasFetched,
       addDemoOrg: isUsingRealApi() ? undefined : addDemoOrg,
     }),
-    [organizations, pendingInvites, currentOrgId, currentOrg, setCurrentOrg, refreshOrgs, loading, hasFetched, addDemoOrg]
+    [organizations, pendingInvites, currentOrgId, currentOrg, isReadOnly, setCurrentOrg, refreshOrgs, loading, hasFetched, addDemoOrg]
   );
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;

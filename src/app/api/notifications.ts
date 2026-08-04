@@ -13,7 +13,7 @@
 // remember which endpoints have returned 404 for this session and skip
 // them on subsequent calls until the tab reloads.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { ApiError, apiWithFallback, authFetch, authFetchJson } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import type { TaskItem } from './types';
 
@@ -27,9 +27,12 @@ async function realOrCache404<T>(endpoint: string, real: () => Promise<T>): Prom
   try {
     return await real();
   } catch (err) {
-    if (err instanceof Error && /\b404\b|Not Found/i.test(err.message)) {
-      unavailableEndpoints.add(endpoint);
-    }
+    // Prefer the typed status; fall back to the message only for throws that
+    // did not come through authFetchJson (e.g. the hand-rolled authFetch paths).
+    const is404 = err instanceof ApiError
+      ? err.status === 404
+      : err instanceof Error && /\b404\b|Not Found/i.test(err.message);
+    if (is404) unavailableEndpoints.add(endpoint);
     throw err;
   }
 }

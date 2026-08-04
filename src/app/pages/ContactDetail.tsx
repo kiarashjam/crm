@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 type ContactRaw = Contact & Record<string, unknown>;
 
@@ -253,20 +254,28 @@ export default function ContactDetail() {
             </Button>
             <div className="flex gap-2">
               {contact.email && !contact.doNotContact && (
-                <Button variant="outline" size="sm" onClick={() => setEmailOpen(true)} className="gap-1">
-                  <Mail className="w-3.5 h-3.5" /> Email
-                </Button>
+                <WriteOnly>
+                  <Button variant="outline" size="sm" onClick={() => setEmailOpen(true)} className="gap-1">
+                    <Mail className="w-3.5 h-3.5" /> Email
+                  </Button>
+                </WriteOnly>
               )}
-              <Button variant="outline" size="sm" onClick={openEdit} className="gap-1">
-                <Pencil className="w-3.5 h-3.5" /> Edit
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleArchiveToggle} className="gap-1">
-                {contact.isArchived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
-                {contact.isArchived ? 'Unarchive' : 'Archive'}
-              </Button>
-              <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
+              <WriteOnly>
+                <Button variant="outline" size="sm" onClick={openEdit} className="gap-1">
+                  <Pencil className="w-3.5 h-3.5" /> Edit
+                </Button>
+              </WriteOnly>
+              <WriteOnly>
+                <Button variant="outline" size="sm" onClick={handleArchiveToggle} className="gap-1">
+                  {contact.isArchived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
+                  {contact.isArchived ? 'Unarchive' : 'Archive'}
+                </Button>
+              </WriteOnly>
+              <WriteOnly>
+                <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </WriteOnly>
             </div>
           </div>
 

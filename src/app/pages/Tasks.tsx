@@ -87,6 +87,7 @@ import { KanbanTaskCard } from './tasks/components/KanbanTaskCard';
 import { KanbanColumnComponent } from './tasks/components/KanbanColumn';
 import { TaskGroupSection } from './tasks/components/TaskGroupSection';
 import { TaskDetailModal } from './tasks/components/TaskDetailModal';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -813,13 +814,15 @@ export default function Tasks() {
                   </Button>
                 )}
 
-                <Button 
-                  onClick={() => openCreate()} 
-                  className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold"
-                >
-                  <Plus className="w-4 h-4" />
-                  New Task
-                </Button>
+                <WriteOnly>
+                  <Button 
+                    onClick={() => openCreate()} 
+                    className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold"
+                  >
+                    <Plus className="w-4 h-4" />
+                    New Task
+                  </Button>
+                </WriteOnly>
               </div>
             </div>
           </div>

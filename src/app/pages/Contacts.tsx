@@ -50,6 +50,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 export default function Contacts() {
   const navigate = useNavigate();
@@ -453,10 +454,12 @@ export default function Contacts() {
                     { header: 'Created', value: (c) => c.createdAtUtc },
                   ]}
                 />
-                <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
-                  <Plus className="w-4 h-4" />
-                  Add Contact
-                </Button>
+                <WriteOnly>
+                  <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
+                    <Plus className="w-4 h-4" />
+                    Add Contact
+                  </Button>
+                </WriteOnly>
               </div>
             </div>
           </div>
@@ -861,10 +864,12 @@ export default function Contacts() {
                 </div>
                 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Button onClick={openCreate} className="gap-2 h-11 px-6 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-200/50">
-                    <Plus className="w-4 h-4" />
-                    Add Your First Contact
-                  </Button>
+                  <WriteOnly>
+                    <Button onClick={openCreate} className="gap-2 h-11 px-6 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-200/50">
+                      <Plus className="w-4 h-4" />
+                      Add Your First Contact
+                    </Button>
+                  </WriteOnly>
                 </div>
               </div>
             </div>
@@ -954,41 +959,43 @@ export default function Contacts() {
                       </div>
 
                       {/* Actions dropdown */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <span className="sr-only">Open menu</span>
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                            </svg>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuItem onClick={() => openEdit(contact)}>
-                            <Pencil className="w-4 h-4 mr-2" />
-                            Edit Contact
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => navigate('/send', { state: { contactId: contact.id, contactName: contact.name } })}>
-                            <Send className="w-4 h-4 mr-2" />
-                            Send Message
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleArchiveToggle(contact)}>
-                            {contact.isArchived ? (
-                              <><ArchiveRestore className="w-4 h-4 mr-2" /> Unarchive</>
-                            ) : (
-                              <><Archive className="w-4 h-4 mr-2" /> Archive</>
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            onClick={() => setDeleteConfirmContact(contact)}
-                            className="text-red-600 focus:text-red-600"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <WriteOnly>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <span className="sr-only">Open menu</span>
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                              </svg>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem onClick={() => openEdit(contact)}>
+                              <Pencil className="w-4 h-4 mr-2" />
+                              Edit Contact
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => navigate('/send', { state: { contactId: contact.id, contactName: contact.name } })}>
+                              <Send className="w-4 h-4 mr-2" />
+                              Send Message
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleArchiveToggle(contact)}>
+                              {contact.isArchived ? (
+                                <><ArchiveRestore className="w-4 h-4 mr-2" /> Unarchive</>
+                              ) : (
+                                <><Archive className="w-4 h-4 mr-2" /> Archive</>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              onClick={() => setDeleteConfirmContact(contact)}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </WriteOnly>
                     </div>
 
                     {/* Contact details */}

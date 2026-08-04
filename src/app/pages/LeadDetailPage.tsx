@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2, ArrowRightCircle,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
-  MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle,
+  MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -109,7 +109,7 @@ export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentOrgId } = useOrg();
+  const { currentOrgId, isReadOnly } = useOrg();
 
   // When the user arrives from the leads list, Leads.tsx stashes the source
   // URL (including filters/sort) here so Back / breadcrumb can return there
@@ -747,55 +747,63 @@ export default function LeadDetailPage() {
                 <span className="truncate text-sm font-medium text-slate-700">{lead.name}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                {lead.email && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setEmailOpen(true)}
-                    className="gap-1.5 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  >
-                    <Mail className="w-4 h-4" />
-                    <span className="hidden sm:inline">Email</span>
-                  </Button>
+                {isReadOnly ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-700">
+                    <Eye className="h-3.5 w-3.5" /> View only
+                  </span>
+                ) : (
+                  <>
+                    {lead.email && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEmailOpen(true)}
+                        className="gap-1.5 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      >
+                        <Mail className="w-4 h-4" />
+                        <span className="hidden sm:inline">Email</span>
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openEdit}
+                      className="gap-1.5 border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+                    >
+                      <Pencil className="w-4 h-4" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSaveContactOpen(true)}
+                      className="gap-1.5 border-violet-200 bg-white text-violet-700 hover:bg-violet-50 hover:text-violet-800"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span className="hidden sm:inline">Save as contact</span>
+                    </Button>
+                    {!lead.isConverted && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate(`/leads?convertLeadId=${lead.id}`)}
+                        className="gap-1.5 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                      >
+                        <ArrowRightCircle className="w-4 h-4" />
+                        <span className="hidden sm:inline">Convert</span>
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDeleteOpen(true)}
+                      className="gap-1.5 border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span className="hidden sm:inline">Delete</span>
+                    </Button>
+                  </>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={openEdit}
-                  className="gap-1.5 border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
-                >
-                  <Pencil className="w-4 h-4" />
-                  <span className="hidden sm:inline">Edit</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setSaveContactOpen(true)}
-                  className="gap-1.5 border-violet-200 bg-white text-violet-700 hover:bg-violet-50 hover:text-violet-800"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Save as contact</span>
-                </Button>
-                {!lead.isConverted && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate(`/leads?convertLeadId=${lead.id}`)}
-                    className="gap-1.5 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-                  >
-                    <ArrowRightCircle className="w-4 h-4" />
-                    <span className="hidden sm:inline">Convert</span>
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setDeleteOpen(true)}
-                  className="gap-1.5 border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span className="hidden sm:inline">Delete</span>
-                </Button>
               </div>
             </div>
           </div>
@@ -842,7 +850,7 @@ export default function LeadDetailPage() {
                       <StatusChangePopover
                         currentStatus={lead.status}
                         statuses={statusOptions.map((s) => s.name)}
-                        disabled={lead.isConverted}
+                        disabled={lead.isConverted || isReadOnly}
                         onChange={setStatus}
                         className={cn(
                           'rounded-lg border px-2.5 py-1 text-xs font-bold shadow-sm ring-1 ring-black/5',
@@ -926,7 +934,7 @@ export default function LeadDetailPage() {
 
                 {/* Right side: score gauge + action buttons (stack on mobile, side-by-side on lg) */}
                 <div className="flex shrink-0 flex-row items-center gap-5 lg:flex-col lg:items-end lg:gap-4">
-                  <ScoreEditor score={lead.leadScore ?? 0} onSave={saveScore} />
+                  <ScoreEditor score={lead.leadScore ?? 0} onSave={saveScore} readOnly={isReadOnly} />
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     {lead.email && (
                       <Button asChild size="sm" variant="outline" className="gap-1.5">
@@ -938,15 +946,17 @@ export default function LeadDetailPage() {
                         <a href={`tel:${lead.phone}`}><Phone className="w-4 h-4" /> Call</a>
                       </Button>
                     )}
-                    <QuickLogPopover
-                      onSubmit={(p) => logActivity(p)}
-                      trigger={
-                        <Button size="sm" className="gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:from-orange-600 hover:to-amber-600 shadow shadow-orange-500/20">
-                          <MessageSquarePlus className="w-4 h-4" />
-                          Log activity
-                        </Button>
-                      }
-                    />
+                    {!isReadOnly && (
+                      <QuickLogPopover
+                        onSubmit={(p) => logActivity(p)}
+                        trigger={
+                          <Button size="sm" className="gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:from-orange-600 hover:to-amber-600 shadow shadow-orange-500/20">
+                            <MessageSquarePlus className="w-4 h-4" />
+                            Log activity
+                          </Button>
+                        }
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -963,15 +973,17 @@ export default function LeadDetailPage() {
               reasons={statusSyncView.reasons}
               enabled={statusSync.enabled}
               onToggleEnabled={statusSync.setEnabled}
-              disabled={lead.isConverted}
+              disabled={lead.isConverted || isReadOnly}
               onApply={(name) => setStatus(name)}
             />
+            {/* `previewStatus` is withheld from a viewer: the chips are disabled,
+                so a "→ Qualified" hint would advertise something they cannot do. */}
             <LeadPipelineTracker
               value={pipeline}
-              disabled={lead.isConverted}
+              disabled={lead.isConverted || isReadOnly}
               onChange={savePipeline}
-              previewStatus={(patch) => statusSync.preview(lead, pipeline, patch)}
-              onConvert={() => navigate(`/leads?convertLeadId=${lead.id}`)}
+              previewStatus={isReadOnly ? undefined : (patch) => statusSync.preview(lead, pipeline, patch)}
+              onConvert={isReadOnly ? undefined : () => navigate(`/leads?convertLeadId=${lead.id}`)}
             />
           </div>
 
@@ -996,7 +1008,8 @@ export default function LeadDetailPage() {
 
               {tab === 'activity' && (
                 <div className="space-y-5">
-                  {/* Quick note composer */}
+                  {/* Quick note composer — writers only */}
+                  {!isReadOnly && (
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Add a note</label>
                     <textarea
@@ -1016,9 +1029,10 @@ export default function LeadDetailPage() {
                       </Button>
                     </div>
                   </div>
+                  )}
 
-                  {/* Email composer */}
-                  {lead.email && (
+                  {/* Email composer — sending also logs an activity, so writers only */}
+                  {lead.email && !isReadOnly && (
                     <details className="rounded-2xl border border-slate-200 bg-white shadow-sm group">
                       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                         <span className="inline-flex items-center gap-2">
@@ -1057,6 +1071,7 @@ export default function LeadDetailPage() {
 
               {tab === 'tasks' && (
                 <div className="space-y-4">
+                  {!isReadOnly && (
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">New task</label>
                     <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
@@ -1079,6 +1094,7 @@ export default function LeadDetailPage() {
                       </Button>
                     </div>
                   </div>
+                  )}
 
                   {tasks.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 px-6 py-10 text-center text-sm text-slate-500">
@@ -1150,6 +1166,7 @@ export default function LeadDetailPage() {
                     value={lead.description ?? ''}
                     onSave={saveDescription}
                     variant="textarea"
+                    readOnly={isReadOnly}
                     placeholder="Add a longer description, context, or qualification notes…"
                     emptyHint="Click to add a description"
                   />
@@ -1234,11 +1251,11 @@ export default function LeadDetailPage() {
                 {/* Contact section */}
                 <SidebarSection title="Contact">
                   <div className="space-y-3">
-                    <InlineField label="Name" value={lead.name} onSave={saveName} icon={<UserIcon className="w-3.5 h-3.5" />} />
-                    <InlineField label="Email" type="email" value={lead.email ?? ''} onSave={saveEmail} icon={<Mail className="w-3.5 h-3.5" />} />
-                    <InlineField label="Phone" type="tel" value={lead.phone ?? ''} onSave={savePhone} icon={<Phone className="w-3.5 h-3.5" />} />
+                    <InlineField label="Name" value={lead.name} onSave={saveName} readOnly={isReadOnly} icon={<UserIcon className="w-3.5 h-3.5" />} />
+                    <InlineField label="Email" type="email" value={lead.email ?? ''} onSave={saveEmail} readOnly={isReadOnly} icon={<Mail className="w-3.5 h-3.5" />} />
+                    <InlineField label="Phone" type="tel" value={lead.phone ?? ''} onSave={savePhone} readOnly={isReadOnly} icon={<Phone className="w-3.5 h-3.5" />} />
                     <SidebarSelectField label="Company" icon={<Building2 className="w-3.5 h-3.5 text-slate-400" />}>
-                      <Select value={lead.companyId ?? ''} onValueChange={(v) => setCompanyId(v === '__none__' ? '' : v)}>
+                      <Select value={lead.companyId ?? ''} disabled={isReadOnly} onValueChange={(v) => setCompanyId(v === '__none__' ? '' : v)}>
                         <SelectTrigger className="h-9 text-sm">
                           <SelectValue placeholder="No company" />
                         </SelectTrigger>
@@ -1257,7 +1274,7 @@ export default function LeadDetailPage() {
                 <SidebarSection title="Details">
                   <div className="space-y-3">
                     <SidebarSelectField label="Source" icon={<Sparkles className="w-3.5 h-3.5 text-orange-400" />}>
-                      <Select value={lead.source ?? ''} onValueChange={setSource}>
+                      <Select value={lead.source ?? ''} disabled={isReadOnly} onValueChange={setSource}>
                         <SelectTrigger className="h-9 text-sm">
                           <SelectValue placeholder="Not set" />
                         </SelectTrigger>
@@ -1269,7 +1286,7 @@ export default function LeadDetailPage() {
                       </Select>
                     </SidebarSelectField>
                     <SidebarSelectField label="Lifecycle stage">
-                      <Select value={lead.lifecycleStage ?? ''} onValueChange={setLifecycle}>
+                      <Select value={lead.lifecycleStage ?? ''} disabled={isReadOnly} onValueChange={setLifecycle}>
                         <SelectTrigger className="h-9 text-sm">
                           <SelectValue placeholder="Not set" />
                         </SelectTrigger>
@@ -1285,7 +1302,7 @@ export default function LeadDetailPage() {
 
                 {/* Owner section */}
                 <SidebarSection title="Owner" last>
-                  <Select value={lead.assignedToId ?? '__none__'} onValueChange={(v) => setAssignment(v === '__none__' ? '' : v)}>
+                  <Select value={lead.assignedToId ?? '__none__'} disabled={isReadOnly} onValueChange={(v) => setAssignment(v === '__none__' ? '' : v)}>
                     <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Unassigned" />
                     </SelectTrigger>
@@ -1320,6 +1337,7 @@ export default function LeadDetailPage() {
                 lead={lead}
                 className="mt-4"
                 statusSync={statusSync}
+                readOnly={isReadOnly}
                 onSaved={(updated) => setLead((prev) => (prev ? { ...prev, ...updated } : prev))}
               />
 
@@ -1477,7 +1495,7 @@ function CopyButton({ onClick, copied, label }: { onClick: () => void; copied: b
  * Lead score editor — a circular gauge that flips into an inline number input
  * when clicked. The gauge IS the affordance; no separate "Edit" link.
  */
-function ScoreEditor({ score, onSave }: { score: number; onSave: (v: string) => Promise<boolean> }) {
+function ScoreEditor({ score, onSave, readOnly = false }: { score: number; onSave: (v: string) => Promise<boolean>; readOnly?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(score));
   const [saving, setSaving] = useState(false);
@@ -1525,7 +1543,7 @@ function ScoreEditor({ score, onSave }: { score: number; onSave: (v: string) => 
   return (
     <button
       type="button"
-      onClick={() => setEditing(true)}
+      onClick={() => { if (!readOnly) setEditing(true); }}
       aria-label="Edit lead score"
       className="group relative transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40 rounded-full"
     >

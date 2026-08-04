@@ -28,6 +28,7 @@ import {
   type SequenceEnrollment,
 } from '@/app/api';
 import type { Lead } from '@/app/api/types';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 const STEP_META: Record<SequenceStepType, { icon: React.ElementType; label: string; tone: string }> = {
   email: { icon: Mail, label: 'Email', tone: 'bg-blue-100 text-blue-700' },
@@ -104,9 +105,11 @@ export default function Sequences() {
             title="Sequences"
             subtitle="Automated, multi-step outreach cadences for leads and contacts."
             actions={
-              <Button onClick={openNew} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 shadow-lg shadow-indigo-500/30 font-semibold text-white">
-                <Plus className="h-4 w-4" /> New sequence
-              </Button>
+              <WriteOnly>
+                <Button onClick={openNew} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 shadow-lg shadow-indigo-500/30 font-semibold text-white">
+                  <Plus className="h-4 w-4" /> New sequence
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Sequences', value: sequences.length, icon: Workflow, tone: 'indigo' },
@@ -122,7 +125,9 @@ export default function Sequences() {
               <Workflow className="mx-auto h-10 w-10 text-slate-300" />
               <p className="mt-3 text-sm font-medium text-slate-700">No sequences yet</p>
               <p className="mt-1 text-sm text-slate-500">Create a cadence to start automating follow-ups.</p>
-              <Button onClick={openNew} className="mt-4 gap-1.5"><Plus className="h-4 w-4" /> New sequence</Button>
+              <WriteOnly>
+                <Button onClick={openNew} className="mt-4 gap-1.5"><Plus className="h-4 w-4" /> New sequence</Button>
+              </WriteOnly>
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -195,17 +200,19 @@ export default function Sequences() {
                       </div>
                     )}
                     {/* Card actions */}
-                    <div className="mt-auto flex items-center gap-1 border-t border-slate-100 p-2">
-                      <Button size="sm" variant="ghost" className="flex-1 gap-1 text-xs" onClick={() => toggleStatus(s)}>
-                        {s.status === 'active' ? <><Pause className="h-3.5 w-3.5" /> Pause</> : <><Play className="h-3.5 w-3.5" /> Activate</>}
-                      </Button>
-                      <Button size="sm" variant="ghost" className="flex-1 gap-1 text-xs" onClick={() => openEdit(s)}>
-                        <Pencil className="h-3.5 w-3.5" /> Edit
-                      </Button>
-                      <Button size="sm" variant="ghost" className="gap-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => handleDelete(s)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                    <WriteOnly>
+                      <div className="mt-auto flex items-center gap-1 border-t border-slate-100 p-2">
+                        <Button size="sm" variant="ghost" className="flex-1 gap-1 text-xs" onClick={() => toggleStatus(s)}>
+                          {s.status === 'active' ? <><Pause className="h-3.5 w-3.5" /> Pause</> : <><Play className="h-3.5 w-3.5" /> Activate</>}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="flex-1 gap-1 text-xs" onClick={() => openEdit(s)}>
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </Button>
+                        <Button size="sm" variant="ghost" className="gap-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => handleDelete(s)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </WriteOnly>
                   </div>
                 );
               })}

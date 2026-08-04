@@ -46,16 +46,47 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
   return res;
 }
 
+/**
+ * Pull a human-readable message out of an error body. The backend returns
+ * RFC-9110 problem+json for failures (e.g. the read-only role rejection), which
+ * would otherwise surface to the user as a wall of raw JSON.
+ */
+/** An unsuccessful API response. `status` lets callers branch on the HTTP code
+ *  without pattern-matching the human-readable message. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+function errorMessageFrom(text: string, res: Response): string {
+  if (text) {
+    try {
+      const problem = JSON.parse(text) as { detail?: string; title?: string };
+      const message = problem?.detail || problem?.title;
+      if (message) return message;
+    } catch {
+      // not JSON — fall through and use the raw text
+    }
+    return text;
+  }
+  return res.statusText || `HTTP ${res.status}`;
+}
+
 export async function authFetchJson<T>(path: string, options: AuthFetchOptions = {}): Promise<T> {
   const res = await authFetch(path, options);
   const text = await res.text();
   if (!res.ok) {
-    // Include the HTTP status in the error message so callers can distinguish
-    // 4xx from 5xx (e.g. notifications short-circuits on 404, Team.tsx falls
-    // back to an empty list on 403). The response body may still contain the
-    // backend's structured error text — preserved as a suffix.
-    const detail = text ? `: ${text}` : res.statusText ? `: ${res.statusText}` : '';
-    throw new Error(`HTTP ${res.status}${detail}`);
+    // The message stays human-readable (problem+json `detail`/`title`) because it
+    // surfaces directly in toasts — a Viewer's refusal should read as a sentence.
+    // The status rides along as a property instead of being prefixed onto the
+    // text, so callers that need to branch on it (notifications skips endpoints
+    // that 404) can do so without parsing prose.
+    throw new ApiError(errorMessageFrom(text, res), res.status);
   }
   if (!text) return undefined as T;
   try {

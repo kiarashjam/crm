@@ -46,6 +46,7 @@ import { Button } from '@/app/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/app/components/ui/sheet';
 import { cn } from './ui/utils';
 import DemoBanner from './DemoBanner';
+import ReadOnlyBanner from './ReadOnlyBanner';
 
 // All nav items in priority order - shown based on available space
 const allNavItems = [
@@ -610,6 +611,7 @@ export default function AppHeader() {
       </div>
     </header>
     <DemoBanner />
+    <ReadOnlyBanner />
     </>
   );
 }

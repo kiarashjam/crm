@@ -86,8 +86,10 @@ import { getStageList, groupDealsByStage, formatValueSum, getDaysUntilClose, Urg
 import { getCurrencySymbol } from './pipeline/DealCard';
 import { getTasks, createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
+import { useOrg } from '@/app/contexts/OrgContext';
 
 export default function Pipeline() {
+  const { isReadOnly } = useOrg();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
@@ -650,13 +652,15 @@ export default function Pipeline() {
                     </div>
                   </div>
                 )}
-                <Button
-                  onClick={openCreateDeal}
-                  className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  New Deal
-                </Button>
+                {!isReadOnly && (
+                  <Button
+                    onClick={openCreateDeal}
+                    className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white"
+                  >
+                    <Plus className="w-4 h-4" />
+                    New Deal
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -1105,12 +1109,14 @@ export default function Pipeline() {
                   </div>
                 </div>
                 
-                <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Button onClick={openCreateDeal} className="gap-2 h-11 px-6 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-lg shadow-emerald-200/50">
-                    <Plus className="w-4 h-4" />
-                    Add Your First Deal
-                  </Button>
-                </div>
+                {!isReadOnly && (
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <Button onClick={openCreateDeal} className="gap-2 h-11 px-6 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-lg shadow-emerald-200/50">
+                      <Plus className="w-4 h-4" />
+                      Add Your First Deal
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1252,6 +1258,7 @@ export default function Pipeline() {
                         onOpenDetail={setDetailDeal}
                         taskCountsByDeal={taskCountsByDeal}
                         onAddTask={(dealId) => setAddTaskDealId(dealId)}
+                        readOnly={isReadOnly}
                       />
                     </motion.div>
                   ))}

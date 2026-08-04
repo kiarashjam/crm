@@ -59,6 +59,8 @@ export interface DroppableStageColumnProps {
   onOpenDetail: (deal: Deal) => void;
   taskCountsByDeal?: Record<string, number>;
   onAddTask?: (dealId: string) => void;
+  /** View-only member: cards cannot be dragged, edited, deleted or re-staged. */
+  readOnly?: boolean;
 }
 
 export function DroppableStageColumn({
@@ -73,6 +75,7 @@ export function DroppableStageColumn({
   onOpenDetail,
   taskCountsByDeal,
   onAddTask,
+  readOnly = false,
 }: DroppableStageColumnProps) {
   const config = STAGE_COLORS[stageName] ?? STAGE_COLORS.Qualification;
   const StageIcon = STAGE_ICONS[stageName] ?? Briefcase;
@@ -81,14 +84,16 @@ export function DroppableStageColumn({
   const [{ isOver: dropIsOver }, dropRef] = useDrop(
     () => ({
       accept: DEAL_CARD_TYPE,
+      canDrop: () => !readOnly,
       drop: (item: { dealId: string; fromStageId: string }) => {
+        if (readOnly) return;
         if (item.fromStageId !== stageId) {
           onMoveStage(item.dealId, stageId, stageName);
         }
       },
       collect: (monitor) => ({ isOver: monitor.isOver() }),
     }),
-    [stageId, stageName, onMoveStage]
+    [stageId, stageName, onMoveStage, readOnly]
   );
 
   const showDropZone = dropIsOver;
@@ -191,6 +196,7 @@ export function DroppableStageColumn({
               stageList={stageList}
               taskCount={taskCountsByDeal?.[deal.id]}
               onAddTask={onAddTask}
+              readOnly={readOnly}
             />
           ))}
         </AnimatePresence>

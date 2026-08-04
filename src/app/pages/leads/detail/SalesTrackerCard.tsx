@@ -48,6 +48,10 @@ interface SalesTrackerCardProps {
   onSaved?: (updated: Lead) => void;
   /** Shared status-sync instance, so this editor behaves like the other two. */
   statusSync: ReturnType<typeof useLeadStatusSync>;
+  /** Viewer role: show the recorded pipeline but offer no way to change it. The
+   *  backend refuses the write anyway, so live inputs would only let a viewer
+   *  find that out by having a save fail. */
+  readOnly?: boolean;
 }
 
 function EnumSelect<T extends string>({
@@ -55,17 +59,20 @@ function EnumSelect<T extends string>({
   options,
   onChange,
   placeholder,
+  disabled,
 }: {
   value: T;
   options: readonly T[];
   onChange: (v: T) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   const SENTINEL = '__cleared__';
   return (
     <Select
       value={value === '' ? SENTINEL : value}
       onValueChange={(v) => onChange((v === SENTINEL ? '' : v) as T)}
+      disabled={disabled}
     >
       <SelectTrigger className="h-9 rounded-lg bg-white border-slate-200 text-sm">
         <SelectValue placeholder={placeholder ?? '—'} />
@@ -87,12 +94,14 @@ function EnumSelect<T extends string>({
 function DateField({
   value,
   onChange,
-}: { value: string; onChange: (v: string) => void }) {
+  disabled,
+}: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
   const iso = ddMmYyyyToIso(value);
   return (
     <Input
       type="date"
       value={iso}
+      disabled={disabled}
       onChange={(e) => onChange(isoToDdMmYyyy(e.target.value))}
       className="h-9 rounded-lg bg-white border-slate-200 text-sm"
     />
@@ -103,7 +112,7 @@ function extrasFromLead(lead: Lead): SalesExtras {
   return trackedRowToSalesExtras(leadToTrackedRow(lead));
 }
 
-export function SalesTrackerCard({ lead, className, onSaved, statusSync }: SalesTrackerCardProps) {
+export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnly = false }: SalesTrackerCardProps) {
   const [extras, setExtras] = useState<SalesExtras>(() => extrasFromLead(lead));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -168,29 +177,38 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync }: Sales
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {dirty && (
+          {readOnly && (
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+              View only
+            </span>
+          )}
+          {!readOnly && dirty && (
             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
               <AlertTriangle className="w-3 h-3" />
               Unsaved
             </span>
           )}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleReset}
-            className="h-8 px-3 rounded-lg text-xs border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            Reset
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => void handleSave()}
-            disabled={!dirty || saving}
-            className="h-8 px-3 rounded-lg text-xs bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
-          >
-            {saving ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5 mr-1" />}
-            {saving ? 'Saved' : 'Save'}
-          </Button>
+          {!readOnly && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReset}
+                className="h-8 px-3 rounded-lg text-xs border-slate-200 text-slate-600 hover:bg-slate-50"
+              >
+                Reset
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleSave()}
+                disabled={!dirty || saving}
+                className="h-8 px-3 rounded-lg text-xs bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+              >
+                {saving ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+                {saving ? 'Saved' : 'Save'}
+              </Button>
+            </>
+          )}
         </div>
       </header>
 
@@ -198,6 +216,7 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync }: Sales
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Outreach status</Label>
           <EnumSelect
+            disabled={readOnly}
             value={extras.outreachStatus}
             options={OUTREACH_STATUS_OPTIONS}
             onChange={(v) => update({ outreachStatus: v })}
@@ -205,11 +224,12 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync }: Sales
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Outreach date</Label>
-          <DateField value={extras.outreachDate} onChange={(v) => update({ outreachDate: v })} />
+          <DateField disabled={readOnly} value={extras.outreachDate} onChange={(v) => update({ outreachDate: v })} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Meeting scheduled</Label>
           <EnumSelect
+            disabled={readOnly}
             value={extras.meetingScheduled}
             options={MEETING_SCHEDULED_OPTIONS}
             onChange={(v) => update({ meetingScheduled: v })}
@@ -217,15 +237,16 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync }: Sales
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Meeting date</Label>
-          <DateField value={extras.meetingDate} onChange={(v) => update({ meetingDate: v })} />
+          <DateField disabled={readOnly} value={extras.meetingDate} onChange={(v) => update({ meetingDate: v })} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Met (showed up)</Label>
-          <EnumSelect value={extras.met} options={YES_NO_OPTIONS} onChange={(v) => update({ met: v })} />
+          <EnumSelect disabled={readOnly} value={extras.met} options={YES_NO_OPTIONS} onChange={(v) => update({ met: v })} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Interested after meeting</Label>
           <EnumSelect
+            disabled={readOnly}
             value={extras.interestedAfterMtg}
             options={YES_NO_PENDING_OPTIONS}
             onChange={(v) => update({ interestedAfterMtg: v })}
@@ -234,6 +255,7 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync }: Sales
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Contract sent</Label>
           <EnumSelect
+            disabled={readOnly}
             value={extras.contractSent}
             options={CONTRACT_SENT_OPTIONS}
             onChange={(v) => update({ contractSent: v })}
@@ -241,11 +263,12 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync }: Sales
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Contract sent date</Label>
-          <DateField value={extras.contractSentDate} onChange={(v) => update({ contractSentDate: v })} />
+          <DateField disabled={readOnly} value={extras.contractSentDate} onChange={(v) => update({ contractSentDate: v })} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Contract signed</Label>
           <EnumSelect
+            disabled={readOnly}
             value={extras.contractSigned}
             options={CONTRACT_SIGNED_OPTIONS}
             onChange={(v) => update({ contractSigned: v })}
@@ -253,11 +276,12 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync }: Sales
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Signature date</Label>
-          <DateField value={extras.signatureDate} onChange={(v) => update({ signatureDate: v })} />
+          <DateField disabled={readOnly} value={extras.signatureDate} onChange={(v) => update({ signatureDate: v })} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Deposit paid</Label>
           <EnumSelect
+            disabled={readOnly}
             value={extras.depositPaid}
             options={YES_NO_OPTIONS}
             onChange={(v) => update({ depositPaid: v })}
@@ -265,13 +289,14 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync }: Sales
         </div>
         <div className="space-y-1.5">
           <Label className="text-[11px] text-slate-500">Last contact date</Label>
-          <DateField value={extras.lastContactDate} onChange={(v) => update({ lastContactDate: v })} />
+          <DateField disabled={readOnly} value={extras.lastContactDate} onChange={(v) => update({ lastContactDate: v })} />
         </div>
       </div>
 
       <div className="mt-3 space-y-1.5">
         <Label className="text-[11px] text-slate-500">Notes</Label>
         <Textarea
+          disabled={readOnly}
           value={extras.salesNotes}
           onChange={(e) => update({ salesNotes: e.target.value })}
           rows={3}

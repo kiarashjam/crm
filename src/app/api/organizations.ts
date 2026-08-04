@@ -10,10 +10,25 @@ export interface Organization {
   role: number;
 }
 
+/** Role ids as persisted by the backend (OrgMemberRole). */
+export const ORG_ROLE = { Owner: 0, Member: 1, Manager: 2, Viewer: 3 } as const;
+
 /** True when the current user is Owner or Manager of the organization (full admin access). */
 export function isOrgAdmin(org: { isOwner?: boolean; role?: number } | null | undefined): boolean {
   if (!org) return false;
   return org.isOwner === true || org.role === 0 || org.role === 2;
+}
+
+/**
+ * True when the user's role in this organization is view-only: they can see every
+ * record but the backend rejects any create/edit/delete. The UI uses this to hide
+ * or disable editing affordances so nothing is offered that would just fail.
+ */
+export function isOrgViewer(org: { isOwner?: boolean; role?: number } | null | undefined): boolean {
+  if (!org) return false;
+  // An owner is never read-only, even if a stale role value says otherwise.
+  if (org.isOwner === true) return false;
+  return org.role === ORG_ROLE.Viewer;
 }
 
 export interface OrgMemberDto {

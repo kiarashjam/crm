@@ -5,7 +5,7 @@ import {
   Trash2, Check, X, Clock, Send, RefreshCw, Search,
   UserCircle, AlertCircle, TrendingUp, Target,
   Phone, Copy, Filter, BarChart3,
-  Activity, ChevronRight, Handshake
+  Activity, ChevronRight, Handshake, Eye
 } from 'lucide-react';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -58,6 +58,7 @@ const ROLES = {
   0: { label: 'Owner', icon: Crown, color: 'text-amber-600', bg: 'bg-amber-100', bgGradient: 'from-amber-500 to-orange-500' },
   1: { label: 'Member', icon: UserCircle, color: 'text-slate-600', bg: 'bg-slate-100', bgGradient: 'from-slate-500 to-slate-600' },
   2: { label: 'Manager', icon: ShieldCheck, color: 'text-blue-600', bg: 'bg-blue-100', bgGradient: 'from-blue-500 to-indigo-500' },
+  3: { label: 'Viewer', icon: Eye, color: 'text-violet-600', bg: 'bg-violet-100', bgGradient: 'from-violet-500 to-purple-500' },
 } as const;
 
 function getRoleInfo(role: number) {
@@ -289,6 +290,12 @@ function MemberDetailPanel({
                       Manager
                     </span>
                   </SelectItem>
+                  <SelectItem value="3">
+                    <span className="flex items-center gap-2">
+                      <Eye className="w-4 h-4 text-violet-500" />
+                      Viewer — read-only
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -373,7 +380,8 @@ export default function Team() {
     const owners = members.filter(m => m.role === 0).length;
     const managers = members.filter(m => m.role === 2).length;
     const regularMembers = members.filter(m => m.role === 1).length;
-    return { total: members.length, owners, managers, members: regularMembers };
+    const viewers = members.filter(m => m.role === 3).length;
+    return { total: members.length, owners, managers, members: regularMembers, viewers };
   }, [members]);
 
   // Filter members
@@ -747,6 +755,12 @@ export default function Team() {
                         Members
                       </span>
                     </SelectItem>
+                    <SelectItem value="3">
+                      <span className="flex items-center gap-2">
+                        <Eye className="w-3.5 h-3.5 text-violet-500" />
+                        Viewers
+                      </span>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
                 </div>
@@ -768,7 +782,7 @@ export default function Team() {
                   {roleFilter !== 'all' && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-500/20 text-violet-300 text-xs font-medium border border-violet-400/30">
                       <Filter className="w-3 h-3" />
-                      {roleFilter === '0' ? 'Owners' : roleFilter === '2' ? 'Managers' : 'Members'}
+                      {roleFilter === '0' ? 'Owners' : roleFilter === '2' ? 'Managers' : roleFilter === '3' ? 'Viewers' : 'Members'}
                       <button onClick={() => setRoleFilter('all')} className="ml-0.5 hover:text-violet-100 transition-colors">
                         <X className="w-3 h-3" />
                       </button>

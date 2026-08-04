@@ -25,6 +25,7 @@ import {
   DialogFooter,
 } from '@/app/components/ui/dialog';
 import { getCurrencySymbol } from './pipeline/DealCard';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 type CompanyRaw = Company & Record<string, unknown>;
 
@@ -194,12 +195,16 @@ export default function CompanyDetail() {
               <ArrowLeft className="w-4 h-4" /> Back to Companies
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1">
-                <Pencil className="w-3.5 h-3.5" /> Edit
-              </Button>
-              <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
+              <WriteOnly>
+                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1">
+                  <Pencil className="w-3.5 h-3.5" /> Edit
+                </Button>
+              </WriteOnly>
+              <WriteOnly>
+                <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </WriteOnly>
             </div>
           </div>
 
