@@ -101,7 +101,70 @@ Or add as GitHub Secret and reference in deployment workflow.
 
 ---
 
-## 5. Quick check
+## 5. Email / SendGrid (password reset + team invitations)
+
+Transactional email is sent over SMTP, and SendGrid provides an SMTP relay — so no
+extra code or package is needed, only configuration. Two features depend on it:
+
+| Feature | What sends |
+|---------|------------|
+| **Login → "Forgot password?"** | the password-reset link (expires in 1 hour) |
+| **Team → Invite member** | the invitation email telling someone to sign in and accept |
+
+> If email is **not** configured, both still behave safely: the reset endpoint returns a
+> generic success without sending (and the token is not stored), and an invitation is
+> still created and visible in-app — only the notification email is skipped.
+
+### Values to use with SendGrid
+
+| Setting | Value |
+|---------|-------|
+| Host | `smtp.sendgrid.net` |
+| Port | `587` |
+| Username | the literal string `apikey` (**not** your email) |
+| Password | your SendGrid API key |
+| From address | a sender **verified** in SendGrid — the relay rejects anything else |
+
+### Azure deployment
+
+Add to **Azure Portal → Web Apps → \<your-backend\> → Configuration → Application settings**
+(the `__` double underscore is how .NET maps `Email:SmtpHost` to an environment variable):
+
+| Name | Value |
+|------|-------|
+| `Email__SmtpHost` | `smtp.sendgrid.net` |
+| `Email__SmtpPort` | `587` |
+| `Email__SmtpUser` | `apikey` |
+| `Email__SmtpPassword` | your SendGrid API key |
+| `Email__UseSsl` | `true` |
+| `Email__FromAddress` | your verified sender, e.g. `no-reply@yourdomain.com` |
+| `Email__FromName` | `Cadence` |
+| `Email__FrontendBaseUrl` | SPA origin, no trailing slash, e.g. `https://mango-moss-0804bb403.1.azurestaticapps.net` |
+
+`Email__FrontendBaseUrl` matters: it builds the links in both emails. If it is empty or
+not an absolute http(s) URL, password reset is skipped and logged.
+
+### Local development
+
+```bash
+cd backend/src/ACI.WebApi
+dotnet user-secrets set "Email:SmtpHost" "smtp.sendgrid.net"
+dotnet user-secrets set "Email:SmtpUser" "apikey"
+dotnet user-secrets set "Email:SmtpPassword" "<your-sendgrid-api-key>"
+dotnet user-secrets set "Email:FromAddress" "<your-verified-sender>"
+```
+
+Or, to develop without sending anything, set `Email:LogResetLinksWhenSmtpNotConfigured`
+to `true` and leave `Email:SmtpHost` empty — the link is written to the log instead.
+
+**Never commit the API key.** Keep it in Application settings / user-secrets only; this
+repository is public. If a key is ever pasted into a chat, an issue, a screenshot or a
+commit, treat it as compromised and rotate it in the SendGrid dashboard
+(Settings → API Keys → delete and create a new one).
+
+---
+
+## 6. Quick check
 
 - [ ] `AZURE_STATIC_WEB_APPS_API_TOKEN` added  
 - [ ] `AZURE_WEBAPP_NAME` added  
@@ -109,16 +172,17 @@ Or add as GitHub Secret and reference in deployment workflow.
 - [ ] `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_SECRET` added  
 - [ ] `VITE_API_URL` added as **variable** (optional)
 - [ ] `OpenAI__ApiKey` added (optional, for Intelligent Sales Writer)
+- [ ] `Email__SmtpHost` / `Email__SmtpUser` / `Email__SmtpPassword` / `Email__FromAddress` / `Email__FrontendBaseUrl` added (for password reset + invitations)
 
 ---
 
-## 6. Trigger deploy
+## 7. Trigger deploy
 
 Push to `main` or run **Actions → Build and deploy backend to Azure Web App → Run workflow**.
 
 ---
 
-## 7. Legacy / other regions
+## 8. Legacy / other regions
 
 - **East US 2:** `./scripts/azure-create.ps1 -SqlAdminPassword '...'`
 - **Web App only** (existing RG/SQL): `./scripts/azure-create-webapp-only.ps1 -SqlAdminPassword '...' -SqlServerName "aci-sql-xxx" -WebAppName "aci-api-xxx"`

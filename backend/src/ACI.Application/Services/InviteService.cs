@@ -1,9 +1,11 @@
 using ACI.Application.Common;
+using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Services;
 
@@ -12,17 +14,23 @@ public sealed class InviteService : IInviteService
     private readonly IInviteRepository _inviteRepository;
     private readonly IOrganizationRepository _organizationRepository;
     private readonly IUserRepository _userRepository;
+    private readonly IEmailSender _emailSender;
+    private readonly EmailSettings _emailSettings;
     private readonly ILogger<InviteService> _logger;
 
     public InviteService(
         IInviteRepository inviteRepository,
         IOrganizationRepository organizationRepository,
         IUserRepository userRepository,
+        IEmailSender emailSender,
+        IOptions<EmailSettings> emailSettings,
         ILogger<InviteService> logger)
     {
         _inviteRepository = inviteRepository;
         _organizationRepository = organizationRepository;
         _userRepository = userRepository;
+        _emailSender = emailSender;
+        _emailSettings = emailSettings.Value;
         _logger = logger;
     }
 
@@ -69,6 +77,20 @@ public sealed class InviteService : IInviteService
             CreatedAtUtc = DateTime.UtcNow,
         };
         await _inviteRepository.AddAsync(invite, ct);
+
+        // Tell the invitee. Delivery is best-effort: the invitation already exists and
+        // is visible in the app, so a mail problem must not fail the request. The
+        // sender logs its own failures.
+        var inviter = await _userRepository.GetByIdAsync(userId, ct);
+        var acceptUrl = BuildAcceptUrl();
+        var sent = await _emailSender.SendOrganizationInviteEmailAsync(
+            email, org.Name, inviter?.Name ?? string.Empty, acceptUrl, ct);
+        if (!sent)
+        {
+            _logger.LogWarning(
+                "Invite {InviteId} was created but the notification email to {Email} could not be sent",
+                invite.Id, email);
+        }
 
         _logger.LogInformation("Invite {InviteId} created for email {Email} to organization {OrganizationId}", invite.Id, email, organizationId);
         return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
@@ -241,5 +263,16 @@ public sealed class InviteService : IInviteService
 
         _logger.LogInformation("User {UserId} accepted invite {InviteId} to organization {OrganizationId}", userId, inviteId, invite.OrganizationId);
         return Result.Success(new InviteDto(invite.Id, invite.OrganizationId, invite.Organization.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
+    }
+
+    /// <summary>
+    /// Where the invitee should go to accept. Invitations are accepted in the app on the
+    /// organizations page (there is no token link), so the email points there and asks
+    /// them to sign in with the invited address.
+    /// </summary>
+    private string BuildAcceptUrl()
+    {
+        var baseUrl = (_emailSettings.FrontendBaseUrl ?? string.Empty).Trim().TrimEnd('/');
+        return baseUrl.Length == 0 ? "/organizations" : $"{baseUrl}/organizations";
     }
 }
