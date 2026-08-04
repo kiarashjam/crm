@@ -142,6 +142,7 @@ try
     builder.Services.AddScoped<ICompanyService, CompanyService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
+    builder.Services.AddScoped<INotificationService, NotificationService>();
     builder.Services.AddScoped<ITemplateService, TemplateService>();
     builder.Services.AddScoped<ICopyHistoryService, CopyHistoryService>();
     builder.Services.AddScoped<ISettingsService, SettingsService>();
