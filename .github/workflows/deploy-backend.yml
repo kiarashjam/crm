@@ -42,14 +42,18 @@ jobs:
           creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
       # Applies the email (SendGrid) configuration so password reset, team
-      # invitations and task reminders can send. Runs only when the SENDGRID_API_KEY
-      # secret exists, so the deploy is unaffected until you add it.
+      # invitations and task reminders can send. No-ops until the SENDGRID_API_KEY
+      # secret exists, so the deploy is unaffected before then.
+      #
+      # The "is the secret set?" test is done inside the script, NOT in an `if:`
+      # condition: the secrets context is not available to step-level `if`, and
+      # referencing it there makes the whole workflow file invalid (every job is
+      # skipped, so the deploy fails before it starts).
       #
       # `appsettings set` MERGES: it updates only the keys named below and leaves
       # everything else (notably the database connection string) untouched.
       # The API key lives in GitHub Secrets and is never written to the repository.
       - name: Configure email settings (SendGrid)
-        if: ${{ secrets.SENDGRID_API_KEY != '' }}
         env:
           APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
           SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
@@ -58,9 +62,13 @@ jobs:
           SPA_ORIGIN: ${{ vars.SPA_BASE_URL || 'https://mango-moss-0804bb403.1.azurestaticapps.net' }}
         run: |
           set -euo pipefail
+          if [ -z "${SENDGRID_API_KEY:-}" ]; then
+            echo "SENDGRID_API_KEY secret is not set; leaving email settings unchanged."
+            exit 0
+          fi
           RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
           if [ -z "$RESOURCE_GROUP" ]; then
-            echo "::error::Could not find a Web App named '$APP_NAME' in this subscription; skipping email configuration."
+            echo "::error::Could not find a Web App named '$APP_NAME' in this subscription; cannot apply email settings."
             exit 1
           fi
           az webapp config appsettings set \
