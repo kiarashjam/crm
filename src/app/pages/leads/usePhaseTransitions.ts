@@ -37,7 +37,12 @@ export interface UsePhaseTransitionsOptions {
   /**
    * When false, transitions are swallowed but the baseline still advances — so
    * re-enabling does not dump a backlog of animations for changes the user
-   * never saw. Pass `!disabled` here.
+   * never saw. Pass `!disabled` here (converted leads, read-only Viewer role).
+   *
+   * Also the place to pass `!lost`: a lead that has dropped out must not get a
+   * celebratory beat, even when a later phase is technically ticked. The colour
+   * change still happens — that is a pure prop-driven class change — but the
+   * one-shot celebration is suppressed.
    */
   enabled?: boolean;
   /** How long `justCompleted` stays set. Should exceed the animation duration. */
