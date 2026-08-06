@@ -1,0 +1,218 @@
+# One-off org administration from CI, for when nobody with an Owner login is at
+# a keyboard: ensure a person is a member of an organization with a given role.
+#
+# Runs entirely against the production database, through the same Azure service
+# principal the deploy uses. Idempotent and rerunnable:
+#
+#   · account exists           → membership upserted with the requested role,
+#                                any now-moot pending invites cleaned up
+#   · no account yet           → a pending invite is (re)issued; the person sees
+#                                it on the Organizations page when they sign up
+#                                with that email. Accepting makes them a Member
+#                                (that is hardcoded in the app), so RE-RUN this
+#                                workflow afterwards to set the requested role.
+#
+# The connection string is read from the Web App's configuration at run time and
+# masked; it never appears in logs. Other members' emails are masked in output.
+
+name: Org admin — ensure member
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Email of the person'
+        required: true
+        default: 'm.v.a@telenet.be'
+      organization:
+        description: 'Organization name (space-insensitive match)'
+        required: true
+        default: 'Pavillon46'
+      role:
+        description: 'Role to ensure'
+        required: true
+        default: 'Viewer'
+        type: choice
+        options: [Viewer, Member, Manager]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: org-admin
+  cancel-in-progress: false
+
+jobs:
+  ensure_member:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Ensure membership
+        env:
+          APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+          TARGET_EMAIL: ${{ inputs.email }}
+          ORG_NAME: ${{ inputs.organization }}
+          TARGET_ROLE: ${{ inputs.role }}
+        run: |
+          set -euo pipefail
+
+          # ---- locate the app and its connection string (never printed) ----
+          RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::Web App '$APP_NAME' not found in this subscription."
+            exit 1
+          fi
+
+          CONN=$(az webapp config connection-string list \
+                   --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+                   --query "[?name=='DefaultConnection'].value | [0]" -o tsv)
+          if [ -z "$CONN" ] || [ "$CONN" = "None" ]; then
+            CONN=$(az webapp config appsettings list \
+                     --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+                     --query "[?name=='ConnectionStrings__DefaultConnection'].value | [0]" -o tsv)
+          fi
+          if [ -z "$CONN" ] || [ "$CONN" = "None" ]; then
+            echo "::error::No DefaultConnection found on the Web App (checked connection strings and app settings)."
+            echo "Connection string names present:"
+            az webapp config connection-string list --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --query "[].name" -o tsv || true
+            exit 1
+          fi
+          echo "::add-mask::$CONN"
+
+          # ---- parse it into sqlcmd arguments, shell-quoted, still masked ----
+          eval "$(CONN="$CONN" python3 - <<'PY'
+          import os, shlex
+          parts = dict()
+          for piece in os.environ["CONN"].split(";"):
+              if "=" in piece:
+                  k, v = piece.split("=", 1)
+                  parts[k.strip().lower()] = v.strip()
+          server = parts.get("server") or parts.get("data source") or ""
+          server = server.replace("tcp:", "").split(",")[0]
+          db     = parts.get("initial catalog") or parts.get("database") or ""
+          user   = parts.get("user id") or parts.get("uid") or parts.get("user") or ""
+          pwd    = parts.get("password") or parts.get("pwd") or ""
+          print(f"SQL_SERVER={shlex.quote(server)}")
+          print(f"SQL_DB={shlex.quote(db)}")
+          print(f"SQL_USER={shlex.quote(user)}")
+          print(f"SQL_PASS={shlex.quote(pwd)}")
+          PY
+          )"
+          echo "::add-mask::$SQL_PASS"
+          echo "::add-mask::$SQL_USER"
+          if [ -z "$SQL_SERVER" ] || [ -z "$SQL_DB" ]; then
+            echo "::error::Could not parse server/database out of the connection string."
+            exit 1
+          fi
+
+          # ---- open a pinhole in the SQL firewall for this runner (best effort;
+          #      'Allow Azure services' often already covers GitHub's runners) ----
+          FW_RULE="gh-run-${GITHUB_RUN_ID}"
+          SQL_SERVER_NAME="${SQL_SERVER%%.*}"
+          SQL_RG=$(az sql server list --query "[?name=='$SQL_SERVER_NAME'].resourceGroup | [0]" -o tsv 2>/dev/null || true)
+          FW_CREATED=""
+          cleanup() {
+            if [ -n "$FW_CREATED" ]; then
+              az sql server firewall-rule delete -g "$SQL_RG" -s "$SQL_SERVER_NAME" -n "$FW_RULE" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+          if [ -n "$SQL_RG" ] && [ "$SQL_RG" != "None" ]; then
+            RUNNER_IP=$(curl -fsS https://api.ipify.org || true)
+            if [ -n "$RUNNER_IP" ]; then
+              if az sql server firewall-rule create -g "$SQL_RG" -s "$SQL_SERVER_NAME" -n "$FW_RULE" \
+                   --start-ip-address "$RUNNER_IP" --end-ip-address "$RUNNER_IP" >/dev/null 2>&1; then
+                FW_CREATED=1
+                echo "Temporary firewall rule $FW_RULE created."
+              fi
+            fi
+          fi
+
+          # ---- sqlcmd (preinstalled on ubuntu-latest; install if missing) ----
+          SQLCMD="$(command -v sqlcmd || true)"
+          [ -z "$SQLCMD" ] && [ -x /opt/mssql-tools18/bin/sqlcmd ] && SQLCMD=/opt/mssql-tools18/bin/sqlcmd
+          if [ -z "$SQLCMD" ]; then
+            curl -sSL -O "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+            sudo dpkg -i packages-microsoft-prod.deb >/dev/null
+            sudo apt-get update -qq
+            sudo ACCEPT_EULA=Y apt-get install -y -qq mssql-tools18 unixodbc-dev >/dev/null
+            SQLCMD=/opt/mssql-tools18/bin/sqlcmd
+          fi
+
+          # ---- the actual task, idempotent, single quotes escaped ----
+          EMAIL_SQL=${TARGET_EMAIL//\'/\'\'}
+          ORG_SQL=${ORG_NAME//\'/\'\'}
+          ROLE_SQL=${TARGET_ROLE//\'/\'\'}
+          cat > "$RUNNER_TEMP/task.sql" <<SQL
+          SET NOCOUNT ON;
+          DECLARE @Email nvarchar(256) = N'${EMAIL_SQL}';
+          DECLARE @OrgName nvarchar(256) = N'${ORG_SQL}';
+          DECLARE @Role nvarchar(32) = N'${ROLE_SQL}';
+
+          DECLARE @OrgCount int = (SELECT COUNT(*) FROM Organizations WHERE REPLACE(Name,' ','') = REPLACE(@OrgName,' ',''));
+          IF @OrgCount <> 1
+          BEGIN
+            PRINT 'ABORT: expected exactly one organization matching "' + @OrgName + '", found ' + CAST(@OrgCount AS varchar(10)) + '. Organizations present:';
+            SELECT Name FROM Organizations ORDER BY Name;
+            THROW 50000, 'Organization not uniquely identified', 1;
+          END
+          DECLARE @OrgId uniqueidentifier = (SELECT TOP 1 Id FROM Organizations WHERE REPLACE(Name,' ','') = REPLACE(@OrgName,' ',''));
+          PRINT 'Organization resolved: ' + CAST(@OrgId AS varchar(36));
+
+          DECLARE @UserId uniqueidentifier = (SELECT TOP 1 Id FROM Users WHERE LOWER(Email) = LOWER(@Email));
+
+          IF @UserId IS NOT NULL
+          BEGIN
+            IF EXISTS (SELECT 1 FROM OrganizationMembers WHERE OrganizationId = @OrgId AND UserId = @UserId)
+            BEGIN
+              UPDATE OrganizationMembers SET Role = @Role WHERE OrganizationId = @OrgId AND UserId = @UserId;
+              PRINT 'RESULT: already a member — role set to ' + @Role + '.';
+            END
+            ELSE
+            BEGIN
+              INSERT INTO OrganizationMembers (OrganizationId, UserId, Role, JoinedAtUtc)
+              VALUES (@OrgId, @UserId, @Role, SYSUTCDATETIME());
+              PRINT 'RESULT: added to the organization with role ' + @Role + '.';
+            END
+            DELETE FROM Invites WHERE OrganizationId = @OrgId AND LOWER(Email) = LOWER(@Email) AND AcceptedByUserId IS NULL;
+            IF @@ROWCOUNT > 0 PRINT 'Cleaned up now-moot pending invite(s).';
+          END
+          ELSE
+          BEGIN
+            IF EXISTS (SELECT 1 FROM Invites WHERE OrganizationId = @OrgId AND LOWER(Email) = LOWER(@Email) AND AcceptedByUserId IS NULL)
+            BEGIN
+              UPDATE Invites SET ExpiresAtUtc = DATEADD(day, 7, SYSUTCDATETIME())
+              WHERE OrganizationId = @OrgId AND LOWER(Email) = LOWER(@Email) AND AcceptedByUserId IS NULL;
+              PRINT 'RESULT: no account with this email yet — existing pending invite refreshed for 7 more days.';
+            END
+            ELSE
+            BEGIN
+              INSERT INTO Invites (Id, OrganizationId, Email, Token, ExpiresAtUtc, CreatedAtUtc)
+              VALUES (NEWID(), @OrgId, LOWER(@Email),
+                      LOWER(REPLACE(CAST(NEWID() AS varchar(36)),'-','') + REPLACE(CAST(NEWID() AS varchar(36)),'-','')),
+                      DATEADD(day, 7, SYSUTCDATETIME()), SYSUTCDATETIME());
+              PRINT 'RESULT: no account with this email yet — pending invite created. It appears on their Organizations page once they sign up with this email. Accepting makes them a Member; re-run this workflow afterwards to set the role.';
+            END
+          END
+
+          PRINT '--- members of this organization (other emails masked) ---';
+          SELECT CASE WHEN LOWER(u.Email) = LOWER(@Email) THEN u.Email
+                      ELSE LEFT(u.Email, 2) + '***' + SUBSTRING(u.Email, CHARINDEX('@', u.Email), 256) END AS Email,
+                 m.Role, m.JoinedAtUtc
+          FROM OrganizationMembers m JOIN Users u ON u.Id = m.UserId
+          WHERE m.OrganizationId = @OrgId
+          ORDER BY m.JoinedAtUtc;
+
+          PRINT '--- pending invites for this organization ---';
+          SELECT CASE WHEN LOWER(Email) = LOWER(@Email) THEN Email
+                      ELSE LEFT(Email, 2) + '***' + SUBSTRING(Email, CHARINDEX('@', Email), 256) END AS Email,
+                 ExpiresAtUtc, CreatedAtUtc
+          FROM Invites
+          WHERE OrganizationId = @OrgId AND AcceptedByUserId IS NULL;
+          SQL
+
+          "$SQLCMD" -S "tcp:${SQL_SERVER},1433" -d "$SQL_DB" -U "$SQL_USER" -P "$SQL_PASS" -C -b -i "$RUNNER_TEMP/task.sql"
