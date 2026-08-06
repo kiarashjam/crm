@@ -90,22 +90,44 @@ export function isPipelineComplete(p: LeadPipeline): boolean {
 }
 
 /**
- * A terminal "lost" reason, if the lead dropped out at any phase. These halt
- * forward progress regardless of which phase they occur in.
+ * Drop-out rules in precedence order, with the phase that RECORDED each one.
+ *
+ * A single table so `lostReason` and `lostPhase` can never disagree about which
+ * rule fired — they are two projections of one ordered list.
  */
-export function lostReason(p: LeadPipeline): string | null {
-  if (p.contactOutcome === 'not_interested') return 'Not interested';
+const LOST_RULES: { phase: number; reason: string; hit: (p: LeadPipeline) => boolean }[] = [
+  { phase: 1, reason: 'Not interested', hit: (p) => p.contactOutcome === 'not_interested' },
   // `stillInterested` is recorded after attendance, so it is the more recent
   // word on the lead's intent: a no-show who has since confirmed interest
   // (rescheduled, answered by email) has NOT dropped out. Checking interest
   // first keeps this in agreement with the derived lead status — otherwise the
   // detail page renders "dropped out: No-show" directly above a Qualified badge.
-  if (p.stillInterested === false) return 'Not interested after meeting';
-  if (p.stillInterested !== true && p.meetingAttended === false) return 'No-show at meeting';
-  if (p.contractStatus === 'profile_rejected') return 'Profile rejected';
-  if (p.contractStatus === 'no_longer_interested') return 'No longer interested';
-  if (p.contractSigned === 'no') return 'Contract declined';
-  return null;
+  { phase: 2, reason: 'Not interested after meeting', hit: (p) => p.stillInterested === false },
+  { phase: 2, reason: 'No-show at meeting', hit: (p) => p.stillInterested !== true && p.meetingAttended === false },
+  { phase: 3, reason: 'Profile rejected', hit: (p) => p.contractStatus === 'profile_rejected' },
+  { phase: 3, reason: 'No longer interested', hit: (p) => p.contractStatus === 'no_longer_interested' },
+  { phase: 4, reason: 'Contract declined', hit: (p) => p.contractSigned === 'no' },
+];
+
+/**
+ * A terminal "lost" reason, if the lead dropped out at any phase. These halt
+ * forward progress regardless of which phase they occur in.
+ */
+export function lostReason(p: LeadPipeline): string | null {
+  return LOST_RULES.find((r) => r.hit(p))?.reason ?? null;
+}
+
+/**
+ * The 1-based phase that RECORDED the drop-out — which is NOT `currentPhase()`.
+ *
+ * They diverge whenever a later phase records a loss while an earlier one is
+ * still incomplete: `{ contractStatus: 'profile_rejected' }` with no meeting
+ * logged reports phase 3 here but phase 2 as current. Marking the "stopped"
+ * card by current phase would put the rose treatment on Meeting, when the
+ * rejection was recorded against Contract.
+ */
+export function lostPhase(p: LeadPipeline): number | null {
+  return LOST_RULES.find((r) => r.hit(p))?.phase ?? null;
 }
 
 /** 1-based index of the phase currently in progress (the first incomplete one). */
@@ -130,4 +152,77 @@ export function pipelineBadge(p: LeadPipeline): { label: string; tone: PipelineB
   if (isPipelineComplete(p)) return { label: 'Deal-ready', tone: 'complete' };
   const n = currentPhase(p);
   return { label: `Phase ${n} · ${PHASE_TITLES[n - 1]}`, tone: 'active' };
+}
+
+
+/** `Aug 20`, or null for a missing/unparseable date. */
+function shortDate(iso?: string): string | null {
+  if (!iso) return null;
+  // A bare YYYY-MM-DD parses as UTC midnight, which renders as the PREVIOUS day
+  // in any negative-offset timezone. Pinning the time keeps it local.
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * One line per phase describing where it stands — what happened if it is done,
+ * or what is still outstanding if it is not.
+ *
+ * Reads `phaseCompletion()` directly rather than re-deriving done-ness, so a
+ * card can never show a completed check beside "Waiting on: signature date".
+ */
+export function phaseCaptions(p: LeadPipeline): string[] {
+  const done = phaseCompletion(p);
+  const lostAt = lostPhase(p);
+  const reason = lostReason(p);
+
+  const caption = (i: number): string => {
+    if (lostAt === i + 1 && reason) return reason;
+
+    switch (i) {
+      case 0:
+        if (done[0]) {
+          const d = shortDate(p.meetingDate);
+          return d ? `Contacted · meeting ${d}` : 'Contacted · meeting scheduled';
+        }
+        if (p.outreachStatus === 'contacted') {
+          return p.contactOutcome === 'follow_up'
+            ? 'Waiting on: a follow-up date'
+            : 'Waiting on: the result of contact';
+        }
+        if (p.outreachStatus === 'attempted_no_answer') return 'Waiting on: a reply';
+        return 'Log your first outreach';
+      case 1:
+        if (done[1]) return 'Attended · still interested';
+        if (p.meetingAttended === undefined) return 'Waiting on: did they show up?';
+        return 'Waiting on: are they still interested?';
+      case 2: {
+        if (done[2]) {
+          const d = shortDate(p.contractSentDate);
+          return d ? `Contract sent ${d}` : 'Contract sent';
+        }
+        if (p.contractStatus === 'yes') return 'Waiting on: the date it was sent';
+        return 'Waiting on: the contract';
+      }
+      case 3: {
+        if (done[3]) {
+          const d = shortDate(p.signatureDate);
+          return d ? `Signed ${d}` : 'Signed';
+        }
+        if (p.contractSigned === 'yes') return 'Waiting on: the signature date';
+        return 'Waiting on: their signature';
+      }
+      default: {
+        if (done[4]) {
+          const d = shortDate(p.paymentDate);
+          return d ? `Deposit paid ${d}` : 'Deposit paid';
+        }
+        if (p.depositPaid === true) return 'Waiting on: the payment date';
+        return 'Waiting on: the deposit';
+      }
+    }
+  };
+
+  return PHASE_TITLES.map((_, i) => caption(i));
 }

@@ -7,3 +7,4 @@ export { useMousePosition } from './useMousePosition';
 export { useParallax } from './useParallax';
 export { useDebounce } from './useDebounce';
 export { useLocalStorage } from './useLocalStorage';
+export { useMotionPreference } from './useMotionPreference';
