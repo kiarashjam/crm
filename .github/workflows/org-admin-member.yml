@@ -14,6 +14,10 @@
 #
 # The connection string is read from the Web App's configuration at run time and
 # masked; it never appears in logs. Other members' emails are masked in output.
+#
+# THIS BRANCH VARIANT also fires on push to `run-org-admin`, with the inputs
+# falling back to the defaults below — the API integration driving this has no
+# actions:write, so it cannot use workflow_dispatch directly.
 
 name: Org admin — ensure member
 
@@ -34,6 +38,8 @@ on:
         default: 'Viewer'
         type: choice
         options: [Viewer, Member, Manager]
+  push:
+    branches: [run-org-admin]
 
 permissions:
   contents: read
@@ -54,9 +60,9 @@ jobs:
       - name: Ensure membership
         env:
           APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
-          TARGET_EMAIL: ${{ inputs.email }}
-          ORG_NAME: ${{ inputs.organization }}
-          TARGET_ROLE: ${{ inputs.role }}
+          TARGET_EMAIL: ${{ inputs.email || 'm.v.a@telenet.be' }}
+          ORG_NAME: ${{ inputs.organization || 'Pavillon46' }}
+          TARGET_ROLE: ${{ inputs.role || 'Viewer' }}
         run: |
           set -euo pipefail
 
