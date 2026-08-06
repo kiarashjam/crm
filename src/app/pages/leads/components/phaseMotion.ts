@@ -41,6 +41,14 @@ export const PHASE_MOTION = {
   tickOut: { duration: 0.16, ease: 'linear' },
   /** Convert panel, when the fifth phase is the one that completed. */
   convert: { duration: 0.24, ease: EASE_OUT_EXPO, delay: 0.2 },
+  /**
+   * A card folding open or shut. The one place a height IS animated — a
+   * disclosure has no honest transform equivalent — so it is kept short, and
+   * the box is only clipped while it is actually moving.
+   */
+  disclosure: { duration: 0.24, ease: EASE_OUT_EXPO },
+  /** Chevron rotating. Slightly quicker than the fold so it leads it. */
+  chevron: { duration: 0.2, ease: EASE_OUT_QUINT },
 } as const;
 
 export type PhaseMotionTokens = typeof PHASE_MOTION;

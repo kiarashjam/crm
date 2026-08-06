@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
-import { motion } from 'motion/react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Phone, Users, FileSignature, PenLine, Wallet,
-  Check, X, Circle, XCircle, ArrowRightCircle, Sparkles,
+  Check, X, ChevronDown, ChevronsDownUp, ChevronsUpDown,
+  XCircle, ArrowRightCircle, Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
@@ -10,11 +11,13 @@ import { Button } from '@/app/components/ui/button';
 import { useMotionPreference } from '@/app/hooks';
 import {
   type LeadPipeline, type OutreachStatus, type ContactOutcome,
-  type ContractStatus, type ContractSigned,
+  type ContractStatus, type ContractSigned, type PhaseStep,
   PHASE_TITLES, OUTREACH_LABELS, OUTCOME_LABELS, CONTRACT_LABELS, SIGNED_LABELS,
-  phaseCompletion, currentPhase, lostReason, lostPhase, phaseCaptions, isPipelineComplete,
+  phaseCompletion, currentPhase, lostReason, lostPhase, phaseCaptions, phaseSteps,
+  isPipelineComplete,
 } from '../leadPipeline';
 import { usePhaseTransitions } from '../usePhaseTransitions';
+import { usePhaseDisclosure, defaultFocus } from '../usePhaseDisclosure';
 import { usePhaseMotion, type PhaseMotionTokens } from './phaseMotion';
 import { useTrackerAnnouncement } from './useTrackerAnnouncement';
 
@@ -32,11 +35,15 @@ type LogHint = { subject: string; body?: string };
  */
 type PhaseState = 'idle' | 'active' | 'done' | 'lost';
 
+// Idle cards sit BACK into the section's own tint rather than being white like
+// the rest. It costs nothing in contrast — their text is already muted — and it
+// buys the one thing colour alone was not buying: the phase you are on is a card
+// lifted off the page, and the phases you have not reached are part of the page.
 const SURFACE: Record<PhaseState, string> = {
-  idle: 'border-slate-200',
-  active: 'border-indigo-200 shadow-sm ring-1 ring-indigo-100',
-  done: 'border-emerald-200',
-  lost: 'border-rose-200',
+  idle: 'border-slate-200/80 bg-slate-50/70',
+  active: 'border-indigo-200 bg-white shadow-sm ring-1 ring-indigo-100',
+  done: 'border-emerald-200 bg-white',
+  lost: 'border-rose-200 bg-white',
 };
 const BADGE: Record<PhaseState, string> = {
   idle: 'bg-slate-100 text-slate-400',
@@ -58,6 +65,13 @@ const CAPTION: Record<PhaseState, string> = {
   active: 'text-slate-600',
   done: 'text-emerald-700',
   lost: 'text-rose-700',
+};
+/** Hover affordance on the fold-open header, keyed to the card's own hue. */
+const HEADER_HOVER: Record<PhaseState, string> = {
+  idle: 'hover:bg-slate-50',
+  active: 'hover:bg-indigo-50/60',
+  done: 'hover:bg-emerald-50/60',
+  lost: 'hover:bg-rose-50/60',
 };
 
 /** A row of mutually-exclusive choice chips. */
@@ -125,8 +139,61 @@ function DateField({
   );
 }
 
-function PhaseShell({
-  n, title, caption, state, celebrate, t, children,
+/**
+ * Progress WITHIN a phase, one dot per field.
+ *
+ * Three states, because two would lie: a field answered "Profile rejected" is
+ * neither blank nor satisfied, and the dot that represents it should not look
+ * like either. Filling in as you go also gives the folded header something to
+ * do — you can watch a phase fill without expanding it.
+ */
+function StepDots({ steps, lost }: { steps: PhaseStep[]; lost: boolean }) {
+  return (
+    <span aria-hidden className="flex items-center gap-[3px]">
+      {steps.map((s) => (
+        <span
+          key={s.label}
+          className={cn(
+            'h-1.5 w-1.5 rounded-full transition-colors duration-200',
+            s.done ? 'bg-emerald-500' : s.value ? (lost ? 'bg-rose-400' : 'bg-amber-400') : 'bg-slate-200',
+          )}
+        />
+      ))}
+    </span>
+  );
+}
+
+/**
+ * The answers already on a folded card, for phases that are still open.
+ *
+ * Deliberately NOT shown on a finished or stopped phase: there the caption
+ * already reports the outcome ("Attended · still interested"), and repeating it
+ * as chips two inches to the right is noise dressed up as information. On a
+ * phase still in progress the caption says what is MISSING, so what is present
+ * is genuinely unsaid. Hidden below `md`, where there is no room for it.
+ */
+function ValueChips({ steps }: { steps: PhaseStep[] }) {
+  const values = steps.map((s) => s.value).filter((v): v is string => !!v);
+  if (values.length === 0) return null;
+  return (
+    <span aria-hidden className="hidden items-center gap-1 md:flex">
+      {values.slice(0, 2).map((v, i) => (
+        <span
+          key={`${i}-${v}`}
+          className="max-w-[10rem] truncate rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500"
+        >
+          {v}
+        </span>
+      ))}
+      {values.length > 2 && (
+        <span className="text-[10px] font-medium text-slate-400">+{values.length - 2}</span>
+      )}
+    </span>
+  );
+}
+
+function PhaseCard({
+  n, title, caption, state, celebrate, steps, open, onToggle, t, cardRef, children,
 }: {
   n: number;
   title: string;
@@ -134,14 +201,25 @@ function PhaseShell({
   state: PhaseState;
   /** This card is the one that just completed — play the one-shot beats. */
   celebrate: boolean;
+  steps: PhaseStep[];
+  open: boolean;
+  onToggle: () => void;
   t: PhaseMotionTokens;
+  cardRef: (el: HTMLLIElement | null) => void;
   children: React.ReactNode;
 }) {
   const Icon = PHASE_ICONS[n - 1] ?? Phone;
   const isDone = state === 'done';
+  const uid = useId();
+  const bodyId = `${uid}-phase-${n}`;
   // The short tick marks "you are here" and "it stopped here". It is HELD at
   // full height while done so it never retracts upward against the downward seal.
   const tickOn = state === 'active' || state === 'lost';
+
+  // The fold is the one animation that moves layout, so the box is clipped only
+  // while it is actually moving. Left clipped permanently, it would shear the
+  // focus ring off the leftmost chip inside.
+  const [clipping, setClipping] = useState(false);
 
   // Keyframe arrays are re-created each render; memoising keeps the target
   // identity stable. Framer already shallow-compares keyframes, so this is
@@ -153,12 +231,13 @@ function PhaseShell({
 
   return (
     <li
+      ref={cardRef}
       aria-current={state === 'active' ? 'step' : undefined}
       className={cn(
         // No overflow-hidden: the accent bars are inset from the corners instead,
         // so a focused chip's ring is never clipped at the card edge.
-        'relative rounded-2xl border bg-white p-4 sm:p-5',
-        'transition-[border-color,box-shadow] duration-[240ms] ease-out',
+        'relative rounded-2xl border p-2 sm:p-2.5',
+        'transition-[border-color,box-shadow,background-color] duration-[240ms] ease-out',
         SURFACE[state],
       )}
     >
@@ -168,7 +247,7 @@ function PhaseShell({
         initial={false}
         animate={{ scaleY: isDone ? 1 : 0 }}
         transition={celebrate ? t.seal : { duration: 0 }}
-        className="pointer-events-none absolute bottom-4 left-0 top-4 w-[3px] origin-top rounded-full bg-emerald-500"
+        className="pointer-events-none absolute bottom-3 left-0 top-3 w-[3px] origin-top rounded-full bg-emerald-500"
       />
       {/* THE LANDING — the short tick for the active (or stopped) card. */}
       <motion.span
@@ -177,13 +256,29 @@ function PhaseShell({
         animate={{ scaleY: tickOn || isDone ? 1 : 0, opacity: tickOn ? 1 : 0 }}
         transition={{ scaleY: t.accent, opacity: t.tickOut }}
         className={cn(
-          'pointer-events-none absolute left-0 top-4 h-7 w-[3px] origin-top rounded-full',
+          'pointer-events-none absolute left-0 top-3 h-7 w-[3px] origin-top rounded-full',
           'transition-colors duration-[240ms]',
           state === 'lost' ? 'bg-rose-500' : 'bg-indigo-500',
         )}
       />
 
-      <div className="flex items-start gap-3">
+      {/* The header IS the toggle: the whole row, not a 24px chevron.
+          Heading-wraps-button is the APG accordion pattern — a heading cannot
+          live INSIDE a button (phrasing content only), and dropping it would
+          take all five phases out of the document outline. */}
+      <h3>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        data-phase={title}
+        className={cn(
+          'flex w-full items-start gap-3 rounded-xl p-2 text-left transition-colors duration-150 sm:p-2.5',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
+          HEADER_HOVER[state],
+        )}
+      >
         <motion.span
           initial={false}
           animate={badgeAnimate}
@@ -216,21 +311,59 @@ function PhaseShell({
           </motion.span>
         </motion.span>
 
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <h3 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">{title}</h3>
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">{title}</span>
             <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-500">Phase {n}</span>
             {PILL[state] && (
               <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', PILL[state])}>
                 {PILL_TEXT[state]}
               </span>
             )}
-          </div>
-          <p className={cn('mt-1 text-xs transition-colors duration-[240ms]', CAPTION[state])}>{caption}</p>
-        </div>
-      </div>
+          </span>
+          <span className={cn('mt-1 block text-xs transition-colors duration-[240ms]', CAPTION[state])}>
+            {caption}
+          </span>
+        </span>
 
-      <div className="mt-4 space-y-4 pl-0 sm:pl-[52px]">{children}</div>
+        <span className="flex shrink-0 items-center gap-2 pt-1.5">
+          {!open && state !== 'done' && state !== 'lost' && <ValueChips steps={steps} />}
+          <StepDots steps={steps} lost={state === 'lost'} />
+          <motion.span
+            aria-hidden
+            initial={false}
+            animate={{ rotate: open ? 180 : 0 }}
+            transition={t.chevron}
+            className={cn(
+              'grid h-6 w-6 place-items-center rounded-lg text-slate-400',
+              open && 'bg-slate-100 text-slate-500',
+            )}
+          >
+            <ChevronDown className="h-4 w-4" />
+          </motion.span>
+        </span>
+      </button>
+      </h3>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="body"
+            id={bodyId}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={t.disclosure}
+            onAnimationStart={() => setClipping(true)}
+            onAnimationComplete={() => setClipping(false)}
+            className={cn(clipping && 'overflow-hidden')}
+          >
+            {/* Padding rather than margin: a margin outside the animated box does
+                not collapse with the height and leaves a 16px ghost at zero. */}
+            <div className="space-y-4 px-2 pb-2 pt-3 sm:pl-[62px] sm:pr-3">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </li>
   );
 }
@@ -259,6 +392,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
   const lost = useMemo(() => lostReason(value), [value]);
   const lostAt = useMemo(() => lostPhase(value), [value]);
   const captions = useMemo(() => phaseCaptions(value), [value]);
+  const steps = useMemo(() => phaseSteps(value), [value]);
   const complete = useMemo(() => isPipelineComplete(value), [value]);
   const doneCount = done.filter(Boolean).length;
 
@@ -267,6 +401,33 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
   // the visual celebration per-element instead.
   const { justCompleted, nonce } = usePhaseTransitions(done, { enabled: !disabled, holdMs: 900 });
   const announcement = useTrackerAnnouncement({ justCompleted, nonce, phase, lost, complete });
+
+  const focus = useMemo(
+    () => defaultFocus({ currentPhase: phase, lostPhase: lostAt, complete }),
+    [phase, lostAt, complete],
+  );
+  const disclosure = usePhaseDisclosure(focus, PHASE_TITLES.length);
+
+  const cards = useRef<(HTMLLIElement | null)[]>([]);
+  const setCardRef = useCallback(
+    (i: number) => (el: HTMLLIElement | null) => { cards.current[i] = el; },
+    [],
+  );
+
+  // After a phase completes, bring the card you have been handed to into view —
+  // but only if it is not already there. `block: 'nearest'` is doing that work:
+  // it is a no-op when the element is on screen, so this never yanks the page
+  // around for someone who can already see it. Delayed past the fold so the
+  // measurement happens against the card's final height, not its opening one.
+  useEffect(() => {
+    if (nonce === 0 || justCompleted === null || reduce) return;
+    const target = cards.current[Math.min(justCompleted + 1, PHASE_TITLES.length - 1)];
+    if (!target?.scrollIntoView) return;
+    const id = setTimeout(() => target.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 280);
+    return () => clearTimeout(id);
+    // Keyed on the nonce alone — the same reasoning as the announcement effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce]);
 
   const patch = (partial: Partial<LeadPipeline>, log?: LogHint) => onChange({ ...value, ...partial }, log);
   /** Status this choice would produce, for the inline consequence label. */
@@ -284,17 +445,28 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
   /** Only the card that just completed plays the one-shot beats — never a lost one. */
   const celebrates = (i: number) => justCompleted === i && !lost && !reduce;
 
-  const shell = (i: number, children: React.ReactNode) => (
-    <PhaseShell
+  /** Jump to a phase from the rail: open it and scroll it into view. */
+  const jumpTo = (i: number) => {
+    disclosure.reveal(i);
+    const el = cards.current[i];
+    el?.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  };
+
+  const card = (i: number, children: React.ReactNode) => (
+    <PhaseCard
       n={i + 1}
       title={PHASE_TITLES[i]!}
       caption={captions[i] ?? ''}
       state={stateFor(i)}
       celebrate={celebrates(i)}
+      steps={steps[i] ?? []}
+      open={disclosure.isOpen(i)}
+      onToggle={() => disclosure.toggle(i)}
+      cardRef={setCardRef(i)}
       t={t}
     >
       {children}
-    </PhaseShell>
+    </PhaseCard>
   );
 
   return (
@@ -318,8 +490,8 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
         </p>
 
         {/* The meter. Full width so the connectors read as distance travelled
-            rather than as hyphens between dots. */}
-        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            rather than as hyphens between dots. Every pip is a jump target. */}
+        <div className="mt-4 flex items-start gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:gap-3">
           <span className={cn(
             'mt-1.5 shrink-0 text-[11px] font-bold tabular-nums',
             doneCount === PHASE_TITLES.length ? 'text-emerald-700' : 'text-slate-500',
@@ -336,11 +508,20 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
               const word = isDone ? 'complete' : isCurrent ? 'in progress' : isLostHere ? 'stopped here' : 'not started';
               return (
                 <li key={title} className={cn('flex items-start', i < PHASE_TITLES.length - 1 && 'flex-1')}>
-                  <div className="flex w-8 shrink-0 flex-col items-center gap-1.5 sm:w-[4.5rem]">
+                  <button
+                    type="button"
+                    onClick={() => jumpTo(i)}
+                    aria-current={isCurrent ? 'step' : undefined}
+                    className={cn(
+                      'group flex w-8 shrink-0 flex-col items-center gap-1.5 rounded-lg py-0.5 sm:w-[4.5rem]',
+                      'transition-colors duration-150 hover:bg-slate-50',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
+                    )}
+                  >
                     <span
-                      aria-current={isCurrent ? 'step' : undefined}
                       className={cn(
-                        'flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-bold transition-colors duration-200',
+                        'flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-bold transition-all duration-200',
+                        'group-hover:scale-110',
                         // Filled = banked, OUTLINED = current, flat = future. A
                         // shape difference, so it survives greyscale and
                         // red-green deficiency where hue alone would not.
@@ -350,22 +531,22 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                         !isDone && !isCurrent && !isLostHere && 'border-slate-200 bg-slate-100 text-slate-400',
                       )}
                     >
-                      <span className="sr-only">{`Phase ${i + 1}, ${title}: ${word}`}</span>
+                      <span className="sr-only">{`Phase ${i + 1}, ${title}: ${word}. Show this phase.`}</span>
                       <span aria-hidden>
                         {isDone ? <Check className="h-3.5 w-3.5" strokeWidth={3} />
                           : isLostHere ? <X className="h-3.5 w-3.5" strokeWidth={3} />
                             : i + 1}
                       </span>
                     </span>
-                    <span className={cn(
+                    <span aria-hidden className={cn(
                       'hidden text-center text-[10px] font-medium leading-tight sm:block',
                       isDone ? 'text-emerald-700' : isCurrent ? 'text-indigo-700' : isLostHere ? 'text-rose-700' : 'text-slate-400',
                     )}>
                       {title}
                     </span>
-                  </div>
+                  </button>
                   {i < PHASE_TITLES.length - 1 && (
-                    <span aria-hidden className="mt-[11px] h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200">
+                    <span aria-hidden className="mt-[13px] h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200">
                       <motion.span
                         initial={false}
                         animate={{ scaleX: done[i] ? 1 : 0 }}
@@ -378,6 +559,26 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
               );
             })}
           </ol>
+
+          {/* The visible word is the first word of the label, so the accessible
+              name still contains it once the text drops away below `sm`. */}
+          <button
+            type="button"
+            onClick={() => disclosure.setAll(!disclosure.allOpen)}
+            aria-label={disclosure.allOpen ? 'Collapse all phases' : 'Expand all phases'}
+            className={cn(
+              'mt-0.5 ml-1 flex shrink-0 items-center gap-1 rounded-lg border-l border-slate-200 py-1 pl-2 pr-1.5 text-[11px] font-semibold text-slate-500',
+              'transition-colors duration-150 hover:bg-slate-100 hover:text-slate-700',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
+            )}
+          >
+            {disclosure.allOpen
+              ? <ChevronsDownUp className="h-3.5 w-3.5" />
+              : <ChevronsUpDown className="h-3.5 w-3.5" />}
+            <span aria-hidden className="hidden sm:inline">
+              {disclosure.allOpen ? 'Collapse' : 'Expand all'}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -387,9 +588,9 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
         </div>
       )}
 
-      <ol className="space-y-3">
+      <ol className="space-y-2.5">
         {/* Phase 1 — Outreach */}
-        {shell(0, (
+        {card(0, (
           <>
             <div className="space-y-1.5">
               <span className="text-xs font-medium text-slate-500">Outreach status</span>
@@ -435,7 +636,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
         ))}
 
         {/* Phase 2 — After the meeting */}
-        {shell(1, (
+        {card(1, (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <span className="text-xs font-medium text-slate-500">Showed up to the meeting?</span>
@@ -465,7 +666,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
         ))}
 
         {/* Phase 3 — Contract */}
-        {shell(2, (
+        {card(2, (
           <>
             <div className="space-y-1.5">
               <span className="text-xs font-medium text-slate-500">Contract status</span>
@@ -487,7 +688,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
         ))}
 
         {/* Phase 4 — Signature */}
-        {shell(3, (
+        {card(3, (
           <>
             <div className="space-y-1.5">
               <span className="text-xs font-medium text-slate-500">Signature status</span>
@@ -508,7 +709,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
         ))}
 
         {/* Phase 5 — Deposit */}
-        {shell(4, (
+        {card(4, (
           <>
             <div className="space-y-1.5">
               <span className="text-xs font-medium text-slate-500">Deposit paid?</span>
@@ -550,13 +751,6 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
             <ArrowRightCircle className="h-4 w-4" /> Convert to deal
           </Button>
         </motion.div>
-      )}
-
-      {/* subtle legend for empty state */}
-      {phase === 1 && !done[0] && !lost && (
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
-          <Circle className="h-3 w-3" /> Start by logging your first outreach above.
-        </p>
       )}
     </section>
   );

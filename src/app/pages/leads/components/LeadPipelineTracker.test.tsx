@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { LeadPipelineTracker } from './LeadPipelineTracker';
 import type { LeadPipeline } from '../leadPipeline';
 
@@ -147,9 +148,17 @@ describe('LeadPipelineTracker — transition behaviour', () => {
     );
 
     expect(liveRegion(container)).toHaveTextContent(/Pipeline stopped/);
-    for (const button of container.querySelectorAll('button')) {
-      expect(button).toBeDisabled();
+    // Every EDITING control is disabled…
+    for (const name of ['Signed', 'Pending', 'Not signed']) {
+      expect(screen.getByRole('button', { name })).toBeDisabled();
     }
+    for (const input of container.querySelectorAll('input')) {
+      expect(input).toBeDisabled();
+    }
+    // …but navigating is not editing. A Viewer must still be able to fold cards
+    // open and jump around, or the read-only view is unreadable.
+    expect(screen.getByRole('button', { name: /expand all/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Phase 1, Outreach/ })).toBeEnabled();
   });
 
   it('offers the convert action only when every phase is complete', () => {
@@ -167,5 +176,104 @@ describe('LeadPipelineTracker — transition behaviour', () => {
       />,
     );
     expect(screen.getByRole('button', { name: /convert to deal/i })).toBeInTheDocument();
+  });
+});
+
+/**
+ * The header button for a phase, which is also its disclosure control.
+ * Keyed on `data-phase` rather than the accessible name, which is deliberately
+ * the whole header row — title, phase number, pill and caption.
+ */
+const header = (title: string) =>
+  document.querySelector<HTMLButtonElement>(`button[data-phase="${title}"]`)!;
+const openTitles = () =>
+  Array.from(document.querySelectorAll('button[data-phase][aria-expanded="true"]'))
+    .map((b) => b.getAttribute('data-phase'));
+
+describe('LeadPipelineTracker — disclosure', () => {
+  it('opens the phase you are on and folds the rest away', () => {
+    // The whole point: four of the five phases are asking about things that
+    // already happened or have not happened yet.
+    render(<LeadPipelineTracker value={AT_PHASE_4} onChange={vi.fn()} />);
+
+    expect(openTitles()).toEqual(['Signature']);
+    // The folded cards are still listed — folded, not hidden.
+    expect(document.querySelectorAll('button[data-phase][aria-expanded="false"]')).toHaveLength(4);
+  });
+
+  it('opens the phase that STOPPED the pipeline, not the current one', () => {
+    // Rejecting a profile with no meeting logged: current phase is 2, but the
+    // story ended at 3, and that is the card worth reading.
+    render(
+      <LeadPipelineTracker value={{ contractStatus: 'profile_rejected' }} onChange={vi.fn()} />,
+    );
+    expect(openTitles()).toEqual(['Contract']);
+  });
+
+  it('folds everything away once the pipeline is finished', () => {
+    // Nothing is outstanding, so nothing needs a form open — the convert action
+    // becomes the only thing asking for attention.
+    render(
+      <LeadPipelineTracker
+        value={{ ...AT_PHASE_5, depositPaid: true, paymentDate: '2026-08-28' }}
+        onChange={vi.fn()}
+        onConvert={vi.fn()}
+      />,
+    );
+    expect(openTitles()).toEqual([]);
+    expect(screen.getByRole('button', { name: /convert to deal/i })).toBeInTheDocument();
+  });
+
+  it('lets you open any phase by hand and keeps it open', async () => {
+    const user = userEvent.setup();
+    render(<LeadPipelineTracker value={AT_PHASE_4} onChange={vi.fn()} />);
+
+    await user.click(header('Outreach'));
+    expect(openTitles()).toEqual(['Outreach', 'Signature']);
+
+    await user.click(header('Outreach'));
+    expect(openTitles()).toEqual(['Signature']);
+  });
+
+  it('hands over cleanly when a phase completes, without pinning the old one open', async () => {
+    // The subtle one. Opening phase 4 by hand records a manual choice; when
+    // phase 4 then completes, that choice must not survive, or the finished
+    // card stays expanded forever and the fold never advances.
+    const user = userEvent.setup();
+    const { rerender } = render(<LeadPipelineTracker value={AT_PHASE_4} onChange={vi.fn()} />);
+
+    await user.click(header('Contract'));       // an unrelated card, opened on purpose
+    expect(openTitles()).toEqual(['Contract', 'Signature']);
+
+    rerender(<LeadPipelineTracker value={AT_PHASE_5} onChange={vi.fn()} />);
+
+    // Signature handed over to Deposit; Contract was the user's own choice and stays.
+    expect(openTitles()).toEqual(['Contract', 'Deposit']);
+  });
+
+  it('expands and collapses everything from one control', async () => {
+    const user = userEvent.setup();
+    render(<LeadPipelineTracker value={AT_PHASE_4} onChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /expand all/i }));
+    expect(openTitles()).toHaveLength(5);
+
+    await user.click(screen.getByRole('button', { name: /^collapse/i }));
+    expect(openTitles()).toEqual([]);
+  });
+
+  it('jumps to a phase from the step rail', async () => {
+    const user = userEvent.setup();
+    render(<LeadPipelineTracker value={AT_PHASE_4} onChange={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /Phase 2, Meeting/ }));
+    expect(openTitles()).toEqual(['Meeting', 'Signature']);
+  });
+
+  it('summarises a folded phase instead of leaving it blank', () => {
+    render(<LeadPipelineTracker value={AT_PHASE_4} onChange={vi.fn()} />);
+    // Phase 1 is folded, but its header still reports what was recorded.
+    expect(header('Outreach')).toHaveAttribute('aria-expanded', 'false');
+    expect(header('Outreach')).toHaveTextContent(/Contacted · meeting/);
   });
 });
