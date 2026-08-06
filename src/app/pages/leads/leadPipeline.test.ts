@@ -6,10 +6,12 @@ import {
   lostPhase,
   phaseCaptions,
   phaseCompletion,
+  phaseSteps,
   currentPhase,
   PHASE_TITLES,
   type LeadPipeline,
 } from './leadPipeline';
+import { defaultFocus } from './usePhaseDisclosure';
 
 /** A pipeline with every phase satisfied. */
 const COMPLETE: LeadPipeline = {
@@ -163,5 +165,102 @@ describe('phaseCaptions', () => {
     expect(phaseCompletion(p)[2]).toBe(true);
     expect(phaseCaptions(p)[2]).toBe('Contract sent');
     expect(phaseCaptions(p).join(' ')).not.toMatch(/Invalid Date|NaN/);
+  });
+});
+
+/** A spread of pipelines covering every branch the two functions can take. */
+const MATRIX: LeadPipeline[] = [
+  {},
+  COMPLETE,
+  { outreachStatus: 'attempted_no_answer' },
+  { outreachStatus: 'contacted' },
+  { outreachStatus: 'contacted', contactOutcome: 'follow_up' },
+  { outreachStatus: 'contacted', contactOutcome: 'not_interested' },
+  { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' },
+  { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20' },
+  { meetingAttended: true },
+  { meetingAttended: false },
+  { meetingAttended: true, stillInterested: false },
+  { meetingAttended: true, stillInterested: true },
+  { contractStatus: 'to_be_sent' },
+  { contractStatus: 'profile_rejected' },
+  { contractStatus: 'yes' },
+  { contractStatus: 'yes', contractSentDate: '2026-08-22' },
+  { contractSigned: 'pending' },
+  { contractSigned: 'no' },
+  { contractSigned: 'yes', signatureDate: '2026-08-25' },
+  { depositPaid: false },
+  { depositPaid: true },
+  { depositPaid: true, paymentDate: '2026-08-28' },
+];
+
+describe('phaseSteps', () => {
+  it('INVARIANT: a phase is complete exactly when all of its steps are done', () => {
+    // The folded card's dots and the card's own emerald check are two readings
+    // of the same fact. If these ever disagree, one of them is lying to the user.
+    for (const p of MATRIX) {
+      const complete = phaseCompletion(p);
+      phaseSteps(p).forEach((steps, i) => {
+        expect(steps.every((s) => s.done), `${JSON.stringify(p)} phase ${i + 1}`).toBe(complete[i]);
+      });
+    }
+  });
+
+  it('returns one group per phase, none of them empty', () => {
+    const groups = phaseSteps({});
+    expect(groups).toHaveLength(PHASE_TITLES.length);
+    for (const g of groups) expect(g.length).toBeGreaterThan(0);
+  });
+
+  it('distinguishes "answered but not advancing" from "untouched"', () => {
+    // The reason the dots have three states rather than two: "To be sent" is a
+    // real answer that leaves the phase incomplete, and a folded card that drew
+    // it as blank would look like nobody had touched the contract at all.
+    const [status] = phaseSteps({ contractStatus: 'to_be_sent' })[2]!;
+    expect(status).toEqual({ label: 'Contract status', done: false, value: 'To be sent' });
+
+    const [untouched] = phaseSteps({})[2]!;
+    expect(untouched!.value).toBeNull();
+    expect(untouched!.done).toBe(false);
+  });
+
+  it('never leaks an unparseable date into a summary', () => {
+    const steps = phaseSteps({ contractStatus: 'yes', contractSentDate: 'not-a-date' })[2]!;
+    // Truthy, so the phase counts as done — but there is no date worth showing.
+    expect(steps[1]).toEqual({ label: 'Sent date', done: true, value: null });
+  });
+});
+
+describe('defaultFocus — which card opens by itself', () => {
+  it('opens the phase in progress', () => {
+    expect(defaultFocus({ currentPhase: 4, lostPhase: null, complete: false })).toBe(3);
+  });
+
+  it('opens the phase that STOPPED the pipeline, not the current one', () => {
+    // `{ contractStatus: 'profile_rejected' }` is current phase 1, lost at 3.
+    // Opening phase 1 would show an empty outreach form while the reason the
+    // lead is dead sits folded away two cards below.
+    const p: LeadPipeline = { contractStatus: 'profile_rejected' };
+    expect(currentPhase(p)).toBe(1);
+    expect(defaultFocus({ currentPhase: currentPhase(p), lostPhase: lostPhase(p), complete: false })).toBe(2);
+  });
+
+  it('opens nothing at all when the pipeline is finished', () => {
+    // Every card is a summary; the convert action is the only thing left to do.
+    expect(defaultFocus({ currentPhase: 5, lostPhase: null, complete: true })).toBeNull();
+  });
+
+  it('always names a real phase for any reachable pipeline', () => {
+    for (const p of MATRIX) {
+      const focus = defaultFocus({
+        currentPhase: currentPhase(p),
+        lostPhase: lostPhase(p),
+        complete: phaseCompletion(p).every(Boolean),
+      });
+      if (focus !== null) {
+        expect(focus, JSON.stringify(p)).toBeGreaterThanOrEqual(0);
+        expect(focus, JSON.stringify(p)).toBeLessThan(PHASE_TITLES.length);
+      }
+    }
   });
 });

@@ -165,6 +165,85 @@ function shortDate(iso?: string): string | null {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+/** One recorded fact inside a phase. */
+export interface PhaseStep {
+  /** What this field records, e.g. "Meeting date". */
+  label: string;
+  /** True when it holds the value the phase needs in order to advance. */
+  done: boolean;
+  /**
+   * What is actually on record right now, or null if untouched. Distinct from
+   * `done`: "To be sent" is a real answer that does not advance the phase, and
+   * a collapsed card needs to show it rather than looking blank.
+   */
+  value: string | null;
+}
+
+/**
+ * The individual facts each phase is waiting on, in the order they are asked.
+ *
+ * This is what lets a folded-away card still say something useful — a row of
+ * dots for progress within the phase, and the values already captured. The
+ * three-way distinction (done / answered-but-not-advancing / untouched) is the
+ * point: a phase sitting on "Profile rejected" is not the same as an empty one,
+ * and both are incomplete.
+ *
+ * INVARIANT, pinned by a test: `phaseSteps(p)[i].every(s => s.done)` equals
+ * `phaseCompletion(p)[i]`. The two must never disagree.
+ */
+export function phaseSteps(p: LeadPipeline): PhaseStep[][] {
+  const bool = (v: boolean | undefined, yes: string, no: string) =>
+    v === undefined ? null : v ? yes : no;
+
+  return [
+    [
+      {
+        label: 'Contact made',
+        done: p.outreachStatus === 'contacted',
+        value: p.outreachStatus ? OUTREACH_LABELS[p.outreachStatus] : null,
+      },
+      {
+        label: 'Result of contact',
+        done: p.contactOutcome === 'meeting_scheduled',
+        value: p.contactOutcome ? OUTCOME_LABELS[p.contactOutcome] : null,
+      },
+      { label: 'Meeting date', done: !!p.meetingDate, value: shortDate(p.meetingDate) },
+    ],
+    [
+      {
+        label: 'Attendance',
+        done: p.meetingAttended === true,
+        value: bool(p.meetingAttended, 'Attended', 'No-show'),
+      },
+      {
+        label: 'Still interested',
+        done: p.stillInterested === true,
+        value: bool(p.stillInterested, 'Still interested', 'Not interested'),
+      },
+    ],
+    [
+      {
+        label: 'Contract status',
+        done: p.contractStatus === 'yes',
+        value: p.contractStatus ? CONTRACT_LABELS[p.contractStatus] : null,
+      },
+      { label: 'Sent date', done: !!p.contractSentDate, value: shortDate(p.contractSentDate) },
+    ],
+    [
+      {
+        label: 'Signature',
+        done: p.contractSigned === 'yes',
+        value: p.contractSigned ? SIGNED_LABELS[p.contractSigned] : null,
+      },
+      { label: 'Signature date', done: !!p.signatureDate, value: shortDate(p.signatureDate) },
+    ],
+    [
+      { label: 'Deposit', done: p.depositPaid === true, value: bool(p.depositPaid, 'Paid', 'Not paid') },
+      { label: 'Payment date', done: !!p.paymentDate, value: shortDate(p.paymentDate) },
+    ],
+  ];
+}
+
 /**
  * One line per phase describing where it stands — what happened if it is done,
  * or what is still outstanding if it is not.
