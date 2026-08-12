@@ -90,10 +90,15 @@ public sealed class OrganizationService : IOrganizationService
             await _organizationRepository.AddMemberAsync(org.Id, userId, OrgMemberRole.Owner, ct);
             await _organizationRepository.BackfillUserDataToOrganizationAsync(userId, org.Id, ct);
             
-            // Seed default Lead Statuses
-            var defaultStatuses = new[] { 
-                "New", "Open", "Attempted Contact", "Contacted", "Connected", 
-                "In Progress", "Qualified", "Unqualified", "Open Deal", "Lost" 
+            // Seed default Lead Statuses.
+            // These mirror the 5-phase pipeline one-for-one so the status is always
+            // derivable from recorded work rather than typed in separately — see
+            // leadStatusSync.ts for the mapping. Kept in step with the
+            // AlignLeadStatusVocabulary migration, which brings existing
+            // organisations onto the same list.
+            var defaultStatuses = new[] {
+                "New", "Attempted Contact", "Contacted", "Connected",
+                "Contract Pending", "Awaiting Signature", "Signed", "Lost / Not Interested"
             };
             for (int i = 0; i < defaultStatuses.Length; i++)
             {

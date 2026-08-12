@@ -123,7 +123,13 @@ public sealed class LeadRepository : ILeadRepository
         var newLeads = await query.CountAsync(l => l.Status == "New", ct);
         var contacted = await query.CountAsync(l =>
             l.Status == "Contacted" || l.Status == "Attempted Contact" || l.Status == "Connected", ct);
-        var qualified = await query.CountAsync(l => l.Status == "Qualified", ct);
+        // "Qualified or beyond". Spans both status vocabularies on purpose: the
+        // older list used a literal "Qualified", the current one replaces it with
+        // Contract Pending / Awaiting Signature / Signed. Matching only the old
+        // label would silently report zero for every organisation on the new one.
+        var qualified = await query.CountAsync(l =>
+            l.Status == "Qualified" || l.Status == "Contract Pending"
+            || l.Status == "Awaiting Signature" || l.Status == "Signed", ct);
         var thisWeek = await query.CountAsync(l => l.CreatedAtUtc >= oneWeekAgo, ct);
         var hotLeads = await query.CountAsync(l => !l.IsConverted && l.LeadScore >= 70, ct);
         var conversionRate = total > 0 ? (int)Math.Round((double)converted / total * 100) : 0;

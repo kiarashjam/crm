@@ -8,6 +8,13 @@ import {
   phaseCompletion,
   phaseSteps,
   currentPhase,
+  dropoutPhaseFor,
+  isReasonRequired,
+  isReasonComplete,
+  dropoutReasonText,
+  dropoutReasonBreakdown,
+  DROPOUT_REASONS,
+  DROPOUT_REASON_LABELS,
   PHASE_TITLES,
   type LeadPipeline,
 } from './leadPipeline';
@@ -262,5 +269,117 @@ describe('defaultFocus — which card opens by itself', () => {
         expect(focus, JSON.stringify(p)).toBeLessThan(PHASE_TITLES.length);
       }
     }
+  });
+});
+
+describe('drop-out reason capture', () => {
+  const MET_NO: LeadPipeline = { meetingAttended: true, stillInterested: false };
+  const CONTRACT_NO: LeadPipeline = { contractStatus: 'no_longer_interested' };
+
+  it('asks for a reason at Meeting and at Contract, and nowhere else', () => {
+    expect(dropoutPhaseFor(MET_NO)).toBe(2);
+    expect(dropoutPhaseFor(CONTRACT_NO)).toBe(3);
+    // Us rejecting them is not them rejecting us — none of the shared reasons
+    // ("has kids", "not within budget") describes our own decision.
+    expect(dropoutPhaseFor({ contractStatus: 'profile_rejected' })).toBeNull();
+    // Nor do the other negatives, which are not "no longer interested".
+    expect(dropoutPhaseFor({ contactOutcome: 'not_interested' })).toBeNull();
+    expect(dropoutPhaseFor({ meetingAttended: false })).toBeNull();
+    expect(dropoutPhaseFor({ contractSigned: 'no' })).toBeNull();
+    expect(dropoutPhaseFor({})).toBeNull();
+  });
+
+  it('is satisfied only when the answer is actually complete', () => {
+    expect(isReasonRequired({})).toBe(false);
+    expect(isReasonComplete({})).toBe(true);
+
+    expect(isReasonComplete(MET_NO)).toBe(false);
+    expect(isReasonComplete({ ...MET_NO, dropoutReason: 'too_soon' })).toBe(true);
+  });
+
+  it('INVARIANT: "Other" with nothing typed is NOT complete', () => {
+    // The precise hole this check exists to close — picking Other and moving on
+    // would otherwise pass as a recorded reason while explaining nothing.
+    expect(isReasonComplete({ ...MET_NO, dropoutReason: 'other' })).toBe(false);
+    expect(isReasonComplete({ ...MET_NO, dropoutReason: 'other', dropoutReasonOther: '   ' })).toBe(false);
+    expect(isReasonComplete({ ...MET_NO, dropoutReason: 'other', dropoutReasonOther: 'Moving abroad' })).toBe(true);
+  });
+
+  it('renders the free text as the reason when Other is chosen', () => {
+    expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'not_within_budget' })).toBe('Not within budget');
+    expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'other', dropoutReasonOther: 'Moving abroad' })).toBe('Moving abroad');
+    expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'other' })).toBeNull();
+    expect(dropoutReasonText({})).toBeNull();
+  });
+
+  it('offers exactly the four agreed options, once', () => {
+    expect(DROPOUT_REASONS).toEqual(['has_kids', 'not_within_budget', 'too_soon', 'other']);
+    expect(new Set(DROPOUT_REASONS).size).toBe(DROPOUT_REASONS.length);
+    for (const r of DROPOUT_REASONS) expect(DROPOUT_REASON_LABELS[r]).toBeTruthy();
+  });
+
+  it('says on the card that a reason is still owed', () => {
+    expect(phaseCaptions(MET_NO)[1]).toBe('Not interested after meeting · waiting on: a reason');
+    expect(phaseCaptions({ ...MET_NO, dropoutReason: 'too_soon' })[1])
+      .toBe('Not interested after meeting · Too soon');
+    expect(phaseCaptions(CONTRACT_NO)[2]).toBe('No longer interested · waiting on: a reason');
+  });
+});
+
+describe('dropoutReasonBreakdown', () => {
+  it('splits reasons by the phase they were logged at', () => {
+    const rows = dropoutReasonBreakdown([
+      { meetingAttended: true, stillInterested: false, dropoutReason: 'too_soon', dropoutReasonPhase: 2 },
+      { meetingAttended: true, stillInterested: false, dropoutReason: 'has_kids', dropoutReasonPhase: 2 },
+      { contractStatus: 'no_longer_interested', dropoutReason: 'not_within_budget', dropoutReasonPhase: 3 },
+      {},                                        // not a drop-out at all
+      { contractStatus: 'profile_rejected' },     // our decision, not theirs
+    ]);
+    const meeting = rows.find((r) => r.phase === 2)!;
+    const contract = rows.find((r) => r.phase === 3)!;
+
+    expect(meeting.total).toBe(2);
+    expect(meeting.counts.too_soon).toBe(1);
+    expect(meeting.counts.has_kids).toBe(1);
+    expect(contract.total).toBe(1);
+    expect(contract.counts.not_within_budget).toBe(1);
+  });
+
+  it('counts an unexplained drop-out as missing rather than hiding it', () => {
+    // A stage with drop-outs but no reasons is a data-collection problem. Making
+    // the chart look complete would bury exactly the thing worth acting on.
+    const rows = dropoutReasonBreakdown([
+      { meetingAttended: true, stillInterested: false },
+      { meetingAttended: true, stillInterested: false, dropoutReason: 'other' }, // no text
+    ]);
+    const meeting = rows.find((r) => r.phase === 2)!;
+    expect(meeting.total).toBe(2);
+    expect(meeting.missing).toBe(2);
+    expect(meeting.counts.other).toBe(0);
+  });
+
+  it('still counts rows written before the phase tag existed', () => {
+    // Legacy pipelines have a reason but no dropoutReasonPhase. Attributing them
+    // to the phase that currently shows the drop-out keeps the totals honest.
+    const rows = dropoutReasonBreakdown([
+      { meetingAttended: true, stillInterested: false, dropoutReason: 'too_soon' },
+      { contractStatus: 'no_longer_interested', dropoutReason: 'has_kids' },
+    ]);
+    expect(rows.find((r) => r.phase === 2)!.counts.too_soon).toBe(1);
+    expect(rows.find((r) => r.phase === 3)!.counts.has_kids).toBe(1);
+  });
+
+  it('always returns both stages, even with no data', () => {
+    const rows = dropoutReasonBreakdown([]);
+    expect(rows.map((r) => r.phase)).toEqual([2, 3]);
+    for (const r of rows) expect(r.total).toBe(0);
+  });
+
+  it('does not let one lead be counted twice', () => {
+    // Both negatives recorded on one lead. It is one departure, not two.
+    const rows = dropoutReasonBreakdown([
+      { stillInterested: false, contractStatus: 'no_longer_interested', dropoutReason: 'too_soon', dropoutReasonPhase: 2 },
+    ]);
+    expect(rows.reduce((n, r) => n + r.total, 0)).toBe(1);
   });
 });

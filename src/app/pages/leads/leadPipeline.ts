@@ -17,6 +17,25 @@ export type ContactOutcome = 'meeting_scheduled' | 'follow_up' | 'not_interested
 export type ContractStatus = 'yes' | 'to_be_sent' | 'profile_rejected' | 'no_longer_interested';
 export type ContractSigned = 'yes' | 'pending' | 'no';
 
+/**
+ * Why a lead walked away. ONE list, used at both the Meeting and the Contract
+ * phase — asked for explicitly so drop-off reasons stay comparable across
+ * stages instead of becoming two vocabularies that cannot be reported together.
+ */
+export type DropoutReason = 'has_kids' | 'not_within_budget' | 'too_soon' | 'other';
+
+export const DROPOUT_REASON_LABELS: Record<DropoutReason, string> = {
+  has_kids: 'Has kids / not kid-friendly club',
+  not_within_budget: 'Not within budget',
+  too_soon: 'Too soon',
+  other: 'Other',
+};
+
+/** Menu order, so both phases present the options identically. */
+export const DROPOUT_REASONS: DropoutReason[] = [
+  'has_kids', 'not_within_budget', 'too_soon', 'other',
+];
+
 export interface LeadPipeline {
   // Phase 1 — Outreach
   outreachStatus?: OutreachStatus;
@@ -35,6 +54,22 @@ export interface LeadPipeline {
   // Phase 5 — Deposit
   depositPaid?: boolean;
   paymentDate?: string;
+
+  // ── Why they dropped out ───────────────────────────────────────────────────
+  /** Selected from the shared list. Mandatory once a drop-out is recorded. */
+  dropoutReason?: DropoutReason;
+  /** Free text, mandatory when the reason is `other`. */
+  dropoutReasonOther?: string;
+  /**
+   * The 1-based phase the reason was captured at — auto-tagged, never typed, so
+   * the report can break drop-off down by the stage it actually happened at.
+   *
+   * Set once, at the moment the reason is first recorded, and then left alone.
+   * A later negative at a deeper phase is bookkeeping on a lead that already
+   * left; re-tagging it would move an explanation to a stage that did not
+   * produce it and quietly corrupt the very report this field exists to feed.
+   */
+  dropoutReasonPhase?: number;
 }
 
 export const PHASE_TITLES = ['Outreach', 'Meeting', 'Contract', 'Signature', 'Deposit'] as const;
@@ -130,6 +165,49 @@ export function lostPhase(p: LeadPipeline): number | null {
   return LOST_RULES.find((r) => r.hit(p))?.phase ?? null;
 }
 
+/**
+ * The phases at which the customer can tell us they are out, and therefore the
+ * phases that ask for a reason. Both use the same question in different words:
+ * "still interested?" → No, and "contract status" → No longer interested.
+ *
+ * `profile_rejected` is deliberately NOT here. That is us declining them, not
+ * them declining us, and none of the shared reasons ("has kids", "not within
+ * budget", "too soon") is something we would be reporting about our own
+ * decision.
+ */
+export function dropoutPhaseFor(p: LeadPipeline): number | null {
+  if (p.stillInterested === false) return 2;
+  if (p.contractStatus === 'no_longer_interested') return 3;
+  return null;
+}
+
+/** True when a drop-out has been recorded, so a reason is owed. */
+export function isReasonRequired(p: LeadPipeline): boolean {
+  return dropoutPhaseFor(p) !== null;
+}
+
+/**
+ * True when the reason requirement is satisfied — including the free-text box,
+ * which is mandatory in its own right once "Other" is chosen. An "Other" with
+ * nothing typed is the exact hole this check exists to close.
+ */
+export function isReasonComplete(p: LeadPipeline): boolean {
+  if (!isReasonRequired(p)) return true;
+  if (!p.dropoutReason) return false;
+  if (p.dropoutReason === 'other') return !!p.dropoutReasonOther?.trim();
+  return true;
+}
+
+/** The recorded reason as one readable string, or null if none is on record. */
+export function dropoutReasonText(p: LeadPipeline): string | null {
+  if (!p.dropoutReason) return null;
+  if (p.dropoutReason === 'other') {
+    const t = p.dropoutReasonOther?.trim();
+    return t ? t : null;
+  }
+  return DROPOUT_REASON_LABELS[p.dropoutReason];
+}
+
 /** 1-based index of the phase currently in progress (the first incomplete one). */
 export function currentPhase(p: LeadPipeline): number {
   const done = phaseCompletion(p);
@@ -163,6 +241,55 @@ function shortDate(iso?: string): string | null {
   const d = new Date(`${iso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+export interface ReasonByStageRow {
+  /** 1-based phase the reason was captured at. */
+  phase: number;
+  phaseTitle: string;
+  /** Count per reason, plus how many drop-outs at this phase have no reason yet. */
+  counts: Record<DropoutReason, number>;
+  missing: number;
+  total: number;
+}
+
+/**
+ * Drop-off reasons broken down by the stage they were logged at — the report
+ * the phase tag exists to make possible.
+ *
+ * `missing` is reported rather than hidden: a stage with fifteen drop-outs and
+ * eleven reasons is a data-collection problem, and rounding it away would make
+ * the chart look complete while the insight is still missing.
+ */
+export function dropoutReasonBreakdown(pipelines: LeadPipeline[]): ReasonByStageRow[] {
+  const empty = (): Record<DropoutReason, number> =>
+    ({ has_kids: 0, not_within_budget: 0, too_soon: 0, other: 0 });
+
+  const rows = new Map<number, ReasonByStageRow>();
+  for (const phase of [2, 3]) {
+    rows.set(phase, {
+      phase,
+      phaseTitle: PHASE_TITLES[phase - 1] ?? `Phase ${phase}`,
+      counts: empty(),
+      missing: 0,
+      total: 0,
+    });
+  }
+
+  for (const p of pipelines) {
+    const at = dropoutPhaseFor(p);
+    if (at === null) continue;
+    // Attribute to the tagged phase when one is recorded, else to the phase that
+    // currently shows the drop-out. Old rows written before tagging existed have
+    // no tag, and dropping them would understate every total.
+    const key = p.dropoutReasonPhase ?? at;
+    const row = rows.get(key) ?? rows.get(at)!;
+    row.total += 1;
+    if (isReasonComplete(p) && p.dropoutReason) row.counts[p.dropoutReason] += 1;
+    else row.missing += 1;
+  }
+
+  return [...rows.values()];
 }
 
 /** One recorded fact inside a phase. */
@@ -257,7 +384,17 @@ export function phaseCaptions(p: LeadPipeline): string[] {
   const reason = lostReason(p);
 
   const caption = (i: number): string => {
-    if (lostAt === i + 1 && reason) return reason;
+    if (lostAt === i + 1 && reason) {
+      // On the card that recorded the drop-out, say WHY if we know, and say the
+      // reason is outstanding if we do not — a card reading only "Not interested
+      // after meeting" gives no hint that something is still owed.
+      if (dropoutPhaseFor(p) === i + 1) {
+        const why = dropoutReasonText(p);
+        if (why) return `${reason} · ${why}`;
+        return `${reason} · waiting on: a reason`;
+      }
+      return reason;
+    }
 
     switch (i) {
       case 0:
