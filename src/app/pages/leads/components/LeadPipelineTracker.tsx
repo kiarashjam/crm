@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   Phone, Users, FileSignature, PenLine, Wallet,
   Check, X, ChevronDown, ChevronsDownUp, ChevronsUpDown,
-  XCircle, ArrowRightCircle, Sparkles,
+  XCircle, AlertCircle, ArrowRightCircle, Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
@@ -11,10 +11,11 @@ import { Button } from '@/app/components/ui/button';
 import { useMotionPreference } from '@/app/hooks';
 import {
   type LeadPipeline, type OutreachStatus, type ContactOutcome,
-  type ContractStatus, type ContractSigned, type PhaseStep,
+  type ContractStatus, type ContractSigned, type PhaseStep, type DropoutReason,
   PHASE_TITLES, OUTREACH_LABELS, OUTCOME_LABELS, CONTRACT_LABELS, SIGNED_LABELS,
+  DROPOUT_REASONS, DROPOUT_REASON_LABELS,
   phaseCompletion, currentPhase, lostReason, lostPhase, phaseCaptions, phaseSteps,
-  isPipelineComplete,
+  isPipelineComplete, isReasonComplete, isReasonRequired, dropoutPhaseFor,
 } from '../leadPipeline';
 import { usePhaseTransitions } from '../usePhaseTransitions';
 import { usePhaseDisclosure, defaultFocus } from '../usePhaseDisclosure';
@@ -112,6 +113,93 @@ function Choices<T extends string>({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Why the lead walked away. Rendered at whichever phase recorded the drop-out,
+ * from ONE options list, so Meeting and Contract can never drift apart and the
+ * report can compare them.
+ *
+ * "Mandatory" has to mean something particular here: the tracker autosaves on
+ * every click, so there is no submit to block. Instead the requirement is made
+ * impossible to miss and impossible to lose — a rose border and a Required
+ * badge while it is outstanding, the phase caption saying a reason is owed, and
+ * a banner at the top of the tracker. The negative answer itself still saves,
+ * because refusing to record "they said no" until a dropdown is filled would
+ * lose the more important fact.
+ */
+function DropoutReasonField({
+  phase, value, disabled, onChange,
+}: {
+  /** 1-based phase this field belongs to — stamped onto the reason when set. */
+  phase: number;
+  value: LeadPipeline;
+  disabled?: boolean;
+  onChange: (patch: Partial<LeadPipeline>, log?: LogHint) => void;
+}) {
+  const complete = isReasonComplete(value);
+  const needsText = value.dropoutReason === 'other';
+
+  return (
+    <div
+      className={cn(
+        'space-y-2 rounded-xl border p-3',
+        complete ? 'border-slate-200 bg-slate-50/70' : 'border-rose-300 bg-rose-50/60',
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-slate-700">Reason they are not proceeding</span>
+        {complete
+          ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Recorded</span>
+          : <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Required</span>}
+      </div>
+
+      <Choices<DropoutReason>
+        disabled={disabled}
+        value={value.dropoutReason}
+        options={DROPOUT_REASONS.map((r) => ({
+          value: r,
+          label: DROPOUT_REASON_LABELS[r],
+          tone: 'default' as const,
+        }))}
+        onPick={(r) => onChange(
+          {
+            dropoutReason: r,
+            // Stamp the phase only on first capture; a reason already explained
+            // at an earlier phase keeps that attribution.
+            dropoutReasonPhase: value.dropoutReasonPhase ?? phase,
+            // Switching away from "Other" drops the now-meaningless free text.
+            ...(r === 'other' ? {} : { dropoutReasonOther: undefined }),
+          },
+          { subject: `Drop-out reason: ${DROPOUT_REASON_LABELS[r]}`, body: `Recorded at phase ${value.dropoutReasonPhase ?? phase}` },
+        )}
+      />
+
+      {needsText && (
+        <label className="block space-y-1">
+          <span className="text-xs font-medium text-slate-500">
+            Please say more <span className="text-rose-600">(required)</span>
+          </span>
+          <textarea
+            rows={2}
+            disabled={disabled}
+            value={value.dropoutReasonOther ?? ''}
+            onChange={(e) => onChange({ dropoutReasonOther: e.target.value })}
+            onBlur={(e) => {
+              const t = e.target.value.trim();
+              if (t) onChange({ dropoutReasonOther: t }, { subject: 'Drop-out reason (other)', body: t });
+            }}
+            placeholder="In their words, if possible"
+            className={cn(
+              'w-full rounded-lg border bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-50',
+              'focus:outline-none focus:ring-2 focus:ring-indigo-100',
+              value.dropoutReasonOther?.trim() ? 'border-slate-200 focus:border-indigo-400' : 'border-rose-300',
+            )}
+          />
+        </label>
+      )}
     </div>
   );
 }
@@ -402,9 +490,19 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
   const { justCompleted, nonce } = usePhaseTransitions(done, { enabled: !disabled, holdMs: 900 });
   const announcement = useTrackerAnnouncement({ justCompleted, nonce, phase, lost, complete });
 
+  const reasonPhase = useMemo(() => dropoutPhaseFor(value), [value]);
+  const reasonOutstanding = useMemo(
+    () => isReasonRequired(value) && !isReasonComplete(value),
+    [value],
+  );
+
+  // An owed reason outranks the ordinary focus rule: the card that needs
+  // something from you should be the one already open.
   const focus = useMemo(
-    () => defaultFocus({ currentPhase: phase, lostPhase: lostAt, complete }),
-    [phase, lostAt, complete],
+    () => (reasonOutstanding && reasonPhase !== null
+      ? reasonPhase - 1
+      : defaultFocus({ currentPhase: phase, lostPhase: lostAt, complete })),
+    [reasonOutstanding, reasonPhase, phase, lostAt, complete],
   );
   const disclosure = usePhaseDisclosure(focus, PHASE_TITLES.length);
 
@@ -588,6 +686,18 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
         </div>
       )}
 
+      {/* An outstanding reason is announced here as well as on the card, because
+          the card it belongs to may be folded away. */}
+      {reasonOutstanding && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-100/70 px-3 py-2 text-sm text-rose-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            <strong>A reason is required.</strong> Open Phase {reasonPhase} and record why they are
+            not proceeding, so this shows up in the drop-off report.
+          </span>
+        </div>
+      )}
+
       <ol className="space-y-2.5">
         {/* Phase 1 — Outreach */}
         {card(0, (
@@ -659,9 +769,21 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                   { value: 'yes', label: 'Yes', tone: 'success', hint: hint({ stillInterested: true }) },
                   { value: 'no', label: 'No', tone: 'danger', hint: hint({ stillInterested: false }) },
                 ]}
-                onPick={(v) => patch({ stillInterested: v === 'yes' }, { subject: `Still interested: ${v === 'yes' ? 'Yes' : 'No'}` })}
+                onPick={(v) => patch(
+                  v === 'yes'
+                    // Reopening a lead clears the explanation for a departure
+                    // that no longer happened, so it cannot linger in the report.
+                    ? { stillInterested: true, dropoutReason: undefined, dropoutReasonOther: undefined, dropoutReasonPhase: undefined }
+                    : { stillInterested: false },
+                  { subject: `Still interested: ${v === 'yes' ? 'Yes' : 'No'}` },
+                )}
               />
             </div>
+            {value.stillInterested === false && (
+              <div className="sm:col-span-2">
+                <DropoutReasonField phase={2} value={value} disabled={disabled} onChange={patch} />
+              </div>
+            )}
           </div>
         ))}
 
@@ -679,9 +801,17 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                   { value: 'profile_rejected', label: CONTRACT_LABELS.profile_rejected, tone: 'danger', hint: hint({ contractStatus: 'profile_rejected' }) },
                   { value: 'no_longer_interested', label: CONTRACT_LABELS.no_longer_interested, tone: 'danger', hint: hint({ contractStatus: 'no_longer_interested' }) },
                 ]}
-                onPick={(v) => patch({ contractStatus: v }, { subject: `Contract: ${CONTRACT_LABELS[v]}` })}
+                onPick={(v) => patch(
+                  v === 'no_longer_interested'
+                    ? { contractStatus: v }
+                    : { contractStatus: v, ...(dropoutPhaseFor(value) === 3 ? { dropoutReason: undefined, dropoutReasonOther: undefined, dropoutReasonPhase: undefined } : {}) },
+                  { subject: `Contract: ${CONTRACT_LABELS[v]}` },
+                )}
               />
             </div>
+            {value.contractStatus === 'no_longer_interested' && (
+              <DropoutReasonField phase={3} value={value} disabled={disabled} onChange={patch} />
+            )}
             <DateField label="Contract sent date" value={value.contractSentDate} disabled={disabled}
               onChange={(v) => patch({ contractSentDate: v }, { subject: 'Contract sent', body: v })} />
           </>

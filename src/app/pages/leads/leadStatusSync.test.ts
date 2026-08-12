@@ -298,8 +298,12 @@ describe('resolveStatus — default vocabulary', () => {
     const got = (s: CanonicalStage) => resolveStatus(s, DEFAULT_OPTS)?.name;
     expect(got('attempted')).toBe('Attempted Contact');
     expect(got('contacted')).toBe('Contacted');
-    expect(got('meeting_scheduled')).toBe('Connected');
-    expect(got('meeting_held')).toBe('In Progress');
+    // 'Connected' now belongs to meeting_HELD, per the client's definition
+    // ("Showed up? = Yes"). The old list has no booked-meeting label at all, so
+    // meeting_scheduled correctly degrades one rung to Contacted rather than
+    // over-claiming that we have met them.
+    expect(got('meeting_scheduled')).toBe('Contacted');
+    expect(got('meeting_held')).toBe('Connected');
     expect(got('qualified')).toBe('Qualified');
     expect(got('signed')).toBe('Open Deal');
     expect(got('deposit_paid')).toBe('Open Deal');
@@ -432,15 +436,27 @@ describe('classifyStatusLabel / isStickyStatus', () => {
 // ── planStatusSync: the disposition ladder ───────────────────────────────────
 
 describe('planStatusSync — applies a straightforward advance', () => {
-  it('recording a meeting moves New to Connected', () => {
+  it('recording a booked meeting moves New to Contacted, not Connected', () => {
+    // Booking is not connecting — a large share of booked meetings no-show, so
+    // the status must not claim contact was made until attendance is recorded.
     const plan = planStatusSync(ctx({
       pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' },
       currentStatus: 'New',
     }));
     expect(plan.kind).toBe('apply');
     if (plan.kind !== 'apply') return;
-    expect(plan.to.name).toBe('Connected');
+    expect(plan.to.name).toBe('Contacted');
     expect(plan.from).toBe('New');
+  });
+
+  it('recording ATTENDANCE is what moves a lead to Connected', () => {
+    const plan = planStatusSync(ctx({
+      pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingAttended: true },
+      currentStatus: 'New',
+    }));
+    expect(plan.kind).toBe('apply');
+    if (plan.kind !== 'apply') return;
+    expect(plan.to.name).toBe('Connected');
   });
 
   it('names the cause and carries a machine-readable trailer', () => {
@@ -635,7 +651,7 @@ describe('statusDrift — computed from state, so it survives a reload', () => {
 
 describe('previewStatusChange — a hint can never promise what the click would not do', () => {
   it('shows the status the edit would produce', () => {
-    const to = previewStatusChange({ outreachStatus: 'contacted' }, { contactOutcome: 'meeting_scheduled' }, ctx());
+    const to = previewStatusChange({ outreachStatus: 'contacted' }, { meetingAttended: true }, ctx());
     expect(to?.name).toBe('Connected');
   });
 
@@ -897,5 +913,119 @@ describe('a hand-picked status survives later pipeline edits', () => {
       manualHeldTier: STAGE_TIER.qualified,            // was 5 when they intervened
     }));
     expect(plan.kind).toBe('apply');
+  });
+});
+
+// ── The client's requested vocabulary ────────────────────────────────────────
+// The eight stages agreed with the client, in their order. Every row of their
+// table is pinned below, because these labels ARE the contract.
+const NEW_VOCAB = [
+  'New', 'Attempted Contact', 'Contacted', 'Connected',
+  'Contract Pending', 'Awaiting Signature', 'Signed', 'Lost / Not Interested',
+].map((name, i) => ({ id: `s${i}`, name, displayOrder: i }));
+
+describe('client status vocabulary — one case per row of their table', () => {
+  const statusFor = (p: LeadPipeline) => {
+    const d = deriveStage(p);
+    return resolveStatus(d.stage, NEW_VOCAB)?.name ?? null;
+  };
+
+  it('New ← nothing recorded yet', () => {
+    expect(statusFor({})).toBe('New');
+  });
+
+  it('Attempted Contact ← outreach "attempted — no answer"', () => {
+    expect(statusFor({ outreachStatus: 'attempted_no_answer' })).toBe('Attempted Contact');
+  });
+
+  it('Contacted ← outreach "contacted"', () => {
+    expect(statusFor({ outreachStatus: 'contacted' })).toBe('Contacted');
+    // A booked meeting is still only "we have spoken" in this vocabulary —
+    // their table has no separate meeting-scheduled status, so it must not
+    // over-claim by resolving to Connected.
+    expect(statusFor({ outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' })).toBe('Contacted');
+  });
+
+  it('Connected ← "Showed up?" = Yes, NOT a merely booked meeting', () => {
+    // The one mapping that had to be corrected: 'connected' used to be a synonym
+    // for meeting_scheduled. Half of booked meetings no-show; attendance is what
+    // earns the label.
+    expect(statusFor({ meetingAttended: true })).toBe('Connected');
+  });
+
+  it('Contract Pending ← met and interested, and also contract-to-be-sent', () => {
+    expect(statusFor({ meetingAttended: true, stillInterested: true })).toBe('Contract Pending');
+    expect(statusFor({ contractStatus: 'to_be_sent' })).toBe('Contract Pending');
+  });
+
+  it('Awaiting Signature ← contract sent but not yet signed', () => {
+    expect(statusFor({ contractStatus: 'yes', contractSentDate: '2026-08-22' })).toBe('Awaiting Signature');
+    expect(statusFor({ contractSigned: 'pending' })).toBe('Awaiting Signature');
+  });
+
+  it('Signed ← contract executed, and a paid deposit holds there', () => {
+    expect(statusFor({ contractSigned: 'yes' })).toBe('Signed');
+    // Their table has no deposit status, so a deposit must NOT knock the lead
+    // back down the ladder — it degrades onto the same string and holds.
+    expect(statusFor({ contractSigned: 'yes', depositPaid: true })).toBe('Signed');
+    expect(statusFor({ depositPaid: true })).toBe('Signed');
+  });
+
+  it('Lost / Not Interested ← every one of the three triggers they listed', () => {
+    expect(statusFor({ contactOutcome: 'not_interested' })).toBe('Lost / Not Interested');
+    expect(statusFor({ meetingAttended: true, stillInterested: false })).toBe('Lost / Not Interested');
+    expect(statusFor({ contractStatus: 'no_longer_interested' })).toBe('Lost / Not Interested');
+    // profile_rejected derives to `unqualified`, a TERMINAL that never degrades
+    // down the ladder. Without the combined label on both terminals it would
+    // resolve to nothing and the status would silently fail to move.
+    expect(statusFor({ contractStatus: 'profile_rejected' })).toBe('Lost / Not Interested');
+  });
+
+  it('never invents a label outside the org list', () => {
+    const allowed = new Set(NEW_VOCAB.map((o) => o.name));
+    const STATES: LeadPipeline[] = [
+      {}, { outreachStatus: 'attempted_no_answer' }, { outreachStatus: 'contacted' },
+      { contactOutcome: 'follow_up' }, { contactOutcome: 'meeting_scheduled' },
+      { contactOutcome: 'not_interested' }, { meetingAttended: true }, { meetingAttended: false },
+      { meetingAttended: true, stillInterested: true }, { stillInterested: false },
+      { contractStatus: 'to_be_sent' }, { contractStatus: 'yes' },
+      { contractStatus: 'profile_rejected' }, { contractStatus: 'no_longer_interested' },
+      { contractSigned: 'pending' }, { contractSigned: 'yes' }, { contractSigned: 'no' },
+      { depositPaid: true },
+    ];
+    for (const p of STATES) {
+      const name = statusFor(p);
+      if (name !== null) expect(allowed, JSON.stringify(p)).toContain(name);
+    }
+  });
+
+  it('is monotone across the happy path — the status never goes backwards', () => {
+    const order = NEW_VOCAB.map((o) => o.name);
+    const journey: LeadPipeline[] = [
+      {},
+      { outreachStatus: 'attempted_no_answer' },
+      { outreachStatus: 'contacted' },
+      { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20' },
+      { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true },
+      { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true, stillInterested: true },
+      { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true, stillInterested: true, contractStatus: 'yes', contractSentDate: '2026-08-22' },
+      { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true, stillInterested: true, contractStatus: 'yes', contractSentDate: '2026-08-22', contractSigned: 'yes', signatureDate: '2026-08-25' },
+      { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true, stillInterested: true, contractStatus: 'yes', contractSentDate: '2026-08-22', contractSigned: 'yes', signatureDate: '2026-08-25', depositPaid: true, paymentDate: '2026-08-28' },
+    ];
+    let last = -1;
+    for (const p of journey) {
+      const idx = order.indexOf(statusFor(p)!);
+      expect(idx, `${JSON.stringify(p)} → ${statusFor(p)}`).toBeGreaterThanOrEqual(last);
+      last = idx;
+    }
+  });
+
+  it('still works for an organisation left on the OLD vocabulary', () => {
+    // Existing orgs are migrated, but the code must not depend on that having
+    // happened — otherwise a half-migrated tenant silently stops syncing.
+    const old = resolveStatus('meeting_held', DEFAULT_OPTS)?.name;
+    expect(old).toBeTruthy();
+    expect(resolveStatus('signed', DEFAULT_OPTS)?.name).toBeTruthy();
+    expect(resolveStatus('lost', DEFAULT_OPTS)?.name).toBe('Lost');
   });
 });

@@ -21,6 +21,10 @@ import type { Lead } from '@/app/api/types';
 import { cn } from '@/app/components/ui/utils';
 import { buildTrackedRowsFromLeads, leadHasTrackerData } from '../leads/leadTrackerMap';
 import {
+  parsePipeline, dropoutReasonBreakdown,
+  DROPOUT_REASONS, DROPOUT_REASON_LABELS,
+} from '../leads/leadPipeline';
+import {
   computeKpis,
   computeRates,
   computeContractTiming,
@@ -87,6 +91,16 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle?: st
 
 export function SalesTrackerReport({ leads }: Props) {
   const rows = useMemo(() => buildTrackedRowsFromLeads(leads), [leads]);
+  // Reasons live on the lead's own pipelineState, not on the tracked-row
+  // projection, so they are read straight from the leads.
+  const reasonRows = useMemo(
+    () => dropoutReasonBreakdown(leads.map((l) => parsePipeline(l.pipelineState))),
+    [leads],
+  );
+  const reasonTotals = useMemo(() => ({
+    total: reasonRows.reduce((n, r) => n + r.total, 0),
+    missing: reasonRows.reduce((n, r) => n + r.missing, 0),
+  }), [reasonRows]);
   const waitlistTotal = leads.length;
   const trackedCount = useMemo(() => leads.filter(leadHasTrackerData).length, [leads]);
 
@@ -406,6 +420,54 @@ export function SalesTrackerReport({ leads }: Props) {
               </tbody>
             </table>
           </div>
+        </ChartCard>
+
+        {/* Drop-off reasons, broken down by the stage they were recorded at. */}
+        <ChartCard
+          title="Why they did not proceed"
+          subtitle="Reason by the phase it was logged at — Meeting vs Contract"
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
+                  <th className="py-2 pr-3 font-semibold">Phase</th>
+                  {DROPOUT_REASONS.map((r) => (
+                    <th key={r} className="py-2 pr-3 text-right font-semibold">{DROPOUT_REASON_LABELS[r]}</th>
+                  ))}
+                  <th className="py-2 pr-3 text-right font-semibold">No reason yet</th>
+                  <th className="py-2 text-right font-semibold">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reasonRows.map((row) => (
+                  <tr key={row.phase} className="border-b border-slate-100 last:border-b-0">
+                    <td className="py-2 pr-3 font-semibold text-slate-800">
+                      {row.phaseTitle}
+                      <span className="ml-1 font-normal text-slate-400">· phase {row.phase}</span>
+                    </td>
+                    {DROPOUT_REASONS.map((r) => (
+                      <td key={r} className="py-2 pr-3 text-right tabular-nums text-slate-600">
+                        {row.counts[r] || '—'}
+                      </td>
+                    ))}
+                    <td className={cn(
+                      'py-2 pr-3 text-right font-semibold tabular-nums',
+                      row.missing > 0 ? 'text-rose-600' : 'text-slate-300',
+                    )}>
+                      {row.missing || '—'}
+                    </td>
+                    <td className="py-2 text-right font-bold tabular-nums text-slate-800">{row.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {reasonTotals.missing > 0 && (
+            <p className="mt-2 text-[11px] text-rose-600">
+              {reasonTotals.missing} of {reasonTotals.total} drop-outs have no reason recorded yet.
+            </p>
+          )}
         </ChartCard>
       </div>
     </div>

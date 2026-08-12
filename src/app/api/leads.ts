@@ -234,7 +234,10 @@ export async function getLeadStats(): Promise<LeadStats> {
   const contacted = leads.filter(
     (l) => l.status === 'Contacted' || l.status === 'Attempted Contact' || l.status === 'Connected',
   ).length;
-  const qualified = leads.filter((l) => l.status === 'Qualified').length;
+  // "Qualified or beyond" — spans both status vocabularies. Mirrors the same
+  // count in LeadRepository.GetStatsAsync; keep the two in step.
+  const QUALIFIED_OR_BEYOND = ['Qualified', 'Contract Pending', 'Awaiting Signature', 'Signed'];
+  const qualified = leads.filter((l) => QUALIFIED_OR_BEYOND.includes(l.status)).length;
   const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const thisWeek = leads.filter((l) => l.createdAtUtc && Date.parse(l.createdAtUtc) >= oneWeekAgo).length;
   const hotLeads = leads.filter((l) => (l.leadScore ?? 0) >= 70 && !l.isConverted).length;

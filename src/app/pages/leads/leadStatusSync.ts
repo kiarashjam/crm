@@ -308,11 +308,18 @@ const STAGE_SYNONYMS: Record<CanonicalStage, string[]> = {
   new: ['new', 'new lead'],
   attempted: ['attempted contact', 'attempted', 'no answer', 'left message', 'tried'],
   contacted: ['contacted', 'reached out', 'in contact', 'follow up', 'follow-up', 'nurturing'],
-  meeting_scheduled: ['meeting scheduled', 'meeting booked', 'demo scheduled', 'appointment set', 'connected'],
-  meeting_held: ['meeting held', 'meeting done', 'demo done', 'discovery done', 'met', 'in progress'],
-  qualified: ['qualified', 'sql', 'mql', 'interested'],
-  contract_pending: ['contract to send', 'contract to be sent', 'drafting contract', 'preparing proposal', 'proposal in progress'],
-  contract_sent: ['contract sent', 'proposal sent', 'quote sent', 'awaiting signature', 'contract out', 'negotiation', 'proposal'],
+  meeting_scheduled: ['meeting scheduled', 'meeting booked', 'demo scheduled', 'appointment set'],
+  // 'connected' means "we actually got in front of them" — it is claimed by
+  // meeting_HELD, not meeting_scheduled. A booked meeting is not a connection;
+  // half of them no-show. Attendance is the fact that earns the label.
+  meeting_held: ['meeting held', 'meeting done', 'demo done', 'discovery done', 'connected', 'met', 'in progress'],
+  // 'contract pending' is listed under BOTH qualified and contract_pending on
+  // purpose: met-and-interested and contract-to-be-sent are one status in this
+  // vocabulary. Safe because a shared label resolves to the same option, so
+  // crossing between the two stages leaves the written string unchanged.
+  qualified: ['qualified', 'sql', 'mql', 'interested', 'contract pending'],
+  contract_pending: ['contract to send', 'contract to be sent', 'contract pending', 'drafting contract', 'preparing proposal', 'proposal in progress'],
+  contract_sent: ['awaiting signature', 'contract sent', 'proposal sent', 'quote sent', 'contract out', 'negotiation', 'proposal'],
   signed: ['contract signed', 'signed', 'closed won', 'won', 'open deal'],
   // Only DISTINCTIVE names here. The generic top-of-ladder labels ('open deal',
   // 'closed won', 'won') deliberately belong to `signed` alone: if both stages
@@ -322,8 +329,12 @@ const STAGE_SYNONYMS: Record<CanonicalStage, string[]> = {
   // `deposit_paid` degrades down the chain to `signed` and lands on whatever
   // that resolved to — the same string, so the status simply holds.
   deposit_paid: ['deposit paid', 'deposit received', 'deposit', 'customer'],
-  unqualified: ['unqualified', 'disqualified', 'not a fit', 'rejected'],
-  lost: ['lost', 'closed lost', 'dead', 'not interested', 'no longer interested'],
+  // Both terminals accept the combined 'lost / not interested' label. Terminals
+  // never degrade down the ladder, so without it an org whose only negative
+  // status is that combined label would resolve `unqualified` to NOTHING and a
+  // rejected profile would silently leave the status untouched.
+  unqualified: ['unqualified', 'disqualified', 'not a fit', 'rejected', 'lost / not interested', 'lost or not interested'],
+  lost: ['lost', 'closed lost', 'dead', 'not interested', 'no longer interested', 'lost / not interested', 'lost or not interested'],
 };
 
 /**
