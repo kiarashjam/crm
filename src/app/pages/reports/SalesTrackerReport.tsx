@@ -11,7 +11,7 @@ import { useMemo } from 'react';
 import {
   Users, Target, PhoneCall, Handshake, FileSignature, CircleDollarSign,
   XCircle, UserCheck, Clock, AlertOctagon, TrendingUp, TrendingDown,
-  Calendar, Sparkles, Percent,
+  Calendar, Percent,
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
@@ -19,6 +19,7 @@ import {
 } from 'recharts';
 import type { Lead } from '@/app/api/types';
 import { cn } from '@/app/components/ui/utils';
+import { Kpi, Panel, type Accent } from './ReportUI';
 import { buildTrackedRowsFromLeads, leadHasTrackerData } from '../leads/leadTrackerMap';
 import {
   parsePipeline, dropoutReasonBreakdown,
@@ -51,42 +52,40 @@ interface Props {
   leads: Lead[];
 }
 
-/** Small reusable KPI tile shared across the section. */
+/**
+ * Local shims onto the shared report primitives.
+ *
+ * This section used to define its own KPI tile and chart card with different
+ * radii, borders and label sizes from the rest of the page, which is most of why
+ * Reports read as two products stitched together. The call sites keep their
+ * existing shape; only the rendering is now shared.
+ */
 function KpiTile({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  tone,
+  label, value, sub, icon: Icon, tone,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon: React.ElementType;
+  /** Legacy tailwind tone string, mapped onto a shared accent. */
   tone: string;
 }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">{label}</span>
-        <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg', tone)}>
-          <Icon className="h-3.5 w-3.5" />
-        </span>
-      </div>
-      <p className="mt-1.5 text-xl font-bold text-slate-900 tabular-nums">{value}</p>
-      {sub && <p className="mt-0.5 text-[11px] text-slate-400">{sub}</p>}
-    </div>
-  );
+  return <Kpi label={label} value={String(value)} sub={sub} icon={Icon} accent={accentFor(tone)} />;
 }
 
 function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
-      {subtitle && <p className="text-[11px] text-slate-400 mb-2">{subtitle}</p>}
-      <div className="mt-2">{children}</div>
-    </div>
-  );
+  return <Panel title={title} subtitle={subtitle}>{children}</Panel>;
+}
+
+/** Map the tone strings already at the call sites onto shared accents. */
+function accentFor(tone: string): Accent {
+  if (tone.includes('emerald') || tone.includes('green')) return 'emerald';
+  if (tone.includes('rose') || tone.includes('red')) return 'rose';
+  if (tone.includes('amber') || tone.includes('orange') || tone.includes('yellow')) return 'amber';
+  if (tone.includes('violet') || tone.includes('purple') || tone.includes('fuchsia')) return 'violet';
+  if (tone.includes('teal')) return 'teal';
+  if (tone.includes('sky') || tone.includes('cyan') || tone.includes('blue')) return 'sky';
+  return 'indigo';
 }
 
 export function SalesTrackerReport({ leads }: Props) {
@@ -121,34 +120,17 @@ export function SalesTrackerReport({ leads }: Props) {
 
   return (
     <div className="pt-4">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 mb-6">
-        <div className="absolute -top-16 -right-16 h-56 w-56 rounded-full bg-orange-500/20 blur-3xl" />
-        <div className="absolute -bottom-20 -left-16 h-48 w-48 rounded-full bg-violet-500/20 blur-3xl" />
-        <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
-              <Sparkles className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-white tracking-tight">Lead funnel</h2>
-              <p className="text-slate-400 mt-0.5 text-sm">
-                Built from lead pipeline data (same stages as the P46 tracker workbook)
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-white/10 border border-white/20 text-white text-xs px-3 py-1.5">
-              {trackedCount} leads in tracker · {leads.length} total
-            </span>
-          </div>
-        </div>
-      </div>
-
+      {/* The dark "Lead funnel" hero that used to sit here is gone: the page now
+          has a section heading of its own directly above this component, and two
+          stacked titles was the clearest remaining sign of a page assembled from
+          two separate things. The lead count it carried moves onto the panel
+          below, where it belongs. */}
       {/* Waitlist = all leads */}
       <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-amber-50/30 to-orange-50/40 p-5 shadow-sm mb-6">
         <div className="mb-4">
-          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Leads</p>
+          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            Leads · {trackedCount} of {leads.length} have pipeline data
+          </p>
           <h3 className="mt-0.5 text-base font-bold text-slate-900">Waitlist = all leads in this org</h3>
           <p className="text-xs text-slate-500 mt-1">
             Funnel numbers come from each lead&apos;s pipeline fields — not a separate sales spreadsheet.
