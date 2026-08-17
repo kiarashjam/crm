@@ -108,6 +108,47 @@ export interface DerivedStage {
   conflicts: string[];
 }
 
+// ── Status groups, for counting ──────────────────────────────────────────────
+// One definition, imported everywhere a report or a stat needs "how far has this
+// lead got". Three separate copies of this rule had already drifted apart: the
+// API, the frontend stats twin, and the reports page each spelled it differently,
+// and the reports page used `status.includes('qualified')` — which matched
+// "Unqualified", and then matched NOTHING once the vocabulary was renamed, so the
+// figure silently sat at zero.
+//
+// Both vocabularies are listed on purpose. An organisation part-way through the
+// status migration must still count correctly.
+
+/** Statuses meaning "we have actually spoken to them" or further. */
+export const CONTACTED_OR_BEYOND: readonly string[] = [
+  'Contacted', 'Connected', 'Contract Pending', 'Awaiting Signature', 'Signed',
+  // legacy vocabulary
+  'In Progress', 'Qualified', 'Open Deal',
+];
+
+/** Statuses meaning "met and interested" or further. */
+export const QUALIFIED_OR_BEYOND: readonly string[] = [
+  'Contract Pending', 'Awaiting Signature', 'Signed',
+  // legacy vocabulary
+  'Qualified', 'Open Deal',
+];
+
+/** Statuses meaning the contract is executed. */
+export const SIGNED_STATUSES: readonly string[] = ['Signed', 'Open Deal'];
+
+/** Statuses meaning the lead is out, whoever ended it. */
+export const LOST_STATUSES: readonly string[] = [
+  'Lost / Not Interested', 'Lost', 'Unqualified',
+];
+
+const normStatus = (s: string | undefined) => (s ?? '').trim().toLowerCase();
+
+/** Case- and whitespace-tolerant membership test for the groups above. */
+export function statusIn(status: string | undefined, group: readonly string[]): boolean {
+  const n = normStatus(status);
+  return n.length > 0 && group.some((g) => g.toLowerCase() === n);
+}
+
 /** Every explicit negative currently recorded, in phase order. */
 function negativeSignals(p: LeadPipeline): string[] {
   const out: string[] = [];

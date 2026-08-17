@@ -2,6 +2,7 @@ import type { Lead, PagedResult, PaginationParams } from './types';
 import { mockLeads } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
+import { QUALIFIED_OR_BEYOND, statusIn } from '@/app/pages/leads/leadStatusSync';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -234,10 +235,9 @@ export async function getLeadStats(): Promise<LeadStats> {
   const contacted = leads.filter(
     (l) => l.status === 'Contacted' || l.status === 'Attempted Contact' || l.status === 'Connected',
   ).length;
-  // "Qualified or beyond" — spans both status vocabularies. Mirrors the same
-  // count in LeadRepository.GetStatsAsync; keep the two in step.
-  const QUALIFIED_OR_BEYOND = ['Qualified', 'Contract Pending', 'Awaiting Signature', 'Signed'];
-  const qualified = leads.filter((l) => QUALIFIED_OR_BEYOND.includes(l.status)).length;
+  // "Qualified or beyond", from the one shared definition. Mirrors the same count
+  // in LeadRepository.GetStatsAsync; keep the two in step.
+  const qualified = leads.filter((l) => statusIn(l.status, QUALIFIED_OR_BEYOND)).length;
   const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const thisWeek = leads.filter((l) => l.createdAtUtc && Date.parse(l.createdAtUtc) >= oneWeekAgo).length;
   const hotLeads = leads.filter((l) => (l.leadScore ?? 0) >= 70 && !l.isConverted).length;
