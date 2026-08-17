@@ -6,7 +6,7 @@ import {
   Upload, RefreshCw, Users, Handshake, ArrowRight, CheckCircle2,
   SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, X, Download,
   TrendingUp, Target, Clock, Zap, BarChart3, Calendar, AlertCircle, Activity as ActivityIcon,
-  MessageSquarePlus, UserCircle, ChevronDown,
+  MessageSquarePlus, UserCircle, ChevronDown, AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -87,6 +87,8 @@ import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignment
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
 import { QUALIFIED_OR_BEYOND, statusIn } from './leads/leadStatusSync';
+import { findStatusFixes } from './leads/bulkStatusReconcile';
+import StatusReconcileDialog from './leads/components/StatusReconcileDialog';
 import { isValidGuid } from './leads/utils';
 import { loadLeadReferrals, saveLeadReferrals } from './leads/leadReferralStore';
 import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignmentStore';
@@ -317,6 +319,19 @@ export default function Leads() {
    * the shared definition with the org's own list keeps it working on either
    * vocabulary and guarantees we never filter by a status the org does not have.
    */
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+
+  /**
+   * Drift on the leads currently loaded. Cheap, and its only job is discovery:
+   * the dialog rescans EVERY lead, because this page is paginated and a banner
+   * that only knew about page one would understate the problem.
+   */
+  const pageStatusFixes = useMemo(
+    () => findStatusFixes({ leads, statusOptions, statusesLoaded }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- statusOptions is derived from leadStatuses
+    [leads, leadStatuses, statusesLoaded],
+  );
+
   const qualifiedStatusNames = useMemo(
     () => statusOptions.filter((s) => statusIn(s.name, QUALIFIED_OR_BEYOND)).map((s) => s.name),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- derived from leadStatuses
@@ -1370,8 +1385,46 @@ export default function Leads() {
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <LeadAssignmentMigrationDialog onMigrated={fetchLeads} />
+      <StatusReconcileDialog
+        open={reconcileOpen}
+        onOpenChange={setReconcileOpen}
+        statusOptions={statusOptions.map((o) => ({ id: o.id, name: o.name, displayOrder: o.displayOrder }))}
+        statusesLoaded={statusesLoaded}
+        onApplied={(updated) => {
+          // Reflect the new statuses in the loaded page without a refetch, so the
+          // banner disappears for exactly the leads that were actually fixed.
+          setLeads((prev) => prev.map((l) => updated.find((u) => u.id === l.id) ?? l));
+        }}
+      />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          {/* Discovery for a problem nobody would otherwise go looking for: a lead
+              can carry advanced steps while its status still reads New, and until
+              auto-sync existed that was the normal state of the book. */}
+          {!isReadOnly && pageStatusFixes.length > 0 && (
+            <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-sm font-bold text-amber-900">
+                    {pageStatusFixes.length} lead{pageStatusFixes.length === 1 ? '' : 's'} here
+                    {pageStatusFixes.length === 1 ? ' has' : ' have'} a status that does not match
+                    {pageStatusFixes.length === 1 ? ' its' : ' their'} steps
+                  </p>
+                  <p className="mt-0.5 text-xs text-amber-800/80">
+                    Steps were recorded without the status following. Reviewing checks every lead,
+                    not just this page.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => setReconcileOpen(true)}
+                className="shrink-0 gap-1.5 bg-amber-600 hover:bg-amber-700"
+              >
+                <RefreshCw className="h-4 w-4" /> Review and fix
+              </Button>
+            </div>
+          )}
           {/* Enhanced Header Section with Dark Decorative Elements */}
           <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
           {/* Decorative blur elements */}
