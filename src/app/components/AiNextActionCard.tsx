@@ -2,6 +2,9 @@ import { useMemo } from 'react';
 import { Sparkles, Mail, Phone, CheckSquare, ArrowRightCircle, Clock } from 'lucide-react';
 import type { Lead, Activity, TaskItem } from '@/app/api/types';
 import { cn } from '@/app/components/ui/utils';
+import {
+  CONTACTED_OR_BEYOND, QUALIFIED_OR_BEYOND, LOST_STATUSES, statusIn,
+} from '@/app/pages/leads/leadStatusSync';
 
 export type NextActionKind = 'email' | 'call' | 'task' | 'convert' | 'wait';
 
@@ -22,11 +25,18 @@ function scoreLead(lead: Lead, activities: Activity[], tasks: TaskItem[]): { sco
   const factors: string[] = [];
   if (lead.email) { score += 10; }
   if (lead.phone) { score += 8; }
-  const status = (lead.status || '').toLowerCase();
-  if (status.includes('qualified')) { score += 25; factors.push('Qualified status'); }
-  else if (status.includes('contacted')) { score += 12; factors.push('Has been contacted'); }
-  else if (status.includes('new')) { score += 5; }
-  else if (status.includes('lost')) { score -= 20; factors.push('Marked lost'); }
+  // Matched against the shared status groups, NOT by substring.
+  // `'Unqualified'.includes('qualified')` is true, so the old test scored a
+  // disqualified lead +25 and labelled it "Qualified status". It then broke the
+  // other way when the vocabulary was renamed: nothing contains the word
+  // "qualified" any more, so Connected / Contract Pending / Awaiting Signature /
+  // Signed leads matched no branch at all and silently lost the credit they had
+  // earned. Order matters — lost is checked first so a terminal status can never
+  // be read as progress.
+  if (statusIn(lead.status, LOST_STATUSES)) { score -= 20; factors.push('Marked lost'); }
+  else if (statusIn(lead.status, QUALIFIED_OR_BEYOND)) { score += 25; factors.push('Qualified or beyond'); }
+  else if (statusIn(lead.status, CONTACTED_OR_BEYOND)) { score += 12; factors.push('Has been contacted'); }
+  else if (statusIn(lead.status, ['New'])) { score += 5; }
 
   const actBoost = Math.min(activities.length * 4, 20);
   if (actBoost > 0) { score += actBoost; factors.push(`${activities.length} logged ${activities.length === 1 ? 'activity' : 'activities'}`); }
@@ -47,8 +57,9 @@ function nextAction(lead: Lead, activities: Activity[], tasks: TaskItem[]): { ki
   const overdue = openTasks.find((t) => t.dueDateUtc && Date.parse(t.dueDateUtc) < Date.now());
   if (overdue) return { kind: 'task', label: 'Complete the overdue task', reason: `“${overdue.title}” is past due.` };
 
-  const status = (lead.status || '').toLowerCase();
-  if (status.includes('qualified') && !lead.isConverted) {
+  // Same shared groups as the score, so the suggestion and the score can never
+  // disagree about whether a lead is qualified.
+  if (statusIn(lead.status, QUALIFIED_OR_BEYOND) && !lead.isConverted) {
     return { kind: 'convert', label: 'Convert to a deal', reason: 'This lead is qualified — capture the opportunity.' };
   }
   if (activities.length === 0) {

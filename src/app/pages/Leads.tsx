@@ -86,6 +86,7 @@ import {
 import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignmentMigrationDialog';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
+import { QUALIFIED_OR_BEYOND, statusIn } from './leads/leadStatusSync';
 import { isValidGuid } from './leads/utils';
 import { loadLeadReferrals, saveLeadReferrals } from './leads/leadReferralStore';
 import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignmentStore';
@@ -306,6 +307,21 @@ export default function Leads() {
   const [pageActivities, setPageActivities] = useState<Map<string, Activity[]>>(new Map());
 
   const statusOptions = leadStatuses.length > 0 ? leadStatuses : FALLBACK_STATUSES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
+
+  /**
+   * The statuses in THIS org's list that mean "qualified or beyond".
+   *
+   * The Qualified stat card used to filter on the literal string 'Qualified'.
+   * That status no longer exists, so the card showed a real count and then
+   * filtered to nothing when clicked — visibly contradicting itself. Intersecting
+   * the shared definition with the org's own list keeps it working on either
+   * vocabulary and guarantees we never filter by a status the org does not have.
+   */
+  const qualifiedStatusNames = useMemo(
+    () => statusOptions.filter((s) => statusIn(s.name, QUALIFIED_OR_BEYOND)).map((s) => s.name),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- derived from leadStatuses
+    [leadStatuses],
+  );
 
   // Keeps lead.status honest as pipeline steps change from the list cards.
   const statusSync = useLeadStatusSync({
@@ -1489,7 +1505,7 @@ export default function Leads() {
               {/* Qualified Leads */}
               <div 
                 className="group relative bg-white rounded-2xl border border-cyan-100 p-5 shadow-sm hover:shadow-xl hover:shadow-cyan-100 hover:border-cyan-200 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { setFilterStatuses(['Qualified']); setShowFilters(true); }}
+                onClick={() => { setFilterStatuses(qualifiedStatusNames); setShowFilters(true); }}
               >
                 <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
                 <div className="relative">
@@ -2043,7 +2059,7 @@ export default function Leads() {
                     lead.isConverted ? 'bg-gradient-to-b from-emerald-500 via-teal-400 to-cyan-400' :
                     lead.status === 'New' ? 'bg-gradient-to-b from-blue-600 via-indigo-500 to-cyan-400' :
                     lead.status === 'Contacted' ? 'bg-gradient-to-b from-amber-500 via-orange-500 to-rose-400' :
-                    lead.status === 'Qualified' ? 'bg-gradient-to-b from-emerald-500 via-teal-400 to-cyan-300' :
+                    statusIn(lead.status, QUALIFIED_OR_BEYOND) ? 'bg-gradient-to-b from-emerald-500 via-teal-400 to-cyan-300' :
                     'bg-gradient-to-b from-slate-500 to-slate-300'
                   }`} />
 

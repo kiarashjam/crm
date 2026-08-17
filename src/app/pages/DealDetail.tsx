@@ -426,6 +426,7 @@ export default function DealDetail() {
               {/* Products & line items */}
               <DealLineItemsCard
                 dealId={deal.id}
+                currency={deal.currency}
                 className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm mt-6"
                 onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, value: String(t) } : prev))}
               />
