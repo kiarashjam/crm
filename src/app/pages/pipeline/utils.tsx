@@ -1,6 +1,7 @@
 import { AlertCircle, Calendar } from 'lucide-react';
 import type { Deal, Pipeline } from '@/app/api/types';
 import { FALLBACK_STAGES } from './config';
+import { formatDealSum, formatMoney } from '@/app/lib/money';
 
 /**
  * Resolve stage list: from pipeline's dealStages (sorted by displayOrder) or fallback to FALLBACK_STAGES.
@@ -72,18 +73,19 @@ export function formatLastActivity(iso: string | undefined): string {
 }
 
 /**
- * Format an array of value strings to a currency sum.
+ * Format a set of deals as a currency total.
+ *
+ * Takes DEALS rather than bare value strings, because a value string carries no
+ * currency: the old signature made it impossible to format correctly and the
+ * implementation therefore hardcoded USD and summed across currencies.
  */
-export function formatValueSum(values: string[]): string {
-  const sum = values.reduce((acc, v) => {
-    const num = parseFloat(String(v).replace(/[^0-9.-]/g, '')) || 0;
-    return acc + num;
-  }, 0);
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(sum);
+export function formatDealTotal(deals: Pick<Deal, 'value' | 'currency'>[]): string {
+  return formatDealSum(deals);
+}
+
+/** Format a bare amount, in a currency the caller has to supply explicitly. */
+export function formatAmount(amount: number, currency: string): string {
+  return formatMoney(amount, currency);
 }
 
 /**

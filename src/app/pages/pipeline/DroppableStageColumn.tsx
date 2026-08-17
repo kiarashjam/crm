@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/app/components/ui/utils';
 import type { Deal, Contact } from './types';
 import { DealCard } from './DealCard';
+import { formatDealSum } from '@/app/lib/money';
 
 // Drag type constant for deal cards
 export const DEAL_CARD_TYPE = 'DEAL_CARD';
@@ -38,14 +39,9 @@ const STAGE_ICONS: Record<string, typeof Briefcase> = {
   'Closed Lost': XCircle,
 };
 
-// Format currency sum from array of values
-function formatValueSum(values: string[]): string {
-  const sum = values.reduce((acc, v) => {
-    const num = parseFloat(String(v).replace(/[^0-9.-]/g, '')) || 0;
-    return acc + num;
-  }, 0);
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(sum);
-}
+// Column totals come from the shared money helper: a stage can hold deals in
+// more than one currency, and the old local copy hardcoded USD and added them
+// together regardless.
 
 export interface DroppableStageColumnProps {
   stageId: string;
@@ -79,7 +75,7 @@ export function DroppableStageColumn({
 }: DroppableStageColumnProps) {
   const config = STAGE_COLORS[stageName] ?? STAGE_COLORS.Qualification;
   const StageIcon = STAGE_ICONS[stageName] ?? Briefcase;
-  const totalValue = formatValueSum(deals.map((d) => d.value));
+  const totalValue = formatDealSum(deals);
 
   const [{ isOver: dropIsOver }, dropRef] = useDrop(
     () => ({

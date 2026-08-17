@@ -15,6 +15,11 @@ import {
   previewStatusChange,
   STAGE_TIER,
   STAGE_PHASE,
+  CONTACTED_OR_BEYOND,
+  QUALIFIED_OR_BEYOND,
+  SIGNED_STATUSES,
+  LOST_STATUSES,
+  statusIn,
   type CanonicalStage,
   type StatusOption,
 } from './leadStatusSync';
@@ -1027,5 +1032,73 @@ describe('client status vocabulary — one case per row of their table', () => {
     expect(old).toBeTruthy();
     expect(resolveStatus('signed', DEFAULT_OPTS)?.name).toBeTruthy();
     expect(resolveStatus('lost', DEFAULT_OPTS)?.name).toBe('Lost');
+  });
+});
+
+// ── Status groups ────────────────────────────────────────────────────────────
+// These are now the single definition behind the lead score card, the Leads
+// filter cards, the API stats, the backend stats and the reports. The bug that
+// made this necessary was `status.includes('qualified')` in four files, so the
+// membership itself is worth pinning.
+
+describe('status groups — the shared definition four call sites depend on', () => {
+  const CURRENT = [
+    'New', 'Attempted Contact', 'Contacted', 'Connected',
+    'Contract Pending', 'Awaiting Signature', 'Signed', 'Lost / Not Interested',
+  ];
+
+  it('QUALIFIED_OR_BEYOND is exactly met-and-interested onwards', () => {
+    expect(CURRENT.filter((s) => statusIn(s, QUALIFIED_OR_BEYOND)))
+      .toEqual(['Contract Pending', 'Awaiting Signature', 'Signed']);
+  });
+
+  it('CONTACTED_OR_BEYOND excludes New and Attempted Contact', () => {
+    // "Attempted — no answer" is not contact. Counting it as such was one of the
+    // ways the old funnel overstated progress.
+    expect(statusIn('New', CONTACTED_OR_BEYOND)).toBe(false);
+    expect(statusIn('Attempted Contact', CONTACTED_OR_BEYOND)).toBe(false);
+    expect(statusIn('Contacted', CONTACTED_OR_BEYOND)).toBe(true);
+    expect(statusIn('Connected', CONTACTED_OR_BEYOND)).toBe(true);
+  });
+
+  it('INVARIANT: qualified is a subset of contacted', () => {
+    // If this ever fails a funnel built on these groups could widen.
+    for (const s of QUALIFIED_OR_BEYOND) {
+      expect(statusIn(s, CONTACTED_OR_BEYOND), `${s} qualified but not contacted`).toBe(true);
+    }
+  });
+
+  it('INVARIANT: no status is both a positive stage and a terminal loss', () => {
+    for (const s of [...CURRENT, 'Qualified', 'Open Deal', 'Unqualified', 'Lost']) {
+      const positive = statusIn(s, CONTACTED_OR_BEYOND) || statusIn(s, QUALIFIED_OR_BEYOND);
+      const lost = statusIn(s, LOST_STATUSES);
+      expect(positive && lost, `${s} counted as both`).toBe(false);
+    }
+  });
+
+  it('REGRESSION: "Unqualified" is never qualified', () => {
+    // The original reported inaccuracy — substring matching said otherwise.
+    expect(statusIn('Unqualified', QUALIFIED_OR_BEYOND)).toBe(false);
+    expect(statusIn('Unqualified', CONTACTED_OR_BEYOND)).toBe(false);
+    expect(statusIn('Unqualified', LOST_STATUSES)).toBe(true);
+  });
+
+  it('recognises both terminal spellings, old and new', () => {
+    for (const s of ['Lost', 'Unqualified', 'Lost / Not Interested']) {
+      expect(statusIn(s, LOST_STATUSES), s).toBe(true);
+    }
+  });
+
+  it('is tolerant of casing and padding, and rejects empty', () => {
+    expect(statusIn('  signed  ', SIGNED_STATUSES)).toBe(true);
+    expect(statusIn('SIGNED', SIGNED_STATUSES)).toBe(true);
+    expect(statusIn('', QUALIFIED_OR_BEYOND)).toBe(false);
+    expect(statusIn(undefined, QUALIFIED_OR_BEYOND)).toBe(false);
+  });
+
+  it('does not match on a partial word', () => {
+    // The failure mode the groups exist to prevent.
+    expect(statusIn('Not Signed', SIGNED_STATUSES)).toBe(false);
+    expect(statusIn('Pre-Qualified', QUALIFIED_OR_BEYOND)).toBe(false);
   });
 });

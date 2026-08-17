@@ -11,16 +11,19 @@ import {
   lineItemsTotal, updateDeal,
   type Product, type DealLineItem,
 } from '@/app/api';
+import { formatMoney, DEFAULT_CURRENCY } from '@/app/lib/money';
 
 interface DealLineItemsCardProps {
   dealId: string;
+  /** The parent deal's currency. Line items are amounts IN that currency, so
+   *  formatting them as USD was simply wrong for any other. */
+  currency?: string;
   className?: string;
   onValueSynced?: (total: number) => void;
 }
 
-const fmt = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
-
-export default function DealLineItemsCard({ dealId, className, onValueSynced }: DealLineItemsCardProps) {
+export default function DealLineItemsCard({ dealId, currency, className, onValueSynced }: DealLineItemsCardProps) {
+  const fmt = (n: number) => formatMoney(n, currency || DEFAULT_CURRENCY);
   const [items, setItems] = useState<DealLineItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);

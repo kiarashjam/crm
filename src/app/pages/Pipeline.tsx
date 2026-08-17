@@ -82,7 +82,8 @@ import { cn } from '@/app/components/ui/utils';
 // Import extracted components and utilities
 import { DroppableStageColumn } from './pipeline/DroppableStageColumn';
 import { STAGE_COLORS_MAP } from './pipeline/config';
-import { getStageList, groupDealsByStage, formatValueSum, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
+import { getStageList, groupDealsByStage, formatDealTotal, formatAmount, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
+import { dominantCurrencyOf } from '@/app/lib/money';
 import { getCurrencySymbol } from './pipeline/DealCard';
 import { getTasks, createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
@@ -600,7 +601,11 @@ export default function Pipeline() {
     return d.stage || 'Qualification';
   };
   const activeDeals = deals.filter((d) => dealStageName(d) !== 'Closed Lost');
-  const totalPipelineValue = formatValueSum(activeDeals.map((d) => d.value));
+  const totalPipelineValue = formatDealTotal(activeDeals);
+  // Bare aggregate numbers (dealStats) carry no currency of their own, so they
+  // are shown in the currency most of the pipeline is actually in rather than a
+  // hardcoded USD.
+  const boardCurrency = dominantCurrencyOf(deals);
 
   const detailContact = detailDeal?.contactId ? contacts.find((c) => c.id === detailDeal.contactId) : undefined;
   const detailCompany = detailDeal?.companyId ? companies.find((c) => c.id === detailDeal.companyId) : undefined;
@@ -688,7 +693,7 @@ export default function Pipeline() {
                     </div>
                   </div>
                   <div className="mt-4">
-                    <p className="text-3xl font-bold text-white tracking-tight">{formatValueSum([dealStats.activeValue.toString()])}</p>
+                    <p className="text-3xl font-bold text-white tracking-tight">{formatAmount(dealStats.activeValue, boardCurrency)}</p>
                     <p className="text-emerald-100 text-sm mt-1">Total Pipeline Value</p>
                   </div>
                   <div className="mt-4 flex items-center gap-3">
@@ -700,7 +705,7 @@ export default function Pipeline() {
                         className="h-full bg-white rounded-full"
                       />
                     </div>
-                    <span className="text-xs text-emerald-100">{formatValueSum([dealStats.wonValue.toString()])} won</span>
+                    <span className="text-xs text-emerald-100">{formatAmount(dealStats.wonValue, boardCurrency)} won</span>
                   </div>
                 </div>
               </div>
@@ -765,7 +770,7 @@ export default function Pipeline() {
                   <p className="text-xs font-medium text-white/80 mt-1">Deals Won</p>
                   {dealStats.wonValue > 0 && (
                     <p className="mt-2 text-xs font-semibold text-white bg-white/20 px-2 py-1 rounded-lg inline-block">
-                      {formatValueSum([dealStats.wonValue.toString()])}
+                      {formatAmount(dealStats.wonValue, boardCurrency)}
                     </p>
                   )}
                 </div>

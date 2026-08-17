@@ -42,10 +42,22 @@ export const ACTIVITY_TYPES = [
   { id: 'system', label: 'Update', icon: RefreshCw, color: 'slate' },
 ];
 
-// Fallback statuses when API doesn't return any
+/**
+ * Statuses offered before the organisation's real list has loaded.
+ *
+ * Must mirror the seed list in OrganizationService.CreateAsync and the
+ * AlignLeadStatusVocabulary migration. It previously held the retired vocabulary
+ * (Open, In Progress, Qualified, Unqualified, Open Deal, Lost), so on a slow load
+ * users were briefly offered statuses their organisation no longer has — and
+ * picking one wrote a status that matched nothing.
+ *
+ * Auto status-sync is deliberately gated against acting while this list is in
+ * play, because it is handed out synchronously and may not match the org. Keeping
+ * it accurate matters anyway: it is what the dropdown shows.
+ */
 export const FALLBACK_STATUSES = [
-  'New', 'Open', 'Attempted Contact', 'Contacted', 'Connected', 
-  'In Progress', 'Qualified', 'Unqualified', 'Open Deal', 'Lost'
+  'New', 'Attempted Contact', 'Contacted', 'Connected',
+  'Contract Pending', 'Awaiting Signature', 'Signed', 'Lost / Not Interested',
 ];
 
 // Fallback sources when API doesn't return any
@@ -83,6 +95,13 @@ export const STATUS_COLORS: Record<string, { bg: string; text: string; border: s
   Unqualified: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', selectedBg: 'bg-orange-500', selectedBorder: 'border-orange-500', icon: '✗' },
   'Open Deal': { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', selectedBg: 'bg-green-500', selectedBorder: 'border-green-500', icon: '◆' },
   Lost: { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-200', selectedBg: 'bg-slate-400', selectedBorder: 'border-slate-400', icon: '—' },
+  // Current vocabulary. Without these every renamed status fell through to the
+  // grey default, so the four stages that matter most were visually identical.
+  // The legacy keys above are kept for organisations not yet migrated.
+  'Contract Pending': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', selectedBg: 'bg-indigo-500', selectedBorder: 'border-indigo-500', icon: '◈' },
+  'Awaiting Signature': { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', selectedBg: 'bg-violet-500', selectedBorder: 'border-violet-500', icon: '✎' },
+  Signed: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', selectedBg: 'bg-emerald-500', selectedBorder: 'border-emerald-500', icon: '★' },
+  'Lost / Not Interested': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', selectedBg: 'bg-rose-500', selectedBorder: 'border-rose-500', icon: '✗' },
 };
 
 // Status colors for badges in LeadDetailModal
@@ -97,6 +116,11 @@ export const STATUS_BADGE_COLORS: Record<string, { bg: string; text: string; bor
   Unqualified: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', dot: 'bg-orange-500' },
   'Open Deal': { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', dot: 'bg-green-500' },
   Lost: { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-200', dot: 'bg-slate-400' },
+  // Current vocabulary — see the note on STATUS_COLORS above.
+  'Contract Pending': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', dot: 'bg-indigo-500' },
+  'Awaiting Signature': { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', dot: 'bg-violet-500' },
+  Signed: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+  'Lost / Not Interested': { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', dot: 'bg-rose-500' },
 };
 
 // Default empty form
