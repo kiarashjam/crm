@@ -1,0 +1,169 @@
+# READ-ONLY audit: does each lead's status agree with the steps recorded on it?
+#
+# Deliberately does NOT decide correctness in SQL. The rule that maps pipeline
+# steps to a status lives in leadStatusSync.ts, is covered by tests, and has
+# already caused three rounds of bugs by being reimplemented in more than one
+# place. So this workflow only EXTRACTS the raw fields and counts the distinct
+# combinations; the verdict is computed afterwards by the real code.
+#
+# There is no UPDATE, INSERT or DELETE anywhere in this file.
+
+name: Lead status audit (read-only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      organization:
+        description: 'Organization name (space-insensitive match), or blank for all'
+        required: false
+        default: 'Pavillon46'
+  push:
+    branches: [run-lead-status-audit]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lead-status-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Extract status vs pipeline combinations
+        env:
+          APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+          ORG_NAME: ${{ inputs.organization || 'Pavillon46' }}
+        run: |
+          set -euo pipefail
+
+          RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::Web App '$APP_NAME' not found."; exit 1
+          fi
+
+          CONN=$(az webapp config connection-string list \
+                   --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+                   --query "[?name=='DefaultConnection'].value | [0]" -o tsv)
+          if [ -z "$CONN" ] || [ "$CONN" = "None" ]; then
+            CONN=$(az webapp config appsettings list \
+                     --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+                     --query "[?name=='ConnectionStrings__DefaultConnection'].value | [0]" -o tsv)
+          fi
+          if [ -z "$CONN" ] || [ "$CONN" = "None" ]; then
+            echo "::error::No DefaultConnection on the Web App."; exit 1
+          fi
+          echo "::add-mask::$CONN"
+
+          eval "$(CONN="$CONN" python3 - <<'PY'
+          import os, shlex
+          parts = {}
+          for piece in os.environ["CONN"].split(";"):
+              if "=" in piece:
+                  k, v = piece.split("=", 1)
+                  parts[k.strip().lower()] = v.strip()
+          server = (parts.get("server") or parts.get("data source") or "").replace("tcp:", "").split(",")[0]
+          print(f"SQL_SERVER={shlex.quote(server)}")
+          print(f"SQL_DB={shlex.quote(parts.get('initial catalog') or parts.get('database') or '')}")
+          print(f"SQL_USER={shlex.quote(parts.get('user id') or parts.get('uid') or '')}")
+          print(f"SQL_PASS={shlex.quote(parts.get('password') or parts.get('pwd') or '')}")
+          PY
+          )"
+          echo "::add-mask::$SQL_PASS"
+          echo "::add-mask::$SQL_USER"
+
+          FW_RULE="gh-audit-${GITHUB_RUN_ID}"
+          SQL_SERVER_NAME="${SQL_SERVER%%.*}"
+          SQL_RG=$(az sql server list --query "[?name=='$SQL_SERVER_NAME'].resourceGroup | [0]" -o tsv 2>/dev/null || true)
+          FW_CREATED=""
+          cleanup() {
+            if [ -n "$FW_CREATED" ]; then
+              az sql server firewall-rule delete -g "$SQL_RG" -s "$SQL_SERVER_NAME" -n "$FW_RULE" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+          if [ -n "$SQL_RG" ] && [ "$SQL_RG" != "None" ]; then
+            RUNNER_IP=$(curl -fsS https://api.ipify.org || true)
+            if [ -n "$RUNNER_IP" ] && az sql server firewall-rule create -g "$SQL_RG" -s "$SQL_SERVER_NAME" \
+                 -n "$FW_RULE" --start-ip-address "$RUNNER_IP" --end-ip-address "$RUNNER_IP" >/dev/null 2>&1; then
+            FW_CREATED=1
+          fi
+          fi
+
+          SQLCMD="$(command -v sqlcmd || true)"
+          [ -z "$SQLCMD" ] && [ -x /opt/mssql-tools18/bin/sqlcmd ] && SQLCMD=/opt/mssql-tools18/bin/sqlcmd
+          if [ -z "$SQLCMD" ]; then
+            curl -sSL -O "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+            sudo dpkg -i packages-microsoft-prod.deb >/dev/null
+            sudo apt-get update -qq
+            sudo ACCEPT_EULA=Y apt-get install -y -qq mssql-tools18 unixodbc-dev >/dev/null
+            SQLCMD=/opt/mssql-tools18/bin/sqlcmd
+          fi
+
+          ORG_SQL=${ORG_NAME//\'/\'\'}
+          cat > "$RUNNER_TEMP/audit.sql" <<SQL
+          SET NOCOUNT ON;
+          DECLARE @OrgName nvarchar(256) = N'${ORG_SQL}';
+          DECLARE @OrgId uniqueidentifier =
+            (SELECT TOP 1 Id FROM Organizations WHERE REPLACE(Name,' ','') = REPLACE(@OrgName,' ',''));
+          IF @OrgId IS NULL BEGIN PRINT 'ABORT: no organization matching ' + @OrgName; THROW 50000, 'no org', 1; END
+
+          PRINT 'ORG=' + CAST(@OrgId AS varchar(36));
+
+          SELECT 'TOTALS|'
+            + CAST(COUNT(*) AS varchar(10)) + '|'
+            + CAST(SUM(CASE WHEN PipelineState IS NOT NULL AND LEN(PipelineState) > 2 THEN 1 ELSE 0 END) AS varchar(10)) + '|'
+            + CAST(SUM(CASE WHEN IsConverted = 1 THEN 1 ELSE 0 END) AS varchar(10))
+          FROM Leads WHERE OrganizationId = @OrgId;
+
+          PRINT 'STATUSCOUNTS';
+          SELECT 'S|' + ISNULL(Status,'(null)') + '|' + CAST(COUNT(*) AS varchar(10))
+          FROM Leads WHERE OrganizationId = @OrgId GROUP BY Status ORDER BY COUNT(*) DESC;
+
+          -- Raw field extraction only. No judgement about correctness here: that
+          -- is deliberately left to the tested TypeScript.
+          PRINT 'COMBINATIONS';
+          SELECT 'C|' + ISNULL(l.Status,'(null)')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.outreachStatus'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.contactOutcome'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.meetingAttended'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.stillInterested'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.contractStatus'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.contractSigned'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.depositPaid'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.meetingDate'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.contractSentDate'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.signatureDate'),'')
+            + '|' + ISNULL(JSON_VALUE(l.PipelineState,'\$.paymentDate'),'')
+            + '|' + CAST(ISNULL(l.IsConverted,0) AS varchar(1))
+            + '|' + CAST(COUNT(*) AS varchar(10))
+          FROM Leads l
+          WHERE l.OrganizationId = @OrgId
+          GROUP BY l.Status,
+            JSON_VALUE(l.PipelineState,'\$.outreachStatus'),
+            JSON_VALUE(l.PipelineState,'\$.contactOutcome'),
+            JSON_VALUE(l.PipelineState,'\$.meetingAttended'),
+            JSON_VALUE(l.PipelineState,'\$.stillInterested'),
+            JSON_VALUE(l.PipelineState,'\$.contractStatus'),
+            JSON_VALUE(l.PipelineState,'\$.contractSigned'),
+            JSON_VALUE(l.PipelineState,'\$.depositPaid'),
+            JSON_VALUE(l.PipelineState,'\$.meetingDate'),
+            JSON_VALUE(l.PipelineState,'\$.contractSentDate'),
+            JSON_VALUE(l.PipelineState,'\$.signatureDate'),
+            JSON_VALUE(l.PipelineState,'\$.paymentDate'),
+            l.IsConverted
+          ORDER BY COUNT(*) DESC;
+
+          PRINT 'ORGSTATUSLIST';
+          SELECT 'L|' + Name + '|' + CAST(DisplayOrder AS varchar(10))
+          FROM LeadStatuses WHERE OrganizationId = @OrgId ORDER BY DisplayOrder;
+          SQL
+
+          "$SQLCMD" -S "tcp:${SQL_SERVER},1433" -d "$SQL_DB" -U "$SQL_USER" -P "$SQL_PASS" \
+            -C -b -h -1 -W -s '' -i "$RUNNER_TEMP/audit.sql"
