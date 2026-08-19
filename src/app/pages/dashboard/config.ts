@@ -9,13 +9,11 @@ import {
   Building2,
   CheckSquare,
   Activity,
-  Send,
   History,
   UsersRound,
   HelpCircle,
   LayoutTemplate,
   Settings,
-  Zap,
   Target,
 } from 'lucide-react';
 import type { CopyTypeId } from '@/app/api/types';

@@ -1,10 +1,15 @@
-import { Zap, FileOutput, Send, LayoutTemplate, Clock } from 'lucide-react';
+import { Zap, FileOutput, Send, LayoutTemplate } from 'lucide-react';
 import type { CopyStats } from './types';
 
 interface CopyStatsWidgetProps {
   stats: CopyStats;
 }
 
+/**
+ * There used to be a fourth row here reading "Time saved: ~2 min/copy". It was a
+ * string literal — nothing in the system measures time saved, and a made-up
+ * number sitting between three real ones makes the real ones look made up too.
+ */
 export function CopyStatsWidget({ stats }: CopyStatsWidgetProps) {
   return (
     <section className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-5 text-white">
@@ -32,15 +37,9 @@ export function CopyStatsWidget({ stats }: CopyStatsWidgetProps) {
             <LayoutTemplate className="w-4 h-4 text-slate-400" />
             <span className="text-sm text-slate-300">Templates</span>
           </div>
-          <span className="text-lg font-bold">{stats.templateCount}</span>
+          <span className="text-lg font-bold">{stats.templateCount ?? '—'}</span>
         </div>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-slate-400" />
-            <span className="text-sm text-slate-300">Time saved</span>
-          </div>
-          <span className="text-lg font-bold text-emerald-400">~2 min/copy</span>
-        </div>
+
       </div>
     </section>
   );

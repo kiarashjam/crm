@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Deal } from '@/app/api/types';
 import {
-  parseAmount, currencyOf, formatMoney, sumByCurrency, dominantCurrencyOf, formatDealSum,
+  parseAmount, tryParseAmount, currencyOf, formatMoney, sumByCurrency, dominantCurrencyOf, formatDealSum,
 } from './money';
 
 const deal = (value: string, currency?: string): Deal =>
@@ -78,5 +78,58 @@ describe('formatDealSum', () => {
 
   it('handles an empty column without producing NaN', () => {
     expect(formatDealSum([])).not.toContain('NaN');
+  });
+});
+
+
+// These are the SAME cases as MoneyTextTests.cs on the server, which computes the
+// same totals from the same free-text column. If the two ever disagree, the
+// dashboard and the reports disagree about how much money is in the pipeline.
+describe('tryParseAmount — must match the server parser case for case', () => {
+  it.each([
+    // Shapes that the old strip-everything-but-digits version got wrong.
+    ['1.234,56', 1234.56],   // was 1.23456
+    ['85.500', 85500],       // was 85.5
+    ['1.234.567,89', 1234567.89],
+    // Shapes that already worked and must keep working.
+    ['CHF 85,500', 85500],
+    ['€50,000', 50000],
+    ['50 000 EUR', 50000],
+    ['GBP 1,200.50', 1200.5],
+    ['$1,234.56', 1234.56],
+    ['1,234,567.89', 1234567.89],
+    ['1234', 1234],
+    ['$0', 0],
+    // A lone comma is a decimal point only with one or two digits after it.
+    ['85,5', 85.5],
+    ['85,50', 85.5],
+    // A lone dot: grouped thousands only when the integer part is short.
+    ['1.234', 1234],
+    ['1234.567', 1234.567],
+    ['100.00', 100],
+    ['1.5', 1.5],
+    // Negatives.
+    ['-500', -500],
+    ['(500)', -500],
+    ['-CHF 1,000', -1000],
+  ])('reads %s as %s', (input, expected) => {
+    expect(tryParseAmount(input)).toBe(expected);
+  });
+
+  it('reports null rather than zero when there is no number', () => {
+    // The distinction the old version threw away: "worth nothing" and "we could
+    // not read this" are different facts, and only one is a data-entry problem.
+    for (const bad of [null, undefined, '', '   ', 'TBC', 'to be confirmed', '$', 'CHF', '.', ',']) {
+      expect(tryParseAmount(bad), String(bad)).toBeNull();
+    }
+  });
+
+  it('does not negate on a stray dash', () => {
+    expect(tryParseAmount('1000-2000')).toBeGreaterThan(0);
+  });
+
+  it('parseAmount still coerces the unreadable to zero, for callers that only add up', () => {
+    expect(parseAmount('TBC')).toBe(0);
+    expect(parseAmount('1.234,56')).toBe(1234.56);
   });
 });

@@ -220,10 +220,23 @@ export interface LeadSource {
   displayOrder: number;
 }
 
+/** One currency's share of a total. Listed beside the others, never converted. */
+export interface CurrencyTotal {
+  currency: string;
+  value: number;
+  dealCount: number;
+}
+
 export interface DashboardStats {
   activeLeadsCount: number;
   activeDealsCount: number;
+  /** Open pipeline in `pipelineCurrency` ONLY, never a cross-currency sum. */
   pipelineValue: number;
+  pipelineCurrency: string;
+  /** Every currency present in the open pipeline, largest first. */
+  pipelineByCurrency: CurrencyTotal[];
+  /** Open deals whose value column holds no readable number. */
+  unreadableValueCount: number;
   dealsWonCount: number;
   dealsLostCount: number;
 }

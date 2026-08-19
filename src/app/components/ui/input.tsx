@@ -2,9 +2,18 @@ import * as React from "react";
 
 import { cn } from "./utils";
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
-  return (
+/**
+ * Forwards its ref, so a caller that needs the element gets it.
+ *
+ * It was a plain function component, and pages that pass a ref — Leads, to focus
+ * its search box — got React's "Function components cannot be given refs" warning
+ * and a ref that stayed null. The warning was the visible half; the silently
+ * broken `.focus()` was the half that mattered.
+ */
+const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+  ({ className, type, ...props }, ref) => (
     <input
+      ref={ref}
       type={type}
       data-slot="input"
       className={cn(
@@ -15,7 +24,8 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
       )}
       {...props}
     />
-  );
-}
+  ),
+);
+Input.displayName = "Input";
 
 export { Input };
