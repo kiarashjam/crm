@@ -1,9 +1,13 @@
 import { Link } from 'react-router-dom';
-import { Activity, Phone, Mail, FileText, Users, Video, Presentation, CheckCircle, CalendarClock, Clock } from 'lucide-react';
+import { Activity, Phone, Mail, FileText, Users, Video, Presentation, CheckCircle, CalendarClock, Clock, TriangleAlert } from 'lucide-react';
 import type { Activity as ActivityType } from '@/app/api/types';
 
 interface RecentActivityProps {
+  /** Already sorted newest-first by `mostRecent`. */
   items: ActivityType[];
+  loaded: boolean;
+  /** True when the request failed, which is not "nothing has happened". */
+  failed: boolean;
 }
 
 function getActivityIcon(type: string) {
@@ -56,7 +60,7 @@ function getActivityIconColor(type: string) {
   }
 }
 
-export function RecentActivity({ items }: RecentActivityProps) {
+export function RecentActivity({ items, loaded, failed }: RecentActivityProps) {
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -67,7 +71,28 @@ export function RecentActivity({ items }: RecentActivityProps) {
         <Link to="/activities" className="text-xs text-orange-600 hover:text-orange-700 font-medium">View all</Link>
       </div>
       <div className="p-5">
-        {items.length === 0 ? (
+        {failed ? (
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
+            <p className="text-xs text-amber-900">
+              <strong className="font-semibold">Could not load activity.</strong> An empty panel
+              here would have read as "nothing has happened".
+            </p>
+          </div>
+        ) : !loaded ? (
+          <div className="space-y-3" aria-busy="true">
+            <p className="sr-only" role="status">Loading recent activity…</p>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="h-8 w-8 shrink-0 animate-pulse rounded-lg bg-slate-200" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 w-32 animate-pulse rounded bg-slate-200" />
+                  <div className="h-2.5 w-20 animate-pulse rounded bg-slate-100" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : items.length === 0 ? (
           <div className="text-center py-6">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
               <Activity className="w-5 h-5 text-slate-400" />

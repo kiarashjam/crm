@@ -40,6 +40,7 @@ import { RecentActivity } from './dashboard/RecentActivity';
 import { TeamPerformance } from './dashboard/TeamPerformance';
 import { SalesWriter } from './dashboard/SalesWriter';
 import { copyTypes, goals } from './dashboard/config';
+import { mostRecent } from './dashboard/dashboardData';
 import type { DashboardStats, CopyStats, PipelineStage } from './dashboard/types';
 
 export default function Dashboard() {
@@ -54,14 +55,27 @@ export default function Dashboard() {
   const [language, setLanguage] = useState<SupportedLanguage>('en');
   const [isGenerating, setIsGenerating] = useState(false);
   const [stats, setStats] = useState<CopyStats>({
+    // `templateCount: 8` used to sit here. It was displayed as a real figure
+    // before the fetch resolved, and stayed there forever if the fetch failed.
     sentThisWeek: 0,
     totalSent: 0,
-    templateCount: 8,
+    templateCount: null,
   });
   const [crmStats, setCrmStats] = useState<DashboardStats | null>(null);
   const [pipelineByStage, setPipelineByStage] = useState<PipelineStage[]>([]);
   const [pipelineByAssignee, setPipelineByAssignee] = useState<PipelineValueByAssignee[]>([]);
   const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
+  /**
+   * Which requests have come back, and which failed.
+   *
+   * Every fetch on this page used to end in an empty `catch {}`, leaving state at
+   * its initial value — so a broken endpoint rendered a dashboard of zeros,
+   * indistinguishable from an empty CRM. Loaded and failed are tracked separately
+   * because "nothing yet", "nothing there" and "we could not look" are three
+   * different things and only the middle one is a zero.
+   */
+  const [loaded, setLoaded] = useState({ crm: false, stages: false, team: false, activity: false });
+  const [failed, setFailed] = useState({ crm: false, stages: false, team: false, activity: false });
   
   // Recipient selection states
   const [showRecipientPicker, setShowRecipientPicker] = useState(false);
@@ -82,7 +96,8 @@ export default function Dashboard() {
   
   // Generated copy state
   const [generatedCopy, setGeneratedCopy] = useState<{
-    subject: string;
+    /** Optional: only the email-shaped copy types produce one. */
+    subject?: string;
     body: string;
     copyTypeLabel: string;
     copyTypeId: string;
@@ -95,25 +110,40 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false;
     const guard = <T,>(fn: (x: T) => void) => (x: T) => { if (!cancelled) fn(x); };
+    const mark = (key: 'crm' | 'stages' | 'team' | 'activity', ok: boolean) => {
+      if (cancelled) return;
+      setLoaded((prev) => ({ ...prev, [key]: true }));
+      if (!ok) setFailed((prev) => ({ ...prev, [key]: true }));
+    };
+
     getCopyHistoryStats()
       .then(guard((s) => setStats((prev) => ({ ...prev, ...s }))))
       .catch(() => {});
     getTemplates()
       .then(guard((t) => setStats((prev) => ({ ...prev, templateCount: t.length }))))
+      // Left null on failure, which the widget renders as a dash rather than a
+      // number nobody counted.
       .catch(() => {});
+
     getActivities()
-      .then(guard((activities) => setRecentActivity(activities.slice(0, 5))))
-      .catch(() => {});
+      .then(guard((activities) => {
+        setRecentActivity(mostRecent(activities, 5));
+        mark('activity', true);
+      }))
+      .catch(() => mark('activity', false));
+
     getDashboardStats()
-      .then(guard(setCrmStats))
-      .catch(() => {});
+      .then(guard((s) => { setCrmStats(s); mark('crm', true); }))
+      .catch(() => mark('crm', false));
     getPipelineValueByStage()
-      .then(guard(setPipelineByStage))
-      .catch(() => setPipelineByStage([]));
+      .then(guard((s) => { setPipelineByStage(s); mark('stages', true); }))
+      .catch(() => { mark('stages', false); });
     getPipelineValueByAssignee()
-      .then(guard(setPipelineByAssignee))
-      .catch(() => setPipelineByAssignee([]));
-    // Load recipients for copy personalization
+      .then(guard((s) => { setPipelineByAssignee(s); mark('team', true); }))
+      .catch(() => { mark('team', false); });
+
+    // Recipients for copy personalisation. A failure here only costs the picker
+    // some options, so it stays quiet.
     getLeads().then(guard(setLeads)).catch(() => setLeads([]));
     getContacts().then(guard(setContacts)).catch(() => setContacts([]));
     getDeals().then(guard(setDeals)).catch(() => setDeals([]));
@@ -203,7 +233,12 @@ export default function Dashboard() {
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           {/* Hero Section - Extracted Component */}
-          <DashboardHero displayName={displayName} stats={crmStats} />
+          <DashboardHero
+            displayName={displayName}
+            stats={crmStats}
+            loaded={loaded.crm}
+            failed={failed.crm}
+          />
 
         {/* Main Content Grid */}
         <div className="space-y-8">
@@ -212,7 +247,7 @@ export default function Dashboard() {
             <div className="lg:col-span-2 space-y-6">
               
               {/* Pipeline by Stage - Extracted Component */}
-              <PipelineChart stages={pipelineByStage} />
+              <PipelineChart stages={pipelineByStage} loaded={loaded.stages} failed={failed.stages} />
 
               {/* Intelligent Sales Writer - Extracted Component */}
               <SalesWriter
@@ -321,14 +356,14 @@ export default function Dashboard() {
               )}
 
               {/* Team Performance - Extracted Component */}
-              <TeamPerformance members={pipelineByAssignee} />
+              <TeamPerformance members={pipelineByAssignee} loaded={loaded.team} failed={failed.team} />
             </div>
 
             {/* Right Column - Sidebar with Extracted Components */}
             <div className="space-y-6">
               <QuickNav />
               <CopyStatsWidget stats={stats} />
-              <RecentActivity items={recentActivity} />
+              <RecentActivity items={recentActivity} loaded={loaded.activity} failed={failed.activity} />
             </div>
           </div>
         </div>

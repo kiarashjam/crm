@@ -1,26 +1,19 @@
 import type { CopyTypeId, Lead, Contact, Deal } from '@/app/api/types';
 import type { SupportedLanguage } from '@/app/api/copyGenerator';
 
-export interface DashboardStats {
-  activeLeadsCount: number;
-  activeDealsCount: number;
-  pipelineValue: number;
-  dealsWonCount: number;
-  dealsLostCount: number;
-}
+// Re-exported from the API layer rather than restated. The local copy had drifted
+// into a narrower shape that omitted currency, which is how the hero came to print
+// a cross-currency sum with a dollar sign in front of it.
+export type { DashboardStats, CurrencyTotal } from '@/app/api/types';
 
 export interface CopyStats {
   sentThisWeek: number;
   totalSent: number;
-  templateCount: number;
+  /** Null until the template list has actually been read. Never a placeholder. */
+  templateCount: number | null;
 }
 
-export interface PipelineStage {
-  stageId: string;
-  stageName: string;
-  dealCount: number;
-  value: number;
-}
+export type { PipelineStageValue as PipelineStage } from '@/app/api/reporting';
 
 export interface SelectedRecipient {
   type: 'lead' | 'contact' | 'deal';

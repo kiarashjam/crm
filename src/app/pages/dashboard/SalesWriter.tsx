@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Sparkles,
@@ -11,16 +10,20 @@ import {
   ArrowRight,
   Globe,
   Zap,
-  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { copyTypes, goals } from './config';
-import type { Lead, Contact, Deal } from '@/app/api/types';
+import type { CopyTypeId, Lead, Contact, Deal } from '@/app/api/types';
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '@/app/api/copyGenerator';
 
 interface SalesWriterProps {
-  selectedType: string;
-  setSelectedType: (type: string) => void;
+  /**
+   * Typed to the ids that actually exist, not to `string`. The loose version let
+   * any string be written into state that the generator later looks up in
+   * `copyTypes` — a mismatch there produces copy of no known type.
+   */
+  selectedType: CopyTypeId | '';
+  setSelectedType: (type: CopyTypeId | '') => void;
   goal: string;
   setGoal: (goal: string) => void;
   context: string;

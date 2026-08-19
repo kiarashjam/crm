@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Sparkles, ArrowRight, Command, ChevronRight } from 'lucide-react';
+import { Sparkles, Command, ChevronRight } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 import { quickNavPrimary, quickNavSecondary, quickNavUtility } from './config';
 
@@ -148,7 +148,7 @@ export function QuickNav() {
       <div className="relative px-4 pb-4">
         <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent mb-3" />
         <div className="grid grid-cols-4 gap-1.5">
-          {quickNavUtility.map((item, index) => (
+          {quickNavUtility.map((item) => (
             <Link
               key={item.to}
               to={item.to}

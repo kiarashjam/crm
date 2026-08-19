@@ -753,15 +753,10 @@
   perspective: 1000px;
 }
 
-/* Skeleton shimmer animation */
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
+/* Skeleton shimmer: see the single @keyframes shimmer near the top of this file.
+   A second, opposite-direction copy used to live here, and being later in the
+   cascade it silently won — so every skeleton swept the wrong way and the
+   behaviour depended on declaration order. */
 
 .animate-shimmer {
   animation: shimmer 1.5s ease-in-out infinite;
