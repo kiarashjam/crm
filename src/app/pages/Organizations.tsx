@@ -446,7 +446,7 @@ export default function Organizations() {
       <main
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
-        className="relative z-10 mx-auto w-full max-w-5xl px-[var(--page-padding)] pt-8 pb-14 sm:pt-14 sm:pb-28"
+        className="relative z-10 w-full px-[var(--page-padding)] pt-8 pb-14 sm:pt-14 sm:pb-28"
       >
         {/* Hero */}
         <motion.div
@@ -477,7 +477,7 @@ export default function Organizations() {
           transition={{ duration: 0.5, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}
         >
           {organizations.length > 1 && (
-            <div className="relative flex-1">
+            <div className="relative flex-1 sm:max-w-xl">
               <Search className="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-white/30" aria-hidden />
               <input
                 ref={searchRef}
@@ -503,7 +503,7 @@ export default function Organizations() {
           )}
           <Button
             onClick={() => setCreateOpen(true)}
-            className="h-12 shrink-0 rounded-2xl bg-white px-5 font-semibold text-[#07080f] hover:bg-white/90"
+            className="h-12 shrink-0 rounded-2xl bg-white px-5 font-semibold text-[#07080f] hover:bg-white/90 sm:ml-auto"
           >
             <Plus className="mr-1.5 h-4 w-4" aria-hidden />
             New workspace
@@ -655,7 +655,7 @@ export default function Organizations() {
               </button>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {visible.map((org, i) => (
                 <WorkspaceCard
                   key={org.id}
