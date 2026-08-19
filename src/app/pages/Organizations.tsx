@@ -1,864 +1,745 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { 
-  ArrowLeft, Building2, Mail, Plus, UserPlus, Check, Crown,
-  Settings, Users, RefreshCw, Clock,
-  Zap, ArrowRight, Copy, MoreHorizontal,
-  Briefcase, Target, BarChart3, X, UserCheck
+// The workspace launchpad — the threshold you cross to get into a workspace.
+//
+// Deliberately unlike every other page in the app. `/organizations` is the one
+// route inside `ProtectedLayout` but OUTSIDE `RequireOrgLayout`: it is the only
+// screen that runs with no organisation selected, so nothing else in the product
+// is reachable from here and none of the app's chrome would work if it were shown.
+// Making it a dark, keyboard-first launcher rather than another cream dashboard is
+// telling the truth about where you are.
+//
+// Three things it does that the previous version did not:
+//
+//  · It goes back where you were headed. `RequireOrgLayout` redirects here with
+//    `state.from` set to the page you actually asked for; that was thrown away and
+//    everyone landed on the dashboard.
+//  · It says when a member count could not be read. The old effect swallowed the
+//    error, so a failed request and "no members" looked identical.
+//  · It cannot double-launch. The tile was clickable, Enter-activatable and (now)
+//    digit-selectable, and nothing stopped two of those from firing two
+//    navigations at once.
+//
+// The list/filter/launch logic lives in ./organizations/launcher.ts under test —
+// it is the half that can be wrong in ways a screenshot will not reveal.
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  ArrowLeft, Building2, Check, Clock, Command, CornerDownLeft, Crown, Loader2, LogOut,
+  Mail, Plus, Search, Sparkles, TriangleAlert, UserCheck, UserPlus, Users, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  createOrganization,
-  acceptInviteById,
-  getOrgMembers,
-  listPendingJoinRequestsForOrg,
-  acceptJoinRequest,
-  rejectJoinRequest,
-  type Organization,
-  type InviteDto,
-  type JoinRequestDto,
+  acceptInviteById, acceptJoinRequest, getOrgMembers, isOrgAdmin,
+  listPendingJoinRequestsForOrg, rejectJoinRequest,
+  type InviteDto, type JoinRequestDto, type Organization,
 } from '@/app/api/organizations';
-import { useOrg } from '@/app/contexts/OrgContext';
-import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import LoadingSpinner from '@/app/components/LoadingSpinner';
-import DemoBanner from '@/app/components/DemoBanner';
-import AppHeader from '@/app/components/AppHeader';
 import { isUsingRealApi } from '@/app/api/apiClient';
+import { useOrg } from '@/app/contexts/OrgContext';
+import { useMotionPreference } from '@/app/hooks/useMotionPreference';
+import { getCurrentUser } from '@/app/lib/auth';
+import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import DemoBanner from '@/app/components/DemoBanner';
 import { Button } from '@/app/components/ui/button';
-import { Input } from '@/app/components/ui/input';
-import { Label } from '@/app/components/ui/label';
+import { cn } from '@/app/components/ui/utils';
 import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from '@/app/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/app/components/ui/dropdown-menu';
+  IDLE, beginLaunch, digitTarget, filterWorkspaces, isBusy, isLaunching,
+  moveHighlight, orderWorkspaces, returnPath, type LaunchState,
+} from './organizations/launcher';
+import { prefetchRoute } from './organizations/prefetchRoute';
+import WorkspaceCard from './organizations/WorkspaceCard';
+import LaunchSequence from './organizations/LaunchSequence';
+import CreateWorkspaceDialog from './organizations/CreateWorkspaceDialog';
 
-// Organization Card Component
-function OrganizationCard({
-  org,
-  isActive,
-  onSwitch,
-  onSettings,
-  onNavigate,
-  memberCount,
-}: {
-  org: Organization;
-  isActive: boolean;
-  onSwitch: () => void;
-  onSettings: () => void;
-  onNavigate: () => void;
-  memberCount?: number;
-}) {
+/** Human label for a route, for "Taking you to …". */
+function destinationLabel(path: string): string {
+  const seg = path.split('?')[0]!.split('/').filter(Boolean);
+  if (seg.length === 0) return 'your workspace';
+  const first = seg[0]!;
+  if (seg.length > 1) return `that ${first.replace(/s$/, '')}`;
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+/* ------------------------------------------------------------------ backdrop */
+
+function Backdrop({ still }: { still: boolean }) {
+  // Three slow-drifting colour fields plus a hairline grid. Blur is doing the work,
+  // so this is two composited layers rather than anything per-frame expensive.
+  const blobs = [
+    { c: 'rgba(249,115,22,0.30)', s: 'h-[38rem] w-[38rem] -top-40 -left-24', d: 0 },
+    { c: 'rgba(56,189,248,0.20)', s: 'h-[32rem] w-[32rem] top-1/3 -right-32', d: 3 },
+    { c: 'rgba(168,85,247,0.18)', s: 'h-[30rem] w-[30rem] -bottom-40 left-1/4', d: 6 },
+  ];
   return (
-    <div 
-      className={`group relative overflow-hidden rounded-3xl transition-all duration-300 cursor-pointer ${
-        isActive 
-          ? 'bg-gradient-to-br from-orange-500 via-orange-500 to-amber-500 p-[2px] shadow-2xl shadow-orange-500/25' 
-          : 'bg-gradient-to-br from-slate-200 to-slate-300 p-[1px] hover:from-slate-300 hover:to-slate-400 hover:shadow-xl'
-      }`}
-      onClick={onNavigate}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onNavigate();
-        }
-      }}
-    >
-      <div className="relative bg-white rounded-[22px] overflow-hidden">
-        {/* Background Pattern for Active */}
-        {isActive && (
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-48 h-48 bg-orange-500/5 rounded-full" />
-            <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-amber-500/5 rounded-full" />
-          </div>
-        )}
-
-        {/* Header Section */}
-        <div className={`relative px-6 pt-6 pb-5 ${isActive ? 'bg-gradient-to-r from-orange-50/80 to-amber-50/50' : 'bg-slate-50/50'}`}>
-          <div className="flex items-start gap-5">
-            {/* Logo/Avatar */}
-            <div className={`relative w-16 h-16 rounded-2xl flex items-center justify-center shadow-xl ${
-              isActive 
-                ? 'bg-gradient-to-br from-orange-500 to-amber-500 shadow-orange-500/30' 
-                : 'bg-gradient-to-br from-slate-500 to-slate-600 shadow-slate-500/20 group-hover:from-slate-600 group-hover:to-slate-700'
-            }`}>
-              <Building2 className="w-8 h-8 text-white" />
-              {isActive && (
-                <div className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-white shadow-lg">
-                  <Check className="w-3 h-3 text-white" />
-                </div>
-              )}
-            </div>
-            
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-bold text-xl text-slate-900 truncate">{org.name}</h3>
-                  <div className="flex items-center flex-wrap gap-2 mt-2">
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                      org.isOwner 
-                        ? 'bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-700 border border-amber-200' 
-                        : 'bg-slate-100 text-slate-600 border border-slate-200'
-                    }`}>
-                      {org.isOwner ? (
-                        <>
-                          <Crown className="w-3.5 h-3.5" />
-                          Owner
-                        </>
-                      ) : (
-                        <>
-                          <Users className="w-3.5 h-3.5" />
-                          Member
-                        </>
-                      )}
-                    </span>
-                    {isActive && (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-emerald-100 to-green-100 text-emerald-700 border border-emerald-200">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Active
-                      </span>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Actions Menu */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="h-9 w-9 p-0 rounded-xl hover:bg-slate-100"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <MoreHorizontal className="w-5 h-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
-                    {!isActive && (
-                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSwitch(); }}>
-                        <ArrowRight className="w-4 h-4 mr-2" />
-                        Switch to this org
-                      </DropdownMenuItem>
-                    )}
-                    {org.isOwner && (
-                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSettings(); }}>
-                        <Settings className="w-4 h-4 mr-2" />
-                        Settings
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={(e) => {
-                      e.stopPropagation();
-                      navigator.clipboard.writeText(org.id);
-                      toast.success('Organization ID copied');
-                    }}>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy ID
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Section */}
-        <div className="px-6 py-4 border-t border-slate-100">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
-              {memberCount !== undefined && (
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
-                    <Users className="w-4.5 h-4.5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-lg font-bold text-slate-900">{memberCount}</p>
-                    <p className="text-xs text-slate-500">Member{memberCount !== 1 ? 's' : ''}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {/* Action Footer */}
-        <div className="px-6 pb-6">
-          {isActive ? (
-            <div className="flex items-center gap-3">
-              <div className="flex-1 flex items-center gap-3 px-4 py-3 bg-emerald-50 rounded-2xl border border-emerald-100">
-                <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center">
-                  <Check className="w-4 h-4 text-emerald-600" />
-                </div>
-                <span className="text-sm font-semibold text-emerald-700">Currently Active Workspace</span>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={(e) => { e.stopPropagation(); onSettings(); }}
-                className="h-11 px-4 rounded-xl border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-              >
-                <Settings className="w-4 h-4" />
-              </Button>
-            </div>
-          ) : (
-            <Button 
-              onClick={(e) => { e.stopPropagation(); onSwitch(); }}
-              className="w-full h-12 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/20 text-base font-semibold"
-            >
-              Switch to this workspace
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
-          )}
-        </div>
-      </div>
+    <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
+      {blobs.map((b, i) => (
+        <motion.div
+          key={i}
+          className={cn('absolute rounded-full blur-[120px]', b.s)}
+          style={{ background: b.c }}
+          animate={still ? undefined : { x: [0, 40, -20, 0], y: [0, -30, 20, 0], scale: [1, 1.08, 0.96, 1] }}
+          transition={still ? undefined : { duration: 26, delay: b.d, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      ))}
+      <div
+        className="absolute inset-0 opacity-[0.16]"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, rgba(255,255,255,0.09) 1px, transparent 1px),'
+            + 'linear-gradient(to bottom, rgba(255,255,255,0.09) 1px, transparent 1px)',
+          backgroundSize: '68px 68px',
+          maskImage: 'radial-gradient(78% 60% at 50% 38%, black, transparent)',
+          WebkitMaskImage: 'radial-gradient(78% 60% at 50% 38%, black, transparent)',
+        }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#07080f]" />
     </div>
   );
 }
 
-// Create Organization Dialog
-function CreateOrgDialog({
-  open,
-  onOpenChange,
-  onCreated,
+/* -------------------------------------------------------------- signal panel */
+
+function Panel({
+  tone, icon: Icon, title, children,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCreated: (org: Organization) => void;
+  tone: 'emerald' | 'violet' | 'amber';
+  icon: typeof Mail;
+  title: string;
+  children?: React.ReactNode;
 }) {
-  const [name, setName] = useState('');
-  const [creating, setCreating] = useState(false);
-  const { addDemoOrg } = useOrg();
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || creating) return;
-    
-    setCreating(true);
-    try {
-      if (addDemoOrg) {
-        const org = addDemoOrg(name.trim());
-        onCreated(org);
-        toast.success('Organization created!');
-        setName('');
-        onOpenChange(false);
-      } else {
-        const org = await createOrganization(name.trim());
-        if (org) {
-          onCreated(org);
-          toast.success('Organization created!');
-          setName('');
-          onOpenChange(false);
-        } else {
-          toast.error('Could not create organization.');
-        }
-      }
-    } catch {
-      toast.error('Could not create organization.');
-    } finally {
-      setCreating(false);
-    }
-  };
-
+  const ring = {
+    emerald: 'border-emerald-400/20 bg-emerald-400/[0.06]',
+    violet: 'border-violet-400/20 bg-violet-400/[0.06]',
+    amber: 'border-amber-400/20 bg-amber-400/[0.06]',
+  }[tone];
+  const chip = {
+    emerald: 'bg-emerald-400/15 text-emerald-300',
+    violet: 'bg-violet-400/15 text-violet-300',
+    amber: 'bg-amber-400/15 text-amber-300',
+  }[tone];
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
-        {/* Gradient Header */}
-        <div className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-500 via-orange-400 to-amber-400" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.2),transparent_50%)]" />
-          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
-          
-          <div className="relative px-6 py-5">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm border border-white/30 shadow-lg">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <DialogTitle className="text-xl font-bold text-white tracking-tight">
-                  Create Organization
-                </DialogTitle>
-                <p className="text-white/80 text-sm mt-0.5">
-                  Start a new workspace for your team
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <form onSubmit={handleCreate} className="p-6">
-          <div className="space-y-4">
-            {/* Info Card */}
-            <div className="bg-orange-50 rounded-xl p-4 border border-orange-100">
-              <p className="text-sm text-orange-800">
-                <strong>What's an organization?</strong> An organization is a separate workspace 
-                with its own team, leads, deals, and settings. You can create multiple organizations 
-                for different businesses or teams.
-              </p>
-            </div>
-
-            {/* Name Field */}
-            <div>
-              <Label htmlFor="org-name" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                <Building2 className="w-4 h-4 text-orange-500" />
-                Organization Name
-              </Label>
-              <Input
-                id="org-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Acme Corp, My Startup, Sales Team"
-                className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300"
-                required
-              />
-              <p className="text-xs text-slate-500 mt-1.5">
-                Choose a name that represents your company or team
-              </p>
-            </div>
-
-            {/* Features preview */}
-            <div className="bg-slate-50 rounded-xl p-4">
-              <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3">
-                What you'll get
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { icon: Users, label: 'Team management' },
-                  { icon: Target, label: 'Lead tracking' },
-                  { icon: Briefcase, label: 'Deal pipeline' },
-                  { icon: BarChart3, label: 'Reports & insights' },
-                ].map(({ icon: Icon, label }) => (
-                  <div key={label} className="flex items-center gap-2 text-sm text-slate-600">
-                    <Icon className="w-4 h-4 text-orange-500" />
-                    {label}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              className="flex-1 h-11"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={creating || !name.trim()}
-              className="flex-[2] h-11 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600"
-            >
-              {creating ? (
-                <span className="flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Creating...
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Plus className="w-4 h-4" />
-                  Create Organization
-                </span>
-              )}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <section className={cn('rounded-2xl border p-4 backdrop-blur-sm sm:p-5', ring)}>
+      <div className="flex items-center gap-2.5">
+        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-xl', chip)}>
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
+        <h2 className="text-sm font-semibold text-white">{title}</h2>
+      </div>
+      {children && <div className="mt-3.5 space-y-2">{children}</div>}
+    </section>
   );
 }
+
+/* ------------------------------------------------------------------ the page */
 
 export default function Organizations() {
   const navigate = useNavigate();
   const location = useLocation();
+  const reduceMotion = useMotionPreference();
   const {
-    organizations,
-    pendingInvites,
-    refreshOrgs,
-    loading,
-    hasFetched,
-    addDemoOrg: _addDemoOrg,
-    currentOrgId,
-    setCurrentOrg,
+    organizations, pendingInvites, refreshOrgs, loading, hasFetched,
+    currentOrgId, setCurrentOrg,
   } = useOrg();
+
+  const [query, setQuery] = useState('');
+  const [highlight, setHighlight] = useState(0);
+  const [launch, setLaunch] = useState<LaunchState>(IDLE);
+  const [createOpen, setCreateOpen] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [memberCounts, setMemberCounts] = useState<Record<string, number>>({});
-  const [pendingJoinRequests, setPendingJoinRequests] = useState<JoinRequestDto[]>([]);
-  const [processingJoinRequestId, setProcessingJoinRequestId] = useState<string | null>(null);
+  const [requestBusyId, setRequestBusyId] = useState<string | null>(null);
+  /** id → count, or null when the request failed. Absent means still loading. */
+  const [memberCounts, setMemberCounts] = useState<Record<string, number | null>>({});
+  const [joinRequests, setJoinRequests] = useState<JoinRequestDto[]>([]);
+  const [requestsFailed, setRequestsFailed] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  // Check if we came from the app (has header) or from login flow
-  const isFromApp = location.state?.fromApp || (hasFetched && organizations.length > 0 && currentOrgId);
+  const cameFromApp = !!location.state?.fromApp || !!currentOrgId;
+  const destination = returnPath(location.state?.from);
+  const user = getCurrentUser();
 
-  // Load member counts and pending join requests for orgs the user owns
+  /* --- member counts and join requests -------------------------------------
+   * One pass, in parallel, with an unmount guard. The old version fired a
+   * detached async function per organisation and looped the owned ones
+   * sequentially, and every failure fell into an empty `catch {}` — so a broken
+   * endpoint rendered as "0 members" with no hint anything had gone wrong. */
   useEffect(() => {
     if (!isUsingRealApi() || !hasFetched) return;
-    
-    organizations.forEach(async (org) => {
-      try {
-        const members = await getOrgMembers(org.id);
-        setMemberCounts(prev => ({ ...prev, [org.id]: members.length }));
-      } catch {
-        // Ignore errors
-      }
-    });
+    let alive = true;
+    const ids = organizations.map((o) => o.id);
+    const owned = organizations.filter((o) => o.isOwner).map((o) => o.id);
 
-    // Load pending join requests for organizations the user owns
-    const loadJoinRequests = async () => {
-      const ownedOrgs = organizations.filter(o => o.isOwner);
-      const allRequests: JoinRequestDto[] = [];
-      
-      for (const org of ownedOrgs) {
+    void (async () => {
+      const counts = await Promise.all(ids.map(async (id) => {
         try {
-          const requests = await listPendingJoinRequestsForOrg(org.id);
-          allRequests.push(...requests);
+          return [id, (await getOrgMembers(id)).length] as [string, number | null];
         } catch {
-          // Ignore errors
+          return [id, null] as [string, number | null];
         }
+      }));
+      if (!alive) return;
+      const next: Record<string, number | null> = {};
+      for (const [id, n] of counts) next[id] = n;
+      setMemberCounts(next);
+
+      if (owned.length === 0) {
+        setJoinRequests([]);
+        setRequestsFailed(false);
+        return;
       }
-      
-      setPendingJoinRequests(allRequests);
-    };
-    
-    loadJoinRequests();
+      const batches = await Promise.all(owned.map(async (id) => {
+        try {
+          return await listPendingJoinRequestsForOrg(id);
+        } catch {
+          return null;
+        }
+      }));
+      if (!alive) return;
+      const flat: JoinRequestDto[] = [];
+      for (const b of batches) if (b) flat.push(...b);
+      setJoinRequests(flat);
+      // A partial read is worse than a failed one, because the number shown looks
+      // authoritative. Say so rather than under-reporting silently.
+      setRequestsFailed(batches.some((b) => b === null));
+    })();
+
+    return () => { alive = false; };
   }, [organizations, hasFetched]);
 
-  const handleSwitchOrg = (org: Organization) => {
-    setCurrentOrg(org.id);
-    toast.success(`Switched to ${org.name}`);
-    navigate('/dashboard', { replace: true });
-  };
+  /* --- the list ----------------------------------------------------------- */
 
-  const handleOrgCreated = async (org: Organization) => {
-    setCurrentOrg(org.id);
-    await refreshOrgs();
-    navigate('/settings', { replace: true });
-  };
+  const ordered = useMemo(
+    () => orderWorkspaces(organizations, currentOrgId),
+    [organizations, currentOrgId],
+  );
+  const visible = useMemo(() => filterWorkspaces(ordered, query), [ordered, query]);
+
+  // Clamped at render rather than reconciled in an effect: filtering can shrink
+  // the list under the cursor at any time, and a highlight index that is briefly
+  // out of range is the classic source of "Enter did nothing".
+  const hi = visible.length === 0 ? -1 : Math.min(Math.max(highlight, 0), visible.length - 1);
+
+  /* --- launching ---------------------------------------------------------- */
+
+  const launchingOrg = launch.orgId
+    ? organizations.find((o) => o.id === launch.orgId) ?? null
+    : null;
+
+  const startLaunch = useCallback((orgId: string) => {
+    setLaunch((s) => beginLaunch(s, orgId));
+    // Outside the updater, which must stay pure — React is free to call it twice.
+    // Safe to repeat: a dynamic import of an already-loaded module is a no-op, so
+    // this needs no guard of its own. The download and the animation now overlap,
+    // which is the point — by the time the overlay leaves, the page is ready.
+    prefetchRoute(destination);
+  }, [destination]);
+
+  const completeLaunch = useCallback(() => {
+    const org = organizations.find((o) => o.id === launch.orgId);
+    if (!org) {
+      // The workspace vanished mid-flight (a refresh removed it). Back out
+      // rather than setting a context to an id the server no longer knows.
+      setLaunch(IDLE);
+      toast.error('That workspace is no longer available.');
+      return;
+    }
+    const switching = org.id !== currentOrgId;
+    if (switching) setCurrentOrg(org.id);
+    // `replace` on purpose: the launcher is a threshold, not a destination, and
+    // leaving it in history means Back lands you right back outside.
+    navigate(destination, { replace: true });
+    if (switching) toast.success(`Now in ${org.name}`);
+  }, [organizations, launch.orgId, currentOrgId, setCurrentOrg, navigate, destination]);
+
+  /* --- keyboard ----------------------------------------------------------- */
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Let every browser and OS shortcut through untouched.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (createOpen || isBusy(launch)) return;
+
+      // Anything focused that already has its own key semantics keeps them. Two
+      // concrete cases this fixes: Enter on the "New workspace" button used to
+      // open the dialog AND start a launch, and a digit typed into any other
+      // field on the page — a dialog, the help panel — was read as a shortcut.
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const ownTile = target.closest('[data-workspace-tile]');
+        const interactive = target.closest(
+          'button, a, input, textarea, select, [role="button"], [contenteditable="true"]',
+        );
+        if (interactive && !ownTile && target !== searchRef.current) return;
+      }
+
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        setHighlight((h) => moveHighlight(h, 1, visible.length));
+        return;
+      }
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setHighlight((h) => moveHighlight(h, -1, visible.length));
+        return;
+      }
+      if (e.key === 'Enter') {
+        const org = hi >= 0 ? visible[hi] : undefined;
+        if (org) {
+          e.preventDefault();
+          startLaunch(org.id);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (query) {
+          e.preventDefault();
+          setQuery('');
+          setHighlight(0);
+        }
+        return;
+      }
+      // Digits only while the search box is empty. The box is focused on load, so
+      // claiming digits unconditionally would make a name like "Pavillon 46"
+      // unsearchable — and with nothing typed yet there is no search in progress
+      // for the shortcut to interrupt.
+      if (query === '') {
+        const target = digitTarget(e.key, visible);
+        if (target) {
+          e.preventDefault();
+          startLaunch(target.id);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [visible, hi, query, createOpen, launch, startLaunch]);
+
+  // Focus the search box on arrival, so the first keystroke filters. Not on a
+  // phone: autofocus there throws up the on-screen keyboard, which covers half the
+  // list you came here to read. And not for a single workspace, where the box is
+  // noise anyway.
+  useEffect(() => {
+    if (!hasFetched || loading || organizations.length <= 1) return;
+    const wideEnough = typeof window === 'undefined'
+      || window.matchMedia('(min-width: 640px)').matches;
+    if (wideEnough) searchRef.current?.focus();
+  }, [hasFetched, loading, organizations.length]);
+
+  /* --- invites and requests ----------------------------------------------- */
 
   const handleAcceptInvite = async (invite: InviteDto) => {
     setAcceptingId(invite.id);
     try {
       const accepted = await acceptInviteById(invite.id);
-      if (accepted) {
-        await refreshOrgs();
-        setCurrentOrg(accepted.organizationId);
-        toast.success(`Joined ${accepted.organizationName}!`);
-        navigate('/dashboard', { replace: true });
-      } else {
-        toast.error('Could not accept invite.');
+      if (!accepted) {
+        toast.error('Could not accept that invitation.');
+        return;
       }
+      await refreshOrgs();
+      setCurrentOrg(accepted.organizationId);
+      toast.success(`You have joined ${accepted.organizationName}`);
+      navigate(destination, { replace: true });
     } catch {
-      toast.error('Could not accept invite.');
+      toast.error('Could not accept that invitation.');
     } finally {
       setAcceptingId(null);
     }
   };
 
-  const handleAcceptJoinRequest = async (request: JoinRequestDto) => {
-    setProcessingJoinRequestId(request.id);
+  const resolveRequest = async (request: JoinRequestDto, accept: boolean) => {
+    setRequestBusyId(request.id);
     try {
-      const result = await acceptJoinRequest(request.id);
-      if (result) {
-        toast.success(`${request.userName} has been added to ${request.organizationName}`);
-        setPendingJoinRequests(prev => prev.filter(r => r.id !== request.id));
-        // Refresh member counts
-        const members = await getOrgMembers(request.organizationId);
-        setMemberCounts(prev => ({ ...prev, [request.organizationId]: members.length }));
-      } else {
-        toast.error('Could not accept join request.');
+      const result = accept ? await acceptJoinRequest(request.id) : await rejectJoinRequest(request.id);
+      if (!result) {
+        toast.error(accept ? 'Could not approve that request.' : 'Could not decline that request.');
+        return;
+      }
+      setJoinRequests((prev) => prev.filter((r) => r.id !== request.id));
+      toast.success(accept
+        ? `${request.userName} can now use ${request.organizationName}`
+        : `Declined ${request.userName}`);
+      if (accept) {
+        // Keep the tile's member count honest without a full reload. A failure
+        // here must not look like the approval failed — it succeeded.
+        try {
+          const members = await getOrgMembers(request.organizationId);
+          setMemberCounts((prev) => ({ ...prev, [request.organizationId]: members.length }));
+        } catch {
+          setMemberCounts((prev) => ({ ...prev, [request.organizationId]: null }));
+        }
       }
     } catch {
-      toast.error('Could not accept join request.');
+      toast.error(accept ? 'Could not approve that request.' : 'Could not decline that request.');
     } finally {
-      setProcessingJoinRequestId(null);
+      setRequestBusyId(null);
     }
   };
 
-  const handleRejectJoinRequest = async (request: JoinRequestDto) => {
-    setProcessingJoinRequestId(request.id);
-    try {
-      const result = await rejectJoinRequest(request.id);
-      if (result) {
-        toast.success(`Join request from ${request.userName} has been rejected`);
-        setPendingJoinRequests(prev => prev.filter(r => r.id !== request.id));
-      } else {
-        toast.error('Could not reject join request.');
-      }
-    } catch {
-      toast.error('Could not reject join request.');
-    } finally {
-      setProcessingJoinRequestId(null);
-    }
+  const handleCreated = async (org: Organization) => {
+    setCurrentOrg(org.id);
+    await refreshOrgs();
+    toast.success(`${org.name} is ready — invite your team`);
+    navigate('/settings', { replace: true });
   };
 
-  // Show loading state
+  /* --- render ------------------------------------------------------------- */
+
   if (!hasFetched || loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-orange-50 to-slate-50 flex items-center justify-center px-4">
-        <LoadingSpinner size="lg" label="Loading organizations…" />
+      <div className="relative flex min-h-screen items-center justify-center bg-[#07080f]">
+        <Backdrop still={reduceMotion} />
+        <div className="relative flex flex-col items-center gap-4">
+          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-amber-500 shadow-lg shadow-orange-500/25">
+            <Sparkles className="h-6 w-6 text-white" aria-hidden />
+          </span>
+          <p className="flex items-center gap-2 text-sm text-white/50" role="status">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            Finding your workspaces…
+          </p>
+        </div>
       </div>
     );
   }
 
+  const owned = organizations.filter((o) => o.isOwner).length;
+  const countsFailed = Object.values(memberCounts).some((v) => v === null);
+
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-subtle">
-      {/* Use AppHeader if coming from within the app */}
-      {isFromApp ? (
-        <AppHeader />
-      ) : (
-        <header className="w-full px-[var(--page-padding)] py-4 border-b border-slate-200/60 bg-white/80" role="banner">
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 rounded-lg"
-          >
-            <ArrowLeft className="w-5 h-5" aria-hidden />
-            Back to Dashboard
-          </Link>
-        </header>
-      )}
-      
-      <DemoBanner />
-      
-      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-2">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-200/50">
-                <Building2 className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Organizations</h1>
-                <p className="text-slate-600 mt-0.5">
-                  Switch between workspaces or create a new one
-                </p>
-              </div>
-            </div>
-            <Button 
-              onClick={() => setCreateDialogOpen(true)}
-              className="gap-2 bg-orange-600 hover:bg-orange-700 shadow-lg shadow-orange-200/50"
+    <div className="relative min-h-screen overflow-hidden bg-[#07080f] text-white">
+      <Backdrop still={reduceMotion} />
+
+      {/* Bespoke top bar rather than AppHeader. The header's navigation all leads
+          to org-scoped pages, which from here would bounce straight back — and its
+          light styling belongs to the other half of the app. */}
+      <header className="relative z-10 flex h-16 items-center justify-between gap-3 px-[var(--page-padding)]" role="banner">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 shadow-lg shadow-orange-500/25 ring-1 ring-white/20">
+            <Sparkles className="h-4 w-4 text-white" aria-hidden />
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight text-white/90">Cadence</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {user && (
+            <span className="hidden truncate text-xs text-white/35 sm:block">{user.email}</span>
+          )}
+          {cameFromApp ? (
+            <Link
+              to={destination}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/5 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
             >
-              <Plus className="w-4 h-4" />
-              New organization
-            </Button>
-          </div>
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+              Back to {destinationLabel(destination)}
+            </Link>
+          ) : (
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/5 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
+            >
+              <LogOut className="h-3.5 w-3.5" aria-hidden />
+              Sign in as someone else
+            </Link>
+          )}
         </div>
+      </header>
 
-        {/* Stats Overview */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-10">
-          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-orange-50/30 rounded-2xl border border-orange-100 p-5 hover:shadow-lg hover:shadow-orange-100/50 transition-all duration-300">
-            <div className="absolute top-0 right-0 w-16 h-16 bg-orange-500/5 rounded-full -mr-6 -mt-6" />
-            <div className="relative">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20 mb-3">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <p className="text-3xl font-bold text-slate-900">{organizations.length}</p>
-              <p className="text-sm text-slate-500 font-medium">Total Workspaces</p>
-            </div>
-          </div>
-          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-amber-50/30 rounded-2xl border border-amber-100 p-5 hover:shadow-lg hover:shadow-amber-100/50 transition-all duration-300">
-            <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full -mr-6 -mt-6" />
-            <div className="relative">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center shadow-lg shadow-amber-500/20 mb-3">
-                <Crown className="w-6 h-6 text-white" />
-              </div>
-              <p className="text-3xl font-bold text-slate-900">
-                {organizations.filter(o => o.isOwner).length}
-              </p>
-              <p className="text-sm text-slate-500 font-medium">Owned by You</p>
-            </div>
-          </div>
-          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-blue-50/30 rounded-2xl border border-blue-100 p-5 hover:shadow-lg hover:shadow-blue-100/50 transition-all duration-300">
-            <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 rounded-full -mr-6 -mt-6" />
-            <div className="relative">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20 mb-3">
-                <Users className="w-6 h-6 text-white" />
-              </div>
-              <p className="text-3xl font-bold text-slate-900">
-                {organizations.filter(o => !o.isOwner).length}
-              </p>
-              <p className="text-sm text-slate-500 font-medium">Member Of</p>
-            </div>
-          </div>
-          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-emerald-50/30 rounded-2xl border border-emerald-100 p-5 hover:shadow-lg hover:shadow-emerald-100/50 transition-all duration-300">
-            <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/5 rounded-full -mr-6 -mt-6" />
-            <div className="relative">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20 mb-3">
-                <Mail className="w-6 h-6 text-white" />
-              </div>
-              <p className="text-3xl font-bold text-slate-900">{pendingInvites.length}</p>
-              <p className="text-sm text-slate-500 font-medium">Pending Invites</p>
-            </div>
-          </div>
-          <div className="group relative overflow-hidden bg-gradient-to-br from-white to-purple-50/30 rounded-2xl border border-purple-100 p-5 hover:shadow-lg hover:shadow-purple-100/50 transition-all duration-300">
-            <div className="absolute top-0 right-0 w-16 h-16 bg-purple-500/5 rounded-full -mr-6 -mt-6" />
-            <div className="relative">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center shadow-lg shadow-purple-500/20 mb-3">
-                <UserCheck className="w-6 h-6 text-white" />
-              </div>
-              <p className="text-3xl font-bold text-slate-900">{pendingJoinRequests.length}</p>
-              <p className="text-sm text-slate-500 font-medium">Join Requests</p>
-            </div>
-          </div>
-        </div>
+      <DemoBanner />
 
-        {/* Pending Invites Alert */}
-        {pendingInvites.length > 0 && (
-          <div className="mb-8 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200 p-5">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
-                <Mail className="w-5 h-5 text-emerald-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-slate-900 mb-1">
-                  You have {pendingInvites.length} pending invitation{pendingInvites.length !== 1 ? 's' : ''}
-                </h3>
-                <p className="text-sm text-slate-600 mb-4">
-                  Accept to join these organizations
-                </p>
-                <div className="space-y-2">
-                  {pendingInvites.map(invite => (
-                    <div 
-                      key={invite.id}
-                      className="flex items-center justify-between gap-4 p-3 bg-white rounded-xl border border-emerald-100"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                          <Building2 className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-900">{invite.organizationName}</p>
-                          <p className="text-xs text-slate-500 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            Expires {new Date(invite.expiresAtUtc).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => handleAcceptInvite(invite)}
-                        disabled={acceptingId === invite.id}
-                        className="bg-emerald-600 hover:bg-emerald-700"
-                      >
-                        {acceptingId === invite.id ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <>
-                            <UserPlus className="w-4 h-4 mr-1.5" />
-                            Accept
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+      <main
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+        className="relative z-10 mx-auto w-full max-w-5xl px-[var(--page-padding)] pt-8 pb-14 sm:pt-14 sm:pb-28"
+      >
+        {/* Hero */}
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <p className="text-[11px] font-semibold tracking-[0.32em] text-white/35 uppercase">
+            {organizations.length === 0 ? 'Get started' : 'Choose a workspace'}
+          </p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-balance sm:text-[2.6rem] sm:leading-[1.08]">
+            {organizations.length === 0
+              ? 'Your first workspace'
+              : <>Where are you<span className="text-white/35"> working today?</span></>}
+          </h1>
+          <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/45">
+            {organizations.length === 0
+              ? 'A workspace holds one business — its team, its leads, its pipeline. Nothing crosses between them.'
+              : 'Each workspace keeps its own team, leads, deals and reporting. Pick one to go in.'}
+          </p>
+        </motion.div>
 
-        {/* Pending Join Requests Alert - for organization owners */}
-        {pendingJoinRequests.length > 0 && (
-          <div className="mb-8 bg-gradient-to-r from-purple-50 to-violet-50 rounded-2xl border border-purple-200 p-5">
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
-                <UserCheck className="w-5 h-5 text-purple-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-slate-900 mb-1">
-                  {pendingJoinRequests.length} join request{pendingJoinRequests.length !== 1 ? 's' : ''} pending approval
-                </h3>
-                <p className="text-sm text-slate-600 mb-4">
-                  Review and approve or reject requests to join your organizations
-                </p>
-                <div className="space-y-2">
-                  {pendingJoinRequests.map(request => (
-                    <div 
-                      key={request.id}
-                      className="flex items-center justify-between gap-4 p-3 bg-white rounded-xl border border-purple-100"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-violet-500 flex items-center justify-center">
-                          <UserPlus className="w-5 h-5 text-white" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-900">{request.userName}</p>
-                          <p className="text-xs text-slate-500">{request.userEmail}</p>
-                          <p className="text-xs text-purple-600 flex items-center gap-1 mt-0.5">
-                            <Building2 className="w-3 h-3" />
-                            Wants to join {request.organizationName}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleRejectJoinRequest(request)}
-                          disabled={processingJoinRequestId === request.id}
-                          className="text-red-600 border-red-200 hover:bg-red-50"
-                        >
-                          {processingJoinRequestId === request.id ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <>
-                              <X className="w-4 h-4 mr-1" />
-                              Reject
-                            </>
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleAcceptJoinRequest(request)}
-                          disabled={processingJoinRequestId === request.id}
-                          className="bg-purple-600 hover:bg-purple-700"
-                        >
-                          {processingJoinRequestId === request.id ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <>
-                              <Check className="w-4 h-4 mr-1" />
-                              Approve
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+        {/* Search + counts + create */}
+        <motion.div
+          className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center"
+          initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {organizations.length > 1 && (
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-white/30" aria-hidden />
+              <input
+                ref={searchRef}
+                value={query}
+                onChange={(e) => { setQuery(e.target.value); setHighlight(0); }}
+                placeholder="Search workspaces…"
+                aria-label="Search workspaces"
+                autoComplete="off"
+                spellCheck={false}
+                className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] pr-11 pl-11 text-[15px] text-white placeholder:text-white/25 transition-colors focus:border-white/25 focus:bg-white/[0.07] focus:outline-none"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => { setQuery(''); setHighlight(0); searchRef.current?.focus(); }}
+                  aria-label="Clear search"
+                  className="absolute top-1/2 right-3 -translate-y-1/2 rounded-lg p-1.5 text-white/35 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
+              )}
             </div>
-          </div>
-        )}
+          )}
+          <Button
+            onClick={() => setCreateOpen(true)}
+            className="h-12 shrink-0 rounded-2xl bg-white px-5 font-semibold text-[#07080f] hover:bg-white/90"
+          >
+            <Plus className="mr-1.5 h-4 w-4" aria-hidden />
+            New workspace
+          </Button>
+        </motion.div>
 
-        {/* Organizations List */}
-        <section className="mb-10">
-          {/* Section Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Your Workspaces</h2>
-                <p className="text-sm text-slate-500">Select a workspace to manage</p>
-              </div>
-            </div>
-            <span className="text-sm font-medium text-slate-400 bg-slate-100 px-4 py-2 rounded-full">
-              {organizations.length} workspace{organizations.length !== 1 ? 's' : ''}
+        {/* A single honest line of counts, in place of five decorative tiles that
+            mostly restated the length of the list below them. */}
+        {organizations.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-white/40">
+            <span className="font-medium text-white/60">
+              {organizations.length} workspace{organizations.length === 1 ? '' : 's'}
             </span>
+            <span aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1"><Crown className="h-3 w-3" aria-hidden />{owned} owned</span>
+            <span aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" aria-hidden />{organizations.length - owned} joined</span>
+            {query && (
+              <>
+                <span aria-hidden>·</span>
+                <span className="text-white/60">{visible.length} matching “{query}”</span>
+              </>
+            )}
           </div>
+        )}
 
-          {organizations.length === 0 ? (
-            <div className="text-center py-16 bg-gradient-to-br from-white to-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
-              <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-to-br from-orange-100 to-amber-100 flex items-center justify-center mb-6 shadow-lg shadow-orange-100">
-                <Building2 className="w-10 h-10 text-orange-500" />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2">No workspaces yet</h3>
-              <p className="text-slate-500 mb-8 max-w-md mx-auto">
-                Create your first workspace to start managing your team, leads, deals, and more.
+        {/* Signals */}
+        <div className="mt-8 space-y-3">
+          {pendingInvites.length > 0 && (
+            <Panel
+              tone="emerald"
+              icon={Mail}
+              title={`${pendingInvites.length} invitation${pendingInvites.length === 1 ? '' : 's'} waiting for you`}
+            >
+              {pendingInvites.map((invite) => (
+                <div
+                  key={invite.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-black/20 px-3.5 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white">{invite.organizationName}</p>
+                    <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-white/40">
+                      <Clock className="h-3 w-3" aria-hidden />
+                      Expires {new Date(invite.expiresAtUtc).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => void handleAcceptInvite(invite)}
+                    disabled={acceptingId === invite.id}
+                    className="h-9 rounded-xl bg-emerald-500 font-semibold text-white hover:bg-emerald-400"
+                  >
+                    {acceptingId === invite.id
+                      ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      : <><UserPlus className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Accept</>}
+                  </Button>
+                </div>
+              ))}
+            </Panel>
+          )}
+
+          {joinRequests.length > 0 && (
+            <Panel
+              tone="violet"
+              icon={UserCheck}
+              title={`${joinRequests.length} person${joinRequests.length === 1 ? '' : 's'} asking to join`}
+            >
+              {joinRequests.map((request) => (
+                <div
+                  key={request.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-black/20 px-3.5 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white">{request.userName}</p>
+                    <p className="truncate text-[11px] text-white/40">{request.userEmail}</p>
+                    <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-violet-300/70">
+                      <Building2 className="h-3 w-3" aria-hidden />
+                      {request.organizationName}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void resolveRequest(request, false)}
+                      disabled={requestBusyId === request.id}
+                      className="h-9 rounded-xl border border-white/10 text-white/60 hover:bg-white/5 hover:text-white"
+                    >
+                      {requestBusyId === request.id
+                        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        : <><X className="mr-1 h-3.5 w-3.5" aria-hidden /> Decline</>}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => void resolveRequest(request, true)}
+                      disabled={requestBusyId === request.id}
+                      className="h-9 rounded-xl bg-violet-500 font-semibold text-white hover:bg-violet-400"
+                    >
+                      <Check className="mr-1 h-3.5 w-3.5" aria-hidden /> Approve
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </Panel>
+          )}
+
+          {(countsFailed || requestsFailed) && (
+            <Panel tone="amber" icon={TriangleAlert} title="Some details could not be loaded">
+              <p className="text-[13px] leading-relaxed text-white/50">
+                {countsFailed && 'Member counts are shown as “—” where the request failed. '}
+                {requestsFailed && 'The list of pending join requests may be incomplete. '}
+                Choosing a workspace still works normally.
               </p>
-              <Button 
-                onClick={() => setCreateDialogOpen(true)}
-                className="h-12 px-8 text-base bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/25 rounded-2xl"
+            </Panel>
+          )}
+        </div>
+
+        {/* The grid */}
+        <section className="mt-8" aria-label="Your workspaces">
+          {organizations.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-white/12 bg-white/[0.02] px-6 py-16 text-center">
+              <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-orange-400 to-amber-500 shadow-xl shadow-orange-500/20">
+                <Building2 className="h-8 w-8 text-white" aria-hidden />
+              </span>
+              <h2 className="mt-6 text-xl font-bold text-white">Nothing here yet</h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-white/45">
+                Create a workspace to start tracking leads, or accept an invitation
+                to join one that already exists.
+              </p>
+              <Button
+                onClick={() => setCreateOpen(true)}
+                className="mt-7 h-12 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-7 font-semibold text-white hover:from-orange-400 hover:to-amber-400"
               >
-                <Plus className="w-5 h-5 mr-2" />
+                <Plus className="mr-2 h-4 w-4" aria-hidden />
                 Create your first workspace
               </Button>
             </div>
+          ) : visible.length === 0 ? (
+            <div className="rounded-3xl border border-white/[0.07] bg-white/[0.02] px-6 py-14 text-center">
+              <p className="text-sm text-white/55">
+                No workspace matches <span className="font-semibold text-white">“{query}”</span>.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setQuery(''); setHighlight(0); searchRef.current?.focus(); }}
+                className="mt-3 text-sm font-semibold text-orange-300 underline-offset-4 hover:underline"
+              >
+                Clear the search
+              </button>
+            </div>
           ) : (
-            <div className="grid lg:grid-cols-2 gap-6">
-              {/* Sort: active org first, then by ownership */}
-              {[...organizations]
-                .sort((a, b) => {
-                  if (a.id === currentOrgId) return -1;
-                  if (b.id === currentOrgId) return 1;
-                  if (a.isOwner && !b.isOwner) return -1;
-                  if (!a.isOwner && b.isOwner) return 1;
-                  return a.name.localeCompare(b.name);
-                })
-                .map(org => (
-                  <OrganizationCard
-                    key={org.id}
-                    org={org}
-                    isActive={org.id === currentOrgId}
-                    onSwitch={() => handleSwitchOrg(org)}
-                    onSettings={() => navigate('/settings')}
-                    onNavigate={() => {
-                      // If not active, switch first then navigate
-                      if (org.id !== currentOrgId) {
-                        setCurrentOrg(org.id);
-                        toast.success(`Switched to ${org.name}`);
-                      }
-                      navigate('/dashboard');
-                    }}
-                    memberCount={memberCounts[org.id]}
-                  />
-                ))}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {visible.map((org, i) => (
+                <WorkspaceCard
+                  key={org.id}
+                  org={org}
+                  index={i}
+                  isActive={org.id === currentOrgId}
+                  isHighlighted={i === hi}
+                  memberCount={memberCounts[org.id]}
+                  isLaunching={isLaunching(launch, org.id)}
+                  isDimmed={isBusy(launch) && !isLaunching(launch, org.id)}
+                  reduceMotion={reduceMotion}
+                  onSelect={() => startLaunch(org.id)}
+                  onHover={() => { setHighlight(i); prefetchRoute(destination); }}
+                />
+              ))}
             </div>
           )}
         </section>
 
-        {/* Quick Tips */}
-        <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-8">
-          {/* Background decorations */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl" />
-            <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl" />
-          </div>
-          
-          <div className="relative">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/30">
-                <Zap className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Pro Tips</h3>
-                <p className="text-sm text-slate-400">Get the most out of your workspaces</p>
-              </div>
-            </div>
-            
-            <div className="grid sm:grid-cols-3 gap-6">
-              <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 hover:bg-white/10 transition-colors">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center mb-4 border border-orange-500/20">
-                  <Building2 className="w-5 h-5 text-orange-400" />
-                </div>
-                <p className="font-semibold text-white mb-1">Multiple Workspaces</p>
-                <p className="text-sm text-slate-400 leading-relaxed">Create separate workspaces for different businesses, teams, or clients</p>
-              </div>
-              <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 hover:bg-white/10 transition-colors">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 flex items-center justify-center mb-4 border border-blue-500/20">
-                  <Users className="w-5 h-5 text-blue-400" />
-                </div>
-                <p className="font-semibold text-white mb-1">Invite Your Team</p>
-                <p className="text-sm text-slate-400 leading-relaxed">Go to the Team page to add members and collaborate together</p>
-              </div>
-              <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10 hover:bg-white/10 transition-colors">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center mb-4 border border-emerald-500/20">
-                  <RefreshCw className="w-5 h-5 text-emerald-400" />
-                </div>
-                <p className="font-semibold text-white mb-1">Easy Switching</p>
-                <p className="text-sm text-slate-400 leading-relaxed">Switch between workspaces anytime from this page or the header</p>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* Settings shortcut, only where it would actually work. Owners and
+            managers can change a workspace; members and viewers cannot, and the
+            old menu offered it to everyone. */}
+        {currentOrgId && isOrgAdmin(organizations.find((o) => o.id === currentOrgId)) && (
+          <p className="mt-6 text-xs text-white/35">
+            Need to rename a workspace or manage its team?{' '}
+            <Link to="/settings" className="font-semibold text-white/70 underline-offset-4 hover:text-white hover:underline">
+              Open workspace settings
+            </Link>
+          </p>
+        )}
       </main>
 
-      {/* Create Organization Dialog */}
-      <CreateOrgDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        onCreated={handleOrgCreated}
+      {/* Keyboard legend. Fixed, because it is the page's contract with the user
+          and scrolling it away would hide the only clue the shortcuts exist. */}
+      {organizations.length > 0 && (
+        // Desktop only. There is no keyboard to press on a phone, and a fixed
+        // strip there is not a hint — it is something permanently covering the
+        // bottom of the list.
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 hidden justify-center bg-gradient-to-t from-[#07080f] via-[#07080f]/90 to-transparent pt-10 pb-5 sm:flex">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-2.5 text-[11px] text-white/40 backdrop-blur-sm">
+            {organizations.length > 1 && (
+              <span className="inline-flex items-center gap-1.5">
+                <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono">↑↓</kbd>
+                move
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5">
+              <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono">
+                <CornerDownLeft className="h-2.5 w-2.5" aria-hidden />
+              </kbd>
+              open
+            </span>
+            {organizations.length > 1 && query === '' && (
+              <span className="inline-flex items-center gap-1.5">
+                <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono">1–9</kbd>
+                jump
+              </span>
+            )}
+            {organizations.length > 1 && (
+              <span className="inline-flex items-center gap-1.5">
+                <Command className="h-3 w-3" aria-hidden />
+                just start typing to search
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {launchingOrg && (
+          <LaunchSequence
+            key={launchingOrg.id}
+            org={launchingOrg}
+            destinationLabel={destinationLabel(destination)}
+            reduceMotion={reduceMotion}
+            onComplete={completeLaunch}
+          />
+        )}
+      </AnimatePresence>
+
+      <CreateWorkspaceDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={handleCreated}
       />
     </div>
   );
