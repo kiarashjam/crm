@@ -37,10 +37,9 @@ export function PageTransition({
   const [isReady, setIsReady] = useState(delay === 0);
 
   useEffect(() => {
-    if (delay > 0) {
-      const timer = setTimeout(() => setIsReady(true), delay);
-      return () => clearTimeout(timer);
-    }
+    if (delay === 0) return undefined;
+    const timer = setTimeout(() => setIsReady(true), delay);
+    return () => clearTimeout(timer);
   }, [delay]);
 
   const variantClasses: Record<TransitionVariant, string> = {

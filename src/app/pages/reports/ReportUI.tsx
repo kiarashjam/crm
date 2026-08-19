@@ -7,6 +7,7 @@
 
 import type { ReactNode } from 'react';
 import { cn } from '@/app/components/ui/utils';
+import { Reveal } from '@/app/components/motion/PageEnter';
 
 /** Section accent, so each area of the page is identifiable at a glance. */
 export type Accent = 'indigo' | 'teal' | 'violet' | 'amber' | 'rose' | 'sky' | 'emerald';
@@ -72,7 +73,7 @@ export function SectionHead({
 // ── KPI tile ─────────────────────────────────────────────────────────────────
 
 export function Kpi({
-  label, value, sub, icon: Icon, accent = 'indigo', warn,
+  label, value, sub, icon: Icon, accent = 'indigo', warn, index = 0,
 }: {
   label: string;
   /** Already formatted. Pass an em dash for "we do not know", never a zero. */
@@ -82,9 +83,17 @@ export function Kpi({
   accent?: Accent;
   /** Marks a figure whose input data is incomplete, so it reads as a gap. */
   warn?: boolean;
+  /**
+   * Position in the entry cascade, so a row of tiles pops in sequence.
+   *
+   * The card IS the animated element rather than gaining a wrapper: a wrapper
+   * would become the grid item and the card inside it would stop stretching to
+   * the row height. Outside a `PageEnter` this renders as a plain div.
+   */
+  index?: number;
 }) {
   return (
-    <div className={cn(
+    <Reveal variant="pop" index={index} className={cn(
       'rounded-2xl border bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
       'transition-colors duration-200',
       warn ? 'border-amber-200' : 'border-slate-200',
@@ -103,14 +112,14 @@ export function Kpi({
           {sub}
         </p>
       )}
-    </div>
+    </Reveal>
   );
 }
 
 // ── Chart / content panel ────────────────────────────────────────────────────
 
 export function Panel({
-  title, subtitle, hint, children, className,
+  title, subtitle, hint, children, className, index = 0,
 }: {
   title: string;
   subtitle?: string;
@@ -118,9 +127,11 @@ export function Panel({
   hint?: string;
   children: ReactNode;
   className?: string;
+  /** Position in the entry cascade. See the note on Kpi. */
+  index?: number;
 }) {
   return (
-    <section className={cn(
+    <Reveal as="section" index={index} className={cn(
       'rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:p-5',
       className,
     )}>
@@ -134,7 +145,7 @@ export function Panel({
           {hint}
         </p>
       )}
-    </section>
+    </Reveal>
   );
 }
 

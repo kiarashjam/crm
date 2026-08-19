@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BarChart3, TrendingUp, Target, DollarSign, Percent, Loader2, Users, UserCheck,
+  BarChart3, TrendingUp, Target, DollarSign, Percent, Users, UserCheck,
   Gauge, Sparkles, Activity as ActivityIcon, Kanban, Filter, AlertTriangle, Info,
 } from 'lucide-react';
 import {
@@ -8,7 +8,8 @@ import {
   AreaChart, Area,
 } from 'recharts';
 import AppHeader from '@/app/components/AppHeader';
-import { PageTransition } from '@/app/components/PageTransition';
+import { PageEnter, Reveal } from '@/app/components/motion/PageEnter';
+import ReportsSkeleton from './reports/ReportsSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import PageHero from '@/app/components/PageHero';
 import { cn } from '@/app/components/ui/utils';
@@ -128,13 +129,14 @@ export default function Reports() {
     return out;
   }, [d, l]);
 
+  // A spinner on an empty page says only "something is happening". A skeleton
+  // shaped like the report says what is coming, and because its blocks are the
+  // size of the real ones, nothing jumps when the figures land.
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
-        </div>
+        <ReportsSkeleton />
       </div>
     );
   }
@@ -142,18 +144,20 @@ export default function Reports() {
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
-      <PageTransition>
+      <PageEnter>
         <main
           id={MAIN_CONTENT_ID}
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <PageHero
-            icon={BarChart3}
-            iconGradient="from-indigo-500 to-violet-500"
-            title="Reports"
-            subtitle="Pipeline, leads, lifecycle and activity — every figure computed from your own records."
-          />
+          <Reveal index={0}>
+            <PageHero
+              icon={BarChart3}
+              iconGradient="from-indigo-500 to-violet-500"
+              title="Reports"
+              subtitle="Pipeline, leads, lifecycle and activity — every figure computed from your own records."
+            />
+          </Reveal>
 
           {failed && (
             <div className="mt-5 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
@@ -167,7 +171,10 @@ export default function Reports() {
 
           {/* Jump bar. The page is long by nature; this keeps it navigable
               instead of an undifferentiated scroll. */}
-          <nav
+          <Reveal
+            as="nav"
+            variant="fade"
+            index={1}
             aria-label="Report sections"
             className="sticky top-[52px] z-20 -mx-1 mt-5 flex gap-1.5 overflow-x-auto rounded-2xl border border-slate-200 bg-white/85 px-2 py-2 backdrop-blur-sm"
           >
@@ -180,7 +187,7 @@ export default function Reports() {
                 {s.label}
               </a>
             ))}
-          </nav>
+          </Reveal>
 
           {gaps.length > 0 && (
             <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
@@ -204,7 +211,7 @@ export default function Reports() {
           )}
 
           {/* ── Overview ─────────────────────────────────────────────── */}
-          <div className="mt-8">
+          <Reveal as="section" index={2} className="mt-8">
             <SectionHead
               id="overview"
               eyebrow="Overview"
@@ -214,24 +221,24 @@ export default function Reports() {
               icon={Gauge}
             />
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-              <Kpi label="Open pipeline" value={money(d.openValue, d.currency)}
+              <Kpi index={1} label="Open pipeline" value={money(d.openValue, d.currency)}
                 sub={`${d.openCount} open deal${d.openCount === 1 ? '' : 's'}`} icon={DollarSign} accent="indigo" />
-              <Kpi label="Weighted forecast"
+              <Kpi index={2} label="Weighted forecast"
                 value={d.forecast.covered > 0 ? money(d.forecast.value, d.currency) : '—'}
                 sub={d.forecast.covered > 0
                   ? `from ${d.forecast.covered} deal${d.forecast.covered === 1 ? '' : 's'} with a probability`
                   : 'no probabilities set'}
                 icon={TrendingUp} accent="emerald" warn={d.forecast.missing > 0} />
-              <Kpi label="Win rate" value={pct(d.winRate)}
+              <Kpi index={3} label="Win rate" value={pct(d.winRate)}
                 sub={d.winRate === null ? 'nothing closed yet' : `${d.wonCount} won · ${d.lostCount} lost`}
                 icon={Percent} accent="teal" />
-              <Kpi label="Avg won deal"
+              <Kpi index={4} label="Avg won deal"
                 value={d.avgWonValue === null ? '—' : money(d.avgWonValue, d.currency)}
                 sub={d.avgWonValue === null ? 'no deals won yet' : `across ${d.wonCount} won`}
                 icon={Target} accent="amber" />
-              <Kpi label="Total leads" value={String(l.total)}
+              <Kpi index={5} label="Total leads" value={String(l.total)}
                 sub={`${l.qualifiedOrBeyond} qualified or beyond`} icon={Users} accent="sky" />
-              <Kpi label="Lead conversion" value={pct(l.conversionRate)}
+              <Kpi index={6} label="Lead conversion" value={pct(l.conversionRate)}
                 sub={`${l.converted} became deals`} icon={UserCheck} accent="violet" />
             </div>
 
@@ -251,10 +258,10 @@ export default function Reports() {
                 </div>
               </div>
             )}
-          </div>
+          </Reveal>
 
           {/* ── Deals ────────────────────────────────────────────────── */}
-          <div className="mt-10">
+          <Reveal as="section" index={3} className="mt-10">
             <SectionHead
               id="pipeline"
               eyebrow="Deals"
@@ -264,19 +271,19 @@ export default function Reports() {
               icon={Kanban}
             />
             <div className="grid gap-3 lg:grid-cols-2">
-              <Panel title="Value by stage" subtitle={`${d.openCount} open deals`}
+              <Panel index={1} title="Value by stage" subtitle={`${d.openCount} open deals`}
                 hint="Sum of deal value per stage, open deals only, in the dominant currency.">
                 <BarList rows={byStage} accent="sky" format={(v) => money(v, d.currency)} />
               </Panel>
-              <Panel title="Value by owner" subtitle="Who is carrying the pipeline"
+              <Panel index={2} title="Value by owner" subtitle="Who is carrying the pipeline"
                 hint="Deals with no assignee are grouped as Unassigned rather than dropped.">
                 <BarList rows={byOwner} accent="indigo" format={(v) => money(v, d.currency)} />
               </Panel>
             </div>
-          </div>
+          </Reveal>
 
           {/* ── Leads ────────────────────────────────────────────────── */}
-          <div className="mt-10">
+          <Reveal as="section" index={4} className="mt-10">
             <SectionHead
               id="leads"
               eyebrow="Leads"
@@ -286,35 +293,35 @@ export default function Reports() {
               icon={Filter}
             />
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Kpi label="Contacted or beyond" value={String(l.contactedOrBeyond)}
+              <Kpi index={7} label="Contacted or beyond" value={String(l.contactedOrBeyond)}
                 sub={`of ${l.total} leads`} icon={UserCheck} accent="teal" />
-              <Kpi label="Qualified or beyond" value={String(l.qualifiedOrBeyond)}
+              <Kpi index={8} label="Qualified or beyond" value={String(l.qualifiedOrBeyond)}
                 sub="met and interested onwards" icon={Target} accent="violet" />
-              <Kpi label="Avg lead score"
+              <Kpi index={9} label="Avg lead score"
                 value={l.avgScore === null ? '—' : String(Math.round(l.avgScore))}
                 sub={l.avgScore === null ? 'no leads scored' : `across ${l.scoredCount} scored`}
                 icon={Gauge} accent="amber" warn={l.unscoredCount > 0} />
-              <Kpi label="New (8 weeks)" value={String(weeks.reduce((s, w) => s + w.value, 0))}
+              <Kpi index={10} label="New (8 weeks)" value={String(weeks.reduce((s, w) => s + w.value, 0))}
                 sub="created recently" icon={Sparkles} accent="emerald" />
             </div>
 
             <div className="mt-3 grid gap-3 lg:grid-cols-3">
-              <Panel title="Status funnel" subtitle="Current status, narrowing by definition"
+              <Panel index={3} title="Status funnel" subtitle="Current status, narrowing by definition"
                 hint="Each step counts leads at that stage or beyond, so a later step can never exceed an earlier one. Status has no memory: a lead contacted and later marked lost counts only in the first step.">
                 <Funnel steps={funnel} accent="teal" />
               </Panel>
-              <Panel title="By status" subtitle="Every lead, one bucket each"
+              <Panel index={4} title="By status" subtitle="Every lead, one bucket each"
                 hint="Bars are scaled to the largest bucket so they can be compared; the printed number is the true count. Counts sum to your total lead count, with anything past the top eight grouped as Other.">
                 <BarList rows={byStatus} accent="violet" />
               </Panel>
-              <Panel title="By source" subtitle="Where they came from"
+              <Panel index={5} title="By source" subtitle="Where they came from"
                 hint="Bars are scaled to the largest source. Leads with no source recorded appear as Unknown, so the breakdown still totals correctly.">
                 <BarList rows={bySource} accent="amber" />
               </Panel>
             </div>
 
             <div className="mt-3">
-              <Panel title="New leads per week" subtitle="Last 8 weeks, most recent on the right"
+              <Panel index={6} title="New leads per week" subtitle="Last 8 weeks, most recent on the right"
                 hint="Rolling 7-day windows counted back from today, using each lead's creation date.">
                 {weeks.every((w) => w.value === 0) ? (
                   <NoData>No leads created in the last 8 weeks.</NoData>
@@ -333,10 +340,10 @@ export default function Reports() {
                 )}
               </Panel>
             </div>
-          </div>
+          </Reveal>
 
           {/* ── Lifecycle (sales tracker) ────────────────────────────── */}
-          <div className="mt-10">
+          <Reveal as="section" index={5} className="mt-10">
             <SectionHead
               id="lifecycle"
               eyebrow="Lifecycle"
@@ -346,10 +353,10 @@ export default function Reports() {
               icon={TrendingUp}
             />
             <SalesTrackerReport leads={leads} />
-          </div>
+          </Reveal>
 
           {/* ── Activity ─────────────────────────────────────────────── */}
-          <div className="mt-10">
+          <Reveal as="section" index={6} className="mt-10">
             <SectionHead
               id="activity"
               eyebrow="Activity"
@@ -358,7 +365,7 @@ export default function Reports() {
               accent="rose"
               icon={ActivityIcon}
             />
-            <Panel title="Activity, last 14 days" subtitle={`${activities.length} logged in total`}
+            <Panel index={7} title="Activity, last 14 days" subtitle={`${activities.length} logged in total`}
               hint="Counted by the local calendar day the activity was logged, so evening work appears on the day it happened.">
               {days.every((x) => x.value === 0) ? (
                 <NoData>No activity logged in the last 14 days.</NoData>
@@ -382,7 +389,7 @@ export default function Reports() {
                 </div>
               )}
             </Panel>
-          </div>
+          </Reveal>
 
           <p className={cn(
             'mt-8 rounded-2xl border border-slate-200 bg-white/70 px-4 py-3',
@@ -395,7 +402,7 @@ export default function Reports() {
             converted between currencies.
           </p>
         </main>
-      </PageTransition>
+      </PageEnter>
     </div>
   );
 }

@@ -10,8 +10,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
-import { PageTransition } from '@/app/components/PageTransition';
-import { ContentSkeleton } from '@/app/components/PageSkeleton';
+import { PageEnter, Reveal } from '@/app/components/motion/PageEnter';
+import { LeadsListSkeleton } from './leads/components/LeadsListSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
@@ -1396,7 +1396,7 @@ export default function Leads() {
           setLeads((prev) => prev.map((l) => updated.find((u) => u.id === l.id) ?? l));
         }}
       />
-      <PageTransition>
+      <PageEnter ready={!loading}>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           {/* Discovery for a problem nobody would otherwise go looking for: a lead
               can carry advanced steps while its status still reads New, and until
@@ -1426,7 +1426,7 @@ export default function Leads() {
             </div>
           )}
           {/* Enhanced Header Section with Dark Decorative Elements */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
+          <Reveal index={0} className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
           {/* Decorative blur elements */}
           <div className="absolute inset-0 overflow-hidden">
             <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
@@ -1476,13 +1476,13 @@ export default function Leads() {
               </div>
             </div>
           </div>
-        </div>
+        </Reveal>
 
           {/* Stats Cards */}
           {!loading && totalCount > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
               {/* Total Leads */}
-              <div className="group relative bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 overflow-hidden">
+              <Reveal variant="pop" index={1} className="group relative bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 overflow-hidden">
                 <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-50 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
                 <div className="relative">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
@@ -1491,10 +1491,10 @@ export default function Leads() {
                   <p className="text-3xl font-bold text-slate-900 tracking-tight">{stats.total}</p>
                   <p className="text-xs font-medium text-slate-500 mt-1">Total Leads</p>
                 </div>
-              </div>
+              </Reveal>
 
               {/* Active Leads */}
-              <div 
+              <Reveal variant="pop" index={2} 
                 className="group relative bg-white rounded-2xl border border-blue-100 p-5 shadow-sm hover:shadow-xl hover:shadow-blue-100 hover:border-blue-200 transition-all duration-300 overflow-hidden cursor-pointer"
                 onClick={() => { setFilterConverted('active'); setShowFilters(true); }}
               >
@@ -1506,10 +1506,10 @@ export default function Leads() {
                   <p className="text-3xl font-bold text-blue-600 tracking-tight">{stats.active}</p>
                   <p className="text-xs font-medium text-blue-600/70 mt-1">Active</p>
                 </div>
-              </div>
+              </Reveal>
 
               {/* Hot Leads */}
-              <div className="group relative bg-white rounded-2xl border border-amber-100 p-5 shadow-sm hover:shadow-xl hover:shadow-amber-100 hover:border-amber-200 transition-all duration-300 overflow-hidden">
+              <Reveal variant="pop" index={3} className="group relative bg-white rounded-2xl border border-amber-100 p-5 shadow-sm hover:shadow-xl hover:shadow-amber-100 hover:border-amber-200 transition-all duration-300 overflow-hidden">
                 <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-amber-50 to-amber-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
                 <div className="relative">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
@@ -1518,10 +1518,10 @@ export default function Leads() {
                   <p className="text-3xl font-bold text-amber-600 tracking-tight">{stats.hotLeads}</p>
                   <p className="text-xs font-medium text-amber-600/70 mt-1">Hot Leads</p>
                 </div>
-              </div>
+              </Reveal>
 
               {/* Conversion Rate */}
-              <div 
+              <Reveal variant="pop" index={4} 
                 className="group relative bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 shadow-lg shadow-emerald-500/20 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 overflow-hidden cursor-pointer"
                 onClick={() => { setFilterConverted('converted'); setShowFilters(true); }}
               >
@@ -1541,10 +1541,10 @@ export default function Leads() {
                     </div>
                   </div>
                 </div>
-              </div>
+              </Reveal>
 
               {/* New This Week */}
-              <div className="group relative bg-white rounded-2xl border border-purple-100 p-5 shadow-sm hover:shadow-xl hover:shadow-purple-100 hover:border-purple-200 transition-all duration-300 overflow-hidden">
+              <Reveal variant="pop" index={5} className="group relative bg-white rounded-2xl border border-purple-100 p-5 shadow-sm hover:shadow-xl hover:shadow-purple-100 hover:border-purple-200 transition-all duration-300 overflow-hidden">
                 <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-purple-50 to-purple-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
                 <div className="relative">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
@@ -1553,10 +1553,10 @@ export default function Leads() {
                   <p className="text-3xl font-bold text-purple-600 tracking-tight">{stats.thisWeek}</p>
                   <p className="text-xs font-medium text-purple-600/70 mt-1">This Week</p>
                 </div>
-              </div>
+              </Reveal>
 
               {/* Qualified Leads */}
-              <div 
+              <Reveal variant="pop" index={6} 
                 className="group relative bg-white rounded-2xl border border-cyan-100 p-5 shadow-sm hover:shadow-xl hover:shadow-cyan-100 hover:border-cyan-200 transition-all duration-300 overflow-hidden cursor-pointer"
                 onClick={() => { setFilterStatuses(qualifiedStatusNames); setShowFilters(true); }}
               >
@@ -1568,7 +1568,7 @@ export default function Leads() {
                   <p className="text-3xl font-bold text-cyan-600 tracking-tight">{stats.qualified}</p>
                   <p className="text-xs font-medium text-cyan-600/70 mt-1">Qualified</p>
                 </div>
-              </div>
+              </Reveal>
             </div>
           )}
 
@@ -1983,7 +1983,7 @@ export default function Leads() {
         </div>
 
         {loading ? (
-          <ContentSkeleton rows={6} />
+          <LeadsListSkeleton />
         ) : totalCount === 0 ? (
           <div className="w-full">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -2055,7 +2055,7 @@ export default function Leads() {
             />
           )}
           <div className="space-y-3">
-            {filteredLeads.map((lead) => {
+            {filteredLeads.map((lead, leadIndex) => {
               const statusStyle = LEAD_STATUS_COLORS[lead.status] || DEFAULT_STATUS_STYLE;
               const phaseBadge = pipelineBadge(parsePipeline(lead.pipelineState));
 
@@ -2086,8 +2086,9 @@ export default function Leads() {
               const leadInteractions = pageActivities.get(lead.id) ?? [];
 
               return (
-                <div
+                <Reveal
                   key={lead.id}
+                  index={leadIndex}
                   role="button"
                   tabIndex={0}
                   onClick={(e) => {
@@ -2512,7 +2513,7 @@ export default function Leads() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </Reveal>
               );
             })}
           </div>
@@ -2528,7 +2529,7 @@ export default function Leads() {
           </>
         )}
         </main>
-      </PageTransition>
+      </PageEnter>
 
       <QuickAddLeadDialog
         open={quickAddOpen}
