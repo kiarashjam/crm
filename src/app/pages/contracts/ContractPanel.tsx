@@ -25,11 +25,12 @@ import {
 } from '@/app/api/contracts';
 import { isUsingRealApi } from '@/app/api/apiClient';
 import {
-  STATUS_LABELS, checkSignature, nextActionHint, type ContractStatus,
+  STATUS_LABELS, checkSignature, type ContractStatus,
 } from './contractLifecycle';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
+import { ContractProgress } from './ContractProgress';
 
 /** Fields the seeded template asks for that the CRM cannot know. */
 const ASK_FOR: { key: string; label: string; placeholder: string }[] = [
@@ -296,9 +297,12 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
                   <StatusPill status={c.status} />
                 </div>
 
-                {nextActionHint(c.status) && (
-                  <p className="mt-2 text-xs text-slate-500">{nextActionHint(c.status)}</p>
-                )}
+                {/* Replaced a bare one-line hint. The pill says which state; this
+                    says whose move it is, since when, and what happens next —
+                    the questions people actually had. */}
+                <div className="mt-3">
+                  <ContractProgress contract={c} />
+                </div>
 
                 {/* Sending is blocked while any placeholder is unfilled, rather than
                     posting a contract that reads "Dear {{lead.name}},". */}

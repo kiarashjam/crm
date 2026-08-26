@@ -8,7 +8,8 @@ import { describe, it, expect } from 'vitest';
 import {
   can, next, allowedActions, isTerminal, TERMINAL_STATUSES,
   isSignatureNameValid, checkSignature, pipelineEffect, nextActionHint,
-  STATUS_LABELS, type ContractStatus, type ContractAction,
+  STATUS_LABELS, timeAgo, describeState, CONTRACT_STEPS,
+  type ContractStatus, type ContractAction, type DescribeInput,
 } from './contractLifecycle';
 
 const ALL_STATUSES: ContractStatus[] = [
@@ -204,6 +205,163 @@ describe('pipelineEffect', () => {
       const effect = pipelineEffect(status, DATE);
       if (!effect) continue;
       for (const key of Object.keys(effect)) expect(known, `${status}.${key}`).toContain(key);
+    }
+  });
+});
+
+describe('timeAgo', () => {
+  const NOW = new Date('2026-08-26T12:00:00Z').getTime();
+  const at = (iso: string) => timeAgo(iso, NOW);
+
+  it('reads naturally across the scales', () => {
+    expect(at('2026-08-26T11:59:50Z')).toBe('just now');
+    expect(at('2026-08-26T11:30:00Z')).toBe('30 minutes ago');
+    expect(at('2026-08-26T11:00:00Z')).toBe('1 hour ago');
+    expect(at('2026-08-26T04:00:00Z')).toBe('8 hours ago');
+    expect(at('2026-08-25T12:00:00Z')).toBe('yesterday');
+    expect(at('2026-08-23T12:00:00Z')).toBe('3 days ago');
+    expect(at('2026-06-26T12:00:00Z')).toBe('2 months ago');
+    expect(at('2025-08-26T12:00:00Z')).toBe('1 year ago');
+  });
+
+  it('gets singular and plural right', () => {
+    expect(at('2026-08-26T11:59:00Z')).toBe('1 minute ago');
+    expect(at('2026-08-26T11:58:00Z')).toBe('2 minutes ago');
+    expect(at('2026-07-26T12:00:00Z')).toBe('1 month ago');
+  });
+
+  it('never renders a future timestamp as negative', () => {
+    // Not hypothetical: server and browser clocks disagree by seconds routinely,
+    // so a just-created contract would otherwise read "in -2 seconds ago".
+    expect(at('2026-08-26T12:00:05Z')).toBe('just now');
+    expect(at('2026-08-27T12:00:00Z')).toBe('just now');
+  });
+
+  it('returns null rather than a fake date for missing or unparseable input', () => {
+    for (const bad of [null, undefined, '', 'not a date']) {
+      expect(timeAgo(bad, NOW), String(bad)).toBeNull();
+    }
+  });
+});
+
+describe('describeState', () => {
+  const NOW = new Date('2026-08-26T12:00:00Z').getTime();
+  const base = { counterpartyName: 'Jean Dupont' };
+  const d = (over: Partial<DescribeInput> & { status: ContractStatus }) =>
+    describeState({ ...base, ...over }, NOW);
+
+  it('a draft is your move and says nobody has seen it', () => {
+    const s = d({ status: 'draft' });
+    expect(s.turn).toBe('you');
+    expect(s.completed).toBe(0);
+    expect(s.headline).toBe('Not sent yet');
+    expect(s.detail).toMatch(/Nobody outside your team/);
+    expect(s.detail).toContain('Jean Dupont');
+  });
+
+  it('a sent contract says who we are waiting on, and whether they opened it', () => {
+    const unopened = d({ status: 'sent', sentAtUtc: '2026-08-23T12:00:00Z' });
+    expect(unopened.turn).toBe('them');
+    expect(unopened.headline).toBe('Waiting for Jean Dupont to sign');
+    expect(unopened.detail).toBe('Sent 3 days ago. They have not opened it yet.');
+
+    const opened = d({
+      status: 'sent',
+      sentAtUtc: '2026-08-23T12:00:00Z',
+      firstViewedAtUtc: '2026-08-25T12:00:00Z',
+    });
+    expect(opened.detail).toBe('Sent 3 days ago. They opened it yesterday.');
+  });
+
+  it('their signature makes it your move again', () => {
+    const s = d({ status: 'signed_by_client', clientSignedAtUtc: '2026-08-26T10:00:00Z' });
+    expect(s.turn).toBe('you');
+    expect(s.tone).toBe('action');
+    expect(s.headline).toBe('Jean Dupont has signed');
+    expect(s.detail).toMatch(/Signed 2 hours ago/);
+  });
+
+  it('EXECUTED BUT NOT DELIVERED does not read as finished', () => {
+    // The case that matters most: binding, but nobody has been sent it — usually
+    // because SMTP is unconfigured. Reading this as done is how a member never
+    // receives their copy.
+    const s = d({ status: 'countersigned', counterSignedAtUtc: '2026-08-26T11:00:00Z' });
+    expect(s.tone).not.toBe('done');
+    expect(s.completed).toBe(3);
+    expect(s.turn).toBe('you');
+    expect(s.headline).toMatch(/copies not sent/i);
+  });
+
+  it('fully delivered is done, and nobody is waiting', () => {
+    const s = d({
+      status: 'countersigned',
+      counterSignedAtUtc: '2026-08-26T11:00:00Z',
+      executedCopySentAtUtc: '2026-08-26T11:00:05Z',
+    });
+    expect(s.tone).toBe('done');
+    expect(s.completed).toBe(4);
+    expect(s.turn).toBe('nobody');
+    expect(s.detail).toMatch(/emailed the finished contract/);
+  });
+
+  it('a decline is not four steps of four', () => {
+    const s = d({ status: 'declined', closedReason: 'Not within budget' });
+    expect(s.completed).toBeLessThan(4);
+    expect(s.tone).toBe('stopped');
+    expect(s.headline).toBe('Jean Dupont declined');
+    expect(s.detail).toContain('Not within budget');
+  });
+
+  it('explains a decline with no reason rather than showing an empty one', () => {
+    for (const reason of [undefined, null, '   ']) {
+      const s = d({ status: 'declined', closedReason: reason });
+      expect(s.detail).toMatch(/No reason was given/);
+    }
+  });
+
+  it('a void reports how far it actually got before being cancelled', () => {
+    // Reporting 0 of 4 for a contract the counterparty had already signed would
+    // misrepresent the record — and that is precisely the case where somebody
+    // later asks what happened.
+    expect(d({ status: 'voided' }).completed).toBe(0);
+    expect(d({ status: 'voided', sentAtUtc: '2026-08-20T12:00:00Z' }).completed).toBe(1);
+    expect(d({
+      status: 'voided',
+      sentAtUtc: '2026-08-20T12:00:00Z',
+      clientSignedAtUtc: '2026-08-22T12:00:00Z',
+    }).completed).toBe(2);
+    // Still halted, however far it got.
+    expect(d({ status: 'voided', clientSignedAtUtc: '2026-08-22T12:00:00Z' }).tone).toBe('stopped');
+  });
+
+  it('a void says the link is dead, because that is the consequence people ask about', () => {
+    const s = d({ status: 'voided' });
+    expect(s.completed).toBe(0);
+    expect(s.tone).toBe('stopped');
+    expect(s.detail).toMatch(/no longer works/);
+  });
+
+  it('never leaves a headline or detail empty, whatever the state', () => {
+    for (const status of ALL_STATUSES) {
+      const s = d({ status });
+      expect(s.headline.trim(), status).not.toBe('');
+      expect(s.detail.trim(), status).not.toBe('');
+      expect(s.completed, status).toBeLessThanOrEqual(CONTRACT_STEPS.length);
+      expect(s.completed, status).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('copes with a missing counterparty name instead of saying "undefined has signed"', () => {
+    const s = describeState({ status: 'signed_by_client', counterpartyName: '   ' }, NOW);
+    expect(s.headline).toBe('the counterparty has signed');
+    expect(s.headline).not.toMatch(/undefined|null/);
+  });
+
+  it('survives a missing timestamp on every state that shows one', () => {
+    // A row written by an older build, or a clock that has not caught up.
+    for (const status of ['sent', 'signed_by_client', 'countersigned'] as ContractStatus[]) {
+      const s = d({ status });
+      expect(s.detail, status).not.toMatch(/null|undefined|NaN/);
     }
   });
 });

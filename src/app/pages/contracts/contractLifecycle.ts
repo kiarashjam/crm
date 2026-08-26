@@ -205,3 +205,165 @@ export function pipelineEffect(status: ContractStatus, onDate: string): Record<s
       return null;
   }
 }
+
+/* ------------------------------------------------------- explaining the state */
+
+/**
+ * How long ago something happened, in words.
+ *
+ * Own implementation rather than Intl.RelativeTimeFormat because the phrasing
+ * wanted here is "3 days ago" and "just now", not "3 days ago" and "in 0
+ * seconds". The future case matters and is not hypothetical: server and browser
+ * clocks disagree by seconds routinely, and a naive difference renders a
+ * just-created contract as "in 2 seconds ago".
+ */
+export function timeAgo(iso: string | null | undefined, now: number = Date.now()): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return null;
+
+  const seconds = Math.round((now - then) / 1000);
+  // Clock skew, or a genuinely future timestamp. Either way "just now" is the
+  // honest reading — never "in -4 seconds".
+  if (seconds < 45) return 'just now';
+
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return 'yesterday';
+  if (days < 31) return `${days} days ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+  const years = Math.round(months / 12);
+  return `${years} year${years === 1 ? '' : 's'} ago`;
+}
+
+/** The four steps, as the UI labels them. */
+export const CONTRACT_STEPS = [
+  'Draft',
+  'Their signature',
+  'Your signature',
+  'Copies sent',
+] as const;
+
+export type ContractTurn = 'you' | 'them' | 'nobody';
+export type StateTone = 'neutral' | 'waiting' | 'action' | 'done' | 'stopped';
+
+export interface ContractStateDescription {
+  /** 1-based step reached. 0 for a contract that stopped before step 1 finished. */
+  step: number;
+  /** How many of the four steps are complete. */
+  completed: number;
+  turn: ContractTurn;
+  /** One short line: the fact. */
+  headline: string;
+  /** One short line: what it means or what to do. Never repeats the headline. */
+  detail: string;
+  tone: StateTone;
+}
+
+export interface DescribeInput {
+  status: ContractStatus;
+  counterpartyName: string;
+  sentAtUtc?: string | null;
+  firstViewedAtUtc?: string | null;
+  clientSignedAtUtc?: string | null;
+  counterSignedAtUtc?: string | null;
+  executedCopySentAtUtc?: string | null;
+  closedReason?: string | null;
+}
+
+/**
+ * Plain language for where a contract is, whose move it is, and what happens next.
+ *
+ * Exists because a status pill reading "sent" answers none of the questions
+ * somebody actually has: sent to whom, how long ago, did they open it, and am I
+ * waiting on them or are they waiting on me. Kept out of the component and tested
+ * because the awkward cases are all here, not in the markup — a contract executed
+ * but whose copies never went out must NOT read as finished, and a declined one
+ * must not render as four steps of four.
+ */
+export function describeState(c: DescribeInput, now: number = Date.now()): ContractStateDescription {
+  const who = c.counterpartyName.trim() || 'the counterparty';
+
+  switch (c.status) {
+    case 'draft':
+      return {
+        step: 1, completed: 0, turn: 'you', tone: 'action',
+        headline: 'Not sent yet',
+        detail: `Nobody outside your team has seen this. Read it through, then send it to ${who}.`,
+      };
+
+    case 'sent': {
+      const sent = timeAgo(c.sentAtUtc, now);
+      const viewed = timeAgo(c.firstViewedAtUtc, now);
+      return {
+        step: 2, completed: 1, turn: 'them', tone: 'waiting',
+        headline: `Waiting for ${who} to sign`,
+        detail: viewed
+          ? `Sent ${sent ?? 'recently'}. They opened it ${viewed}.`
+          : `Sent ${sent ?? 'recently'}. They have not opened it yet.`,
+      };
+    }
+
+    case 'signed_by_client': {
+      const signed = timeAgo(c.clientSignedAtUtc, now);
+      return {
+        step: 3, completed: 2, turn: 'you', tone: 'action',
+        headline: `${who} has signed`,
+        detail: `Signed ${signed ?? 'recently'}. Your signature executes the contract and sends the finished copy to both of you.`,
+      };
+    }
+
+    case 'countersigned': {
+      const executed = timeAgo(c.counterSignedAtUtc, now);
+      if (!c.executedCopySentAtUtc) {
+        // Deliberately NOT "done". The contract is binding, but nobody has been
+        // sent it — usually because SMTP is unconfigured. Reading this as
+        // finished is how a member never receives their copy.
+        return {
+          step: 4, completed: 3, turn: 'you', tone: 'waiting',
+          headline: 'Signed by both parties — copies not sent',
+          detail: `Executed ${executed ?? 'recently'}, but the finished copy has not reached anyone yet. Send it, or pass it on yourself.`,
+        };
+      }
+      return {
+        step: 4, completed: 4, turn: 'nobody', tone: 'done',
+        headline: 'Signed by both parties',
+        detail: `Executed ${executed ?? 'recently'}. Both of you have been emailed the finished contract and the signature record.`,
+      };
+    }
+
+    case 'declined':
+      return {
+        step: 2, completed: 1, turn: 'nobody', tone: 'stopped',
+        headline: `${who} declined`,
+        detail: c.closedReason?.trim()
+          ? `Reason given: ${c.closedReason.trim()}`
+          : 'No reason was given. Draft a new contract if the terms have changed.',
+      };
+
+    case 'voided': {
+      // How far it actually got before being cancelled, from the timestamps.
+      // Reporting 0 of 4 for a contract the counterparty had already signed
+      // would misrepresent the record — and that is exactly the case where
+      // somebody later asks what happened.
+      const reached = c.clientSignedAtUtc ? 2 : c.sentAtUtc ? 1 : 0;
+      return {
+        step: 0, completed: reached, turn: 'nobody', tone: 'stopped',
+        headline: 'Voided',
+        detail: c.closedReason?.trim()
+          ? `${c.closedReason.trim()} The signing link no longer works.`
+          : 'You cancelled this contract. The signing link no longer works.',
+      };
+    }
+
+    default:
+      return {
+        step: 0, completed: 0, turn: 'nobody', tone: 'neutral',
+        headline: 'Unknown state', detail: 'Reload the page.',
+      };
+  }
+}

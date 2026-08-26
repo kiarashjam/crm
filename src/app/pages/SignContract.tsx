@@ -26,6 +26,47 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
 
+/**
+ * What happens after they sign.
+ *
+ * Someone opening a signing link from an email has no idea what the sequence is:
+ * whether signing is the end of it, whether they get a copy, whether anyone else
+ * has to do anything. Three lines answers that, and the reassurance that nothing
+ * binds them until they sign is the reason people feel able to read it properly
+ * rather than hunting for the catch.
+ */
+function WhatHappensNext({ organizationName }: { organizationName: string }) {
+  const steps = [
+    'You sign below.',
+    `${organizationName} adds their signature.`,
+    'You both get the signed contract by email.',
+  ];
+  return (
+    <section
+      className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5"
+      aria-label="What happens next"
+    >
+      <h2 className="text-[11px] font-semibold tracking-[0.12em] text-slate-500 uppercase">
+        What happens next
+      </h2>
+      <ol className="mt-3 grid gap-2.5 sm:grid-cols-3 sm:gap-3">
+        {steps.map((text, i) => (
+          <li key={i} className="flex items-start gap-2.5">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
+              {i + 1}
+            </span>
+            <span className="text-[13px] leading-snug text-slate-700">{text}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3.5 border-t border-slate-200 pt-3 text-[12.5px] text-slate-500">
+        <strong className="font-semibold text-slate-700">Nothing is agreed until you sign.</strong>{' '}
+        If anything looks wrong, reply to the email you received instead of signing.
+      </p>
+    </section>
+  );
+}
+
 /** Renders the contract body. */
 function ContractBody({ body }: { body: string }) {
   return (
@@ -221,8 +262,10 @@ export default function SignContract() {
               </div>
             </div>
           ) : (
+            <>
+            <WhatHappensNext organizationName={contract.organizationName} />
             <form
-              className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
+              className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6"
               onSubmit={(e) => { e.preventDefault(); void submit(); }}
             >
               <div className="flex items-center gap-2">
@@ -287,6 +330,7 @@ export default function SignContract() {
                 </button>
               </div>
             </form>
+            </>
           )}
         </div>
 
