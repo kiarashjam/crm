@@ -579,8 +579,8 @@ try
                         [Title] nvarchar(300) NOT NULL,
                         [Body] nvarchar(max) NOT NULL,
                         [BodyHashAtSend] nvarchar(64) NULL,
-                        [CounterpartyName] nvarchar(300) NULL,
-                        [CounterpartyEmail] nvarchar(320) NULL,
+                        [CounterpartyName] nvarchar(300) NOT NULL,
+                        [CounterpartyEmail] nvarchar(320) NOT NULL,
                         [CreatedByUserId] uniqueidentifier NOT NULL,
                         [CreatedAtUtc] datetime2 NOT NULL,
                         [UpdatedAtUtc] datetime2 NOT NULL,
@@ -599,7 +599,7 @@ try
                         [CounterSignatureIp] nvarchar(64) NULL,
                         [ClosedReason] nvarchar(1000) NULL,
                         [ExecutedCopySentAtUtc] datetime2 NULL,
-                        [RowVersion] rowversion NOT NULL
+                        [RowVersion] rowversion NULL
                     );
                     CREATE INDEX [IX_Contracts_OrganizationId_LeadId]
                         ON [Contracts] ([OrganizationId], [LeadId]);
@@ -611,6 +611,24 @@ try
                         WHERE [SigningTokenHash] IS NOT NULL;
                 END;
 
+                -- The model declares these non-nullable and the service always writes
+                -- at least "", but the original DDL allowed NULL — so EF would
+                -- materialise a null into a non-nullable string and the next
+                -- .Trim() on it would throw. Exactly the shape of the crash the
+                -- Leads page had. Backfilled first so the ALTER cannot fail, and
+                -- both statements are no-ops on a database already correct.
+                IF EXISTS (
+                    SELECT 1 FROM sys.columns
+                    WHERE object_id = OBJECT_ID(N'dbo.Contracts')
+                      AND name IN (N'CounterpartyName', N'CounterpartyEmail')
+                      AND is_nullable = 1)
+                BEGIN
+                    UPDATE [Contracts] SET [CounterpartyName] = '' WHERE [CounterpartyName] IS NULL;
+                    UPDATE [Contracts] SET [CounterpartyEmail] = '' WHERE [CounterpartyEmail] IS NULL;
+                    ALTER TABLE [Contracts] ALTER COLUMN [CounterpartyName] nvarchar(300) NOT NULL;
+                    ALTER TABLE [Contracts] ALTER COLUMN [CounterpartyEmail] nvarchar(320) NOT NULL;
+                END;
+
                 -- Added after the table shipped. What makes a contract state change
                 -- atomic instead of advisory: without it two concurrent signs both
                 -- passed the state machine and both wrote, and a sign racing a void
@@ -618,7 +636,7 @@ try
                 -- maintains a rowversion itself, so existing rows need no backfill.
                 IF COL_LENGTH(N'dbo.Contracts', N'RowVersion') IS NULL
                 BEGIN
-                    ALTER TABLE [Contracts] ADD [RowVersion] rowversion NOT NULL;
+                    ALTER TABLE [Contracts] ADD [RowVersion] rowversion NULL;
                 END;
 
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ContractEvents')

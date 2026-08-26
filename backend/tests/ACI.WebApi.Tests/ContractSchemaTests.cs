@@ -186,6 +186,50 @@ public class ContractSchemaTests
         block.Should().Contain("IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ContractEvents')");
     }
 
+    [Fact]
+    public void TheDdlColumnTypesAndNullabilityAgreeWithWhatEfWouldWrite()
+    {
+        // Stronger than checking the column exists, and it earned its place: the
+        // hand-written DDL declared [RowVersion] NOT NULL while the model maps a
+        // nullable byte[], so EF would have generated `rowversion NULL`. The
+        // name-only check passed happily.
+        //
+        // Compared against EF's OWN generated script rather than against a list
+        // maintained here, so a future column cannot be added to one and forgotten
+        // in the other.
+        var block = Between(ProgramDdl(), "CREATE TABLE [Contracts]", ");");
+        var expected = Between(EfCreateScript(), "CREATE TABLE [Contracts]", "CONSTRAINT");
+
+        foreach (var line in expected.Split('\n'))
+        {
+            var m = Regex.Match(line.Trim(), @"^\[(?<col>\w+)\]\s+(?<type>[\w()]+(?:\s*\(\s*\w+\s*\))?)\s+(?<null>NOT NULL|NULL)");
+            if (!m.Success) continue;
+
+            var column = m.Groups["col"].Value;
+            var type = m.Groups["type"].Value;
+            var nullability = m.Groups["null"].Value;
+
+            // The DDL writes nvarchar(max) where EF writes it too; only compare the
+            // type token and the nullability, not whitespace or ordering.
+            var found = Regex.Match(block, $@"\[{Regex.Escape(column)}\]\s+(?<type>[\w()]+)\s+(?<null>NOT NULL|NULL)");
+            found.Success.Should().BeTrue($"the DDL must declare {column} with a type and nullability");
+            found.Groups["type"].Value.Should().BeEquivalentTo(type,
+                $"the DDL and the model disagree about the type of {column}");
+            found.Groups["null"].Value.Should().Be(nullability,
+                $"the DDL and the model disagree about whether {column} is nullable");
+        }
+    }
+
+    /// <summary>What EF itself would write for this model, with no database involved.</summary>
+    private static string EfCreateScript()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlServer("Server=not-connected;Database=none;Trusted_Connection=True;")
+            .Options;
+        using var db = new AppDbContext(options);
+        return db.Database.GenerateCreateScript();
+    }
+
     /// <summary>Text between the first <paramref name="start"/> and the next <paramref name="end"/>.</summary>
     private static string Between(string text, string start, string end)
     {
