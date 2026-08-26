@@ -36,11 +36,33 @@ jobs:
 
       - name: Prove the SQL is read-only
         run: |
+          set -euo pipefail
           # Runs BEFORE anything connects. A single forbidden keyword fails the
           # run, so this workflow cannot drift into one that writes.
+          GUARD='\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|MERGE|EXEC|EXECUTE|GRANT|REVOKE|BACKUP|RESTORE)\b'
           SQL_FILE=.github/workflows/sql/verify-contract-schema.sql
           test -f "$SQL_FILE" || { echo "::error::$SQL_FILE missing"; exit 1; }
-          if grep -inE '\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|MERGE|EXEC|EXECUTE|GRANT|REVOKE|BACKUP|RESTORE)\b' "$SQL_FILE"; then
+
+          # First prove the guard itself still bites. A safety check that has been
+          # loosened — or a regex broken by an edit — would otherwise pass
+          # everything silently, which is worse than having no check at all.
+          for kw in INSERT UPDATE DELETE DROP ALTER CREATE TRUNCATE MERGE EXEC EXECUTE GRANT REVOKE BACKUP RESTORE; do
+            for probe in "$kw INTO x VALUES (1);" "$(echo "$kw" | tr 'A-Z' 'a-z') into x values (1);"; do
+              if ! printf '%s\n' "$probe" | grep -iqE "$GUARD"; then
+                echo "::error::The read-only guard no longer catches '$kw'. Refusing to run."
+                exit 1
+              fi
+            done
+          done
+          # ...and that it does not fire on words merely containing a keyword,
+          # since a guard that cries wolf gets weakened by the next person.
+          if printf 'SELECT created_at, updated, deleted_flag, Grantor FROM t;\n' | grep -iqE "$GUARD"; then
+            echo "::error::The read-only guard false-positives on ordinary identifiers."
+            exit 1
+          fi
+          echo "Guard self-test passed: catches all 14 keywords, no false positives."
+
+          if grep -inE "$GUARD" "$SQL_FILE"; then
             echo "::error::The verification SQL contains a statement that is not read-only. Refusing to run."
             exit 1
           fi
