@@ -1,4 +1,5 @@
 using ACI.Application.Configuration;
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -201,35 +202,18 @@ public sealed class SmtpEmailSender : IEmailSender
         return false;
     }
 
+    // The wording and markup live in ContractEmailContent, so they can be tested
+    // and rendered without opening an SMTP connection. This class keeps only the
+    // decision of whether to send and the reporting of whether it went.
+
     public async Task<bool> SendContractForSignatureEmailAsync(
         string toEmail, string recipientName, string organizationName,
         string contractTitle, string signUrl, CancellationToken ct = default)
     {
         if (!SmtpConfigured("contract signature request", toEmail, signUrl)) return false;
-
-        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName;
-        var subject = $"{organizationName}: please review and sign “{contractTitle}”";
-        var text =
-            $"Hi{greeting},\n\n" +
-            $"{organizationName} has sent you a contract to review and sign:\n\n" +
-            $"    {contractTitle}\n\n" +
-            "You can read it in full and sign it here:\n\n" +
-            $"    {signUrl}\n\n" +
-            "Nothing is agreed until you sign. If anything looks wrong, reply to this " +
-            "email instead of signing and we will sort it out.\n\n" +
-            $"— {organizationName}\n";
-
-        var html = HtmlDocument(
-            heading: $"Please review and sign",
-            intro: $"{Escape(organizationName)} has sent you a contract to review and sign.",
-            bodyHtml:
-                $"<p style=\"{PStyle}\"><strong>{Escape(contractTitle)}</strong></p>" +
-                Button(signUrl, "Read and sign the contract") +
-                $"<p style=\"{MutedStyle}\">Nothing is agreed until you sign. If anything looks wrong, " +
-                "reply to this email instead of signing and we will sort it out.</p>",
-            footer: Escape(organizationName));
-
-        return await SendAsync(toEmail, recipientName, subject, text, html, ct);
+        var email = ContractEmailContent.ForSignature(
+            _options.FromName, recipientName, organizationName, contractTitle, signUrl);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, ct);
     }
 
     public async Task<bool> SendContractSignedNotificationAsync(
@@ -237,26 +221,9 @@ public sealed class SmtpEmailSender : IEmailSender
         string contractTitle, string contractUrl, CancellationToken ct = default)
     {
         if (!SmtpConfigured("contract signed notification", toEmail, contractUrl)) return false;
-
-        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName;
-        var subject = $"{counterpartyName} signed “{contractTitle}” — your signature is next";
-        var text =
-            $"Hi{greeting},\n\n" +
-            $"{counterpartyName} has signed “{contractTitle}”.\n\n" +
-            "Add your countersignature to execute it and send the finished copy to " +
-            "everyone:\n\n" +
-            $"    {contractUrl}\n";
-
-        var html = HtmlDocument(
-            heading: "They have signed",
-            intro: $"{Escape(counterpartyName)} has signed <strong>{Escape(contractTitle)}</strong>.",
-            bodyHtml:
-                $"<p style=\"{PStyle}\">Add your countersignature to execute it and send the " +
-                "finished copy to everyone.</p>" +
-                Button(contractUrl, "Countersign the contract"),
-            footer: null);
-
-        return await SendAsync(toEmail, recipientName, subject, text, html, ct);
+        var email = ContractEmailContent.SignedNotification(
+            _options.FromName, recipientName, counterpartyName, contractTitle, contractUrl);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, ct);
     }
 
     public async Task<bool> SendExecutedContractEmailAsync(
@@ -265,73 +232,9 @@ public sealed class SmtpEmailSender : IEmailSender
         CancellationToken ct = default)
     {
         if (!SmtpConfigured("executed contract copy", toEmail, null)) return false;
-
-        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName;
-        var subject = $"Signed by both parties: “{contractTitle}”";
-        var text =
-            $"Hi{greeting},\n\n" +
-            $"“{contractTitle}” has now been signed by both parties. The full text " +
-            "and the signature record are below — keep this email as your copy.\n\n" +
-            new string('-', 60) + "\n\n" +
-            contractBody + "\n\n" +
-            new string('-', 60) + "\n\n" +
-            signatureBlock + "\n\n" +
-            $"— {organizationName}\n";
-
-        var html = HtmlDocument(
-            heading: "Signed by both parties",
-            intro: $"<strong>{Escape(contractTitle)}</strong> has now been signed by both parties. " +
-                   "The full text and the signature record are below — keep this email as your copy.",
-            bodyHtml:
-                // The contract itself, preformatted so its line breaks and headings
-                // survive. Any mail client can render this; an attachment could not
-                // be produced without a PDF library and somewhere to store it.
-                $"<pre style=\"{PreStyle}\">{Escape(contractBody)}</pre>" +
-                $"<div style=\"{SignatureBoxStyle}\"><pre style=\"{PreStyle}margin:0;background:none;border:0;padding:0;\">" +
-                $"{Escape(signatureBlock)}</pre></div>",
-            footer: Escape(organizationName));
-
-        return await SendAsync(toEmail, recipientName, subject, text, html, ct);
+        var email = ContractEmailContent.Executed(
+            _options.FromName, recipientName, organizationName, contractTitle,
+            contractBody, signatureBlock);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, ct);
     }
-
-    // ── HTML shell ───────────────────────────────────────────────────────────
-    //
-    // Inline styles and a table-free single column: every mail client strips
-    // <style> blocks, and anything cleverer degrades differently in each one.
-
-    private const string PStyle = "margin:0 0 14px;font-size:15px;line-height:1.55;color:#0f172a;";
-    private const string MutedStyle = "margin:18px 0 0;font-size:13px;line-height:1.5;color:#64748b;";
-    private const string PreStyle =
-        "white-space:pre-wrap;word-wrap:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;" +
-        "font-size:13px;line-height:1.6;color:#0f172a;background:#f8fafc;border:1px solid #e2e8f0;" +
-        "border-radius:10px;padding:16px;margin:0 0 16px;";
-    private const string SignatureBoxStyle =
-        "border:1px solid #a7f3d0;background:#ecfdf5;border-radius:10px;padding:14px 16px;margin:0 0 8px;";
-
-    private static string Escape(string? s) => string.IsNullOrEmpty(s)
-        ? string.Empty
-        : s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;");
-
-    private static string Button(string url, string label) =>
-        $"<p style=\"margin:22px 0;\"><a href=\"{Escape(url)}\" " +
-        "style=\"display:inline-block;background:#ea580c;color:#ffffff;text-decoration:none;" +
-        "font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px;\">" +
-        $"{Escape(label)}</a></p>" +
-        $"<p style=\"{MutedStyle}\">If the button does not work, paste this into your browser:<br>" +
-        $"<span style=\"color:#0f172a;word-break:break-all;\">{Escape(url)}</span></p>";
-
-    private string HtmlDocument(string heading, string intro, string bodyHtml, string? footer) =>
-        "<!doctype html><html><body style=\"margin:0;padding:24px;background:#f1f5f9;" +
-        "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;\">" +
-        "<div style=\"max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;" +
-        "border:1px solid #e2e8f0;padding:28px 30px;\">" +
-        $"<h1 style=\"margin:0 0 6px;font-size:20px;line-height:1.3;color:#0f172a;\">{Escape(heading)}</h1>" +
-        $"<p style=\"{PStyle}\">{intro}</p>" +
-        bodyHtml +
-        (string.IsNullOrWhiteSpace(footer)
-            ? string.Empty
-            : $"<p style=\"{MutedStyle}\">— {footer}</p>") +
-        $"<p style=\"{MutedStyle}border-top:1px solid #e2e8f0;padding-top:14px;\">" +
-        $"Sent by {Escape(_options.FromName)}.</p>" +
-        "</div></body></html>";
 }

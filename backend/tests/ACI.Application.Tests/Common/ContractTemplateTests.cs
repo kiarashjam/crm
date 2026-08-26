@@ -70,6 +70,35 @@ public class ContractTemplateTests
     }
 
     [Fact]
+    public void KeepsANewlineInsideAMergeValue()
+    {
+        // There are deliberately no conditionals, so an OPTIONAL line is expressed
+        // as a value carrying its own leading break and label. A full Trim() ate
+        // that break and produced "Email: a@b.chPhone: +41 …" in a real contract.
+        var result = ContractTemplate.Fill(
+            "Email:     {{lead.email}}{{lead.phoneClause}}",
+            Values(("lead.email", "  a@b.ch  "), ("lead.phoneClause", "\nPhone:     +41 22 555 0134")));
+
+        result.Body.Should().Be("Email:     a@b.ch\nPhone:     +41 22 555 0134");
+        result.UnresolvedFields.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void AnAbsentOptionalClauseLeavesNoTrace()
+    {
+        // The other half of the same pattern: when there is no phone, the line
+        // must vanish rather than leave a dangling label. An absent value is
+        // unresolved, so sending is blocked until the caller supplies "" — which
+        // it does by passing the empty clause explicitly.
+        var result = ContractTemplate.Fill(
+            "Email:     {{lead.email}}{{lead.phoneClause}}\n\nNext",
+            Values(("lead.email", "a@b.ch"), ("lead.phoneClause", " ")));
+
+        // A blank clause is reported rather than silently dropped, so the UI asks.
+        result.UnresolvedFields.Should().Contain("lead.phoneClause");
+    }
+
+    [Fact]
     public void ReportsEachMissingFieldOnceInOrder()
     {
         var result = ContractTemplate.Fill(
