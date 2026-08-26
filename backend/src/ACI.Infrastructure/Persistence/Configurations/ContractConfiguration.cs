@@ -30,6 +30,9 @@ public class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.CounterSignatureIp).HasMaxLength(64);
         builder.Property(c => c.ClosedReason).HasMaxLength(1000);
 
+        // What makes a transition atomic rather than advisory. See Contract.RowVersion.
+        builder.Property(c => c.RowVersion).IsRowVersion();
+
         // Every authenticated read is scoped by organisation, and the lead panel
         // lists by lead.
         builder.HasIndex(c => new { c.OrganizationId, c.LeadId });

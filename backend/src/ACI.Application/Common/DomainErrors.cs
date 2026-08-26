@@ -38,6 +38,28 @@ public static class DomainErrors
         /// than an empty file, which a browser shows as a broken document with no
         /// explanation at all.
         /// </summary>
+        /// <summary>
+        /// The stored text no longer hashes to what was frozen when the contract was
+        /// sent. Unreachable through the application — editing after send is refused
+        /// — so it means the row was changed from outside it.
+        /// </summary>
+        /// <summary>
+        /// Somebody else changed the contract between our read and our write.
+        /// </summary>
+        /// <remarks>
+        /// A normal outcome, not a fault: two people can hold the same signing link,
+        /// and a CRM user can void a contract in the instant it is signed. Reported
+        /// so the caller reloads and sees what actually happened, rather than having
+        /// their stale snapshot written over the top.
+        /// </remarks>
+        public static readonly Error ChangedByAnother = new(
+            "Contract.ChangedByAnother",
+            "Somebody else just changed this contract — reload it and try again");
+
+        public static readonly Error BodyChangedSinceSend = new(
+            "Contract.BodyChangedSinceSend",
+            "The contract text has changed since it was sent for signature, so it cannot be executed");
+
         public static readonly Error DocumentUnavailable = new(
             "Contract.DocumentUnavailable", "The contract document could not be produced");
 

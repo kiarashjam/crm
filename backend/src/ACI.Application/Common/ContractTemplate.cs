@@ -42,6 +42,27 @@ public static class ContractTemplate
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
+    /// Fields that are ALLOWED to resolve to nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Because there are deliberately no conditionals here, an optional line is
+    /// expressed as a pre-composed clause: <c>lead.phoneClause</c> is either
+    /// ", +41 22 555 01 34" or it is nothing at all. Its emptiness IS its meaning,
+    /// which is the opposite of a value field, where an empty string means we do
+    /// not know rather than that there is nothing to know.
+    /// </para>
+    /// <para>
+    /// Naming them explicitly is what keeps both rules true at once. Without this,
+    /// every lead with no phone number produced a draft showing the literal
+    /// "{{lead.phoneClause}}" — and since sending is refused while any placeholder
+    /// is unresolved, that contract could never be sent at all.
+    /// </para>
+    /// </remarks>
+    public static readonly IReadOnlySet<string> OptionalFields =
+        new HashSet<string>(StringComparer.Ordinal) { "lead.phoneClause" };
+
+    /// <summary>
     /// Substitutes every field present in <paramref name="values"/>.
     /// </summary>
     /// <remarks>
@@ -49,12 +70,16 @@ public static class ContractTemplate
     /// optional clause can supply its own line break. See the note at the
     /// substitution itself.
     ///
-    /// A value that is present but blank counts as UNRESOLVED. "We have an empty
-    /// string for the counterparty's address" and "we know their address is
-    /// nothing" are not the same claim, and only one of them belongs in a
-    /// contract.
+    /// A value that is present but blank counts as UNRESOLVED, unless the field is
+    /// named in <paramref name="optionalFields"/>. "We have an empty string for the
+    /// counterparty's address" and "we know their address is nothing" are not the
+    /// same claim, and only one of them belongs in a contract — but a pre-composed
+    /// optional clause makes exactly the second claim, so it has to be able to.
     /// </remarks>
-    public static ContractMergeResult Fill(string template, IReadOnlyDictionary<string, string?> values)
+    public static ContractMergeResult Fill(
+        string template,
+        IReadOnlyDictionary<string, string?> values,
+        IReadOnlySet<string>? optionalFields = null)
     {
         if (string.IsNullOrEmpty(template))
         {
@@ -66,7 +91,13 @@ public static class ContractTemplate
         var body = FieldPattern.Replace(template, match =>
         {
             var field = match.Groups[1].Value;
-            if (values.TryGetValue(field, out var value) && !string.IsNullOrWhiteSpace(value))
+            var present = values.TryGetValue(field, out var value);
+            // An optional field only has to be PRESENT to count as resolved; every
+            // other field also has to be non-blank.
+            var resolved = present
+                && (!string.IsNullOrWhiteSpace(value)
+                    || (optionalFields?.Contains(field) == true && value is not null));
+            if (resolved)
             {
                 // HORIZONTAL whitespace only. A full Trim() also strips newlines,
                 // which broke the one pattern that needs them: because there are
@@ -74,7 +105,7 @@ public static class ContractTemplate
                 // as a value that carries its own leading break and label —
                 // "\nPhone:     +41 …". Trimming that produced
                 // "Email: a@b.chPhone: +41 …" in a real contract.
-                return value.Trim(' ', '\t');
+                return value!.Trim(' ', '\t');
             }
             if (!unresolved.Contains(field, StringComparer.Ordinal))
             {

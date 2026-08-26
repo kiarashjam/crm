@@ -169,4 +169,63 @@ public class ContractStateMachineTests
         // A placeholder would leave nothing to point at later, and the mark is the
         // entire substance of the signature.
         => ContractStateMachine.IsSignatureNameValid(name).Should().BeFalse($"'{name}'");
+    /* ------------------------------------------- what a signature may contain */
+
+    [Fact]
+    public void RefusesASignatureCarryingNewlines()
+    {
+        // The typed name is interpolated LINE BY LINE into the SIGNATURE RECORD that
+        // goes to both parties as evidence. A name containing newlines could forge
+        // lines in it — a second "Signed:" with an earlier date, a different
+        // document hash, a "Note:" reserving a clause — all looking exactly as
+        // authoritative as the real ones.
+        const string forged =
+            "Jean Dupont\nSigned       : 2019-04-01 09:00:00 UTC\n"
+            + "Document hash: 0000000000000000000000000000000000000000000000000000000000000000\n"
+            + "Note         : signed subject to clause 2 being struck out";
+
+        ContractStateMachine.IsSignatureNameValid(forged).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("Jean\rDupont")]
+    [InlineData("Jean\tDupont")]
+    [InlineData("Jean\u0000Dupont")]
+    [InlineData("Jean\u001BDupont")]
+    public void RefusesAnyControlCharacter(string name)
+    {
+        ContractStateMachine.IsSignatureNameValid(name).Should().BeFalse();
+    }
+
+    [Fact]
+    public void RefusesANameTooLongForItsColumn()
+    {
+        // nvarchar(300). Left to the column it raised "String or binary data would
+        // be truncated" — a 500 from the anonymous signing endpoint, at the exact
+        // moment somebody was trying to sign. Refused here, the signer is told.
+        var atLimit = new string('a', ContractStateMachine.MaxSignatureNameLength);
+        var overLimit = new string('a', ContractStateMachine.MaxSignatureNameLength + 1);
+
+        ContractStateMachine.IsSignatureNameValid(atLimit).Should().BeTrue();
+        ContractStateMachine.IsSignatureNameValid(overLimit).Should().BeFalse();
+    }
+
+    [Fact]
+    public void CountsLettersByRuneSoItAgreesWithTheBrowser()
+    {
+        // Adlam, used for Fulani. The client counts letters with /\p{L}/gu, which
+        // counts code POINTS; char.IsLetter counts UTF-16 units, and a surrogate
+        // pair is two units that are each "not a letter". So the page accepted this
+        // name, submitted it, and the server refused it as a placeholder.
+        const string adlam = "\U0001E900\U0001E922";
+        ContractStateMachine.IsSignatureNameValid(adlam).Should().BeTrue();
+
+        // And the existing refusals still hold — the rune count must not have made
+        // the check laxer.
+        foreach (var bad in new[] { "..", "--", "1234", "x", " " })
+        {
+            ContractStateMachine.IsSignatureNameValid(bad).Should().BeFalse(bad);
+        }
+    }
+
 }

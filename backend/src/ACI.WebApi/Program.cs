@@ -598,7 +598,8 @@ try
                         [CounterSignedByUserId] uniqueidentifier NULL,
                         [CounterSignatureIp] nvarchar(64) NULL,
                         [ClosedReason] nvarchar(1000) NULL,
-                        [ExecutedCopySentAtUtc] datetime2 NULL
+                        [ExecutedCopySentAtUtc] datetime2 NULL,
+                        [RowVersion] rowversion NOT NULL
                     );
                     CREATE INDEX [IX_Contracts_OrganizationId_LeadId]
                         ON [Contracts] ([OrganizationId], [LeadId]);
@@ -608,6 +609,16 @@ try
                     CREATE UNIQUE INDEX [IX_Contracts_SigningTokenHash]
                         ON [Contracts] ([SigningTokenHash])
                         WHERE [SigningTokenHash] IS NOT NULL;
+                END;
+
+                -- Added after the table shipped. What makes a contract state change
+                -- atomic instead of advisory: without it two concurrent signs both
+                -- passed the state machine and both wrote, and a sign racing a void
+                -- wrote the killed signing token back. SQL Server populates and
+                -- maintains a rowversion itself, so existing rows need no backfill.
+                IF COL_LENGTH(N'dbo.Contracts', N'RowVersion') IS NULL
+                BEGIN
+                    ALTER TABLE [Contracts] ADD [RowVersion] rowversion NOT NULL;
                 END;
 
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ContractEvents')

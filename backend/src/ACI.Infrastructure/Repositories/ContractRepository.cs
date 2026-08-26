@@ -42,10 +42,35 @@ public class ContractRepository : IContractRepository
         return contract;
     }
 
-    public async Task UpdateAsync(Contract contract, CancellationToken ct = default)
+    /// <summary>
+    /// Saves a contract, refusing the save if the row has moved underneath us.
+    /// </summary>
+    /// <remarks>
+    /// Returns false rather than throwing, because a lost race is a NORMAL outcome
+    /// here: two people can hold the same signing link, and a CRM user can void a
+    /// contract in the instant somebody signs it. The caller re-reads and lets the
+    /// state machine give its usual answer.
+    ///
+    /// <c>Update</c> marks every property modified, so a stale save writes the whole
+    /// snapshot back — which is how a sign racing a void reinstated the signing
+    /// token the void had just nulled. The concurrency token is what turns that into
+    /// a refusal.
+    /// </remarks>
+    public async Task<bool> UpdateAsync(Contract contract, CancellationToken ct = default)
     {
         _db.Contracts.Update(contract);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Detach so the caller's next read comes from the database rather than
+            // from this context's now-wrong snapshot.
+            _db.Entry(contract).State = EntityState.Detached;
+            return false;
+        }
     }
 
     public async Task AddEventAsync(ContractEvent auditEvent, CancellationToken ct = default)

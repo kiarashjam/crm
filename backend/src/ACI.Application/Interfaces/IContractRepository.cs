@@ -30,7 +30,11 @@ public interface IContractRepository
     Task<Contract?> GetBySigningTokenHashAsync(string tokenHash, CancellationToken ct = default);
 
     Task<Contract> AddAsync(Contract contract, CancellationToken ct = default);
-    Task UpdateAsync(Contract contract, CancellationToken ct = default);
+    /// <returns>
+    /// False when the row changed underneath us — a lost race, which is a normal
+    /// outcome on a link two people may hold. The caller re-reads and re-checks.
+    /// </returns>
+    Task<bool> UpdateAsync(Contract contract, CancellationToken ct = default);
 
     /// <summary>Appends an audit entry. Nothing ever updates or deletes one.</summary>
     Task AddEventAsync(ContractEvent auditEvent, CancellationToken ct = default);

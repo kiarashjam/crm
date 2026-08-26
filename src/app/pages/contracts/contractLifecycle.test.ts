@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   can, next, allowedActions, isTerminal, TERMINAL_STATUSES,
   isSignatureNameValid, checkSignature, pipelineEffect, nextActionHint,
-  STATUS_LABELS, timeAgo, describeState, CONTRACT_STEPS,
+  STATUS_LABELS, timeAgo, describeState, CONTRACT_STEPS, MAX_SIGNATURE_NAME_LENGTH,
   type ContractStatus, type ContractAction, type DescribeInput,
 } from './contractLifecycle';
 
@@ -169,8 +169,14 @@ describe('checkSignature', () => {
 describe('pipelineEffect', () => {
   const DATE = '2026-08-26';
 
-  it('sending satisfies the Contract phase', () => {
-    expect(pipelineEffect('sent', DATE)).toEqual({ contractStatus: 'yes', contractSentDate: DATE });
+  it('sending satisfies the Contract phase AND resets the signature phase', () => {
+    // The reset is the load-bearing half. A lead whose first contract was declined
+    // carries contractSigned:'no'; sending a replacement used to write only the
+    // phase-3 keys, so the lead went on reading "Contract declined" and Lost while
+    // a live signing link was out with the counterparty.
+    expect(pipelineEffect('sent', DATE)).toEqual({
+      contractStatus: 'yes', contractSentDate: DATE, contractSigned: 'pending',
+    });
   });
 
   it('full execution satisfies the Signature phase', () => {
@@ -363,5 +369,76 @@ describe('describeState', () => {
       const s = d({ status });
       expect(s.detail, status).not.toMatch(/null|undefined|NaN/);
     }
+  });
+});
+
+describe('describeState — an expired link is OUR move, not theirs', () => {
+  const NOW = Date.parse('2026-08-26T12:00:00Z');
+  const base: DescribeInput = {
+    status: 'sent',
+    counterpartyName: 'Jean Dupont',
+    sentAtUtc: '2026-07-26T09:00:00Z',
+    firstViewedAtUtc: '2026-07-27T10:00:00Z',
+  };
+
+  it('says the link expired instead of blaming the counterparty', () => {
+    // This is the whole point: the panel used to report the counterparty as the
+    // hold-up for a month after their link had died, while the signing page was
+    // telling THEM to ask for a new one. Nobody chases the thing that would fix it.
+    const d = describeState({ ...base, signingLinkExpiresAtUtc: '2026-08-25T09:00:00Z' }, NOW);
+    expect(d.headline).toMatch(/link has expired/i);
+    expect(d.turn).toBe('you');
+    expect(d.tone).toBe('action');
+    expect(d.detail).toMatch(/resend/i);
+    // And it must not still be claiming they are the ones to wait for.
+    expect(d.headline).not.toMatch(/waiting for/i);
+  });
+
+  it('still blames nobody while the link is live', () => {
+    const d = describeState({ ...base, signingLinkExpiresAtUtc: '2026-08-27T09:00:00Z' }, NOW);
+    expect(d.headline).toBe('Waiting for Jean Dupont to sign');
+    expect(d.turn).toBe('them');
+  });
+
+  it('does not invent an expiry when the server did not send one', () => {
+    // An older server, or a contract read before the field existed. Absent must
+    // read as "live", never as "expired".
+    for (const missing of [undefined, null, '']) {
+      const d = describeState({ ...base, signingLinkExpiresAtUtc: missing }, NOW);
+      expect(d.turn, JSON.stringify(missing)).toBe('them');
+    }
+    // And an unparseable one is treated the same way.
+    expect(describeState({ ...base, signingLinkExpiresAtUtc: 'not a date' }, NOW).turn).toBe('them');
+  });
+
+  it('does not step on the other states', () => {
+    // The expiry only decides anything while the contract is still out for
+    // signature. A signed or executed contract whose link has since lapsed is not
+    // waiting on a resend.
+    const expired = { signingLinkExpiresAtUtc: '2026-01-01T00:00:00Z' };
+    expect(describeState({ ...base, ...expired, status: 'signed_by_client', clientSignedAtUtc: '2026-08-01T09:00:00Z' }, NOW).turn)
+      .toBe('you');
+    expect(describeState({ ...base, ...expired, status: 'countersigned', counterSignedAtUtc: '2026-08-02T09:00:00Z', executedCopySentAtUtc: '2026-08-02T09:01:00Z' }, NOW).tone)
+      .toBe('done');
+  });
+});
+
+describe('isSignatureNameValid — what a signature may not contain', () => {
+  it('refuses newlines, which could forge lines in the signature record', () => {
+    expect(isSignatureNameValid('Jean Dupont\nSigned : 2019-04-01')).toBe(false);
+    expect(isSignatureNameValid('Jean\rDupont')).toBe(false);
+    expect(isSignatureNameValid('Jean\tDupont')).toBe(false);
+    expect(isSignatureNameValid('Jean\u0000Dupont')).toBe(false);
+  });
+
+  it('refuses a name too long for its column, so the signer is told rather than 500ed', () => {
+    expect(isSignatureNameValid('a'.repeat(MAX_SIGNATURE_NAME_LENGTH))).toBe(true);
+    expect(isSignatureNameValid('a'.repeat(MAX_SIGNATURE_NAME_LENGTH + 1))).toBe(false);
+  });
+
+  it('agrees with the server about scripts outside the basic plane', () => {
+    // Adlam, used for Fulani. The server counts letters by rune; this counts by
+    // code point. They diverged, so the page accepted a name the server refused.
+    expect(isSignatureNameValid('\u{1E900}\u{1E922}')).toBe(true);
   });
 });

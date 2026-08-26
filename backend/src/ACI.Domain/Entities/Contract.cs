@@ -113,6 +113,33 @@ public class Contract
     /// </remarks>
     public DateTime? ExecutedCopySentAtUtc { get; set; }
 
+    /// <summary>
+    /// SQL Server's own row stamp, changed by the database on every UPDATE.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The only thing making a state transition atomic. Every gate in
+    /// <c>ContractService</c> is a read, a <c>ContractStateMachine.Can</c> check and
+    /// a write, with each request holding its own DbContext — so two concurrent
+    /// POSTs to the anonymous signing endpoint both read <c>sent</c>, both pass the
+    /// check, and both write. The row kept the second signer's name, over the
+    /// first's, with two "signed" rows in the audit trail. "Cannot sign twice" was
+    /// advice, not a rule.
+    /// </para>
+    /// <para>
+    /// Worse: a sign racing a void reinstated the killed token, because EF's
+    /// <c>Update</c> marks every property modified and writes the whole snapshot
+    /// back — including the <c>SigningTokenHash</c> the void had just nulled. The
+    /// void reported success and silently did nothing.
+    /// </para>
+    /// <para>
+    /// With this, the second writer's save throws <c>DbUpdateConcurrencyException</c>
+    /// and the service reloads and re-checks, so it is refused by the state machine
+    /// the way it always should have been.
+    /// </para>
+    /// </remarks>
+    public byte[]? RowVersion { get; set; }
+
     public ICollection<ContractEvent> Events { get; set; } = new List<ContractEvent>();
 }
 

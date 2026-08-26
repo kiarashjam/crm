@@ -49,6 +49,17 @@ export interface Contract {
   unresolvedFields: string[];
   /** Only ever present on the response to a send. */
   signingUrl?: string;
+  /**
+   * When the counterparty's link stops working. Lets the panel tell "waiting on
+   * them" apart from "they can no longer open it".
+   */
+  signingLinkExpiresAtUtc?: string;
+  /**
+   * False when the stored text no longer hashes to what was frozen at send —
+   * impossible through the app, so it means the row was changed outside it. The
+   * hash is shown to both parties as tamper-evidence, so it has to be checked.
+   */
+  bodyMatchesHashAtSend?: boolean;
   events: ContractEvent[];
 }
 
@@ -64,6 +75,8 @@ export interface PublicContract {
   clientSignedAtUtc?: string;
   counterSignatureName?: string;
   counterSignedAtUtc?: string;
+  /** When the finished copy actually went to both parties, or absent if it did not. */
+  executedCopySentAtUtc?: string;
   canSign: boolean;
   /** Why not, when it cannot be signed. */
   blocked?: string;

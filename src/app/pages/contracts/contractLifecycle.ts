@@ -131,10 +131,24 @@ export function nextActionHint(status: ContractStatus): string | null {
  * "J. Dupont" for "Jean Dupont", and rejecting that would block a real signing
  * over a formatting opinion.
  */
+export const MAX_SIGNATURE_NAME_LENGTH = 300;
+
 export function isSignatureNameValid(name: string): boolean {
   const trimmed = name.trim();
   if (trimmed.length < 2) return false;
-  // At least two letters somewhere — rules out "..", "--", "1234".
+  // The column is nvarchar(300). Refusing it here means the signer is told under
+  // the field, rather than the server throwing "String or binary data would be
+  // truncated" at the moment they try to sign.
+  if (trimmed.length > MAX_SIGNATURE_NAME_LENGTH) return false;
+  // No control characters. The signature is interpolated line by line into the
+  // signature record both parties are emailed as evidence, so a name containing
+  // newlines could forge lines in it — a second "Signed:" with an earlier date,
+  // a different document hash — indistinguishable from the real ones.
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001F\u007F]/.test(trimmed)) return false;
+  // At least two letters somewhere — rules out "..", "--", "1234". The `u` flag
+  // matters: it counts letters by code point, which is what keeps this in step
+  // with the server's rune count for scripts outside the basic plane.
   return (trimmed.match(/\p{L}/gu) ?? []).length >= 2;
 }
 
@@ -191,7 +205,11 @@ export function checkSignature(args: {
 export function pipelineEffect(status: ContractStatus, onDate: string): Record<string, unknown> | null {
   switch (status) {
     case 'sent':
-      return { contractStatus: 'yes', contractSentDate: onDate };
+      // `contractSigned: 'pending'` matters as much as the other two. Without it a
+      // lead whose first contract was declined kept `contractSigned: 'no'` for
+      // good: sending a replacement wrote only the phase-3 keys, so the lead went
+      // on reading "Contract declined" and Lost while a live signing link was out.
+      return { contractStatus: 'yes', contractSentDate: onDate, contractSigned: 'pending' };
     case 'countersigned':
       return { contractSigned: 'yes', signatureDate: onDate };
     case 'declined':
@@ -272,6 +290,15 @@ export interface DescribeInput {
   clientSignedAtUtc?: string | null;
   counterSignedAtUtc?: string | null;
   executedCopySentAtUtc?: string | null;
+  /**
+   * When the counterparty's link stops working.
+   *
+   * Needed to tell "waiting on them" apart from "they can no longer open it".
+   * Without it the panel kept reporting the counterparty as the one holding
+   * things up for a month after their link had died — while the signing page was
+   * telling them the link had expired and to ask for a new one.
+   */
+  signingLinkExpiresAtUtc?: string | null;
   closedReason?: string | null;
 }
 
@@ -299,6 +326,22 @@ export function describeState(c: DescribeInput, now: number = Date.now()): Contr
     case 'sent': {
       const sent = timeAgo(c.sentAtUtc, now);
       const viewed = timeAgo(c.firstViewedAtUtc, now);
+
+      // An expired link is OUR move, not theirs. Reporting "waiting for them" is
+      // wrong in the way that matters most: it points at the wrong person, so
+      // nobody chases the thing that would fix it.
+      const expiry = c.signingLinkExpiresAtUtc
+        ? Date.parse(c.signingLinkExpiresAtUtc)
+        : Number.NaN;
+      if (!Number.isNaN(expiry) && expiry <= now) {
+        return {
+          step: 2, completed: 1, turn: 'you', tone: 'action',
+          headline: 'The signing link has expired',
+          detail: `${who} can no longer open it${viewed ? `, and last looked ${viewed}` : ''}. `
+            + 'Resend to issue a new link.',
+        };
+      }
+
       return {
         step: 2, completed: 1, turn: 'them', tone: 'waiting',
         headline: `Waiting for ${who} to sign`,

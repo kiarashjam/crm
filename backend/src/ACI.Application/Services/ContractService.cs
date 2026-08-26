@@ -77,7 +77,7 @@ public class ContractService : IContractService
             : request.TemplateOverride!;
 
         var values = BuildMergeValues(orgName, lead, request.Values);
-        var merged = ContractTemplate.Fill(template, values);
+        var merged = ContractTemplate.Fill(template, values, ContractTemplate.OptionalFields);
 
         var now = DateTime.UtcNow;
         var contract = new Contract
@@ -124,7 +124,13 @@ public class ContractService : IContractService
             // A clause rather than a bare value, so a lead with no phone number
             // produces a sentence that still reads correctly instead of a dangling
             // comma. The template asks for the clause, not the number.
-            ["lead.phoneClause"] = string.IsNullOrWhiteSpace(lead?.Phone) ? null : $", {lead!.Phone}",
+            //
+            // EMPTY, not null, when there is no phone. Null meant "unresolved", so
+            // every lead without a phone number produced a draft showing the literal
+            // "{{lead.phoneClause}}" — and sending is refused while any placeholder
+            // is unresolved, so that contract could never be sent at all. See
+            // ContractTemplate.OptionalFields.
+            ["lead.phoneClause"] = string.IsNullOrWhiteSpace(lead?.Phone) ? "" : $", {lead!.Phone}",
         };
 
         if (overrides is not null)
@@ -155,7 +161,8 @@ public class ContractService : IContractService
         if (request.CounterpartyEmail is not null) contract.CounterpartyEmail = request.CounterpartyEmail.Trim();
         contract.UpdatedAtUtc = DateTime.UtcNow;
 
-        await _contracts.UpdateAsync(contract, ct);
+        if (!await _contracts.UpdateAsync(contract, ct))
+            return Result.Failure<ContractDto>(DomainErrors.Contract.ChangedByAnother);
         await LogEventAsync(contract.Id, "edited", "Draft edited", userId, null, null, null, ct);
 
         return Result.Success(await ToDtoAsync(contract, ct));
@@ -212,7 +219,12 @@ public class ContractService : IContractService
         contract.BodyHashAtSend = ContractSigningToken.HashBody(contract.Body);
         contract.UpdatedAtUtc = now;
 
-        await _contracts.UpdateAsync(contract, ct);
+        // Refused rather than forced. Losing this race means somebody voided the
+        // contract, or sent it, in the moment between the check and the write —
+        // and writing anyway would mint a second live signing link, which is the
+        // one thing the state machine's no-double-send rule exists to prevent.
+        if (!await _contracts.UpdateAsync(contract, ct))
+            return Result.Failure<SendContractResult>(DomainErrors.Contract.ChangedByAnother);
 
         var org = await _organizations.GetByIdAsync(organizationId, ct);
         var signingUrl = BuildSigningUrl(rawToken);
@@ -253,6 +265,8 @@ public class ContractService : IContractService
         if (contract.FirstViewedAtUtc is null)
         {
             contract.FirstViewedAtUtc = DateTime.UtcNow;
+            // The only place a lost race is ignored: this stamps "they opened it",
+            // and failing to record that must never stop them reading the contract.
             await _contracts.UpdateAsync(contract, ct);
             await LogEventAsync(contract.Id, "viewed", "Opened by the counterparty",
                 null, contract.CounterpartyName, ip, userAgent, ct);
@@ -283,7 +297,13 @@ public class ContractService : IContractService
         contract.ClientSignatureIp = ip;
         contract.ClientSignatureUserAgent = userAgent;
         contract.UpdatedAtUtc = now;
-        await _contracts.UpdateAsync(contract, ct);
+
+        // THE gate that matters. Two people can hold the same link, and a retried
+        // POST is the same thing. Without this both saves succeeded and the row
+        // kept the second signer's name over the first's, with two "signed" rows
+        // in the audit trail — so "cannot sign twice" was advice, not a rule.
+        if (!await _contracts.UpdateAsync(contract, ct))
+            return Result.Failure<PublicContractDto>(DomainErrors.Contract.ChangedByAnother);
 
         await LogEventAsync(contract.Id, "signed",
             $"Signed by {contract.ClientSignatureName}", null, contract.ClientSignatureName, ip, userAgent, ct);
@@ -309,7 +329,8 @@ public class ContractService : IContractService
         // Terminal from here. Without this the full text of a declined agreement
         // stayed readable at an anonymous URL for the rest of the token's thirty days.
         ExpireLinkSoon(contract);
-        await _contracts.UpdateAsync(contract, ct);
+        if (!await _contracts.UpdateAsync(contract, ct))
+            return Result.Failure<PublicContractDto>(DomainErrors.Contract.ChangedByAnother);
 
         await LogEventAsync(contract.Id, "declined",
             contract.ClosedReason ?? "Declined by the counterparty",
@@ -333,6 +354,23 @@ public class ContractService : IContractService
         // contract can never carry only our own signature.
         if (!ContractStateMachine.Can(contract.Status, ContractActions.Countersign))
             return Result.Failure<ContractDto>(DomainErrors.Contract.NotAllowedInThisState);
+
+        // The one place the tamper-evidence is actually checked. The hash is frozen
+        // at send and printed to both parties; if the stored text no longer matches
+        // it, the counterparty signed something other than what is now on record,
+        // and executing it would put our signature on the wrong document and mail
+        // both parties a hash that does not describe what they are reading.
+        if (!BodyMatchesHash(contract))
+        {
+            _logger.LogError(
+                "Contract {ContractId} body no longer matches BodyHashAtSend; refusing to countersign",
+                contract.Id);
+            await LogEventAsync(contract.Id, "tamper_detected",
+                "The contract text no longer matches the hash recorded when it was sent",
+                userId, null, ip, null, ct);
+            return Result.Failure<ContractDto>(DomainErrors.Contract.BodyChangedSinceSend);
+        }
+
         if (!ContractStateMachine.IsSignatureNameValid(request.SignatureName))
             return Result.Failure<ContractDto>(DomainErrors.Contract.SignatureNameRequired);
         if (!request.Agreed)
@@ -347,7 +385,8 @@ public class ContractService : IContractService
         contract.UpdatedAtUtc = now;
         // Terminal from here, so nothing — not even void — can kill the link later.
         ExpireLinkSoon(contract);
-        await _contracts.UpdateAsync(contract, ct);
+        if (!await _contracts.UpdateAsync(contract, ct))
+            return Result.Failure<ContractDto>(DomainErrors.Contract.ChangedByAnother);
 
         await LogEventAsync(contract.Id, "countersigned",
             $"Countersigned by {contract.CounterSignatureName}", userId, contract.CounterSignatureName, ip, null, ct);
@@ -404,7 +443,14 @@ public class ContractService : IContractService
         if (both)
         {
             contract.ExecutedCopySentAtUtc = DateTime.UtcNow;
-            await _contracts.UpdateAsync(contract, ct);
+            if (!await _contracts.UpdateAsync(contract, ct))
+            {
+                // The copies DID go. Only the stamp is lost, which makes the retry
+                // button offer itself again — an extra copy, not a missing one.
+                _logger.LogWarning(
+                    "Contract {ContractId} copies were sent but the stamp was lost to a concurrent change",
+                    contract.Id);
+            }
         }
 
         await LogEventAsync(contract.Id, "emailed",
@@ -459,7 +505,14 @@ public class ContractService : IContractService
         var owner = await _users.GetByIdAsync(contract.CreatedByUserId, ct);
         if (owner is null || string.IsNullOrWhiteSpace(owner.Email)) return;
 
-        var url = BuildAppUrl($"/leads/{contract.LeadId}");
+        // A contract can exist without a lead (a deal-only contract), and
+        // interpolating a null Guid produced "https://host/leads/" — which the
+        // router resolves to the leads LIST, so the one link in a "they have
+        // signed, come and countersign" email went nowhere useful.
+        var url = BuildAppUrl(
+            contract.LeadId is { } leadId ? $"/leads/{leadId}"
+            : contract.DealId is { } dealId ? $"/deals/{dealId}"
+            : "/leads");
         var sent = await _email.SendContractSignedNotificationAsync(
             owner.Email, owner.Name ?? "", contract.CounterpartyName, contract.Title, url, ct);
 
@@ -644,7 +697,10 @@ public class ContractService : IContractService
         contract.SigningTokenHash = null;
         contract.SigningTokenExpiresAtUtc = null;
         contract.UpdatedAtUtc = DateTime.UtcNow;
-        await _contracts.UpdateAsync(contract, ct);
+        // Refusing here is what stops a void REPORTING success while a concurrent
+        // signature writes the killed token straight back.
+        if (!await _contracts.UpdateAsync(contract, ct))
+            return Result.Failure<ContractDto>(DomainErrors.Contract.ChangedByAnother);
 
         await LogEventAsync(contract.Id, "voided", contract.ClosedReason ?? "Voided", userId, null, null, null, ct);
         // Deliberately no pipeline effect: voiding is our decision, not the
@@ -750,7 +806,17 @@ public class ContractService : IContractService
         var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
         return status switch
         {
-            ContractStatuses.Sent => new() { ["contractStatus"] = "yes", ["contractSentDate"] = today },
+            // `contractSigned: pending` matters as much as the other two. Without
+            // it, a lead whose first contract was declined kept `contractSigned:
+            // "no"` forever: sending a replacement wrote only the phase-3 keys, so
+            // the lead went on reading "Contract declined" and Lost while a live
+            // signing link was out with the counterparty.
+            ContractStatuses.Sent => new()
+            {
+                ["contractStatus"] = "yes",
+                ["contractSentDate"] = today,
+                ["contractSigned"] = "pending",
+            },
             ContractStatuses.Countersigned => new() { ["contractSigned"] = "yes", ["signatureDate"] = today },
             ContractStatuses.Declined => new() { ["contractSigned"] = "no" },
             // Voided writes nothing: our decision, not theirs.
@@ -790,18 +856,56 @@ public class ContractService : IContractService
         return new ContractDto(
             c.Id, c.LeadId, c.DealId, c.Status, c.Title, c.Body,
             c.CounterpartyName, c.CounterpartyEmail,
-            c.CreatedAtUtc, c.UpdatedAtUtc, c.SentAtUtc, c.FirstViewedAtUtc,
-            c.ClientSignatureName, c.ClientSignedAtUtc,
-            c.CounterSignatureName, c.CounterSignedAtUtc,
-            c.ExecutedCopySentAtUtc, c.ClosedReason,
+            Utc(c.CreatedAtUtc), Utc(c.UpdatedAtUtc), Utc(c.SentAtUtc), Utc(c.FirstViewedAtUtc),
+            c.ClientSignatureName, Utc(c.ClientSignedAtUtc),
+            c.CounterSignatureName, Utc(c.CounterSignedAtUtc),
+            Utc(c.ExecutedCopySentAtUtc), c.ClosedReason,
             ContractStateMachine.AllowedActions(c.Status),
             UnresolvedIn(c.Body),
             // Always null on a read. The raw token is never stored, so a signing URL
             // can only be produced by the call that minted it — SendAsync attaches
             // it with `dto with { SigningUrl = ... }`.
             null,
-            events.Select(e => new ContractEventDto(e.Id, e.Type, e.Detail, e.ActorLabel, e.AtUtc)).ToList());
+            Utc(c.SigningTokenExpiresAtUtc),
+            BodyMatchesHash(c),
+            events.Select(e => new ContractEventDto(e.Id, e.Type, e.Detail, e.ActorLabel, Utc(e.AtUtc))).ToList());
     }
+
+    /// <summary>
+    /// Stamps a timestamp as UTC on the way out.
+    /// </summary>
+    /// <remarks>
+    /// Every DateTime on Contract is a plain <c>datetime2</c> with no value
+    /// converter, so SqlClient hands them back with <c>DateTimeKind.Unspecified</c>
+    /// — and System.Text.Json serialises Unspecified WITHOUT a trailing Z. So the
+    /// response to the call that minted a value was correct, because it was still
+    /// the in-memory <c>DateTime.UtcNow</c>, and every later GET of the same
+    /// contract was silently offset by the browser's timezone. On a signature
+    /// timestamp that is not cosmetic.
+    ///
+    /// The columns are all named <c>...AtUtc</c> and only ever written from
+    /// <c>DateTime.UtcNow</c>, so the Kind is a fact being restored, not asserted.
+    /// </remarks>
+    private static DateTime Utc(DateTime at) => DateTime.SpecifyKind(at, DateTimeKind.Utc);
+
+    private static DateTime? Utc(DateTime? at)
+        => at is null ? null : DateTime.SpecifyKind(at.Value, DateTimeKind.Utc);
+
+    /// <summary>
+    /// Whether the stored body still hashes to what was frozen at send.
+    /// </summary>
+    /// <remarks>
+    /// True for a contract never sent, because there is nothing to disagree with
+    /// yet. The state machine forbids editing after send, so a false here means the
+    /// text was changed from outside the application — a support script, a data
+    /// fix, a partial restore. Printing the frozen hash to both parties as
+    /// tamper-evidence while never once comparing it is decoration; this is the
+    /// comparison.
+    /// </remarks>
+    private static bool BodyMatchesHash(Contract c)
+        => c.BodyHashAtSend is null
+            || ContractSigningToken.HashBody(c.Body) == c.BodyHashAtSend;
+
 
     private async Task<PublicContractDto> ToPublicDtoAsync(Contract c, CancellationToken ct)
     {
@@ -821,7 +925,8 @@ public class ContractService : IContractService
 
         return new PublicContractDto(
             c.Status, c.Title, c.Body, c.CounterpartyName, org?.Name ?? "",
-            c.SentAtUtc, c.ClientSignatureName, c.ClientSignedAtUtc,
-            c.CounterSignatureName, c.CounterSignedAtUtc, canSign, blocked);
+            Utc(c.SentAtUtc), c.ClientSignatureName, Utc(c.ClientSignedAtUtc),
+            c.CounterSignatureName, Utc(c.CounterSignedAtUtc),
+            Utc(c.ExecutedCopySentAtUtc), canSign, blocked);
     }
 }
