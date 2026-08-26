@@ -29,14 +29,12 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
-import { StatusChangePopover } from './leads/components/StatusChangePopover';
+import { DerivedStatusBadge } from './leads/components/DerivedStatusBadge';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { LeadPipelineTracker } from './leads/components/LeadPipelineTracker';
 import { ContractPanel } from './contracts/ContractPanel';
 import { parsePipeline, serializePipeline, type LeadPipeline } from './leads/leadPipeline';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
-import { recordManualStatus } from './leads/leadStatusSyncStore';
-import { derivedTier } from './leads/leadStatusSync';
 import type { StatusDrift, SuggestReason } from './leads/leadStatusSync';
 import { StatusSyncStrip } from './leads/components/StatusSyncStrip';
 import { AddLeadDialog } from './leads/AddLeadDialog';
@@ -62,12 +60,6 @@ const STATUS_GRADIENTS: Record<string, string> = {
   Contacted: 'from-amber-500 via-orange-500 to-rose-400',
   Qualified: 'from-emerald-500 via-teal-500 to-cyan-400',
   Lost: 'from-slate-500 via-slate-400 to-slate-300',
-};
-const STATUS_BADGE_TONE: Record<string, string> = {
-  New: 'bg-blue-50 text-blue-700 border-blue-200',
-  Contacted: 'bg-amber-50 text-amber-700 border-amber-200',
-  Qualified: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Lost: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
 function initialsOf(name: string): string {
@@ -271,7 +263,6 @@ export default function LeadDetailPage() {
   );
 
   const gradient = lead && (lead.isConverted ? 'from-emerald-600 via-teal-500 to-cyan-400' : STATUS_GRADIENTS[lead.status] || 'from-slate-500 via-slate-400 to-slate-300');
-  const statusBadgeTone = lead ? STATUS_BADGE_TONE[lead.status] ?? 'bg-slate-100 text-slate-600 border-slate-200' : '';
 
   // ----- Write actions -----
 
@@ -389,15 +380,23 @@ export default function LeadDetailPage() {
     [lead, statusSync],
   );
 
-  const setStatus = async (status: string) => {
+  /**
+   * Writes a status the PIPELINE derived — never one a person typed.
+   *
+   * The only caller is the drift strip's "bring it in line" action, which accepts
+   * what the tracker already says rather than choosing something. There is no
+   * longer any path by which a person picks a status directly: every route goes
+   * through a pipeline step, so the badge and the tracker cannot disagree.
+   */
+  const applyDerivedStatus = async (status: string) => {
     if (!lead) return;
     const opt = statusOptions.find((s) => s.name === status);
     const patch: Record<string, unknown> = { status };
     if (opt && isValidGuid(opt.id)) patch.leadStatusId = opt.id;
-    // A deliberate pick outranks the tracker's opinion: record it so the next
-    // pipeline edit suggests rather than silently overwriting this choice.
-    recordManualStatus(lead.id, status, derivedTier(pipeline));
-    await patchLead(patch, { subject: `Status set to ${status}`, body: `From "${lead.status}" to "${status}"` });
+    await patchLead(patch, {
+      subject: `Status brought in line with the pipeline: ${status}`,
+      body: `From "${lead.status}" to "${status}"`,
+    });
   };
 
   const setSource = async (source: string) => {
@@ -848,19 +847,10 @@ export default function LeadDetailPage() {
                       <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
                         {lead.name}
                       </h1>
-                      <StatusChangePopover
-                        currentStatus={lead.status}
-                        statuses={statusOptions.map((s) => s.name)}
-                        disabled={lead.isConverted || isReadOnly}
-                        onChange={setStatus}
-                        className={cn(
-                          'rounded-lg border px-2.5 py-1 text-xs font-bold shadow-sm ring-1 ring-black/5',
-                          statusBadgeTone,
-                        )}
-                        prefix={<span className={cn('w-2 h-2 rounded-full', {
-                          New: 'bg-blue-500', Contacted: 'bg-amber-500', Qualified: 'bg-emerald-500', Lost: 'bg-slate-400',
-                        }[lead.status] ?? 'bg-slate-400')} />}
-                      />
+                      {/* Read-only: the status is derived from the pipeline below,
+                          and the badge carries its own cause so "why does this say
+                          Qualified?" is answerable without a picker. */}
+                      <DerivedStatusBadge status={lead.status} pipeline={pipeline} />
                       {lead.isConverted && (
                         <span className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
                           <CheckCircle2 className="w-3.5 h-3.5" />
@@ -975,7 +965,7 @@ export default function LeadDetailPage() {
               enabled={statusSync.enabled}
               onToggleEnabled={statusSync.setEnabled}
               disabled={lead.isConverted || isReadOnly}
-              onApply={(name) => setStatus(name)}
+              onApply={(name) => applyDerivedStatus(name)}
             />
             {/* `previewStatus` is withheld from a viewer: the chips are disabled,
                 so a "→ Qualified" hint would advertise something they cannot do. */}

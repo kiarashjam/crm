@@ -14,6 +14,8 @@ import {
   type ContractStatus, type ContractSigned, type PhaseStep, type DropoutReason,
   PHASE_TITLES, OUTREACH_LABELS, OUTCOME_LABELS, CONTRACT_LABELS, SIGNED_LABELS,
   DROPOUT_REASONS, DROPOUT_REASON_LABELS,
+  REJECTION_REASONS, REJECTION_REASON_LABELS, DEPOSIT_LABELS, failurePointFor,
+  type RejectionReason, type DepositStatus,
   phaseCompletion, currentPhase, lostReason, lostPhase, phaseCaptions, phaseSteps,
   isPipelineComplete, isReasonComplete, isReasonRequired, dropoutPhaseFor,
 } from '../leadPipeline';
@@ -140,7 +142,21 @@ function DropoutReasonField({
   onChange: (patch: Partial<LeadPipeline>, log?: LogHint) => void;
 }) {
   const complete = isReasonComplete(value);
-  const needsText = value.dropoutReason === 'other';
+
+  // Which question is being asked, and therefore which list answers it. "They
+  // walked away" and "we turned them down" are different facts, and forcing one
+  // vocabulary onto both would produce a report that reads as customer sentiment
+  // while actually recording our own admissions policy.
+  const failure = failurePointFor(value);
+  const rejecting = failure?.kind === 'rejection';
+
+  const heading = rejecting ? 'Reason we are not proceeding' : 'Reason they are not proceeding';
+  const options: { value: string; label: string; tone: 'default' }[] = rejecting
+    ? REJECTION_REASONS.map((r) => ({ value: r, label: REJECTION_REASON_LABELS[r], tone: 'default' as const }))
+    : DROPOUT_REASONS.map((r) => ({ value: r, label: DROPOUT_REASON_LABELS[r], tone: 'default' as const }));
+  const picked = rejecting ? value.rejectionReason : value.dropoutReason;
+  const needsText = picked === 'other';
+  const freeText = rejecting ? value.rejectionReasonOther : value.dropoutReasonOther;
 
   return (
     <div
@@ -150,31 +166,38 @@ function DropoutReasonField({
       )}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-slate-700">Reason they are not proceeding</span>
+        <span className="text-xs font-semibold text-slate-700">{heading}</span>
         {complete
           ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Recorded</span>
           : <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">Required</span>}
       </div>
 
-      <Choices<DropoutReason>
+      <Choices<string>
         disabled={disabled}
-        value={value.dropoutReason}
-        options={DROPOUT_REASONS.map((r) => ({
-          value: r,
-          label: DROPOUT_REASON_LABELS[r],
-          tone: 'default' as const,
-        }))}
-        onPick={(r) => onChange(
-          {
-            dropoutReason: r,
-            // Stamp the phase only on first capture; a reason already explained
-            // at an earlier phase keeps that attribution.
-            dropoutReasonPhase: value.dropoutReasonPhase ?? phase,
-            // Switching away from "Other" drops the now-meaningless free text.
-            ...(r === 'other' ? {} : { dropoutReasonOther: undefined }),
-          },
-          { subject: `Drop-out reason: ${DROPOUT_REASON_LABELS[r]}`, body: `Recorded at phase ${value.dropoutReasonPhase ?? phase}` },
-        )}
+        value={picked}
+        options={options}
+        onPick={(r) => {
+          const label = options.find((o) => o.value === r)?.label ?? r;
+          onChange(
+            rejecting
+              ? {
+                rejectionReason: r as RejectionReason,
+                // Switching away from "Other" drops the now-meaningless free text.
+                ...(r === 'other' ? {} : { rejectionReasonOther: undefined }),
+              }
+              : {
+                dropoutReason: r as DropoutReason,
+                // Stamp the phase only on first capture; a reason already explained
+                // at an earlier phase keeps that attribution.
+                dropoutReasonPhase: value.dropoutReasonPhase ?? phase,
+                ...(r === 'other' ? {} : { dropoutReasonOther: undefined }),
+              },
+            {
+              subject: `${rejecting ? 'Rejection' : 'Drop-out'} reason: ${label}`,
+              body: `Recorded at phase ${rejecting ? phase : value.dropoutReasonPhase ?? phase}`,
+            },
+          );
+        }}
       />
 
       {needsText && (
@@ -185,17 +208,25 @@ function DropoutReasonField({
           <textarea
             rows={2}
             disabled={disabled}
-            value={value.dropoutReasonOther ?? ''}
-            onChange={(e) => onChange({ dropoutReasonOther: e.target.value })}
+            value={freeText ?? ''}
+            onChange={(e) => onChange(
+              rejecting
+                ? { rejectionReasonOther: e.target.value }
+                : { dropoutReasonOther: e.target.value },
+            )}
             onBlur={(e) => {
               const t = e.target.value.trim();
-              if (t) onChange({ dropoutReasonOther: t }, { subject: 'Drop-out reason (other)', body: t });
+              if (!t) return;
+              onChange(
+                rejecting ? { rejectionReasonOther: t } : { dropoutReasonOther: t },
+                { subject: `${rejecting ? 'Rejection' : 'Drop-out'} reason (other)`, body: t },
+              );
             }}
-            placeholder="In their words, if possible"
+            placeholder={rejecting ? 'What decided it' : 'In their words, if possible'}
             className={cn(
               'w-full rounded-lg border bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-50',
               'focus:outline-none focus:ring-2 focus:ring-indigo-100',
-              value.dropoutReasonOther?.trim() ? 'border-slate-200 focus:border-indigo-400' : 'border-rose-300',
+              freeText?.trim() ? 'border-slate-200 focus:border-indigo-400' : 'border-rose-300',
             )}
           />
         </label>
@@ -728,8 +759,26 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                     { value: 'follow_up', label: OUTCOME_LABELS.follow_up, hint: hint({ contactOutcome: 'follow_up' }) },
                     { value: 'not_interested', label: OUTCOME_LABELS.not_interested, tone: 'danger', hint: hint({ contactOutcome: 'not_interested' }) },
                   ]}
-                  onPick={(v) => patch({ contactOutcome: v }, { subject: `Contact result: ${OUTCOME_LABELS[v]}` })}
+                  onPick={(v) => patch(
+                    v === 'not_interested'
+                      ? { contactOutcome: v }
+                      : {
+                        contactOutcome: v,
+                        ...(dropoutPhaseFor(value) === 1
+                          ? { dropoutReason: undefined, dropoutReasonOther: undefined, dropoutReasonPhase: undefined }
+                          : {}),
+                      },
+                    { subject: `Contact result: ${OUTCOME_LABELS[v]}` },
+                  )}
                 />
+                {/* Phase 1 recorded a departure but never asked why, so the
+                    earliest and largest source of drop-off was the one the report
+                    could say nothing about. */}
+                {value.contactOutcome === 'not_interested' && (
+                  <div className="pt-2">
+                    <DropoutReasonField phase={1} value={value} disabled={disabled} onChange={patch} />
+                  </div>
+                )}
                 {wantsMeeting && (
                   <div className="pt-2">
                     <DateField
@@ -802,14 +851,30 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                   { value: 'no_longer_interested', label: CONTRACT_LABELS.no_longer_interested, tone: 'danger', hint: hint({ contractStatus: 'no_longer_interested' }) },
                 ]}
                 onPick={(v) => patch(
-                  v === 'no_longer_interested'
+                  v === 'no_longer_interested' || v === 'profile_rejected'
                     ? { contractStatus: v }
-                    : { contractStatus: v, ...(dropoutPhaseFor(value) === 3 ? { dropoutReason: undefined, dropoutReasonOther: undefined, dropoutReasonPhase: undefined } : {}) },
+                    : {
+                      contractStatus: v,
+                      // Reopening clears whichever explanation phase 3 had recorded,
+                      // so a reason cannot outlive the departure it explained.
+                      ...(dropoutPhaseFor(value) === 3
+                        ? {
+                          dropoutReason: undefined,
+                          dropoutReasonOther: undefined,
+                          dropoutReasonPhase: undefined,
+                          rejectionReason: undefined,
+                          rejectionReasonOther: undefined,
+                        }
+                        : {}),
+                    },
                   { subject: `Contract: ${CONTRACT_LABELS[v]}` },
                 )}
               />
             </div>
-            {value.contractStatus === 'no_longer_interested' && (
+            {/* Both negatives ask for a reason now, from their own lists: they
+                walked away, or we turned them down. */}
+            {(value.contractStatus === 'no_longer_interested'
+              || value.contractStatus === 'profile_rejected') && (
               <DropoutReasonField phase={3} value={value} disabled={disabled} onChange={patch} />
             )}
             <DateField label="Contract sent date" value={value.contractSentDate} disabled={disabled}
@@ -830,9 +895,22 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                   { value: 'pending', label: SIGNED_LABELS.pending, hint: hint({ contractSigned: 'pending' }) },
                   { value: 'no', label: SIGNED_LABELS.no, tone: 'danger', hint: hint({ contractSigned: 'no' }) },
                 ]}
-                onPick={(v) => patch({ contractSigned: v }, { subject: `Contract signature: ${SIGNED_LABELS[v]}` })}
+                onPick={(v) => patch(
+                  v === 'no'
+                    ? { contractSigned: v }
+                    : {
+                      contractSigned: v,
+                      ...(dropoutPhaseFor(value) === 4
+                        ? { dropoutReason: undefined, dropoutReasonOther: undefined, dropoutReasonPhase: undefined }
+                        : {}),
+                    },
+                  { subject: `Contract signature: ${SIGNED_LABELS[v]}` },
+                )}
               />
             </div>
+            {value.contractSigned === 'no' && (
+              <DropoutReasonField phase={4} value={value} disabled={disabled} onChange={patch} />
+            )}
             <DateField label="Signature date" value={value.signatureDate} disabled={disabled}
               onChange={(v) => patch({ signatureDate: v }, { subject: 'Contract signed', body: v })} />
           </>
@@ -842,17 +920,34 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
         {card(4, (
           <>
             <div className="space-y-1.5">
-              <span className="text-xs font-medium text-slate-500">Deposit paid?</span>
-              <Choices<'yes' | 'no'>
+              <span className="text-xs font-medium text-slate-500">Deposit</span>
+              {/* Three states, matching phase 4. A boolean could not tell "not
+                  yet" apart from "they never paid and they are gone", which left
+                  phase 5 as the one stage with no way to record a failure. */}
+              <Choices<DepositStatus>
                 disabled={disabled}
-                value={value.depositPaid === undefined ? undefined : value.depositPaid ? 'yes' : 'no'}
+                value={value.depositStatus}
                 options={[
-                  { value: 'yes', label: 'Yes', tone: 'success', hint: hint({ depositPaid: true }) },
-                  { value: 'no', label: 'No', tone: 'danger', hint: hint({ depositPaid: false }) },
+                  { value: 'paid', label: DEPOSIT_LABELS.paid, tone: 'success', hint: hint({ depositStatus: 'paid' }) },
+                  { value: 'pending', label: DEPOSIT_LABELS.pending, hint: hint({ depositStatus: 'pending' }) },
+                  { value: 'not_paid', label: DEPOSIT_LABELS.not_paid, tone: 'danger', hint: hint({ depositStatus: 'not_paid' }) },
                 ]}
-                onPick={(v) => patch({ depositPaid: v === 'yes' }, { subject: `Deposit paid: ${v === 'yes' ? 'Yes' : 'No'}` })}
+                onPick={(v) => patch(
+                  v === 'not_paid'
+                    ? { depositStatus: v }
+                    : {
+                      depositStatus: v,
+                      ...(dropoutPhaseFor(value) === 5
+                        ? { dropoutReason: undefined, dropoutReasonOther: undefined, dropoutReasonPhase: undefined }
+                        : {}),
+                    },
+                  { subject: `Deposit: ${DEPOSIT_LABELS[v]}` },
+                )}
               />
             </div>
+            {value.depositStatus === 'not_paid' && (
+              <DropoutReasonField phase={5} value={value} disabled={disabled} onChange={patch} />
+            )}
             <DateField label="Payment date" value={value.paymentDate} disabled={disabled}
               onChange={(v) => patch({ paymentDate: v }, { subject: 'Deposit paid', body: v })} />
           </>

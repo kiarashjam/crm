@@ -59,7 +59,7 @@ import {
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
-import { StatusChangePopover } from './leads/components/StatusChangePopover';
+import { DerivedStatusBadge } from './leads/components/DerivedStatusBadge';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { AssignPopover } from './leads/components/AssignPopover';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
@@ -67,8 +67,6 @@ import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
 import { SalesTrackerBadges } from './leads/components/SalesTrackerBadges';
 import { InlineSalesEditorPopover } from './leads/components/InlineSalesEditorPopover';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
-import { recordManualStatus } from './leads/leadStatusSyncStore';
-import { derivedTier } from './leads/leadStatusSync';
 import {
   SalesTrackerFilters,
   SalesTrackerFiltersHeader,
@@ -1113,27 +1111,6 @@ export default function Leads() {
   const clearSelection = () => setSelectedIds(new Set());
 
   // Inline status change from the card — saves a round-trip through the detail modal.
-  const handleInlineStatusChange = async (lead: Lead, newStatus: string) => {
-    try {
-      // A deliberate pick outranks the tracker: record it so the next pipeline
-      // edit suggests rather than overwrites.
-      recordManualStatus(lead.id, newStatus, derivedTier(parsePipeline(lead.pipelineState)));
-      const opt = statusOptions.find((o) => o.name === newStatus);
-      const updated = await updateLead(lead.id, {
-        status: newStatus,
-        // Manual picks on the detail page send leadStatusId too; matching that
-        // here stops the server keeping an id that contradicts the name.
-        ...(opt && isValidGuid(opt.id) ? { leadStatusId: opt.id } : {}),
-      });
-      if (updated) {
-        handleLeadUpdate({ ...lead, ...updated, status: newStatus });
-        toast.success(`Status set to ${newStatus}`);
-      }
-    } catch (err) {
-      console.error('Failed to update lead status', err);
-      toast.error('Failed to update status');
-    }
-  };
 
   // Inline quick-log activity from the card.
   const handleQuickLogActivity = async (
@@ -1186,40 +1163,6 @@ export default function Leads() {
   };
 
   // Bulk operations
-  const runBulkStatusChange = async (newStatus: string) => {
-    if (selectedIds.size === 0 || bulkBusy) return;
-    setBulkBusy(true);
-    const ids = Array.from(selectedIds);
-    try {
-      const results = await Promise.allSettled(
-        ids.map((id) => updateLead(id, { status: newStatus })),
-      );
-      let failed = 0;
-      results.forEach((r, idx) => {
-        if (r.status === 'fulfilled' && r.value) {
-          const existing = leads.find((l) => l.id === ids[idx]);
-          if (existing) handleLeadUpdate({ ...existing, ...r.value, status: newStatus });
-        } else {
-          failed++;
-        }
-      });
-      if (failed === 0) {
-        toast.success(`Set ${ids.length} lead${ids.length === 1 ? '' : 's'} to ${newStatus}`);
-      } else {
-        toast.error(`${failed} of ${ids.length} updates failed`);
-      }
-      clearSelection();
-      // The optimistic handleLeadUpdate calls already reflect the new status.
-      // Only refetch when a status filter is active, since the changed leads
-      // may no longer match the current filter (avoids a needless page +
-      // per-lead activity reload in the common no-filter case).
-      if (filterStatuses.length > 0 || filterConverted !== 'all') {
-        await fetchLeads();
-      }
-    } finally {
-      setBulkBusy(false);
-    }
-  };
 
   const runBulkDelete = async () => {
     if (selectedIds.size === 0 || bulkBusy) return;
@@ -2048,9 +1991,7 @@ export default function Leads() {
           {selectedIds.size > 0 && !isReadOnly && (
             <BulkActionsBar
               count={selectedIds.size}
-              statuses={statusOptions.map((s) => s.name)}
               onClear={clearSelection}
-              onBulkStatusChange={runBulkStatusChange}
               onBulkDelete={runBulkDelete}
             />
           )}
@@ -2231,13 +2172,12 @@ export default function Leads() {
                               {phaseBadge.label}
                             </span>
                           )}
-                          <StatusChangePopover
-                            currentStatus={lead.status}
-                            statuses={statusOptions.map((s) => s.name)}
-                            disabled={lead.isConverted || isReadOnly}
-                            onChange={(s) => handleInlineStatusChange(lead, s)}
-                            className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border shadow-sm ring-1 ring-slate-900/[0.04] ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}
-                            prefix={<span className={`w-2 h-2 rounded-full ${statusStyle.dot} shadow-sm`} />}
+                          {/* Read-only. The status comes from the lead's pipeline;
+                              open the lead to change the step that set it. */}
+                          <DerivedStatusBadge
+                            status={lead.status}
+                            pipeline={parsePipeline(lead.pipelineState)}
+                            className="px-2.5 py-1.5"
                           />
                           {lead.isConverted && (
                             <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-300/40 ring-1 ring-white/30">

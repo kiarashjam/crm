@@ -85,10 +85,17 @@ describe('deriveStage — phase 2 meeting', () => {
     expect(d.stage).toBe('lost');
     expect(d.terminal).toBe(true);
   });
-  it('a bare no-show is INFERRED, so it is never auto-written', () => {
+  it('a bare no-show is real progress, not a write-off', () => {
+    // This used to derive `lost` with certainty 'inferred' and be withheld as a
+    // suggestion, which made it the one recorded step that did NOT move the
+    // status. Now that every phase has an explicit failure option, silence about
+    // intent means the lead is still open: a missed meeting usually needs
+    // rescheduling, not writing off.
     const d = deriveStage({ meetingAttended: false });
-    expect(d.stage).toBe('lost');
-    expect(d.certainty).toBe('inferred');
+    expect(d.stage).toBe('contacted');
+    expect(d.terminal).toBe(false);
+    expect(d.certainty).toBe('explicit');
+    expect(d.because).toMatch(/missed the meeting/i);
   });
   it('a no-show who is still interested is Qualified, not lost', () => {
     // Someone who missed a call but has since confirmed interest has not
@@ -127,17 +134,17 @@ describe('deriveStage — phase 4/5 signature and deposit', () => {
     expect(deriveStage({ contractSigned: 'no' }).stage).toBe('lost');
   });
   it('deposit paid', () => {
-    expect(deriveStage({ depositPaid: true }).stage).toBe('deposit_paid');
+    expect(deriveStage({ depositStatus: 'paid' }).stage).toBe('deposit_paid');
   });
   it('deposit NOT paid is not a setback — it is just the default', () => {
-    const d = deriveStage({ contractSigned: 'yes', depositPaid: false });
+    const d = deriveStage({ contractSigned: 'yes', depositStatus: 'pending' });
     expect(d.stage).toBe('signed');
   });
 });
 
 describe('deriveStage — precedence: the deepest phase wins', () => {
   it('a banked deposit outranks a stale phase-1 "not interested"', () => {
-    const d = deriveStage({ contactOutcome: 'not_interested', depositPaid: true });
+    const d = deriveStage({ contactOutcome: 'not_interested', depositStatus: 'paid' });
     expect(d.stage).toBe('deposit_paid');
     expect(d.terminal).toBe(false);
   });
@@ -190,8 +197,8 @@ describe('INVARIANT — dates are never derivation inputs', () => {
     { contractSigned: 'yes' },
     { contractSigned: 'pending' },
     { contractSigned: 'no' },
-    { depositPaid: true },
-    { depositPaid: false },
+    { depositStatus: 'paid' },
+    { depositStatus: 'pending' },
   ];
 
   it('adding or clearing any date leaves the stage identical', () => {
@@ -246,7 +253,7 @@ describe('INVARIANT — a positive edit never lowers the derived stage', () => {
     { label: "contractStatus:'yes'", patch: { contractStatus: 'yes' } },
     { label: "contractSigned:'pending'", patch: { contractSigned: 'pending' } },
     { label: "contractSigned:'yes'", patch: { contractSigned: 'yes' } },
-    { label: 'depositPaid:true', patch: { depositPaid: true } },
+    { label: 'depositPaid:true', patch: { depositStatus: 'paid' } },
   ];
 
   it('holds for every reachable pipeline state', () => {
@@ -360,7 +367,7 @@ describe('resolveStatus — richer and stranger vocabularies', () => {
     expect(deposit).toBe(signed);
 
     const plan = planStatusSync(ctx({
-      pipeline: { contractSigned: 'yes', depositPaid: true },
+      pipeline: { contractSigned: 'yes', depositStatus: 'paid' },
       currentStatus: signed!,
       statusOptions: org,
     }));
@@ -502,18 +509,18 @@ describe('planStatusSync — applies a straightforward advance', () => {
 describe('planStatusSync — refuses to write when a human might disagree', () => {
   it('stays silent while the org status list is still loading', () => {
     const plan = planStatusSync(ctx({
-      pipeline: { depositPaid: true }, statusesLoaded: false,
+      pipeline: { depositStatus: 'paid' }, statusesLoaded: false,
     }));
     expect(plan).toMatchObject({ kind: 'skip', reason: 'statuses_loading' });
   });
 
   it('never touches a converted lead', () => {
-    const plan = planStatusSync(ctx({ pipeline: { depositPaid: true }, isConverted: true }));
+    const plan = planStatusSync(ctx({ pipeline: { depositStatus: 'paid' }, isConverted: true }));
     expect(plan).toMatchObject({ kind: 'skip', reason: 'converted' });
   });
 
   it('honours the per-user opt-out', () => {
-    const plan = planStatusSync(ctx({ pipeline: { depositPaid: true }, enabled: false }));
+    const plan = planStatusSync(ctx({ pipeline: { depositStatus: 'paid' }, enabled: false }));
     expect(plan).toMatchObject({ kind: 'skip', reason: 'disabled' });
   });
 
@@ -556,15 +563,16 @@ describe('planStatusSync — refuses to write when a human might disagree', () =
     expect(plan).toMatchObject({ kind: 'suggest', reason: 'unrecognised_status' });
   });
 
-  it('never resurrects a lead a human marked Lost by hand', () => {
-    // Off-ladder terminal as the current status: the pipeline showing earlier
-    // outreach activity is not grounds for overriding a human's call.
+  it('DOES bring a stale Lost back in line, now that nobody can have typed it', () => {
+    // This used to be held as a human's call. There is no such call any more: the
+    // status is derived and read-only, so a Lost sitting above a pipeline that
+    // records live outreach is simply out of date. Holding it would leave the
+    // badge contradicting the tracker with no way to reconcile them.
     const plan = planStatusSync(ctx({
       pipeline: { outreachStatus: 'contacted' },
       currentStatus: 'Lost',
-      manualStatus: 'Lost',
     }));
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
+    expect(plan.kind).toBe('apply');
   });
 
   it('still applies when the live status is the one we last wrote', () => {
@@ -576,14 +584,23 @@ describe('planStatusSync — refuses to write when a human might disagree', () =
     expect(plan.kind).toBe('apply');
   });
 
-  it('never marks a lead dead for one missed meeting', () => {
+  it('still never marks a lead dead for one missed meeting', () => {
+    // Same guarantee, reached differently: a bare no-show no longer DERIVES a
+    // loss at all, so there is nothing to withhold. Previously it derived Lost
+    // and was suppressed as a guess, which meant recording the step appeared to
+    // do nothing.
     const plan = planStatusSync(ctx({
       pipeline: { meetingAttended: false }, currentStatus: 'Connected',
     }));
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'inferred' });
+    // It writes — but it writes CONTACTED, not Lost. Nothing about a missed
+    // meeting says the lead is gone.
+    expect(plan.kind).toBe('apply');
+    if (plan.kind !== 'apply') return;
+    expect(plan.to.canonical).toBe('contacted');
+    expect(deriveStage({ meetingAttended: false }).terminal).toBe(false);
   });
 
-  it('auto-writes a STATED loss, unlike an inferred one', () => {
+  it('auto-writes a STATED loss', () => {
     const plan = planStatusSync(ctx({
       pipeline: { meetingAttended: true, stillInterested: false }, currentStatus: 'Connected',
     }));
@@ -592,11 +609,17 @@ describe('planStatusSync — refuses to write when a human might disagree', () =
 });
 
 describe('planStatusSync — forward-only', () => {
-  it('suggests rather than demotes when the pipeline falls behind the status', () => {
+  it('DEMOTES when the pipeline falls behind the status, because that is a correction', () => {
+    // Forward-only existed to protect a status somebody might have typed. Nobody
+    // can, so a lower pipeline is a correction and the status must follow it —
+    // otherwise unticking a step you recorded by mistake silently does nothing,
+    // which is the worst kind of nothing.
     const plan = planStatusSync(ctx({
       pipeline: { outreachStatus: 'contacted' }, currentStatus: 'Open Deal',
     }));
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'would_regress' });
+    expect(plan.kind).toBe('apply');
+    if (plan.kind !== 'apply') return;
+    expect(plan.to.canonical).toBe('contacted');
   });
 
   it('a terminal is never a regression — moving to Lost always applies', () => {
@@ -646,7 +669,7 @@ describe('statusDrift — computed from state, so it survives a reload', () => {
 
   it('is quiet on converted leads', () => {
     const drift = statusDrift(ctx({
-      pipeline: { depositPaid: true }, currentStatus: 'New', isConverted: true,
+      pipeline: { depositStatus: 'paid' }, currentStatus: 'New', isConverted: true,
     }));
     expect(drift).toBeNull();
   });
@@ -681,7 +704,7 @@ describe('previewStatusChange — a hint can never promise what the click would 
       { contractStatus: 'yes' },
       { contractStatus: 'profile_rejected' },
       { contractSigned: 'yes' },
-      { depositPaid: true },
+      { depositStatus: 'paid' },
     ];
     for (const patch of patches) {
       const preview = previewStatusChange(base, patch, ctx());
@@ -703,7 +726,7 @@ describe('the status strip and the tracker banner never contradict each other', 
     { contractStatus: 'profile_rejected' },
     { contractStatus: 'no_longer_interested' },
     { contractSigned: 'no' },
-    { contactOutcome: 'not_interested', depositPaid: true },
+    { contactOutcome: 'not_interested', depositStatus: 'paid' },
     { stillInterested: false, contractSigned: 'pending' },
     { stillInterested: true, contractSigned: 'pending' },
   ];
@@ -727,7 +750,7 @@ describe('the status strip and the tracker banner never contradict each other', 
   });
 
   it('a banked deposit overrides an earlier refusal and says so', () => {
-    const d = deriveStage({ contactOutcome: 'not_interested', depositPaid: true });
+    const d = deriveStage({ contactOutcome: 'not_interested', depositStatus: 'paid' });
     expect(d.stage).toBe('deposit_paid');
     expect(d.conflicts).toContain('Not interested at outreach');
   });
@@ -738,46 +761,12 @@ describe('the status strip and the tracker banner never contradict each other', 
   });
 });
 
-describe('planStatusSync — releasable manual pin', () => {
-  it('holds while the pipeline has not moved past the hand-picked status', () => {
-    const plan = planStatusSync(ctx({
-      pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' },
-      currentStatus: 'In Progress',   // human moved it ahead of Connected
-      manualStatus: 'In Progress',
-      manualHeldTier: STAGE_TIER.meeting_scheduled,
-    }));
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
-  });
-
-  it('releases once the pipeline genuinely overtakes the hand-picked status', () => {
-    const plan = planStatusSync(ctx({
-      pipeline: { depositPaid: true },
-      currentStatus: 'In Progress',
-      manualStatus: 'In Progress',
-      manualHeldTier: STAGE_TIER.meeting_scheduled,
-    }));
-    expect(plan.kind).toBe('apply');
-  });
-
-  it('holds for good on a hand-set terminal, even when the pipeline advances', () => {
-    // Terminals are off-ladder (tier null) so the release condition can never be
-    // met. Deliberate: a human writing a lead off outranks our inference, and
-    // the drift strip still offers one-click revival.
-    const plan = planStatusSync(ctx({
-      pipeline: { depositPaid: true },
-      currentStatus: 'Lost',
-      manualStatus: 'Lost',
-      manualHeldTier: STAGE_TIER.deposit_paid,   // already banked when written off
-    }));
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
-  });
-});
 
 describe('statusDrift stays visible when auto-sync is switched off', () => {
   it('still reports the disagreement, because the strip is then the only fix', () => {
     // Drift is a statement about the data, not about the automation.
     const drift = statusDrift({
-      pipeline: { depositPaid: true },
+      pipeline: { depositStatus: 'paid' },
       currentStatus: 'New',
       statusOptions: DEFAULT_OPTS,
       statusesLoaded: true,
@@ -786,140 +775,11 @@ describe('statusDrift stays visible when auto-sync is switched off', () => {
   });
 });
 
-describe('planStatusSync — reports every applicable hold', () => {
-  it('lists both the pin and the unrecognised status', () => {
-    const plan = planStatusSync(ctx({
-      pipeline: { outreachStatus: 'contacted' },
-      currentStatus: 'Cold Outreach Q3',
-      statusOptions: opts([...FALLBACK, 'Cold Outreach Q3']),
-      manualStatus: 'Cold Outreach Q3',
-    }));
-    if (plan.kind !== 'suggest') throw new Error('expected suggest');
-    expect(plan.reasons).toContain('unrecognised_status');
-    expect(plan.reasons).toContain('manual_change');
-  });
-});
 
-describe('planStatusSync — defers to an org whose ladder is shaped differently', () => {
-  it('suggests instead of applying when displayOrder contradicts our tiers', () => {
-    // This org considers "Qualified" EARLIER than "Contacted".
-    const weird: StatusOption[] = [
-      { id: 'q', name: 'Qualified', displayOrder: 1 },
-      { id: 'c', name: 'Contacted', displayOrder: 9 },
-    ];
-    const plan = planStatusSync(ctx({
-      pipeline: { meetingAttended: true, stillInterested: true },
-      currentStatus: 'Contacted',
-      statusOptions: weird,
-    }));
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'vocabulary_mismatch' });
-  });
-
-  it('applies happily when the org order agrees with ours', () => {
-    const sane: StatusOption[] = [
-      { id: 'c', name: 'Contacted', displayOrder: 1 },
-      { id: 'q', name: 'Qualified', displayOrder: 5 },
-    ];
-    const plan = planStatusSync(ctx({
-      pipeline: { meetingAttended: true, stillInterested: true },
-      currentStatus: 'Contacted',
-      statusOptions: sane,
-    }));
-    expect(plan.kind).toBe('apply');
-  });
-});
 
 
 // ── Regression: the manual hold must be ARMED by a pick, not destroyed by it ──
 
-describe('a hand-picked status survives later pipeline edits', () => {
-  // The hold used to be keyed on `lastAutoStatus` being truthy, while a manual
-  // pick *cleared* that field — so picking a status removed the only thing
-  // protecting it, and the next save wrote straight over the human's choice.
-  it('a rep who writes a lead off as Lost is not overruled by an unrelated edit', () => {
-    const plan = planStatusSync(ctx({
-      pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' },
-      currentStatus: 'Lost',
-      manualStatus: 'Lost',
-    }));
-    expect(plan.kind).not.toBe('apply');
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
-  });
-
-  it('holds even for a lead auto-sync has never written to', () => {
-    // `lastAutoStatus` divergence cannot help here — there is no sync history —
-    // so only an explicit record of the pick protects it.
-    const plan = planStatusSync(ctx({
-      pipeline: { meetingAttended: true, stillInterested: true },
-      currentStatus: 'Contacted',
-      manualStatus: 'Contacted',
-      manualHeldTier: STAGE_TIER.qualified,
-      lastAutoStatus: undefined,
-    }));
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
-  });
-
-  it('a date-only edit never overrules a hand-set status', () => {
-    // Invariant 1 says dates cannot move the status; combined with the hold, a
-    // bookkeeping edit must be inert.
-    const base = { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' } as const;
-    for (const dateField of ['outreachDate', 'meetingDate', 'contractSentDate'] as const) {
-      const plan = planStatusSync(ctx({
-        pipeline: { ...base, [dateField]: '2026-05-13' },
-        currentStatus: 'Lost',
-        manualStatus: 'Lost',
-      }));
-      expect(plan.kind, dateField).not.toBe('apply');
-    }
-  });
-
-  it('still catches a change made on another device, with no local record', () => {
-    // Cross-client backstop: we last wrote "Connected" but the live status is
-    // something else, so someone intervened where we cannot see it.
-    const plan = planStatusSync(ctx({
-      pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' },
-      currentStatus: 'Lost',
-      lastAutoStatus: 'Connected',
-    }));
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
-  });
-
-  it('an undone status stays undone', () => {
-    // undoAutoStatus records the revert as a manual pick, which is what makes
-    // its own activity copy ("will suggest, not apply") true.
-    const plan = planStatusSync(ctx({
-      pipeline: { meetingAttended: true, stillInterested: true },
-      currentStatus: 'New',
-      manualStatus: 'New',
-      // Baseline = what the pipeline already derived when they undid it.
-      manualHeldTier: STAGE_TIER.qualified,
-    }));
-    expect(plan).toMatchObject({ kind: 'suggest', reason: 'manual_change' });
-  });
-
-  it('a hold measured against the picked status would void itself instantly', () => {
-    // Auto-sync only wrote because the pipeline derived something ABOVE the
-    // status, so releasing on "derived > current status" can never hold. The
-    // baseline must be the pipeline's tier at intervention time.
-    const held = planStatusSync(ctx({
-      pipeline: { meetingAttended: true, stillInterested: true },  // qualified (5)
-      currentStatus: 'New',                                        // tier 0
-      manualStatus: 'New',
-      manualHeldTier: STAGE_TIER.qualified,
-    }));
-    expect(held.kind).toBe('suggest');
-  });
-
-  it('releases once the pipeline records something deeper than at intervention', () => {
-    const plan = planStatusSync(ctx({
-      pipeline: { depositPaid: true },                 // deposit_paid (9)
-      currentStatus: 'New',
-      manualStatus: 'New',
-      manualHeldTier: STAGE_TIER.qualified,            // was 5 when they intervened
-    }));
-    expect(plan.kind).toBe('apply');
-  });
-});
 
 // ── The client's requested vocabulary ────────────────────────────────────────
 // The eight stages agreed with the client, in their order. Every row of their
@@ -972,8 +832,8 @@ describe('client status vocabulary — one case per row of their table', () => {
     expect(statusFor({ contractSigned: 'yes' })).toBe('Signed');
     // Their table has no deposit status, so a deposit must NOT knock the lead
     // back down the ladder — it degrades onto the same string and holds.
-    expect(statusFor({ contractSigned: 'yes', depositPaid: true })).toBe('Signed');
-    expect(statusFor({ depositPaid: true })).toBe('Signed');
+    expect(statusFor({ contractSigned: 'yes', depositStatus: 'paid' })).toBe('Signed');
+    expect(statusFor({ depositStatus: 'paid' })).toBe('Signed');
   });
 
   it('Lost / Not Interested ← every one of the three triggers they listed', () => {
@@ -996,7 +856,7 @@ describe('client status vocabulary — one case per row of their table', () => {
       { contractStatus: 'to_be_sent' }, { contractStatus: 'yes' },
       { contractStatus: 'profile_rejected' }, { contractStatus: 'no_longer_interested' },
       { contractSigned: 'pending' }, { contractSigned: 'yes' }, { contractSigned: 'no' },
-      { depositPaid: true },
+      { depositStatus: 'paid' },
     ];
     for (const p of STATES) {
       const name = statusFor(p);
@@ -1015,7 +875,7 @@ describe('client status vocabulary — one case per row of their table', () => {
       { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true, stillInterested: true },
       { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true, stillInterested: true, contractStatus: 'yes', contractSentDate: '2026-08-22' },
       { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true, stillInterested: true, contractStatus: 'yes', contractSentDate: '2026-08-22', contractSigned: 'yes', signatureDate: '2026-08-25' },
-      { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true, stillInterested: true, contractStatus: 'yes', contractSentDate: '2026-08-22', contractSigned: 'yes', signatureDate: '2026-08-25', depositPaid: true, paymentDate: '2026-08-28' },
+      { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-08-20', meetingAttended: true, stillInterested: true, contractStatus: 'yes', contractSentDate: '2026-08-22', contractSigned: 'yes', signatureDate: '2026-08-25', depositStatus: 'paid', paymentDate: '2026-08-28' },
     ];
     let last = -1;
     for (const p of journey) {
@@ -1100,5 +960,102 @@ describe('status groups — the shared definition four call sites depend on', ()
     // The failure mode the groups exist to prevent.
     expect(statusIn('Not Signed', SIGNED_STATUSES)).toBe(false);
     expect(statusIn('Pre-Qualified', QUALIFIED_OR_BEYOND)).toBe(false);
+  });
+});
+
+describe('the status is DERIVED — there is no way for a person to pin it', () => {
+  // What replaced four blocks of hold-and-release logic. The status used to be
+  // editable, so most of planStatusSync existed to avoid overwriting somebody's
+  // decision: a manual pin with a releasable tier, a forward-only rule, a
+  // withheld guess for an ambiguous no-show, and a deference to the org's own
+  // display order. None of those has a premise any more, and each of them was a
+  // case where recording a pipeline step visibly did nothing.
+
+  it('every recorded step moves the status, in either direction', () => {
+    const steps: { pipeline: LeadPipeline; expect: CanonicalStage }[] = [
+      { pipeline: { outreachStatus: 'attempted_no_answer' }, expect: 'attempted' },
+      { pipeline: { outreachStatus: 'contacted' }, expect: 'contacted' },
+      { pipeline: { contactOutcome: 'meeting_scheduled' }, expect: 'meeting_scheduled' },
+      { pipeline: { meetingAttended: true }, expect: 'meeting_held' },
+      { pipeline: { stillInterested: true }, expect: 'qualified' },
+      { pipeline: { contractStatus: 'to_be_sent' }, expect: 'contract_pending' },
+      { pipeline: { contractStatus: 'yes' }, expect: 'contract_sent' },
+      { pipeline: { contractSigned: 'yes' }, expect: 'signed' },
+      { pipeline: { depositStatus: 'paid' }, expect: 'deposit_paid' },
+    ];
+
+    // Forwards from New, then BACKWARDS from the top. Both directions must write:
+    // correcting a step you mis-recorded has to move the status back, or the undo
+    // silently fails.
+    for (const step of steps) {
+      const forward = planStatusSync(ctx({ pipeline: step.pipeline, currentStatus: 'New' }));
+      expect(forward.kind, `forward to ${step.expect}`).toBe('apply');
+
+      // Backwards, the plan may legitimately be a no-op: in this vocabulary
+      // "signed" resolves to the same string as "Open Deal", so there is nothing
+      // to write. What must NEVER happen is a suggestion — that is the old
+      // forward-only rule, and it is what made an undo appear to do nothing.
+      const back = planStatusSync(ctx({ pipeline: step.pipeline, currentStatus: 'Open Deal' }));
+      expect(back.kind, `back to ${step.expect}`).not.toBe('suggest');
+      if (back.kind === 'skip') {
+        expect(back.reason, `back to ${step.expect}`).toBe('noop');
+      }
+    }
+  });
+
+  it('every failure moves the status, at every phase', () => {
+    const failures: LeadPipeline[] = [
+      { contactOutcome: 'not_interested' },
+      { meetingAttended: true, stillInterested: false },
+      { contractStatus: 'no_longer_interested' },
+      { contractStatus: 'profile_rejected' },
+      { contractSigned: 'no' },
+      { depositStatus: 'not_paid' },
+    ];
+    for (const pipeline of failures) {
+      const plan = planStatusSync(ctx({ pipeline, currentStatus: 'Open Deal' }));
+      expect(plan.kind, JSON.stringify(pipeline)).toBe('apply');
+      if (plan.kind !== 'apply') continue;
+      expect(['lost', 'unqualified'], JSON.stringify(pipeline)).toContain(plan.to.canonical);
+    }
+  });
+
+  it('holds only for a status that is not a stage at all', () => {
+    // The two remaining holds, and neither is about progress. A lead somebody
+    // parked must not be dragged back into the funnel by a sales step, and an
+    // unfamiliar label gets the same protection because a list of parking words
+    // is never complete.
+    const parked = planStatusSync(ctx({
+      pipeline: { stillInterested: true }, currentStatus: 'Do Not Contact',
+      statusOptions: opts([...FALLBACK, 'Do Not Contact']),
+    }));
+    expect(parked).toMatchObject({ kind: 'suggest', reason: 'sticky_status' });
+
+    const custom = planStatusSync(ctx({
+      pipeline: { stillInterested: true }, currentStatus: 'Cold Outreach Q3',
+      statusOptions: opts([...FALLBACK, 'Cold Outreach Q3']),
+    }));
+    expect(custom).toMatchObject({ kind: 'suggest', reason: 'unrecognised_status' });
+  });
+
+  it('does not touch a lead with no pipeline activity at all', () => {
+    // Clearing a tracker must not drag a lead's starting status around.
+    expect(planStatusSync(ctx({ pipeline: {}, currentStatus: 'New' })))
+      .toMatchObject({ kind: 'skip', reason: 'no_signal' });
+  });
+
+  it('the org can still shape the ladder — by pinning stages, not by typing', () => {
+    // An unusual vocabulary is handled by overrides, which is the right tool.
+    // Deferring a write because the org's displayOrder disagreed with our tiers
+    // was the wrong one: it made some steps silently not move the status.
+    const plan = planStatusSync(ctx({
+      pipeline: { stillInterested: true },
+      currentStatus: 'New',
+      statusOptions: opts([...FALLBACK, 'Ready for contract']),
+      overrides: { qualified: 'Ready for contract' },
+    }));
+    expect(plan.kind).toBe('apply');
+    if (plan.kind !== 'apply') return;
+    expect(plan.to.name).toBe('Ready for contract');
   });
 });

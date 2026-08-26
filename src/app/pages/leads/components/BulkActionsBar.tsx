@@ -1,44 +1,29 @@
 import { useState } from 'react';
-import { Trash2, X, Loader2, CircleDot } from 'lucide-react';
+import { Trash2, X, Loader2 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from '@/app/components/ui/dropdown-menu';
 
 interface BulkActionsBarProps {
   count: number;
-  statuses: string[];
   onClear: () => void;
-  onBulkStatusChange: (newStatus: string) => Promise<void>;
   onBulkDelete: () => Promise<void>;
 }
 
 /**
- * Sticky toolbar that appears above the leads list when one or more leads are
- * selected. Provides bulk delete and bulk status change.
+ * Sticky toolbar shown above the leads list when leads are selected.
+ *
+ * Bulk status change used to live here and has been removed, not hidden: a lead's
+ * status is derived from its own 5-phase pipeline, and setting thirty leads to
+ * "Qualified" in one click would assert progress that none of their pipelines
+ * records. The next pipeline edit on any of them would silently undo it, which is
+ * worse than not offering it. Moving a batch forward means recording the step that
+ * actually happened, one lead at a time.
  */
 export function BulkActionsBar({
   count,
-  statuses,
   onClear,
-  onBulkStatusChange,
   onBulkDelete,
 }: BulkActionsBarProps) {
-  const [busy, setBusy] = useState<null | 'status' | 'delete'>(null);
-
-  const runStatus = async (status: string) => {
-    setBusy('status');
-    try {
-      await onBulkStatusChange(status);
-    } finally {
-      setBusy(null);
-    }
-  };
+  const [busy, setBusy] = useState<null | 'delete'>(null);
 
   const runDelete = async () => {
     setBusy('delete');
@@ -59,40 +44,10 @@ export function BulkActionsBar({
           <span className="text-sm font-semibold text-slate-900">
             {count} lead{count === 1 ? '' : 's'} selected
           </span>
-          <span className="text-xs text-slate-500">Choose a bulk action below</span>
+          <span className="text-xs text-slate-500">Status follows each lead's own pipeline</span>
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy !== null || statuses.length === 0}
-              className="gap-1.5"
-            >
-              {busy === 'status' ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <CircleDot className="w-4 h-4" />
-              )}
-              Change status
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Set status for {count} lead{count === 1 ? '' : 's'}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {statuses.map((status) => (
-              <DropdownMenuItem
-                key={status}
-                onClick={() => runStatus(status)}
-                className="cursor-pointer"
-              >
-                {status}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
         <Button
           variant="outline"
           size="sm"

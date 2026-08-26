@@ -9,6 +9,7 @@ import {
   phaseSteps,
   currentPhase,
   dropoutPhaseFor,
+  failurePointFor,
   isReasonRequired,
   isReasonComplete,
   dropoutReasonText,
@@ -31,7 +32,7 @@ const COMPLETE: LeadPipeline = {
   contractSentDate: '2026-08-22',
   contractSigned: 'yes',
   signatureDate: '2026-08-25',
-  depositPaid: true,
+  depositStatus: 'paid',
   paymentDate: '2026-08-28',
 };
 
@@ -94,7 +95,7 @@ describe('lostPhase — the phase that RECORDED the loss', () => {
       { stillInterested: false },
       { contractStatus: 'profile_rejected' },
       { contractSigned: 'no' },
-      { contactOutcome: 'not_interested', depositPaid: true, paymentDate: '2026-08-28' },
+      { contactOutcome: 'not_interested', depositStatus: 'paid', paymentDate: '2026-08-28' },
     ];
     for (const p of STATES) {
       expect(lostPhase(p) === null).toBe(lostReason(p) === null);
@@ -123,8 +124,8 @@ describe('phaseCaptions', () => {
       { contractStatus: 'yes', contractSentDate: '2026-08-22' },
       { contractSigned: 'yes' },
       { contractSigned: 'yes', signatureDate: '2026-08-25' },
-      { depositPaid: true },
-      { depositPaid: true, paymentDate: '2026-08-28' },
+      { depositStatus: 'paid' },
+      { depositStatus: 'paid', paymentDate: '2026-08-28' },
       COMPLETE,
     ];
     for (const p of STATES) {
@@ -154,8 +155,11 @@ describe('phaseCaptions', () => {
 
   it('shows the drop-out reason on the phase that recorded it', () => {
     const p: LeadPipeline = { contractStatus: 'profile_rejected' };
-    // Phase 3 (index 2), not the current phase.
-    expect(phaseCaptions(p)[2]).toBe('Profile rejected');
+    // Phase 3 (index 2), not the current phase. A rejection now owes a reason too,
+    // so the caption says one is outstanding rather than reading as settled.
+    expect(phaseCaptions(p)[2]).toBe('Profile rejected · waiting on: a reason');
+    expect(phaseCaptions({ ...p, rejectionReason: 'no_capacity' })[2])
+      .toBe('Profile rejected · No capacity / waiting list');
   });
 
   it('renders a date as the day it was picked, not the day before', () => {
@@ -197,8 +201,8 @@ const MATRIX: LeadPipeline[] = [
   { contractSigned: 'no' },
   { contractSigned: 'yes', signatureDate: '2026-08-25' },
   { depositPaid: false },
-  { depositPaid: true },
-  { depositPaid: true, paymentDate: '2026-08-28' },
+  { depositStatus: 'paid' },
+  { depositStatus: 'paid', paymentDate: '2026-08-28' },
 ];
 
 describe('phaseSteps', () => {
@@ -276,17 +280,53 @@ describe('drop-out reason capture', () => {
   const MET_NO: LeadPipeline = { meetingAttended: true, stillInterested: false };
   const CONTRACT_NO: LeadPipeline = { contractStatus: 'no_longer_interested' };
 
-  it('asks for a reason at Meeting and at Contract, and nowhere else', () => {
+  it('asks for a reason at EVERY phase a lead can fail at', () => {
+    // Phase 1 was the largest source of drop-off and used to be the one nobody
+    // could report on, because it never asked.
+    expect(dropoutPhaseFor({ contactOutcome: 'not_interested' })).toBe(1);
     expect(dropoutPhaseFor(MET_NO)).toBe(2);
     expect(dropoutPhaseFor(CONTRACT_NO)).toBe(3);
-    // Us rejecting them is not them rejecting us — none of the shared reasons
-    // ("has kids", "not within budget") describes our own decision.
-    expect(dropoutPhaseFor({ contractStatus: 'profile_rejected' })).toBeNull();
-    // Nor do the other negatives, which are not "no longer interested".
-    expect(dropoutPhaseFor({ contactOutcome: 'not_interested' })).toBeNull();
+    expect(dropoutPhaseFor({ contractSigned: 'no' })).toBe(4);
+    // Phase 5 could not express a failure at all until the deposit went tri-state.
+    expect(dropoutPhaseFor({ depositStatus: 'not_paid' })).toBe(5);
+
+    // Us rejecting them is still a failure — it just draws on a different list.
+    expect(failurePointFor({ contractStatus: 'profile_rejected' }))
+      .toEqual({ phase: 3, kind: 'rejection', label: 'Profile rejected' });
+
+    // A bare no-show is NOT a failure: a missed meeting usually needs
+    // rescheduling, and every phase now has an explicit way to say "they are out".
     expect(dropoutPhaseFor({ meetingAttended: false })).toBeNull();
-    expect(dropoutPhaseFor({ contractSigned: 'no' })).toBeNull();
+    expect(dropoutPhaseFor({ depositStatus: 'pending' })).toBeNull();
     expect(dropoutPhaseFor({})).toBeNull();
+  });
+
+  it('reports the DEEPEST failure, because that is where the lead stopped', () => {
+    // Both recorded: they lost interest at the meeting, and later the contract
+    // was never signed. The newer fact describes where it actually ended.
+    expect(dropoutPhaseFor({ stillInterested: false, contractSigned: 'no' })).toBe(4);
+  });
+
+  it('keeps the two vocabularies apart', () => {
+    // A rejection cannot be satisfied by a drop-out reason left over from an
+    // earlier phase, and vice versa — they answer different questions.
+    expect(isReasonComplete({ contractStatus: 'profile_rejected', dropoutReason: 'too_soon' }))
+      .toBe(false);
+    expect(isReasonComplete({ contractStatus: 'profile_rejected', rejectionReason: 'no_capacity' }))
+      .toBe(true);
+    expect(isReasonComplete({ contractSigned: 'no', rejectionReason: 'no_capacity' })).toBe(false);
+    expect(isReasonComplete({ contractSigned: 'no', dropoutReason: 'too_soon' })).toBe(true);
+  });
+
+  it('INVARIANT: "Other" needs typing in both vocabularies', () => {
+    expect(isReasonComplete({ contractStatus: 'profile_rejected', rejectionReason: 'other' }))
+      .toBe(false);
+    expect(isReasonComplete({
+      contractStatus: 'profile_rejected', rejectionReason: 'other', rejectionReasonOther: '  ',
+    })).toBe(false);
+    expect(isReasonComplete({
+      contractStatus: 'profile_rejected', rejectionReason: 'other', rejectionReasonOther: 'court case',
+    })).toBe(true);
   });
 
   it('is satisfied only when the answer is actually complete', () => {
@@ -369,10 +409,31 @@ describe('dropoutReasonBreakdown', () => {
     expect(rows.find((r) => r.phase === 3)!.counts.has_kids).toBe(1);
   });
 
-  it('always returns both stages, even with no data', () => {
-    const rows = dropoutReasonBreakdown([]);
-    expect(rows.map((r) => r.phase)).toEqual([2, 3]);
-    for (const r of rows) expect(r.total).toBe(0);
+  it('reports nothing when there is nothing to report', () => {
+    // Rows are created for the failures that actually occurred, rather than
+    // pre-seeding ten empty rows for five phases times two vocabularies.
+    expect(dropoutReasonBreakdown([])).toEqual([]);
+  });
+
+  it('covers every phase, and keeps our decisions apart from theirs', () => {
+    const rows = dropoutReasonBreakdown([
+      { contactOutcome: 'not_interested', dropoutReason: 'too_soon', dropoutReasonPhase: 1 },
+      { contractSigned: 'no', dropoutReason: 'not_within_budget', dropoutReasonPhase: 4 },
+      { depositStatus: 'not_paid', dropoutReason: 'has_kids', dropoutReasonPhase: 5 },
+      { contractStatus: 'profile_rejected', rejectionReason: 'no_capacity' },
+      { contractStatus: 'no_longer_interested', dropoutReason: 'too_soon', dropoutReasonPhase: 3 },
+    ]);
+
+    // Phase order, drop-outs before rejections within a phase.
+    expect(rows.map((r) => `${r.phase}:${r.kind}`))
+      .toEqual(['1:dropout', '3:dropout', '3:rejection', '4:dropout', '5:dropout']);
+
+    // Our own decision is its own row, with its own vocabulary — putting
+    // "no capacity" in the same bucket as "not within budget" would read as
+    // customer sentiment.
+    const rejection = rows.find((r) => r.kind === 'rejection')!;
+    expect(rejection.counts.no_capacity).toBe(1);
+    expect(rejection.counts).not.toHaveProperty('too_soon');
   });
 
   it('does not let one lead be counted twice', () => {

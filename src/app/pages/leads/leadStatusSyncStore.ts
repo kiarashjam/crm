@@ -28,16 +28,6 @@ export interface LeadSyncMeta {
   /** The status auto-sync last wrote. Divergence ⇒ someone changed it by hand,
    *  possibly on another device where we have no local record. */
   lastAutoStatus?: string;
-  /**
-   * A status a human picked deliberately, and when. This is the primary hold:
-   * it works even for a lead auto-sync has never touched, whereas
-   * `lastAutoStatus` divergence only helps once we have written at least once.
-   */
-  manualStatus?: string;
-  manualAt?: string;
-  /** Pipeline tier at the moment of the pick — the baseline the hold releases
-   *  above. See `planStatusSync`. */
-  manualHeldTier?: number | null;
   /** Whichever rule produced it, for the "why is this Qualified?" tooltip. */
   lastRule?: string;
   /** Human cause, e.g. "Still interested after the meeting". */
@@ -158,39 +148,11 @@ export function recordAutoStatus(
     lastAt: new Date(now).toISOString(),
     // The hold released and we wrote over it, so the human's pick no longer
     // describes the live status.
-    manualStatus: undefined,
-    manualAt: undefined,
-    manualHeldTier: undefined,
     undoBase: burstLive ? meta.undoBase : args.from,
     undoBaseAt: burstLive ? meta.undoBaseAt : new Date(now).toISOString(),
   });
 }
 
-/**
- * Record that a human chose this status, so the next pipeline edit suggests
- * rather than overwrites.
- *
- * NB: `lastAutoStatus` is deliberately left intact. It used to be *cleared*
- * here, which removed the very hold it was meant to arm — `planStatusSync`
- * requires it to be truthy — so a hand-picked status was silently overwritten
- * by the next save. Keeping it means its divergence from the live status is
- * still a second, independent signal that someone intervened.
- */
-export function recordManualStatus(
-  leadId: string,
-  status: string,
-  heldTier: number | null,
-  now?: number,
-): void {
-  putLeadSyncMeta(leadId, {
-    manualStatus: status,
-    manualHeldTier: heldTier,
-    manualAt: new Date(now ?? Date.now()).toISOString(),
-    // The undo base described an automatic burst that this pick supersedes.
-    undoBase: undefined,
-    undoBaseAt: undefined,
-  });
-}
 
 export function dismissSuggestion(leadId: string, key: string): void {
   const meta = getLeadSyncMeta(leadId);
@@ -223,11 +185,10 @@ export function describeStatusOrigin(meta: LeadSyncMeta, currentStatus: string):
   const stamp = Number.isNaN(when.getTime())
     ? ''
     : ` · ${when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
-  if (meta.manualStatus && meta.manualStatus === currentStatus) {
-    return `Set by hand. The tracker last set it to "${meta.lastAutoStatus}"${stamp}.`;
-  }
   if (meta.lastAutoStatus !== currentStatus) {
-    return `Changed since the tracker last set it to "${meta.lastAutoStatus}"${stamp}.`;
+    // No longer "somebody changed it" — nobody can. It means an import, a seed,
+    // or a colleague's tracker edit this browser has no record of.
+    return `Out of step with the tracker, which last set it to "${meta.lastAutoStatus}"${stamp}.`;
   }
   return `Set automatically from the lead pipeline — ${meta.lastBecause ?? 'pipeline progress'}${stamp}.`;
 }

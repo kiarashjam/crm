@@ -13,7 +13,6 @@ import {
   planStatusSync,
   statusDrift,
   previewStatusChange,
-  derivedTier,
   type StatusOption,
   type StatusSyncPlan,
   type StatusDrift,
@@ -21,12 +20,11 @@ import {
 import {
   loadStatusSyncPrefs,
   loadAllSyncMeta,
-  getLeadSyncMeta,
   recordAutoStatus,
   onStatusSyncChange,
   setStatusSyncEnabled,
 } from './leadStatusSyncStore';
-import { saveLeadPipeline, undoAutoStatus } from './saveLeadPipeline';
+import { saveLeadPipeline } from './saveLeadPipeline';
 
 export interface UseLeadStatusSyncArgs {
   statusOptions: StatusOption[];
@@ -75,14 +73,6 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
     (leadId: string) => metaSnapshot[leadId]?.lastAutoStatus,
     [metaSnapshot],
   );
-  const manualFor = useCallback(
-    (leadId: string) => metaSnapshot[leadId]?.manualStatus,
-    [metaSnapshot],
-  );
-  const heldTierFor = useCallback(
-    (leadId: string) => metaSnapshot[leadId]?.manualHeldTier,
-    [metaSnapshot],
-  );
 
   /** What auto-sync would do right now, without writing anything. */
   const plan = useCallback(
@@ -95,11 +85,9 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         isConverted: lead.isConverted,
         enabled,
         lastAutoStatus: lastAutoFor(lead.id),
-        manualStatus: manualFor(lead.id),
-        manualHeldTier: heldTierFor(lead.id),
         overrides,
       }),
-    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor, manualFor, heldTierFor],
+    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
   );
 
   /** Standing disagreement between status and pipeline, computed from state. */
@@ -132,11 +120,9 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         isConverted: lead.isConverted,
         enabled,
         lastAutoStatus: lastAutoFor(lead.id),
-        manualStatus: manualFor(lead.id),
-        manualHeldTier: heldTierFor(lead.id),
         overrides,
       })?.name ?? null,
-    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor, manualFor, heldTierFor],
+    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
   );
 
   /**
@@ -167,8 +153,6 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         statusesLoaded,
         enabled,
         lastAutoStatus: lastAutoFor(lead.id),
-        manualStatus: manualFor(lead.id),
-        manualHeldTier: heldTierFor(lead.id),
         overrides,
         log: opts?.log,
       });
@@ -197,36 +181,23 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
       if (result.lead) opts?.onApplied?.(result.lead);
 
       if (!opts?.quiet && result.plan.kind === 'apply') {
-        const { to, from, derived } = result.plan;
-        // Undo target is the status from before this burst of edits, so undoing
-        // after five rapid popover commits returns the user to where they began.
-        const undoTo = getLeadSyncMeta(lead.id).undoBase ?? from;
-        let live = true;
+        const { to, derived } = result.plan;
+        // No Undo. It used to offer one, which made sense while the status was
+        // also a field somebody could set: undo meant "put my choice back". The
+        // status is now derived, so the only thing an undo could do is write a
+        // status the pipeline does not support — which the very next derivation
+        // would overwrite. The real undo is to correct the step, and the toast
+        // says which step it was.
         toast.success(`Status → ${to.name}`, {
           description: derived.conflicts.length
             ? `${derived.because}. Overrode: ${derived.conflicts.join('; ')}.`
             : derived.because,
-          action: undoTo && undoTo !== to.name
-            ? {
-                label: 'Undo',
-                onClick: () => {
-                  // Invalidate on dismiss so a stale handle cannot resurrect an
-                  // old status minutes later.
-                  if (!live) return;
-                  void undoAutoStatus(lead.id, undoTo, statusOptions, derivedTier(pipeline)).then((rev) => {
-                    if (rev) opts?.onApplied?.(rev);
-                  });
-                },
-              }
-            : undefined,
-          onDismiss: () => { live = false; },
-          onAutoClose: () => { live = false; },
         });
       }
 
       return { ok: true, lead: result.lead, plan: result.plan, stale: false };
     },
-    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor, manualFor, heldTierFor],
+    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
   );
 
   return useMemo(
