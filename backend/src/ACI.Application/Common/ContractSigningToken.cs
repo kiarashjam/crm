@@ -36,6 +36,28 @@ public static class ContractSigningToken
     /// </remarks>
     public static readonly TimeSpan Lifetime = TimeSpan.FromDays(30);
 
+    /// <summary>
+    /// How long a link stays usable after the contract is finished.
+    /// </summary>
+    /// <remarks>
+    /// Declined and countersigned are terminal: the state machine permits nothing
+    /// from them, including <c>void</c>, which is the only thing that kills a link.
+    /// So a link to a contract that had been declined stayed live for the rest of its
+    /// thirty days, exposing the full text of a dead agreement at an anonymous URL
+    /// that could not be revoked by any means the product offered.
+    ///
+    /// Cutting it to zero would be tidier and worse: somebody clicking the bookmark
+    /// they signed from would get "this link is not valid" instead of "you have
+    /// already signed this", which reads like a fault. A week is long enough to cover
+    /// that, short enough to bound the exposure, and the executed PDF they were
+    /// emailed is the copy they should be keeping anyway.
+    ///
+    /// While the contract is still live — sent, or signed and awaiting our
+    /// countersignature — a leaked link is revoked by voiding the contract, which the
+    /// state machine does permit from both.
+    /// </remarks>
+    public static readonly TimeSpan GraceAfterCompletion = TimeSpan.FromDays(7);
+
     /// <summary>A fresh URL-safe token. Return it to the caller once; never store it.</summary>
     public static string CreateRawToken()
     {

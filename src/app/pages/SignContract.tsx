@@ -16,12 +16,15 @@ import { useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   CheckCircle2, Loader2, PenLine, ShieldCheck, TriangleAlert, XCircle, FileText, Info,
+  FileDown,
 } from 'lucide-react';
 import {
-  declinePublicContract, getPublicContract, signPublicContract,
+  declinePublicContract, getPublicContract, publicContractPdfUrl, signPublicContract,
   ContractError, type PublicContract,
 } from '@/app/api/contracts';
-import { checkSignature, isSignatureNameValid } from '@/app/pages/contracts/contractLifecycle';
+import {
+  MAX_SIGNATURE_NAME_LENGTH, checkSignature, isSignatureNameValid,
+} from '@/app/pages/contracts/contractLifecycle';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
@@ -123,7 +126,14 @@ function SignedBlock({ contract }: { contract: PublicContract }) {
       </dl>
       <p className="mt-3 text-xs leading-relaxed text-emerald-800/80">
         {contract.counterSignatureName
-          ? 'A copy has been emailed to you. Keep that email as your record.'
+          // Only claimed when the server says both copies actually went. It used
+          // to state it as fact and tell them to keep the email as their record —
+          // on a deployment where the send had failed, that was an instruction to
+          // rely on something that did not exist.
+          ? contract.executedCopySentAtUtc
+            ? 'A copy has been emailed to you. Keep that email as your record.'
+            : 'Both signatures are recorded. Your copy has not been emailed yet — '
+              + `download it below, or ask ${contract.organizationName} for it.`
           : `${contract.organizationName} has been told you signed, and will add their signature. You will be emailed the finished copy.`}
       </p>
     </div>
@@ -141,6 +151,8 @@ export default function SignContract() {
   const [submitting, setSubmitting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [declining, setDeclining] = useState(false);
+  const [confirmingDecline, setConfirmingDecline] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -180,11 +192,24 @@ export default function SignContract() {
     }
   };
 
+  /**
+   * Declining, once confirmed.
+   *
+   * `declined` is terminal in the state machine: nothing at all may follow it, not
+   * even Void, and there is no un-decline anywhere in the product. So the click
+   * that reaches here has to be deliberate — see the confirmation step, which
+   * exists because this used to be a plain text button sitting in the same row as
+   * Sign, one mis-aimed click from ending the agreement forever.
+   *
+   * The reason is asked for at the same time. The API has always accepted one and
+   * the CRM has always displayed it; nothing was ever sending it, so every decline
+   * arrived with no explanation at all.
+   */
   const decline = async () => {
     setDeclining(true);
     setProblem(null);
     try {
-      setContract(await declinePublicContract(token));
+      setContract(await declinePublicContract(token, declineReason.trim() || undefined));
     } catch (e) {
       setProblem(e instanceof ContractError ? e.message : 'That could not be recorded.');
     } finally {
@@ -248,6 +273,23 @@ export default function SignContract() {
 
         <div className="mt-6">
           <ContractBody body={contract.body} />
+          {/* Their own copy, before and after signing. Signing something you could
+              not keep a copy of is a reasonable thing to hesitate over, and the
+              PDF is the readable version of the same words shown above. */}
+          <a
+            href={publicContractPdfUrl(token)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              'mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white',
+              'px-3 py-1.5 text-xs font-semibold text-slate-600',
+              'transition hover:border-slate-300 hover:text-slate-900',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+            )}
+          >
+            <FileDown className="h-3.5 w-3.5" aria-hidden />
+            {alreadySigned ? 'Download your signed copy (PDF)' : 'Download a copy to read (PDF)'}
+          </a>
         </div>
 
         <div className="mt-6">
@@ -281,6 +323,7 @@ export default function SignContract() {
                 value={name}
                 onChange={(e) => { setName(e.target.value); setProblem(null); }}
                 placeholder="e.g. Jean Dupont"
+                maxLength={MAX_SIGNATURE_NAME_LENGTH}
                 autoComplete="name"
                 aria-describedby="signature-help"
                 className={cn(
@@ -320,15 +363,64 @@ export default function SignContract() {
                     ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> Recording your signature…</>
                     : <><ShieldCheck className="mr-2 h-4 w-4" aria-hidden /> Sign the contract</>}
                 </Button>
-                <button
-                  type="button"
-                  onClick={() => void decline()}
-                  disabled={declining}
-                  className="text-sm font-medium text-slate-500 underline-offset-4 hover:text-slate-800 hover:underline"
-                >
-                  {declining ? 'Recording…' : 'I do not want to sign this'}
-                </button>
+                {!confirmingDecline && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDecline(true)}
+                    className="text-sm font-medium text-slate-500 underline-offset-4 hover:text-slate-800 hover:underline"
+                  >
+                    I do not want to sign this
+                  </button>
+                )}
               </div>
+
+              {/* The second step. Declining cannot be undone by anybody, so it is
+                  not something to do by mis-aiming at the button beside Sign. */}
+              {confirmingDecline && (
+                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                  <h3 className="text-sm font-bold text-rose-900">Decline this contract?</h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-rose-800">
+                    This closes the contract for good — {contract.organizationName} would have
+                    to send you a new one. If you only want a change made, reply to their
+                    email instead.
+                  </p>
+                  <label htmlFor="decline-reason" className="mt-3 block text-xs font-medium text-rose-900">
+                    Why, if you would like to say? <span className="font-normal opacity-70">(optional)</span>
+                  </label>
+                  <textarea
+                    id="decline-reason"
+                    rows={2}
+                    value={declineReason}
+                    onChange={(e) => setDeclineReason(e.target.value)}
+                    maxLength={1000}
+                    placeholder="e.g. the fee is more than we budgeted for"
+                    className={cn(
+                      'mt-1 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm text-slate-800',
+                      'focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100',
+                    )}
+                  />
+                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                    <Button
+                      type="button"
+                      onClick={() => void decline()}
+                      disabled={declining}
+                      className="h-10 bg-rose-600 px-4 font-semibold hover:bg-rose-500"
+                    >
+                      {declining
+                        ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> Recording…</>
+                        : 'Yes, decline it'}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => { setConfirmingDecline(false); setDeclineReason(''); }}
+                      disabled={declining}
+                      className="text-sm font-medium text-slate-600 underline-offset-4 hover:text-slate-900 hover:underline"
+                    >
+                      Keep reading
+                    </button>
+                  </div>
+                </div>
+              )}
             </form>
             </>
           )}

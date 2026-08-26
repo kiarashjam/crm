@@ -1,3 +1,4 @@
+using System.Text;
 using ACI.Domain.Entities;
 
 namespace ACI.Application.Common;
@@ -102,19 +103,54 @@ public static class ContractStateMachine
     }
 
     /// <summary>
+    /// The widest a typed signature may be, matching the database column.
+    /// </summary>
+    /// <remarks>
+    /// Enforced HERE rather than left to the column, because the column raises
+    /// "String or binary data would be truncated" — a 500 from the anonymous
+    /// signing endpoint, at the exact moment somebody is trying to sign. The
+    /// signer should be told their name is too long, under the field.
+    /// </remarks>
+    public const int MaxSignatureNameLength = 300;
+
+    /// <summary>
     /// A typed signature has to be a plausible name rather than a placeholder,
     /// because that mark is the entire substance of the signature.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Deliberately NOT a check that it matches the name on file: people sign as
     /// "J. Dupont" for "Jean Dupont", and refusing that would block a real
     /// signing over a formatting opinion. Mirrors <c>isSignatureNameValid</c>.
+    /// </para>
+    /// <para>
+    /// Control characters are refused because the signature is interpolated,
+    /// line by line, into the SIGNATURE RECORD that goes to both parties as
+    /// evidence. A name containing newlines could forge lines in it — a second
+    /// "Signed:" with an earlier date, a different document hash, a "Note:"
+    /// reserving a clause — and the record would carry them looking exactly as
+    /// authoritative as the real ones.
+    /// </para>
+    /// <para>
+    /// Letters are counted by RUNE, not by UTF-16 unit. Counting units made the
+    /// server disagree with the client's <c>/\p{L}/gu</c> for any script outside
+    /// the basic plane: a name in Adlam is two letters to the browser and zero
+    /// to <c>char.IsLetter</c>, so the page submitted a signature the server
+    /// then refused as a placeholder.
+    /// </para>
     /// </remarks>
     public static bool IsSignatureNameValid(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return false;
         var trimmed = name.Trim();
-        if (trimmed.Length < 2) return false;
-        return trimmed.Count(char.IsLetter) >= 2;
+        if (trimmed.Length is < 2 or > MaxSignatureNameLength) return false;
+
+        var letters = 0;
+        foreach (var rune in trimmed.EnumerateRunes())
+        {
+            if (Rune.IsControl(rune)) return false;
+            if (Rune.IsLetter(rune)) letters++;
+        }
+        return letters >= 2;
     }
 }

@@ -18,6 +18,16 @@ export type ContractStatus = 'yes' | 'to_be_sent' | 'profile_rejected' | 'no_lon
 export type ContractSigned = 'yes' | 'pending' | 'no';
 
 /**
+ * Phase 5, shaped like phase 4 rather than as a boolean.
+ *
+ * `depositPaid?: boolean` could not tell "not paid yet" apart from "they never
+ * paid and they are gone", so phase 5 was the one stage with no way to record a
+ * failure at all. Legacy `false` normalises to `pending` — the reading that does
+ * not retroactively mark existing leads as lost.
+ */
+export type DepositStatus = 'paid' | 'pending' | 'not_paid';
+
+/**
  * Why a lead walked away. ONE list, used at both the Meeting and the Contract
  * phase — asked for explicitly so drop-off reasons stay comparable across
  * stages instead of becoming two vocabularies that cannot be reported together.
@@ -31,10 +41,53 @@ export const DROPOUT_REASON_LABELS: Record<DropoutReason, string> = {
   other: 'Other',
 };
 
-/** Menu order, so both phases present the options identically. */
+/** Menu order, so every phase presents the options identically. */
 export const DROPOUT_REASONS: DropoutReason[] = [
   'has_kids', 'not_within_budget', 'too_soon', 'other',
 ];
+
+/**
+ * Why WE turned them down — a different question, so a different list.
+ *
+ * The drop-out reasons above are all the customer's: has kids, not within
+ * budget, too soon. None of them is something we would be reporting about our
+ * OWN decision to reject an application, and forcing that list onto a rejection
+ * would produce a report that reads as customer sentiment while actually
+ * recording our admissions policy.
+ */
+export type RejectionReason =
+  | 'does_not_meet_criteria'
+  | 'incomplete_application'
+  | 'references_or_background'
+  | 'no_capacity'
+  | 'conduct_or_conflict'
+  | 'other';
+
+export const REJECTION_REASON_LABELS: Record<RejectionReason, string> = {
+  does_not_meet_criteria: 'Does not meet membership criteria',
+  incomplete_application: 'Application incomplete',
+  references_or_background: 'References or background check',
+  no_capacity: 'No capacity / waiting list',
+  conduct_or_conflict: 'Conduct or conflict of interest',
+  other: 'Other',
+};
+
+export const REJECTION_REASONS: RejectionReason[] = [
+  'does_not_meet_criteria', 'incomplete_application', 'references_or_background',
+  'no_capacity', 'conduct_or_conflict', 'other',
+];
+
+/** Who ended it, and therefore which list of reasons applies. */
+export type FailureKind = 'dropout' | 'rejection';
+
+/** A recorded failure: where it happened and whose decision it was. */
+export interface FailurePoint {
+  /** 1-based phase. */
+  phase: number;
+  kind: FailureKind;
+  /** What was recorded, in words. */
+  label: string;
+}
 
 export interface LeadPipeline {
   // Phase 1 — Outreach
@@ -52,6 +105,11 @@ export interface LeadPipeline {
   contractSigned?: ContractSigned;
   signatureDate?: string;
   // Phase 5 — Deposit
+  depositStatus?: DepositStatus;
+  /**
+   * Legacy. Read on parse and normalised into `depositStatus`; never written.
+   * Kept on the type so old JSON still type-checks where it is read.
+   */
   depositPaid?: boolean;
   paymentDate?: string;
 
@@ -70,6 +128,12 @@ export interface LeadPipeline {
    * produce it and quietly corrupt the very report this field exists to feed.
    */
   dropoutReasonPhase?: number;
+
+  // ── Why we rejected them ───────────────────────────────────────────────────
+  /** From the rejection list. Mandatory once a rejection is recorded. */
+  rejectionReason?: RejectionReason;
+  /** Free text, mandatory when the rejection reason is `other`. */
+  rejectionReasonOther?: string;
 }
 
 export const PHASE_TITLES = ['Outreach', 'Meeting', 'Contract', 'Signature', 'Deposit'] as const;
@@ -94,15 +158,41 @@ export const SIGNED_LABELS: Record<ContractSigned, string> = {
   pending: 'Pending',
   no: 'Not signed',
 };
+export const DEPOSIT_LABELS: Record<DepositStatus, string> = {
+  paid: 'Paid',
+  pending: 'Not paid yet',
+  not_paid: 'Never paid',
+};
 
 export function parsePipeline(raw?: string | null): LeadPipeline {
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw) as LeadPipeline;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    return normalise(parsed);
   } catch {
     return {};
   }
+}
+
+/**
+ * Folds legacy shapes into the current one, at the ONE boundary where raw JSON
+ * becomes a pipeline.
+ *
+ * Doing it here rather than at each reader is the whole point: a codebase that
+ * checks `depositPaid === true || depositStatus === 'paid'` in nine places has
+ * nine chances to forget one. Everything past this function sees only
+ * `depositStatus`.
+ *
+ * Legacy `false` becomes `pending`, not `not_paid`. It was written when there was
+ * no way to say "they never paid", so reading it as a failure now would mark
+ * existing leads lost retroactively.
+ */
+function normalise(p: LeadPipeline): LeadPipeline {
+  if (p.depositStatus === undefined && typeof p.depositPaid === 'boolean') {
+    return { ...p, depositStatus: p.depositPaid ? 'paid' : 'pending' };
+  }
+  return p;
 }
 
 export function serializePipeline(p: LeadPipeline): string {
@@ -115,7 +205,7 @@ export function phaseCompletion(p: LeadPipeline): boolean[] {
   const p2 = p.meetingAttended === true && p.stillInterested === true;
   const p3 = p.contractStatus === 'yes' && !!p.contractSentDate;
   const p4 = p.contractSigned === 'yes' && !!p.signatureDate;
-  const p5 = p.depositPaid === true && !!p.paymentDate;
+  const p5 = p.depositStatus === 'paid' && !!p.paymentDate;
   return [p1, p2, p3, p4, p5];
 }
 
@@ -142,6 +232,8 @@ const LOST_RULES: { phase: number; reason: string; hit: (p: LeadPipeline) => boo
   { phase: 3, reason: 'Profile rejected', hit: (p) => p.contractStatus === 'profile_rejected' },
   { phase: 3, reason: 'No longer interested', hit: (p) => p.contractStatus === 'no_longer_interested' },
   { phase: 4, reason: 'Contract declined', hit: (p) => p.contractSigned === 'no' },
+  // Phase 5 had no failure rule at all, because a boolean could not express one.
+  { phase: 5, reason: 'Deposit never paid', hit: (p) => p.depositStatus === 'not_paid' },
 ];
 
 /**
@@ -166,40 +258,98 @@ export function lostPhase(p: LeadPipeline): number | null {
 }
 
 /**
- * The phases at which the customer can tell us they are out, and therefore the
- * phases that ask for a reason. Both use the same question in different words:
- * "still interested?" → No, and "contract status" → No longer interested.
+ * Every way a lead can fail, deepest phase first, with whose decision it was.
  *
- * `profile_rejected` is deliberately NOT here. That is us declining them, not
- * them declining us, and none of the shared reasons ("has kids", "not within
- * budget", "too soon") is something we would be reporting about our own
- * decision.
+ * ONE ordered table, so "which phase failed", "which reason list applies" and
+ * "is a reason owed" cannot disagree — they are three projections of this list.
+ *
+ * Deepest first, matching the stage derivation: the newest recorded fact is the
+ * one that describes where the lead actually stopped.
+ *
+ * A rejection draws on a different vocabulary because it answers a different
+ * question. "Profile rejected" is us declining them, and none of the drop-out
+ * reasons — has kids, not within budget, too soon — is something we would be
+ * reporting about our own admissions decision.
  */
-export function dropoutPhaseFor(p: LeadPipeline): number | null {
-  if (p.stillInterested === false) return 2;
-  if (p.contractStatus === 'no_longer_interested') return 3;
-  return null;
+const FAILURE_RULES: (FailurePoint & { hit: (p: LeadPipeline) => boolean })[] = [
+  {
+    phase: 5, kind: 'dropout', label: 'Deposit never paid',
+    hit: (p) => p.depositStatus === 'not_paid',
+  },
+  {
+    phase: 4, kind: 'dropout', label: 'Contract declined',
+    hit: (p) => p.contractSigned === 'no',
+  },
+  {
+    phase: 3, kind: 'rejection', label: 'Profile rejected',
+    hit: (p) => p.contractStatus === 'profile_rejected',
+  },
+  {
+    phase: 3, kind: 'dropout', label: 'No longer interested',
+    hit: (p) => p.contractStatus === 'no_longer_interested',
+  },
+  {
+    phase: 2, kind: 'dropout', label: 'Not interested after the meeting',
+    hit: (p) => p.stillInterested === false,
+  },
+  {
+    phase: 1, kind: 'dropout', label: 'Not interested at outreach',
+    hit: (p) => p.contactOutcome === 'not_interested',
+  },
+];
+
+/**
+ * The failure this pipeline records, or null while the lead is still live.
+ *
+ * A bare no-show is deliberately NOT a failure. A missed meeting often just
+ * needs rescheduling, and every phase now has an explicit way to say "they are
+ * out" — so silence about intent means the lead is still open, not lost.
+ */
+export function failurePointFor(p: LeadPipeline): FailurePoint | null {
+  const hit = FAILURE_RULES.find((r) => r.hit(p));
+  return hit ? { phase: hit.phase, kind: hit.kind, label: hit.label } : null;
 }
 
-/** True when a drop-out has been recorded, so a reason is owed. */
+/** The 1-based phase a failure was recorded at, or null. */
+export function dropoutPhaseFor(p: LeadPipeline): number | null {
+  return failurePointFor(p)?.phase ?? null;
+}
+
+/** True when a failure has been recorded, so a reason is owed. */
 export function isReasonRequired(p: LeadPipeline): boolean {
-  return dropoutPhaseFor(p) !== null;
+  return failurePointFor(p) !== null;
 }
 
 /**
  * True when the reason requirement is satisfied — including the free-text box,
  * which is mandatory in its own right once "Other" is chosen. An "Other" with
  * nothing typed is the exact hole this check exists to close.
+ *
+ * Reads whichever field the failure's own vocabulary lives in, so a rejection
+ * cannot be satisfied by a drop-out reason left over from an earlier phase.
  */
 export function isReasonComplete(p: LeadPipeline): boolean {
-  if (!isReasonRequired(p)) return true;
+  const failure = failurePointFor(p);
+  if (!failure) return true;
+  if (failure.kind === 'rejection') {
+    if (!p.rejectionReason) return false;
+    return p.rejectionReason === 'other' ? !!p.rejectionReasonOther?.trim() : true;
+  }
   if (!p.dropoutReason) return false;
-  if (p.dropoutReason === 'other') return !!p.dropoutReasonOther?.trim();
-  return true;
+  return p.dropoutReason === 'other' ? !!p.dropoutReasonOther?.trim() : true;
 }
 
 /** The recorded reason as one readable string, or null if none is on record. */
 export function dropoutReasonText(p: LeadPipeline): string | null {
+  const failure = failurePointFor(p);
+  if (failure?.kind === 'rejection') {
+    if (!p.rejectionReason) return null;
+    if (p.rejectionReason === 'other') {
+      const t = p.rejectionReasonOther?.trim();
+      return t ? t : null;
+    }
+    return REJECTION_REASON_LABELS[p.rejectionReason];
+  }
   if (!p.dropoutReason) return null;
   if (p.dropoutReason === 'other') {
     const t = p.dropoutReasonOther?.trim();
@@ -247,49 +397,73 @@ export interface ReasonByStageRow {
   /** 1-based phase the reason was captured at. */
   phase: number;
   phaseTitle: string;
-  /** Count per reason, plus how many drop-outs at this phase have no reason yet. */
-  counts: Record<DropoutReason, number>;
+  /** Whose decision these are — the two are never mixed in one row. */
+  kind: FailureKind;
+  /** Count per reason, plus how many failures at this phase have no reason yet. */
+  counts: Record<string, number>;
   missing: number;
   total: number;
 }
 
 /**
- * Drop-off reasons broken down by the stage they were logged at — the report
- * the phase tag exists to make possible.
+ * Failure reasons broken down by the stage they were logged at.
  *
- * `missing` is reported rather than hidden: a stage with fifteen drop-outs and
+ * Every phase now, not just two. Phase 1 was the largest source of drop-off and
+ * used to be invisible here because it never asked for a reason; phase 5 could
+ * not record a failure at all.
+ *
+ * Drop-outs and rejections are reported as SEPARATE rows even at the same phase.
+ * Adding "profile rejected" into the same bucket as "not within budget" would
+ * produce a chart that reads as customer sentiment while half of it is our own
+ * admissions decisions.
+ *
+ * `missing` is reported rather than hidden: a stage with fifteen failures and
  * eleven reasons is a data-collection problem, and rounding it away would make
  * the chart look complete while the insight is still missing.
  */
 export function dropoutReasonBreakdown(pipelines: LeadPipeline[]): ReasonByStageRow[] {
-  const empty = (): Record<DropoutReason, number> =>
-    ({ has_kids: 0, not_within_budget: 0, too_soon: 0, other: 0 });
+  const key = (phase: number, kind: FailureKind) => `${phase}:${kind}`;
+  const rows = new Map<string, ReasonByStageRow>();
 
-  const rows = new Map<number, ReasonByStageRow>();
-  for (const phase of [2, 3]) {
-    rows.set(phase, {
-      phase,
-      phaseTitle: PHASE_TITLES[phase - 1] ?? `Phase ${phase}`,
-      counts: empty(),
-      missing: 0,
-      total: 0,
-    });
-  }
+  const ensure = (phase: number, kind: FailureKind): ReasonByStageRow => {
+    const k = key(phase, kind);
+    let row = rows.get(k);
+    if (!row) {
+      const vocabulary = kind === 'rejection' ? REJECTION_REASONS : DROPOUT_REASONS;
+      row = {
+        phase,
+        phaseTitle: PHASE_TITLES[phase - 1] ?? `Phase ${phase}`,
+        kind,
+        counts: Object.fromEntries(vocabulary.map((r) => [r, 0])),
+        missing: 0,
+        total: 0,
+      };
+      rows.set(k, row);
+    }
+    return row;
+  };
 
   for (const p of pipelines) {
-    const at = dropoutPhaseFor(p);
-    if (at === null) continue;
-    // Attribute to the tagged phase when one is recorded, else to the phase that
-    // currently shows the drop-out. Old rows written before tagging existed have
-    // no tag, and dropping them would understate every total.
-    const key = p.dropoutReasonPhase ?? at;
-    const row = rows.get(key) ?? rows.get(at)!;
+    const failure = failurePointFor(p);
+    if (!failure) continue;
+
+    // Attribute a drop-out to the phase it was TAGGED at when one is recorded, so
+    // an explanation given at outreach is not re-attributed to a later phase that
+    // merely tidied up the record afterwards. Rows written before tagging existed
+    // have no tag, and dropping them would understate every total.
+    const phase = failure.kind === 'dropout' ? p.dropoutReasonPhase ?? failure.phase : failure.phase;
+    const row = ensure(phase, failure.kind);
     row.total += 1;
-    if (isReasonComplete(p) && p.dropoutReason) row.counts[p.dropoutReason] += 1;
+
+    const picked = failure.kind === 'rejection' ? p.rejectionReason : p.dropoutReason;
+    if (isReasonComplete(p) && picked) row.counts[picked] = (row.counts[picked] ?? 0) + 1;
     else row.missing += 1;
   }
 
-  return [...rows.values()];
+  // Phase order, then drop-outs before rejections within a phase, so the table
+  // reads down the funnel.
+  return [...rows.values()].sort((a, b) =>
+    a.phase - b.phase || (a.kind === b.kind ? 0 : a.kind === 'dropout' ? -1 : 1));
 }
 
 /** One recorded fact inside a phase. */
@@ -365,7 +539,11 @@ export function phaseSteps(p: LeadPipeline): PhaseStep[][] {
       { label: 'Signature date', done: !!p.signatureDate, value: shortDate(p.signatureDate) },
     ],
     [
-      { label: 'Deposit', done: p.depositPaid === true, value: bool(p.depositPaid, 'Paid', 'Not paid') },
+      {
+        label: 'Deposit',
+        done: p.depositStatus === 'paid',
+        value: p.depositStatus ? DEPOSIT_LABELS[p.depositStatus] : null,
+      },
       { label: 'Payment date', done: !!p.paymentDate, value: shortDate(p.paymentDate) },
     ],
   ];
@@ -434,7 +612,7 @@ export function phaseCaptions(p: LeadPipeline): string[] {
           const d = shortDate(p.paymentDate);
           return d ? `Deposit paid ${d}` : 'Deposit paid';
         }
-        if (p.depositPaid === true) return 'Waiting on: the payment date';
+        if (p.depositStatus === 'paid') return 'Waiting on: the payment date';
         return 'Waiting on: the deposit';
       }
     }

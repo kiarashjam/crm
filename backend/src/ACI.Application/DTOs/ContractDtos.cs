@@ -28,6 +28,22 @@ public record ContractEventDto(
 /// SMTP is unconfigured the CRM user needs to be able to pass the link on by
 /// hand rather than believe a send that never happened.
 /// </param>
+/// <param name="SigningLinkExpiresAtUtc">
+/// When the counterparty's link stops working.
+///
+/// Carried so the CRM can tell "waiting on them" apart from "they can no longer
+/// open it". Without it the panel kept reporting that the counterparty was
+/// holding things up for a month after their link had died, while the signing
+/// page was telling them to ask for a new one.
+/// </param>
+/// <param name="BodyMatchesHashAtSend">
+/// Whether the stored text still hashes to what was frozen at send.
+///
+/// False means the body has been altered since the counterparty was asked to
+/// sign — which the state machine forbids, so it can only have happened outside
+/// the application. The hash is printed to both parties as tamper-evidence, and
+/// evidence nobody checks is decoration.
+/// </param>
 public record ContractDto(
     Guid Id,
     Guid? LeadId,
@@ -50,6 +66,8 @@ public record ContractDto(
     IReadOnlyList<string> AllowedActions,
     IReadOnlyList<string> UnresolvedFields,
     string? SigningUrl,
+    DateTime? SigningLinkExpiresAtUtc,
+    bool BodyMatchesHashAtSend,
     IReadOnlyList<ContractEventDto> Events
 );
 
@@ -72,6 +90,15 @@ public record PublicContractDto(
     DateTime? ClientSignedAtUtc,
     string? CounterSignatureName,
     DateTime? CounterSignedAtUtc,
+    /// <summary>
+    /// When the finished copy was emailed to both parties, or null if it was not.
+    /// </summary>
+    /// <remarks>
+    /// The one extra fact the signer needs, and no more. The page used to tell
+    /// them a copy had been emailed and to keep it as their record — stated as
+    /// fact, on a deployment where the send had failed and nothing had arrived.
+    /// </remarks>
+    DateTime? ExecutedCopySentAtUtc,
     /// <summary>True while this link can still be used to sign.</summary>
     bool CanSign,
     /// <summary>Why not, when it cannot — expired, already signed, voided.</summary>
@@ -130,3 +157,45 @@ public record SendContractResult(
     bool EmailSent,
     string SigningUrl
 );
+
+/// <summary>A rendered contract document, ready to be sent to a browser.</summary>
+/// <param name="FileName">
+/// What it saves as. Already restricted to filename-safe characters, because it
+/// goes into a Content-Disposition header where a quote or a semicolon in a
+/// contract title would otherwise break out.
+/// </param>
+/// <param name="ContentType">Always <c>application/pdf</c> today.</param>
+/// <param name="Content">The bytes.</param>
+public sealed record ContractDocument(string FileName, string ContentType, byte[] Content)
+{
+    /// <summary>
+    /// A <c>Content-Disposition</c> value that is legal AND keeps the real name.
+    /// </summary>
+    /// <remarks>
+    /// The plain <c>filename</c> parameter must be ASCII: a header carrying anything
+    /// else makes Kestrel throw, which is what turned every PDF download for an
+    /// accented counterparty name into a 500 — and accented names are most of the
+    /// names here. Stripping the accents and stopping there would hand somebody a
+    /// file called "Ana-s", so both forms go out as RFC 6266 intends:
+    /// <c>filename</c> as the ASCII fallback, and <c>filename*</c> as percent-encoded
+    /// UTF-8, which every browser of the last decade prefers.
+    ///
+    /// Inline rather than attachment, because the common case is reading the
+    /// contract, not filing it — a click should open the viewer, not drop a file in
+    /// Downloads.
+    ///
+    /// Lives here rather than in each controller so the CRM download and the
+    /// signer's download cannot drift apart, and so one test covers both.
+    /// </remarks>
+    public string InlineContentDisposition
+    {
+        get
+        {
+            var ascii = new string(FileName
+                .Where(c => c is >= ' ' and < '\u007F' and not '"' and not ';' and not '\\')
+                .ToArray());
+            if (ascii.Length == 0) ascii = "contract.pdf";
+            return $"inline; filename=\"{ascii}\"; filename*=UTF-8''{Uri.EscapeDataString(FileName)}";
+        }
+    }
+}

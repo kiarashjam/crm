@@ -55,6 +55,17 @@ public static class ResultExtensions
     /// <summary>
     /// Converts an Error to a ProblemDetails ObjectResult.
     /// </summary>
+    /// <summary>
+    /// The error as a ProblemDetails response.
+    /// </summary>
+    /// <remarks>
+    /// Public because an endpoint that returns something other than JSON — a file
+    /// download, say — cannot use <c>ToActionResult</c>, whose generic parameter is
+    /// the success type. Its failure branch still has to look identical to every
+    /// other endpoint's, so it comes through here rather than being hand-rolled.
+    /// </remarks>
+    public static ObjectResult ToProblemResult(this Error error) => ToProblemDetails(error);
+
     private static ObjectResult ToProblemDetails(Error error)
     {
         var statusCode = GetStatusCode(error.Code);

@@ -137,6 +137,27 @@ public class ContractsController : ControllerBase
         return result.ToActionResult();
     }
 
+    /// <summary>
+    /// The contract as a PDF, for downloading.
+    /// </summary>
+    /// <remarks>
+    /// Available in every state. A draft downloads watermarked, so what a CRM user
+    /// reviews on paper is exactly the sheet their counterparty will receive, and an
+    /// unsigned copy cannot be passed off as an executed one.
+    /// </remarks>
+    [HttpGet("{id:guid}/pdf")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken ct)
+    {
+        var orgId = _currentUser.CurrentOrganizationId;
+        if (orgId is null) return Unauthorized();
+
+        var result = await _contracts.GetDocumentAsync(id, orgId.Value, ct);
+        if (result.IsFailure) return result.Error.ToProblemResult();
+        return DocumentFile(result.Value);
+    }
+
     /// <summary>Withdraws the contract and kills its signing link.</summary>
     [HttpPost("{id:guid}/void")]
     [ProducesResponseType(typeof(ContractDto), StatusCodes.Status200OK)]
@@ -149,6 +170,22 @@ public class ContractsController : ControllerBase
         var result = await _contracts.VoidAsync(id, userId.Value, orgId.Value, request.Reason, ct);
         return result.ToActionResult();
     }
+
+
+    /// <summary>
+    /// Returns a rendered document as a file.
+    /// </summary>
+    /// <remarks>
+    /// The filename is built by the service and already ASCII-folded, because a
+    /// header carrying anything else makes Kestrel throw.
+    /// </remarks>
+    private FileContentResult DocumentFile(ContractDocument document)
+    {
+        Response.Headers.ContentDisposition = document.InlineContentDisposition;
+        return File(document.Content, document.ContentType);
+    }
+
+
 
     /// <summary>
     /// The caller's address for the audit trail.

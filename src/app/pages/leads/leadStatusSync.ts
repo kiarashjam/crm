@@ -84,11 +84,14 @@ export interface DerivedStage {
   /** Terminal stages halt forward progress (lost / unqualified). */
   terminal: boolean;
   /**
-   * `explicit` — the user stated this outcome, so it is safe to act on.
-   * `inferred` — we deduced it from an absence (a bare no-show with no word on
-   * interest). Never auto-written; only ever offered as a suggestion.
+   * Always `explicit` now, and kept only so the shape is stable for callers.
+   *
+   * It used to distinguish a stage we had DEDUCED from an absence — a bare
+   * no-show — which was withheld as a suggestion rather than written. There is
+   * no such case left: every phase has an explicit failure option, so an absence
+   * of bad news now means the lead is still open rather than probably lost.
    */
-  certainty: 'explicit' | 'inferred';
+  certainty: 'explicit';
   /**
    * Human-readable cause, always describing the signal that actually decided
    * this stage. Deliberately NOT `lostReason()`: that scans shallowest-first
@@ -158,6 +161,7 @@ function negativeSignals(p: LeadPipeline): string[] {
   if (p.contractStatus === 'profile_rejected') out.push('Profile rejected');
   if (p.contractStatus === 'no_longer_interested') out.push('No longer interested');
   if (p.contractSigned === 'no') out.push('Contract declined');
+  if (p.depositStatus === 'not_paid') out.push('Deposit never paid');
   return out;
 }
 
@@ -193,13 +197,21 @@ export function deriveStage(p: LeadPipeline): DerivedStage {
 
 function deriveStageCore(p: LeadPipeline): StageCore {
   // ── Phase 5 — Deposit ──
-  // `false` is not decisive: "not paid yet" is the default, not a setback.
-  if (p.depositPaid === true) {
+  if (p.depositStatus === 'paid') {
     return {
       stage: 'deposit_paid', phase: 5, terminal: false, certainty: 'explicit',
       because: 'Deposit paid', rule: 'phase5_deposit_paid',
     };
   }
+  if (p.depositStatus === 'not_paid') {
+    // The deepest failure there is, and until phase 5 gained a third value there
+    // was no way to record it: a boolean could not tell "not yet" from "never".
+    return {
+      stage: 'lost', phase: 5, terminal: true, certainty: 'explicit',
+      because: 'Deposit never paid', rule: 'phase5_deposit_never_paid',
+    };
+  }
+  // `pending` is not decisive: "not paid yet" is the default, not a setback.
 
   // ── Phase 4 — Signature ──
   if (p.contractSigned === 'yes') {
@@ -282,11 +294,18 @@ function deriveStageCore(p: LeadPipeline): StageCore {
     };
   }
   if (p.meetingAttended === false) {
-    // A missed meeting with no word on interest yet. Real, but ambiguous — the
-    // lead may simply need rescheduling, so this is never auto-written.
+    // A missed meeting, with no word yet on whether they are still interested.
+    //
+    // This used to derive `lost` and be withheld as a guess, which was the one
+    // remaining case where recording a step did NOT move the status. Now that
+    // every phase has an explicit way to say "they are out", silence about
+    // intent means the lead is still open: a no-show usually needs rescheduling,
+    // not writing off. So it reads as real, non-terminal progress — we have
+    // spoken to them, the meeting did not happen — and the rep who means "gone"
+    // says so with the failure option.
     return {
-      stage: 'lost', phase: 2, terminal: true, certainty: 'inferred',
-      because: 'No-show at meeting', rule: 'phase2_no_show',
+      stage: 'contacted', phase: 2, terminal: false, certainty: 'explicit',
+      because: 'Missed the meeting', rule: 'phase2_no_show',
     };
   }
 
@@ -527,13 +546,30 @@ export type SkipReason =
   | 'unresolvable'
   | 'noop';
 
+/**
+ * Why a derived status was NOT written.
+ *
+ * This list used to be six long, because the status was also editable by hand
+ * and most of the ladder existed to avoid overwriting somebody's decision. The
+ * status is now derived and read-only, so:
+ *
+ *   · `manual_change` has no producer — nobody can pick a status any more.
+ *   · `would_regress` is wrong. Correcting a step you mis-recorded SHOULD move
+ *     the status back; forward-only made an undo silently fail.
+ *   · `inferred` has no producer — a bare no-show is explicit progress now.
+ *   · `vocabulary_mismatch` withheld a write whenever the org's own display
+ *     order disagreed with our tier opinion, which contradicts the whole point:
+ *     every recorded step must move the status. Stage-to-status pinning is the
+ *     right tool for an unusual ladder, and it already exists.
+ *
+ * What remains are the two cases that are not about progress at all. A status
+ * meaning "deliberately parked" — do not contact, on hold, junk — outranks any
+ * inference from a sales pipeline, and an unrecognised status gets the same
+ * protection because a blocklist is never complete.
+ */
 export type SuggestReason =
-  | 'inferred'
-  | 'would_regress'
   | 'sticky_status'
-  | 'unrecognised_status'
-  | 'manual_change'
-  | 'vocabulary_mismatch';
+  | 'unrecognised_status';
 
 export interface StatusSyncActivity {
   subject: string;
@@ -575,21 +611,12 @@ export interface StatusSyncContext {
   isConverted?: boolean;
   /** Per-user opt-out. */
   enabled?: boolean;
-  /** The status this feature last wrote for the lead. When the live status has
-   *  since diverged, a human changed it by hand (possibly on another device) —
-   *  so we suggest instead of overwriting their decision. */
-  lastAutoStatus?: string;
-  /** A status the user picked deliberately. Unlike `lastAutoStatus` divergence,
-   *  this also protects a lead auto-sync has never written to. */
-  manualStatus?: string;
   /**
-   * The pipeline's derived tier at the moment of that pick, or null if it was
-   * terminal / unrankable. The hold releases only when the pipeline climbs
-   * ABOVE this — not above the picked status itself, which would void the hold
-   * immediately: auto-sync had already derived something higher, which is why it
-   * wrote in the first place.
+   * The status this feature last wrote. Kept for the activity trail and for
+   * drift reporting; it is no longer a hold, because a divergence can no longer
+   * mean "a human changed it" — nobody can.
    */
-  manualHeldTier?: number | null;
+  lastAutoStatus?: string;
   /** Org-level stage → status-name pins. */
   overrides?: Partial<Record<CanonicalStage, string>>;
 }
@@ -642,78 +669,14 @@ export function planStatusSync(ctx: StatusSyncContext): StatusSyncPlan {
   if (norm(to.name) === norm(from)) return { kind: 'skip', reason: 'noop', derived };
 
   const fromStage = from ? classifyStatusLabel(from) : 'new';
-  const fromTier = fromStage ? STAGE_TIER[fromStage] : null;
-  const toTier = STAGE_TIER[to.canonical];
-  const advancesBeyond = toTier !== null && fromTier !== null && toTier > fromTier;
 
-  // Collect EVERY applicable hold, not just the first, so the UI can explain all
-  // of them and the user is never left clicking one release with no effect.
+  // The only two holds left, and neither is about progress. A lead somebody
+  // parked — do not contact, on hold, junk — must not be dragged back into the
+  // funnel by a sales step, and an unfamiliar status gets the same protection
+  // because a list of parking labels is never complete.
   const reasons: SuggestReason[] = [];
-
-  // A deliberately parked lead is never restatused automatically.
   if (isStickyStatus(from)) reasons.push('sticky_status');
-
-  // An unfamiliar status is treated as deliberate too — blocklists are never
-  // complete, so anything we cannot classify gets the same protection.
   if (from && fromStage === null) reasons.push('unrecognised_status');
-
-  // A human chose the current status. Two independent signals, because either
-  // alone leaves a hole:
-  //   · `manualStatus` — we recorded the pick here. Works even for a lead
-  //     auto-sync has never written to.
-  //   · `lastAutoStatus` divergence — the live status is not what we last wrote,
-  //     so *someone* changed it, including on a device whose localStorage we
-  //     cannot see.
-  //
-  // The hold is RELEASABLE: it lasts only while the pipeline has not moved past
-  // the status they chose, so a lead someone once touched by hand does not sit
-  // in suggest-mode forever — exactly the leads that get worked the most.
-  //
-  // A hand-set TERMINAL (Lost / Unqualified) therefore holds until the pipeline
-  // records something genuinely deeper than it had when the lead was written
-  // off — a banked deposit does outrank a write-off, but merely re-saving the
-  // same phases does not. The drift strip offers one-click revival regardless.
-  const humanPicked = !!ctx.manualStatus && norm(from) === norm(ctx.manualStatus);
-  const divergedFromOurWrite = !!ctx.lastAutoStatus && norm(from) !== norm(ctx.lastAutoStatus);
-  if (humanPicked || divergedFromOurWrite) {
-    // Release only on genuine NEW progress since the intervention. Measuring
-    // against the picked status instead would void every hold on creation, and
-    // would make Undo revert for exactly one render.
-    const held = ctx.manualHeldTier;
-    const releasedByProgress = held !== undefined && held !== null
-      && toTier !== null && toTier > held;
-    // With no recorded baseline (a status changed on another device), fall back
-    // to the coarser check so the hold can still release eventually.
-    const releasedWithoutBaseline = held === undefined && advancesBeyond;
-    if (!releasedByProgress && !releasedWithoutBaseline) reasons.push('manual_change');
-  }
-
-  // A bare no-show is real but ambiguous — never mark a lead dead for one
-  // missed call without the user saying so.
-  if (derived.certainty === 'inferred') reasons.push('inferred');
-
-  // Forward-only: a lower non-terminal stage is offered, not applied. Terminals
-  // are off-ladder, so moving to one is never treated as a regression.
-  if (!derived.terminal && toTier !== null && fromTier !== null && toTier < fromTier) {
-    reasons.push('would_regress');
-  }
-
-  // Sanity-check our tier opinion against the org's own ordering. If they
-  // disagree about which of {current, target} is further along, this org's
-  // ladder is shaped differently from ours and we should not act on a guess.
-  if (!derived.terminal) {
-    const fromOpt = findOption(ctx.statusOptions, from);
-    const toOpt = findOption(ctx.statusOptions, to.name);
-    if (
-      fromOpt?.displayOrder !== undefined && toOpt?.displayOrder !== undefined
-      && toTier !== null && fromTier !== null && toTier !== fromTier
-      && fromOpt.displayOrder !== toOpt.displayOrder
-    ) {
-      const orgSaysForward = toOpt.displayOrder > fromOpt.displayOrder;
-      const weSayForward = toTier > fromTier;
-      if (orgSaysForward !== weSayForward) reasons.push('vocabulary_mismatch');
-    }
-  }
 
   if (reasons.length > 0) {
     return { kind: 'suggest', from, to, derived, reason: reasons[0]!, reasons };
@@ -783,17 +746,9 @@ export function previewStatusChange(
 /** Short label for the suggestion strip / toast copy. */
 export function describeSuggestReason(reason: SuggestReason, from: string): string {
   switch (reason) {
-    case 'inferred':
-      return 'A missed meeting might just need rescheduling, so this one is your call.';
-    case 'would_regress':
-      return `This would move the lead backwards from "${from}".`;
     case 'sticky_status':
       return `"${from}" looks deliberate, so it was left alone.`;
     case 'unrecognised_status':
       return `"${from}" isn't a stage this tracker recognises, so it was left alone.`;
-    case 'manual_change':
-      return `"${from}" was set by hand, so it was left alone.`;
-    case 'vocabulary_mismatch':
-      return `Your status order disagrees with the tracker about whether this is a step forward.`;
   }
 }

@@ -66,8 +66,9 @@ export function pipelineToTrackedRow(p: LeadPipeline): TrackedRow {
   else if (p.contractSigned === 'no') contractSigned = 'No';
 
   let depositPaid = '';
-  if (p.depositPaid === true) depositPaid = 'Yes';
-  else if (p.depositPaid === false) depositPaid = 'No';
+  if (p.depositStatus === 'paid') depositPaid = 'Yes';
+  else if (p.depositStatus === 'pending') depositPaid = 'No';
+  else if (p.depositStatus === 'not_paid') depositPaid = 'Never paid';
 
   return {
     outreachStatus,
@@ -136,9 +137,14 @@ export function trackedRowToPipeline(row: TrackedRow, base: LeadPipeline = {}): 
   if (sd) next.signatureDate = sd;
   else delete next.signatureDate;
 
-  if (row.depositPaid === 'Yes') next.depositPaid = true;
-  else if (row.depositPaid === 'No') next.depositPaid = false;
-  else delete next.depositPaid;
+  const dep = (row.depositPaid || '').trim();
+  if (dep === 'Yes') next.depositStatus = 'paid';
+  else if (dep === 'No') next.depositStatus = 'pending';
+  else if (dep === 'Never paid' || dep === 'Not paid') next.depositStatus = 'not_paid';
+  else delete next.depositStatus;
+  // The legacy boolean is never written back. Leaving it beside depositStatus
+  // would recreate exactly the two-fields-one-fact problem the tri-state fixed.
+  delete next.depositPaid;
 
   return next;
 }

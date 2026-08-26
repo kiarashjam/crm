@@ -15,17 +15,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   FileText, Loader2, PenLine, Send, Sparkles, TriangleAlert, Copy, Check,
-  ShieldCheck, Clock, Eye, Ban, RefreshCw, MailWarning, ChevronDown,
+  ShieldCheck, Clock, Eye, Ban, RefreshCw, MailWarning, ChevronDown, FileDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  countersignContract, createContractDraft, listContractsForLead, resendExecutedCopy,
-  sendContract, updateContract, voidContract, ContractError,
+  countersignContract, createContractDraft, listContractsForLead, openContractPdf,
+  resendExecutedCopy, sendContract, updateContract, voidContract, ContractError,
   type Contract,
 } from '@/app/api/contracts';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { ApiError, isUsingRealApi } from '@/app/api/apiClient';
 import {
-  STATUS_LABELS, checkSignature, type ContractStatus,
+  MAX_SIGNATURE_NAME_LENGTH, STATUS_LABELS, checkSignature, type ContractStatus,
 } from './contractLifecycle';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -147,9 +147,15 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [draftBody, setDraftBody] = useState('');
-  const [signName, setSignName] = useState('');
-  const [signAgreed, setSignAgreed] = useState(false);
-  const [signProblem, setSignProblem] = useState<string | null>(null);
+  // Keyed by contract id, like `editing` and `lastLink` already are. As single
+  // values they were SHARED by every countersign form on the lead, and nothing
+  // stops a lead having two contracts both awaiting our signature — so typing
+  // into one form filled the other, and ticking one consent box ticked them all.
+  // Consent that appears without being given is the worst possible thing to get
+  // wrong on this panel.
+  const [signName, setSignName] = useState<Record<string, string>>({});
+  const [signAgreed, setSignAgreed] = useState<Record<string, boolean>>({});
+  const [signProblem, setSignProblem] = useState<Record<string, string | null>>({});
   const [lastLink, setLastLink] = useState<{ id: string; url: string; emailed: boolean } | null>(null);
 
   const reload = useCallback(async () => {
@@ -170,7 +176,13 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
     try {
       await fn();
     } catch (e) {
-      toast.error(e instanceof ContractError ? e.message : 'That did not work. Please try again.');
+      // ApiError, not ContractError, is what the API client throws for a 400 from
+      // the server — ContractError only comes from the demo-mode guard and the
+      // public signing calls. So every real server message ("That is not possible
+      // at this stage of the contract", "The contract needs an email address to
+      // send to") was being thrown away and replaced with a shrug.
+      const known = e instanceof ContractError || e instanceof ApiError;
+      toast.error(known && e.message ? e.message : 'That did not work. Please try again.');
     } finally {
       setBusy(null);
     }
@@ -206,19 +218,34 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
   });
 
   const countersign = (c: Contract) => run(`sign-${c.id}`, async () => {
+    const name = signName[c.id] ?? '';
+    const agreed = signAgreed[c.id] ?? false;
     const gate = checkSignature({
-      status: c.status, action: 'countersign', name: signName, agreed: signAgreed,
+      status: c.status, action: 'countersign', name, agreed,
     });
     if (!gate.ok) {
-      setSignProblem(gate.problem);
+      setSignProblem((prev) => ({ ...prev, [c.id]: gate.problem }));
       return;
     }
-    setSignProblem(null);
-    await countersignContract(c.id, signName, signAgreed);
+    setSignProblem((prev) => ({ ...prev, [c.id]: null }));
+
+    const done = await countersignContract(c.id, name, agreed);
     await reload();
-    setSignName('');
-    setSignAgreed(false);
-    toast.success('Signed and sent to everyone');
+    // Only this contract's form is cleared.
+    setSignName((prev) => ({ ...prev, [c.id]: '' }));
+    setSignAgreed((prev) => ({ ...prev, [c.id]: false }));
+
+    // The contract IS executed either way — but claiming the copies went out
+    // when they did not is the same lie the send path is careful never to tell,
+    // and the card immediately below the toast already says they did not.
+    if (done?.executedCopySentAtUtc) {
+      toast.success('Signed — copies emailed to both parties');
+    } else {
+      toast.warning(
+        'Signed and executed, but the copies could not be emailed. '
+        + 'Use "Email the signed copy" to retry.',
+      );
+    }
   });
 
   if (!isUsingRealApi()) {
@@ -304,6 +331,29 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
                   <ContractProgress contract={c} />
                 </div>
 
+                {/* Impossible through the app — editing after send is refused — so
+                    this means the row was changed from outside it. The server also
+                    refuses to countersign in this state; saying so here is what
+                    stops somebody wondering why the button does nothing. */}
+                {c.bodyMatchesHashAtSend === false && (
+                  <div
+                    role="alert"
+                    className="mt-3 flex items-start gap-2.5 rounded-xl border border-rose-300 bg-rose-50 p-3.5"
+                  >
+                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden />
+                    <div>
+                      <p className="text-sm font-bold text-rose-900">
+                        This text no longer matches what was sent for signature
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-rose-800">
+                        The contract was altered after {c.counterpartyName || 'the counterparty'} was
+                        asked to sign it, which the app does not allow — so it happened
+                        outside it. It cannot be countersigned. Void it and send a fresh one.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Sending is blocked while any placeholder is unfilled, rather than
                     posting a contract that reads "Dear {{lead.name}},". */}
                 {c.unresolvedFields.length > 0 && (
@@ -364,6 +414,24 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
                   </div>
                 ) : (
                   <div className="mt-3 flex flex-wrap gap-2">
+                    {/* Available in every state. A draft opens watermarked, so what is
+                        reviewed on paper is the sheet the counterparty will get. */}
+                    <Button
+                      size="sm" variant="outline"
+                      onClick={() => void run(`pdf-${c.id}`, async () => {
+                        const opened = await openContractPdf(c.id);
+                        if (!opened) {
+                          toast.warning('Your browser blocked the new tab — allow pop-ups for this site.');
+                        }
+                      })}
+                      disabled={busy === `pdf-${c.id}`}
+                      className="gap-1.5"
+                    >
+                      {busy === `pdf-${c.id}`
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                        : <FileDown className="h-3.5 w-3.5" aria-hidden />}
+                      {c.status === 'countersigned' ? 'Signed PDF' : 'Open as PDF'}
+                    </Button>
                     {allowed.has('edit') && !readOnly && (
                       <Button
                         size="sm" variant="outline"
@@ -449,24 +517,33 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
                       finished contract.
                     </p>
                     <Input
-                      value={signName}
-                      onChange={(e) => { setSignName(e.target.value); setSignProblem(null); }}
+                      value={signName[c.id] ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSignName((prev) => ({ ...prev, [c.id]: v }));
+                        setSignProblem((prev) => ({ ...prev, [c.id]: null }));
+                      }}
                       placeholder="Type your full name"
+                      maxLength={MAX_SIGNATURE_NAME_LENGTH}
                       className="mt-2.5 h-10 max-w-sm bg-white font-[cursive] text-base"
                     />
                     <label className="mt-2 flex cursor-pointer items-start gap-2">
                       <input
                         type="checkbox"
-                        checked={signAgreed}
-                        onChange={(e) => { setSignAgreed(e.target.checked); setSignProblem(null); }}
+                        checked={signAgreed[c.id] ?? false}
+                        onChange={(e) => {
+                          const v = e.target.checked;
+                          setSignAgreed((prev) => ({ ...prev, [c.id]: v }));
+                          setSignProblem((prev) => ({ ...prev, [c.id]: null }));
+                        }}
                         className="mt-0.5 h-4 w-4 shrink-0 rounded border-indigo-300 text-indigo-600"
                       />
                       <span className="text-xs leading-relaxed text-indigo-900">
                         I agree to be bound by this contract on behalf of the organisation.
                       </span>
                     </label>
-                    {signProblem && (
-                      <p role="alert" className="mt-2 text-xs font-medium text-rose-700">{signProblem}</p>
+                    {signProblem[c.id] && (
+                      <p role="alert" className="mt-2 text-xs font-medium text-rose-700">{signProblem[c.id]}</p>
                     )}
                     <Button
                       size="sm"

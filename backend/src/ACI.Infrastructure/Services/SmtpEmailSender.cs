@@ -133,14 +133,16 @@ public sealed class SmtpEmailSender : IEmailSender
     /// delivery problem cannot fail the caller's operation.
     /// </summary>
     private async Task<bool> SendAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct)
-        => await SendAsync(toEmail, recipientName, subject, body, null, ct);
+        => await SendAsync(toEmail, recipientName, subject, body, null, null, ct);
 
     /// <summary>
     /// Builds and delivers one message, with an optional HTML alternative.
     /// Returns false (never throws) so a delivery problem cannot fail the
     /// caller's operation.
     /// </summary>
-    private async Task<bool> SendAsync(string toEmail, string recipientName, string subject, string body, string? htmlBody, CancellationToken ct)
+    private async Task<bool> SendAsync(
+        string toEmail, string recipientName, string subject, string body, string? htmlBody,
+        EmailAttachment? attachment, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_options.FromAddress))
         {
@@ -157,7 +159,16 @@ public sealed class SmtpEmailSender : IEmailSender
             // Both parts when HTML is supplied: the text alternative is what a
             // plain-text client, a screen reader, or an archive-to-text rule sees,
             // and for a contract that copy has to be complete on its own.
-            message.Body = new BodyBuilder { TextBody = body, HtmlBody = htmlBody }.ToMessageBody();
+            var builder = new BodyBuilder { TextBody = body, HtmlBody = htmlBody };
+            if (attachment is not null && attachment.Content.Length > 0)
+            {
+                // MimeKit picks base64 for a binary part on its own; what it must be
+                // told is the type, or a PDF arrives as application/octet-stream and
+                // some clients refuse to preview it.
+                builder.Attachments.Add(
+                    attachment.FileName, attachment.Content, ContentType.Parse(attachment.ContentType));
+            }
+            message.Body = builder.ToMessageBody();
 
             using var client = new SmtpClient();
             var secure = !_options.UseSsl
@@ -208,12 +219,14 @@ public sealed class SmtpEmailSender : IEmailSender
 
     public async Task<bool> SendContractForSignatureEmailAsync(
         string toEmail, string recipientName, string organizationName,
-        string contractTitle, string signUrl, CancellationToken ct = default)
+        string contractTitle, string signUrl,
+        EmailAttachment? attachment = null, CancellationToken ct = default)
     {
         if (!SmtpConfigured("contract signature request", toEmail, signUrl)) return false;
         var email = ContractEmailContent.ForSignature(
-            _options.FromName, recipientName, organizationName, contractTitle, signUrl);
-        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, ct);
+            _options.FromName, recipientName, organizationName, contractTitle, signUrl,
+            hasAttachment: attachment is not null);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, attachment, ct);
     }
 
     public async Task<bool> SendContractSignedNotificationAsync(
@@ -223,18 +236,18 @@ public sealed class SmtpEmailSender : IEmailSender
         if (!SmtpConfigured("contract signed notification", toEmail, contractUrl)) return false;
         var email = ContractEmailContent.SignedNotification(
             _options.FromName, recipientName, counterpartyName, contractTitle, contractUrl);
-        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, ct);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, null, ct);
     }
 
     public async Task<bool> SendExecutedContractEmailAsync(
         string toEmail, string recipientName, string organizationName,
         string contractTitle, string contractBody, string signatureBlock,
-        CancellationToken ct = default)
+        EmailAttachment? attachment = null, CancellationToken ct = default)
     {
         if (!SmtpConfigured("executed contract copy", toEmail, null)) return false;
         var email = ContractEmailContent.Executed(
             _options.FromName, recipientName, organizationName, contractTitle,
-            contractBody, signatureBlock);
-        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, ct);
+            contractBody, signatureBlock, hasAttachment: attachment is not null);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, attachment, ct);
     }
 }

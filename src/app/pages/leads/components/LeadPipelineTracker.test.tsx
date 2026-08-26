@@ -67,7 +67,7 @@ describe('LeadPipelineTracker — transition behaviour', () => {
     );
     rerender(
       <LeadPipelineTracker
-        value={{ ...AT_PHASE_5, depositPaid: true, paymentDate: '2026-08-28' }}
+        value={{ ...AT_PHASE_5, depositStatus: 'paid' as const, paymentDate: '2026-08-28' }}
         onChange={vi.fn()}
       />,
     );
@@ -170,7 +170,7 @@ describe('LeadPipelineTracker — transition behaviour', () => {
 
     rerender(
       <LeadPipelineTracker
-        value={{ ...AT_PHASE_5, depositPaid: true, paymentDate: '2026-08-28' }}
+        value={{ ...AT_PHASE_5, depositStatus: 'paid' as const, paymentDate: '2026-08-28' }}
         onChange={vi.fn()}
         onConvert={onConvert}
       />,
@@ -215,7 +215,7 @@ describe('LeadPipelineTracker — disclosure', () => {
     // becomes the only thing asking for attention.
     render(
       <LeadPipelineTracker
-        value={{ ...AT_PHASE_5, depositPaid: true, paymentDate: '2026-08-28' }}
+        value={{ ...AT_PHASE_5, depositStatus: 'paid' as const, paymentDate: '2026-08-28' }}
         onChange={vi.fn()}
         onConvert={vi.fn()}
       />,
