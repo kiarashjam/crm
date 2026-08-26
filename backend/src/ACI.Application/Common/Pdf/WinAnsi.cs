@@ -83,6 +83,7 @@ public static class WinAnsi
     /// </remarks>
     private static readonly Dictionary<char, string> Rewrites = new()
     {
+        ['\u0009'] = "    ", // tab - laid out as spaces, never as "?"
         ['\u00A0'] = " ", // no-break space
         ['\u2007'] = " ", // figure space
         ['\u202F'] = " ", // narrow no-break space, common in French amounts
@@ -177,6 +178,31 @@ public static class WinAnsi
             }
         }
         return kept.Length > 0 ? kept.ToString() : null;
+    }
+
+    /// <summary>
+    /// The nearest plain-ASCII spelling of some text.
+    /// </summary>
+    /// <remarks>
+    /// For the places that cannot carry even Latin-1. An HTTP header is one: a
+    /// <c>Content-Disposition</c> whose filename holds "Anais" with a diaeresis
+    /// makes ASP.NET Core throw, which turned every PDF download for an accented
+    /// counterparty name into a 500 — and accented names are most of them here.
+    ///
+    /// Folds by decomposition and keeps only the ASCII that falls out, so it never
+    /// invents a letter: "Zurich" with an umlaut gives "Zurich", and a name with no
+    /// Latin behind it gives nothing rather than mojibake.
+    /// </remarks>
+    public static string ToAsciiApprox(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        var decomposed = text.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(decomposed.Length);
+        foreach (var c in decomposed)
+        {
+            if (c is >= '\u0020' and < '\u007F') sb.Append(c);
+        }
+        return sb.ToString();
     }
 
     /// <summary>

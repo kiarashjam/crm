@@ -139,4 +139,36 @@ public record SendContractResult(
 /// </param>
 /// <param name="ContentType">Always <c>application/pdf</c> today.</param>
 /// <param name="Content">The bytes.</param>
-public sealed record ContractDocument(string FileName, string ContentType, byte[] Content);
+public sealed record ContractDocument(string FileName, string ContentType, byte[] Content)
+{
+    /// <summary>
+    /// A <c>Content-Disposition</c> value that is legal AND keeps the real name.
+    /// </summary>
+    /// <remarks>
+    /// The plain <c>filename</c> parameter must be ASCII: a header carrying anything
+    /// else makes Kestrel throw, which is what turned every PDF download for an
+    /// accented counterparty name into a 500 — and accented names are most of the
+    /// names here. Stripping the accents and stopping there would hand somebody a
+    /// file called "Ana-s", so both forms go out as RFC 6266 intends:
+    /// <c>filename</c> as the ASCII fallback, and <c>filename*</c> as percent-encoded
+    /// UTF-8, which every browser of the last decade prefers.
+    ///
+    /// Inline rather than attachment, because the common case is reading the
+    /// contract, not filing it — a click should open the viewer, not drop a file in
+    /// Downloads.
+    ///
+    /// Lives here rather than in each controller so the CRM download and the
+    /// signer's download cannot drift apart, and so one test covers both.
+    /// </remarks>
+    public string InlineContentDisposition
+    {
+        get
+        {
+            var ascii = new string(FileName
+                .Where(c => c is >= ' ' and < '\u007F' and not '"' and not ';' and not '\\')
+                .ToArray());
+            if (ascii.Length == 0) ascii = "contract.pdf";
+            return $"inline; filename=\"{ascii}\"; filename*=UTF-8''{Uri.EscapeDataString(FileName)}";
+        }
+    }
+}

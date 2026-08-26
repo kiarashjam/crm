@@ -1,6 +1,8 @@
 using System.Text;
 using ACI.Application.Common;
 using ACI.Application.Common.Pdf;
+using ACI.Application.DTOs;
+using ACI.Application.Services;
 using ACI.Domain.Entities;
 using FluentAssertions;
 
@@ -393,6 +395,93 @@ public class ContractPdfTests
             r.Width.Should().BeLessThanOrEqualTo(PageWidth - 2 * MarginX + 0.5,
                 $"\"{Shorten(r.Text)}\" is wider than the measure"));
     }
+    /* --------------------------------------------- the file, as a download */
+
+    [Theory]
+    // Every one of these was a 500. char.IsLetterOrDigit is true of an accented
+    // letter, so the filename kept characters that ASP.NET Core refuses in a
+    // Content-Disposition header — and accented names are most of the names here.
+    [InlineData("Membership Agreement \u2014 Ana\u00EFs Berger")]
+    [InlineData("Mitgliedschaft \u2014 Z\u00FCrich")]
+    [InlineData("Accord \u2014 Fran\u00E7ois Lema\u00EEtre")]
+    [InlineData("\u5F20\u4F1F membership")]
+    [InlineData("")]
+    [InlineData("////")]
+    public void TheDownloadFilenameIsAlwaysPlainAscii(string title)
+    {
+        var name = ContractService.DocumentFileName(new Contract
+        {
+            Id = Guid.Parse("3f9a21c0-1111-2222-3333-444444444444"),
+            Title = title,
+            Status = ContractStatuses.Countersigned,
+        });
+
+        name.Should().MatchRegex("^[A-Za-z0-9.-]+$",
+            "a Content-Disposition filename must be ASCII or the header throws");
+        name.Should().EndWith(".pdf");
+        // And it must still identify WHICH contract: "contract.pdf" in a folder of
+        // thirty is worth nothing.
+        name.Should().Contain("3F9A21C0");
+    }
+
+    [Fact]
+    public void TheFilenameKeepsTheLettersItCanRatherThanDroppingThem()
+    {
+        // Folding, not stripping. Dropping the accented characters would hand
+        // somebody a file called "Ana-s-Berger".
+        var name = ContractService.DocumentFileName(new Contract
+        {
+            Id = Guid.NewGuid(),
+            Title = "Membership \u2014 Ana\u00EFs Z\u00FCrich",
+            Status = ContractStatuses.Countersigned,
+        });
+        name.Should().Contain("Anais").And.Contain("Zurich");
+    }
+
+    [Fact]
+    public void ATabInTheBodyIsLaidOutAsSpaceRatherThanAsAQuestionMark()
+    {
+        // A tab is whitespace, not an unrepresentable character. It was rendering
+        // as "?" in the middle of a clause, in the copy both parties keep.
+        var runs = PdfPageScanner.Scan(ContractPdf.Render(
+            Request(body: "1. FEES\n-------\nThe fee is\tCHF 100 per\tyear."),
+            compressStreams: false).Bytes);
+        var rendered = string.Join(" ", runs.Select(r => r.Text));
+
+        rendered.Should().NotContain("?");
+        rendered.Should().Contain("CHF 100");
+        ContractPdf.Render(Request(body: "a\tb")).UnrepresentableCharacters.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Membership-Agreement-Anais-Berger-3F9A21C0-signed.pdf")]
+    [InlineData("Mitgliedschaft-Z\u00FCrich.pdf")]   // if a non-ASCII name ever slips through
+    [InlineData("has\"quote;and-semicolon.pdf")]
+    [InlineData("")]
+    public void TheContentDispositionHeaderIsAlwaysAsciiAndUnbreakable(string fileName)
+    {
+        // Kestrel throws on a non-ASCII header value, so this is the last line of
+        // defence for the 500. A quote or a semicolon would end the parameter early
+        // and let the filename break out of the header.
+        var header = new ContractDocument(fileName, "application/pdf", new byte[] { 1 })
+            .InlineContentDisposition;
+
+        header.Should().MatchRegex("^[\\u0020-\\u007E]+$", "a header value must be ASCII");
+        header.Should().StartWith("inline; filename=\"");
+        // Exactly one quoted parameter: three quotes would mean the value escaped.
+        header.Split('"').Should().HaveCount(3);
+        header.Should().Contain("filename*=UTF-8''", "the real name must still reach the browser");
+    }
+
+    [Fact]
+    public void TheHeaderCarriesTheAccentedNameEvenThoughTheAsciiFallbackCannot()
+    {
+        var header = new ContractDocument("Mitgliedschaft-Z\u00FCrich.pdf", "application/pdf", Array.Empty<byte>())
+            .InlineContentDisposition;
+        // Percent-encoded UTF-8: 0xC3 0xBC is u-with-diaeresis.
+        header.Should().Contain("Z%C3%BCrich");
+    }
+
 
     private static string PdfLiteral(string text) => WinAnsi.Literal(WinAnsi.Encode(text).Bytes);
 

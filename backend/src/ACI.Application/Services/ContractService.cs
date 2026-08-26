@@ -555,7 +555,12 @@ public class ContractService : IContractService
                 contract.Status,
                 Reference: Reference(contract.Id),
                 BodyHash: contract.BodyHashAtSend,
-                GeneratedAtUtc: DateTime.UtcNow,
+                // The contract's OWN last-changed time, not the clock. Passing
+                // UtcNow made the same executed contract render different bytes on
+                // every download and put whenever-you-clicked on the face of a
+                // document that had not changed since it was signed. Two parties
+                // comparing their copies would have found different dates on them.
+                GeneratedAtUtc: contract.UpdatedAtUtc,
                 ClientSignatureName: contract.ClientSignatureName,
                 ClientSignedAtUtc: contract.ClientSignedAtUtc,
                 ClientSignatureIp: contract.ClientSignatureIp,
@@ -601,9 +606,14 @@ public class ContractService : IContractService
     /// a quote or a semicolon in a contract title would otherwise let the title
     /// break out of the header.
     /// </remarks>
-    internal static string DocumentFileName(Contract contract)
+    public static string DocumentFileName(Contract contract)
     {
-        var stem = new string((contract.Title ?? "").Trim()
+        // ASCII-folded FIRST. char.IsLetterOrDigit is true of an accented letter, so
+        // building the stem straight from the title kept characters like "i-with-
+        // diaeresis", which ASP.NET Core refuses in a Content-Disposition header —
+        // turning every PDF download for an accented counterparty name into a 500.
+        // Those names are most of them here.
+        var stem = new string(WinAnsi.ToAsciiApprox(contract.Title).Trim()
             .Select(c => char.IsLetterOrDigit(c) ? c : '-')
             .ToArray());
         while (stem.Contains("--", StringComparison.Ordinal)) stem = stem.Replace("--", "-");
@@ -616,7 +626,7 @@ public class ContractService : IContractService
     }
 
     /// <summary>A short, quotable reference for a contract. The first block of its id.</summary>
-    internal static string Reference(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
+    public static string Reference(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
 
     /* ------------------------------------------------------------- voiding */
 

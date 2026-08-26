@@ -176,18 +176,16 @@ public class ContractsController : ControllerBase
     /// Returns a rendered document as a file.
     /// </summary>
     /// <remarks>
-    /// Inline rather than as an attachment, so a click opens the contract in the
-    /// browser's own viewer instead of dropping a file in Downloads — the common case
-    /// is reading it, not filing it. The filename is already restricted to
-    /// filename-safe characters by the service, which matters because it goes into a
-    /// Content-Disposition header.
+    /// The filename is built by the service and already ASCII-folded, because a
+    /// header carrying anything else makes Kestrel throw.
     /// </remarks>
     private FileContentResult DocumentFile(ContractDocument document)
     {
-        Response.Headers.ContentDisposition =
-            $"inline; filename=\"{document.FileName}\"";
+        Response.Headers.ContentDisposition = document.InlineContentDisposition;
         return File(document.Content, document.ContentType);
     }
+
+
 
     /// <summary>
     /// The caller's address for the audit trail.

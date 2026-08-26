@@ -11,8 +11,13 @@ namespace ACI.Application.Common.Pdf;
 /// <param name="Reference">A short human-quotable reference, e.g. the first block of the id.</param>
 /// <param name="BodyHash">The hash frozen at send time, or null before it was sent.</param>
 /// <param name="GeneratedAtUtc">
-/// Stamped into the document and its metadata. Passed in rather than read from the
-/// clock so the same contract renders to the same bytes.
+/// The contract's own as-at time, stamped onto the face of the document and into
+/// its metadata.
+///
+/// Passed in rather than read from the clock, and callers must pass the contract's
+/// last-changed time rather than "now": an executed contract has not changed since
+/// it was signed, so every download must produce the same bytes and show the same
+/// date. Otherwise two parties comparing their copies find different ones.
 /// </param>
 public sealed record ContractPdfRequest(
     string Title,
@@ -327,7 +332,7 @@ public static class ContractPdf
 
         y += 3;
         canvas.Text(MarginX, y, PdfFont.Helvetica, 7.4,
-            $"Rendered {FormatUtc(generatedAt)}"
+            $"Document as at {FormatUtc(generatedAt)}"
             + (string.IsNullOrWhiteSpace(r.Reference) ? "" : $"  ·  Reference {safe(r.Reference)}"),
             Faint);
 

@@ -75,10 +75,11 @@ public class PublicContractsController : ControllerBase
         var result = await _contracts.GetDocumentByTokenAsync(token, ct);
         if (result.IsFailure) return result.Error.ToProblemResult();
 
-        Response.Headers.ContentDisposition =
-            $"inline; filename=\"{result.Value.FileName}\"";
+        Response.Headers.ContentDisposition = result.Value.InlineContentDisposition;
         return File(result.Value.Content, result.Value.ContentType);
     }
+
+
 
     /// <summary>Declines the contract, which closes it.</summary>
     [HttpPost("{token}/decline")]
