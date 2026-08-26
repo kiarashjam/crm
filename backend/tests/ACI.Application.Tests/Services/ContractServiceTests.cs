@@ -500,4 +500,87 @@ public class ContractServiceTests
         _events.Single(e => e.Type == "signed").ActorLabel.Should().Be("Jean Dupont");
         _events.Single(e => e.Type == "signed").Ip.Should().Be("203.0.113.7");
     }
+    /* --------------------------------------------- the link's own lifetime */
+
+    [Fact]
+    public async Task DecliningShortensTheSigningLinkInsteadOfLeavingItLive()
+    {
+        // Found by auditing, and reproduced before it was fixed. Declined is terminal:
+        // the state machine permits nothing from it, INCLUDING void, which is the only
+        // thing that kills a link. So the full text of a declined agreement stayed
+        // readable at an anonymous URL for the rest of the token's thirty days, and
+        // the product offered no way at all to revoke it.
+        var draft = await DraftReadyToSendAsync();
+        var sent = await _sut.SendAsync(draft.Id, UserId, OrgId, resend: false);
+        var token = TokenFrom(sent.Value);
+
+        var beforeDecline = _store.Single(c => c.Id == draft.Id).SigningTokenExpiresAtUtc;
+        beforeDecline.Should().BeAfter(DateTime.UtcNow.AddDays(29), "a fresh link lasts 30 days");
+
+        await _sut.DeclineByTokenAsync(token,
+            new DeclineContractRequest { Reason = "too expensive" }, "1.1.1.1", "UA");
+
+        var after = _store.Single(c => c.Id == draft.Id);
+        after.Status.Should().Be(ContractStatuses.Declined);
+        after.SigningTokenExpiresAtUtc.Should().BeBefore(DateTime.UtcNow.AddDays(8));
+
+        // And voiding is still refused, which is precisely why the expiry had to move:
+        // there is no other lever.
+        (await _sut.VoidAsync(draft.Id, UserId, OrgId, "kill the link")).IsFailure.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CountersigningShortensTheSigningLinkToo()
+    {
+        var draft = await DraftReadyToSendAsync();
+        var sent = await _sut.SendAsync(draft.Id, UserId, OrgId, resend: false);
+        await _sut.SignByTokenAsync(TokenFrom(sent.Value),
+            new SignContractRequest { SignatureName = "Jean Dupont", Agreed = true }, null, null);
+        await _sut.CountersignAsync(draft.Id, UserId, OrgId,
+            new SignContractRequest { SignatureName = "Kia", Agreed = true }, null);
+
+        _store.Single(c => c.Id == draft.Id).SigningTokenExpiresAtUtc
+            .Should().BeBefore(DateTime.UtcNow.AddDays(8));
+    }
+
+    [Fact]
+    public async Task TheGracePeriodStillLetsSomebodyReadWhatTheyJustSigned()
+    {
+        // Cutting the link dead on completion would be tidier and worse: clicking the
+        // bookmark you signed from would report an invalid link rather than telling you
+        // that you have already signed, which reads as a fault in the product.
+        var draft = await DraftReadyToSendAsync();
+        var sent = await _sut.SendAsync(draft.Id, UserId, OrgId, resend: false);
+        var token = TokenFrom(sent.Value);
+        await _sut.SignByTokenAsync(token,
+            new SignContractRequest { SignatureName = "Jean Dupont", Agreed = true }, null, null);
+        await _sut.CountersignAsync(draft.Id, UserId, OrgId,
+            new SignContractRequest { SignatureName = "Kia", Agreed = true }, null);
+
+        var read = await _sut.GetByTokenAsync(token, "1.1.1.1", "UA");
+        read.IsSuccess.Should().BeTrue();
+        read.Value.CanSign.Should().BeFalse();
+        read.Value.Blocked.Should().Be("This contract is fully signed by both parties.");
+    }
+
+    [Fact]
+    public async Task ShorteningTheLinkNeverExtendsIt()
+    {
+        // A link about to expire in an hour must not gain a week because the contract
+        // was countersigned.
+        var draft = await DraftReadyToSendAsync();
+        var sent = await _sut.SendAsync(draft.Id, UserId, OrgId, resend: false);
+        var token = TokenFrom(sent.Value);
+        await _sut.SignByTokenAsync(token,
+            new SignContractRequest { SignatureName = "Jean Dupont", Agreed = true }, null, null);
+
+        var soon = DateTime.UtcNow.AddHours(1);
+        _store.Single(c => c.Id == draft.Id).SigningTokenExpiresAtUtc = soon;
+
+        await _sut.CountersignAsync(draft.Id, UserId, OrgId,
+            new SignContractRequest { SignatureName = "Kia", Agreed = true }, null);
+
+        _store.Single(c => c.Id == draft.Id).SigningTokenExpiresAtUtc.Should().Be(soon);
+    }
+
 }

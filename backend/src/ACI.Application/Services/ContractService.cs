@@ -306,6 +306,9 @@ public class ContractService : IContractService
         contract.Status = ContractStatuses.Declined;
         contract.ClosedReason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason!.Trim();
         contract.UpdatedAtUtc = now;
+        // Terminal from here. Without this the full text of a declined agreement
+        // stayed readable at an anonymous URL for the rest of the token's thirty days.
+        ExpireLinkSoon(contract);
         await _contracts.UpdateAsync(contract, ct);
 
         await LogEventAsync(contract.Id, "declined",
@@ -342,6 +345,8 @@ public class ContractService : IContractService
         contract.CounterSignedByUserId = userId;
         contract.CounterSignatureIp = ip;
         contract.UpdatedAtUtc = now;
+        // Terminal from here, so nothing — not even void — can kill the link later.
+        ExpireLinkSoon(contract);
         await _contracts.UpdateAsync(contract, ct);
 
         await LogEventAsync(contract.Id, "countersigned",
@@ -498,6 +503,28 @@ public class ContractService : IContractService
             ? Result.Failure<ContractDocument>(DomainErrors.Contract.DocumentUnavailable)
             : Result.Success(new ContractDocument(
                 DocumentFileName(contract), "application/pdf", rendered.Bytes));
+    }
+
+    /// <summary>
+    /// Shortens the signing link's life once the contract is finished.
+    /// </summary>
+    /// <remarks>
+    /// Never EXTENDS it: a link that was about to expire in an hour must not gain a
+    /// week because the contract was countersigned. Only ever brings the expiry
+    /// forward, and does nothing at all when there is no token left.
+    /// </remarks>
+    private void ExpireLinkSoon(Contract contract)
+    {
+        if (contract.SigningTokenHash is null) return;
+
+        var cutoff = DateTime.UtcNow.Add(ContractSigningToken.GraceAfterCompletion);
+        if (contract.SigningTokenExpiresAtUtc is null || contract.SigningTokenExpiresAtUtc > cutoff)
+        {
+            contract.SigningTokenExpiresAtUtc = cutoff;
+            _logger.LogInformation(
+                "Contract {ContractId} is finished; its signing link now expires at {At}",
+                contract.Id, cutoff);
+        }
     }
 
     /* ------------------------------------------------------ the document */

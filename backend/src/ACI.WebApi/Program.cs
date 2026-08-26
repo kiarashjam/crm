@@ -219,6 +219,12 @@ try
         options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
     });
 
+    // Immediately after the request logger, so it sits INSIDE it: this rewrites the
+    // path on the way back out, after routing has used it and before Serilog reads
+    // it. Without this the raw contract signing token — the entire authorisation to
+    // sign that contract — is written to the log in plaintext on every request.
+    app.UseMiddleware<ACI.WebApi.Middleware.SecretPathRedactionMiddleware>();
+
     app.UseResponseCompression();
     app.UseHttpsRedirection();
     app.UseCors();
