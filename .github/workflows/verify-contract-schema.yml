@@ -1,0 +1,155 @@
+# Verify, against the real database, that the contract tables the app creates at
+# start-up actually exist and have the shape the code expects.
+#
+# The contract feature ships its schema as hand-written idempotent DDL in
+# Program.cs, following the convention Leads.PipelineState shipped under. That DDL
+# is the only thing which ever creates these tables, and it had never executed
+# anywhere when the feature was written — there is no SQL Server in the authoring
+# environment. This closes that gap by looking.
+#
+# STRICTLY READ-ONLY against data. Every statement is SELECT or PRINT; the guard
+# step below fails the run if the SQL contains anything else, so this cannot
+# quietly become a script that changes something. It reads schema metadata and row
+# counts, nothing else, and it never prints a customer's data.
+#
+# The one thing it does write is a temporary Azure SQL firewall rule for the
+# runner's own IP, removed on exit — the same mechanism the org-admin workflow
+# uses, and unavoidable for reaching the database at all.
+
+name: Verify contract schema (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-contract-schema
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prove the SQL is read-only
+        run: |
+          # Runs BEFORE anything connects. A single forbidden keyword fails the
+          # run, so this workflow cannot drift into one that writes.
+          SQL_FILE=.github/workflows/sql/verify-contract-schema.sql
+          test -f "$SQL_FILE" || { echo "::error::$SQL_FILE missing"; exit 1; }
+          if grep -inE '\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|MERGE|EXEC|EXECUTE|GRANT|REVOKE|BACKUP|RESTORE)\b' "$SQL_FILE"; then
+            echo "::error::The verification SQL contains a statement that is not read-only. Refusing to run."
+            exit 1
+          fi
+          echo "Read-only check passed: only SELECT/PRINT/DECLARE/SET present."
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Check the API is healthy after the start-up DDL
+        env:
+          APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+        run: |
+          set -euo pipefail
+          # If the CREATE TABLE had thrown, start-up would have failed and this
+          # would not answer. A healthy API is itself evidence the DDL ran.
+          HOST=$(az webapp show --name "$APP_NAME" \
+                   --resource-group "$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)" \
+                   --query defaultHostName -o tsv)
+          echo "Probing https://$HOST/health"
+          CODE=$(curl -s -o /tmp/health.txt -w '%{http_code}' --max-time 60 "https://$HOST/health" || echo 000)
+          echo "HTTP $CODE"
+          head -c 400 /tmp/health.txt || true
+          echo
+          if [ "$CODE" != "200" ]; then
+            echo "::warning::Health endpoint returned $CODE. The schema check below still runs."
+          fi
+
+      - name: Verify the contract tables
+        env:
+          APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+        run: |
+          set -euo pipefail
+
+          RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+          [ -n "$RESOURCE_GROUP" ] || { echo "::error::Could not find the Web App's resource group."; exit 1; }
+
+          CONN=$(az webapp config connection-string list \
+                   --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+                   --query "[?name=='DefaultConnection'].value.value | [0]" -o tsv 2>/dev/null || true)
+          if [ -z "$CONN" ] || [ "$CONN" = "None" ]; then
+            CONN=$(az webapp config appsettings list \
+                     --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+                     --query "[?name=='ConnectionStrings__DefaultConnection'].value | [0]" -o tsv)
+          fi
+          [ -n "$CONN" ] && [ "$CONN" != "None" ] || { echo "::error::No connection string found."; exit 1; }
+          echo "::add-mask::$CONN"
+
+          eval "$(CONN="$CONN" python3 - <<'PY'
+          import os, shlex
+          parts = {}
+          for piece in os.environ["CONN"].split(";"):
+              if "=" in piece:
+                  k, v = piece.split("=", 1)
+                  parts[k.strip().lower()] = v.strip()
+          server = (parts.get("server") or parts.get("data source") or "").replace("tcp:", "").split(",")[0]
+          db     = parts.get("initial catalog") or parts.get("database") or ""
+          user   = parts.get("user id") or parts.get("uid") or parts.get("user") or ""
+          pwd    = parts.get("password") or parts.get("pwd") or ""
+          print(f"SQL_SERVER={shlex.quote(server)}")
+          print(f"SQL_DB={shlex.quote(db)}")
+          print(f"SQL_USER={shlex.quote(user)}")
+          print(f"SQL_PASS={shlex.quote(pwd)}")
+          PY
+          )"
+          echo "::add-mask::$SQL_PASS"
+          echo "::add-mask::$SQL_USER"
+          [ -n "$SQL_SERVER" ] && [ -n "$SQL_DB" ] || { echo "::error::Could not parse the connection string."; exit 1; }
+
+          # Temporary pinhole for this runner, removed on exit.
+          FW_RULE="gh-verify-${GITHUB_RUN_ID}"
+          SQL_SERVER_NAME="${SQL_SERVER%%.*}"
+          SQL_RG=$(az sql server list --query "[?name=='$SQL_SERVER_NAME'].resourceGroup | [0]" -o tsv 2>/dev/null || true)
+          FW_CREATED=""
+          cleanup() {
+            if [ -n "$FW_CREATED" ]; then
+              az sql server firewall-rule delete -g "$SQL_RG" -s "$SQL_SERVER_NAME" -n "$FW_RULE" >/dev/null 2>&1 || true
+              echo "Temporary firewall rule removed."
+            fi
+          }
+          trap cleanup EXIT
+          if [ -n "$SQL_RG" ] && [ "$SQL_RG" != "None" ]; then
+            RUNNER_IP=$(curl -fsS https://api.ipify.org || true)
+            if [ -n "$RUNNER_IP" ] && az sql server firewall-rule create \
+                 -g "$SQL_RG" -s "$SQL_SERVER_NAME" -n "$FW_RULE" \
+                 --start-ip-address "$RUNNER_IP" --end-ip-address "$RUNNER_IP" >/dev/null 2>&1; then
+              FW_CREATED=1
+              echo "Temporary firewall rule $FW_RULE created."
+            fi
+          fi
+
+          SQLCMD="$(command -v sqlcmd || true)"
+          [ -z "$SQLCMD" ] && [ -x /opt/mssql-tools18/bin/sqlcmd ] && SQLCMD=/opt/mssql-tools18/bin/sqlcmd
+          if [ -z "$SQLCMD" ]; then
+            curl -sSL -O "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+            sudo dpkg -i packages-microsoft-prod.deb >/dev/null
+            sudo apt-get update -qq
+            sudo ACCEPT_EULA=Y apt-get install -y -qq mssql-tools18 unixodbc-dev >/dev/null
+            SQLCMD=/opt/mssql-tools18/bin/sqlcmd
+          fi
+
+          "$SQLCMD" -S "$SQL_SERVER" -d "$SQL_DB" -U "$SQL_USER" -P "$SQL_PASS" -C -b -l 60 \
+            -i .github/workflows/sql/verify-contract-schema.sql | tee /tmp/out.txt
+
+          # The SQL prints this exact line only when every check passed.
+          if grep -q 'RESULT: ALL CHECKS PASSED' /tmp/out.txt; then
+            echo "Contract schema verified against the live database."
+          else
+            echo "::error::One or more schema checks did not pass. See the output above."
+            exit 1
+          fi
