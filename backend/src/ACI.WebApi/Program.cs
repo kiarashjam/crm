@@ -139,6 +139,7 @@ try
     builder.Services.AddScoped<IContactService, ContactService>();
     builder.Services.AddScoped<IDealService, DealService>();
     builder.Services.AddScoped<ILeadService, LeadService>();
+    builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
@@ -550,6 +551,77 @@ try
                 END;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'PipelineState')
                     ALTER TABLE [Leads] ADD [PipelineState] nvarchar(max) NULL;
+            ");
+
+            // Contracts and their audit trail.
+            //
+            // Raw idempotent DDL rather than an EF migration, matching how every
+            // other recent schema change in this file shipped — including
+            // Leads.PipelineState directly above, which exists in no migration and
+            // in no snapshot. Scaffolding a migration against that snapshot would
+            // try to add PipelineState a second time. See ContractConfiguration.cs
+            // for the model side; the two are kept deliberately in step.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Contracts')
+                BEGIN
+                    CREATE TABLE [Contracts] (
+                        [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                        [OrganizationId] uniqueidentifier NOT NULL,
+                        [LeadId] uniqueidentifier NULL,
+                        [DealId] uniqueidentifier NULL,
+                        [Status] nvarchar(32) NOT NULL,
+                        [Title] nvarchar(300) NOT NULL,
+                        [Body] nvarchar(max) NOT NULL,
+                        [BodyHashAtSend] nvarchar(64) NULL,
+                        [CounterpartyName] nvarchar(300) NULL,
+                        [CounterpartyEmail] nvarchar(320) NULL,
+                        [CreatedByUserId] uniqueidentifier NOT NULL,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        [UpdatedAtUtc] datetime2 NOT NULL,
+                        [SentAtUtc] datetime2 NULL,
+                        [SentByUserId] uniqueidentifier NULL,
+                        [SigningTokenHash] nvarchar(64) NULL,
+                        [SigningTokenExpiresAtUtc] datetime2 NULL,
+                        [FirstViewedAtUtc] datetime2 NULL,
+                        [ClientSignatureName] nvarchar(300) NULL,
+                        [ClientSignedAtUtc] datetime2 NULL,
+                        [ClientSignatureIp] nvarchar(64) NULL,
+                        [ClientSignatureUserAgent] nvarchar(512) NULL,
+                        [CounterSignatureName] nvarchar(300) NULL,
+                        [CounterSignedAtUtc] datetime2 NULL,
+                        [CounterSignedByUserId] uniqueidentifier NULL,
+                        [CounterSignatureIp] nvarchar(64) NULL,
+                        [ClosedReason] nvarchar(1000) NULL,
+                        [ExecutedCopySentAtUtc] datetime2 NULL
+                    );
+                    CREATE INDEX [IX_Contracts_OrganizationId_LeadId]
+                        ON [Contracts] ([OrganizationId], [LeadId]);
+                    -- The public signing path looks up by this alone, so it has to be
+                    -- indexed. Filtered unique: two live contracts must never share a
+                    -- token, but the many NULLs (drafts, voided) have to coexist.
+                    CREATE UNIQUE INDEX [IX_Contracts_SigningTokenHash]
+                        ON [Contracts] ([SigningTokenHash])
+                        WHERE [SigningTokenHash] IS NOT NULL;
+                END;
+
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ContractEvents')
+                BEGIN
+                    CREATE TABLE [ContractEvents] (
+                        [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                        [ContractId] uniqueidentifier NOT NULL,
+                        [Type] nvarchar(32) NOT NULL,
+                        [Detail] nvarchar(1000) NULL,
+                        [ActorUserId] uniqueidentifier NULL,
+                        [ActorLabel] nvarchar(300) NULL,
+                        [Ip] nvarchar(64) NULL,
+                        [UserAgent] nvarchar(512) NULL,
+                        [AtUtc] datetime2 NOT NULL,
+                        CONSTRAINT [FK_ContractEvents_Contracts] FOREIGN KEY ([ContractId])
+                            REFERENCES [Contracts] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_ContractEvents_ContractId_AtUtc]
+                        ON [ContractEvents] ([ContractId], [AtUtc]);
+                END;
             ");
             
             // Fix Deals table columns
