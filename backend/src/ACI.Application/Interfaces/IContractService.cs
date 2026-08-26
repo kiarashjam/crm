@@ -67,6 +67,27 @@ public interface IContractService
     /// guaranteed, and an executed contract nobody received is worth retrying
     /// without signing anything again.
     /// </summary>
+    /// <summary>
+    /// The contract as a typeset document, for downloading.
+    /// </summary>
+    /// <remarks>
+    /// Available in every state, not only when executed: a CRM user reviewing a draft
+    /// wants to see the sheet their counterparty will get, and an unsigned document
+    /// is watermarked so it cannot be passed off as an executed one.
+    /// </remarks>
+    Task<Result<ContractDocument>> GetDocumentAsync(
+        Guid contractId, Guid organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The same document, for the person holding a signing link.
+    /// </summary>
+    /// <remarks>
+    /// Authorised by the token and nothing else, exactly like the rest of the public
+    /// surface, and it returns only the file — no ids, no lead, no audit trail.
+    /// </remarks>
+    Task<Result<ContractDocument>> GetDocumentByTokenAsync(
+        string rawToken, CancellationToken ct = default);
+
     Task<Result<bool>> ResendExecutedCopyAsync(
         Guid contractId, Guid userId, Guid organizationId, CancellationToken ct = default);
 

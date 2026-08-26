@@ -137,6 +137,27 @@ public class ContractsController : ControllerBase
         return result.ToActionResult();
     }
 
+    /// <summary>
+    /// The contract as a PDF, for downloading.
+    /// </summary>
+    /// <remarks>
+    /// Available in every state. A draft downloads watermarked, so what a CRM user
+    /// reviews on paper is exactly the sheet their counterparty will receive, and an
+    /// unsigned copy cannot be passed off as an executed one.
+    /// </remarks>
+    [HttpGet("{id:guid}/pdf")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken ct)
+    {
+        var orgId = _currentUser.CurrentOrganizationId;
+        if (orgId is null) return Unauthorized();
+
+        var result = await _contracts.GetDocumentAsync(id, orgId.Value, ct);
+        if (result.IsFailure) return result.Error.ToProblemResult();
+        return DocumentFile(result.Value);
+    }
+
     /// <summary>Withdraws the contract and kills its signing link.</summary>
     [HttpPost("{id:guid}/void")]
     [ProducesResponseType(typeof(ContractDto), StatusCodes.Status200OK)]
@@ -148,6 +169,24 @@ public class ContractsController : ControllerBase
         if (userId is null || orgId is null) return Unauthorized();
         var result = await _contracts.VoidAsync(id, userId.Value, orgId.Value, request.Reason, ct);
         return result.ToActionResult();
+    }
+
+
+    /// <summary>
+    /// Returns a rendered document as a file.
+    /// </summary>
+    /// <remarks>
+    /// Inline rather than as an attachment, so a click opens the contract in the
+    /// browser's own viewer instead of dropping a file in Downloads — the common case
+    /// is reading it, not filing it. The filename is already restricted to
+    /// filename-safe characters by the service, which matters because it goes into a
+    /// Content-Disposition header.
+    /// </remarks>
+    private FileContentResult DocumentFile(ContractDocument document)
+    {
+        Response.Headers.ContentDisposition =
+            $"inline; filename=\"{document.FileName}\"";
+        return File(document.Content, document.ContentType);
     }
 
     /// <summary>

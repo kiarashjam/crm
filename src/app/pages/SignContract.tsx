@@ -16,9 +16,10 @@ import { useParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   CheckCircle2, Loader2, PenLine, ShieldCheck, TriangleAlert, XCircle, FileText, Info,
+  FileDown,
 } from 'lucide-react';
 import {
-  declinePublicContract, getPublicContract, signPublicContract,
+  declinePublicContract, getPublicContract, publicContractPdfUrl, signPublicContract,
   ContractError, type PublicContract,
 } from '@/app/api/contracts';
 import { checkSignature, isSignatureNameValid } from '@/app/pages/contracts/contractLifecycle';
@@ -248,6 +249,23 @@ export default function SignContract() {
 
         <div className="mt-6">
           <ContractBody body={contract.body} />
+          {/* Their own copy, before and after signing. Signing something you could
+              not keep a copy of is a reasonable thing to hesitate over, and the
+              PDF is the readable version of the same words shown above. */}
+          <a
+            href={publicContractPdfUrl(token)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              'mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white',
+              'px-3 py-1.5 text-xs font-semibold text-slate-600',
+              'transition hover:border-slate-300 hover:text-slate-900',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
+            )}
+          >
+            <FileDown className="h-3.5 w-3.5" aria-hidden />
+            {alreadySigned ? 'Download your signed copy (PDF)' : 'Download a copy to read (PDF)'}
+          </a>
         </div>
 
         <div className="mt-6">

@@ -61,7 +61,8 @@ public class ContractServiceTests
         // Everything sends, unless a test says otherwise.
         _email.Setup(e => e.SendContractForSignatureEmailAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<EmailAttachment?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _email.Setup(e => e.SendContractSignedNotificationAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
@@ -69,7 +70,8 @@ public class ContractServiceTests
             .ReturnsAsync(true);
         _email.Setup(e => e.SendExecutedContractEmailAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<EmailAttachment?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         SetLead(new Lead { Id = LeadId, Name = "Jean Dupont", Email = "jean@example.com" });
@@ -220,7 +222,8 @@ public class ContractServiceTests
         // someone who was never told is the worst outcome available here.
         _email.Setup(e => e.SendContractForSignatureEmailAsync(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<EmailAttachment?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var draft = await DraftReadyToSendAsync();
@@ -383,14 +386,16 @@ public class ContractServiceTests
         stored.CounterSignatureName.Should().Be("Kia");
         stored.ExecutedCopySentAtUtc.Should().NotBeNull();
 
-        // Both parties, and the body travels with it.
+        // Both parties, and the body travels with it — inline, so the email is a
+        // complete copy even if the attachment is stripped in transit.
         _email.Verify(e => e.SendExecutedContractEmailAsync(
             "jean@example.com", It.IsAny<string>(), "Pavillon 46", It.IsAny<string>(),
             It.Is<string>(b => b.Length > 0), It.Is<string>(s => s.Contains("SIGNATURE RECORD")),
-            It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<EmailAttachment?>(), It.IsAny<CancellationToken>()), Times.Once);
         _email.Verify(e => e.SendExecutedContractEmailAsync(
             "kia@bonapp.group", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<EmailAttachment?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -413,7 +418,8 @@ public class ContractServiceTests
         // Leaving the stamp null is what makes the retry button mean something.
         _email.Setup(e => e.SendExecutedContractEmailAsync(
                 "kia@bonapp.group", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<EmailAttachment?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var draft = await DraftReadyToSendAsync();

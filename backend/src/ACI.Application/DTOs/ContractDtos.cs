@@ -130,3 +130,13 @@ public record SendContractResult(
     bool EmailSent,
     string SigningUrl
 );
+
+/// <summary>A rendered contract document, ready to be sent to a browser.</summary>
+/// <param name="FileName">
+/// What it saves as. Already restricted to filename-safe characters, because it
+/// goes into a Content-Disposition header where a quote or a semicolon in a
+/// contract title would otherwise break out.
+/// </param>
+/// <param name="ContentType">Always <c>application/pdf</c> today.</param>
+/// <param name="Content">The bytes.</param>
+public sealed record ContractDocument(string FileName, string ContentType, byte[] Content);

@@ -59,6 +59,27 @@ public class PublicContractsController : ControllerBase
         return result.ToActionResult();
     }
 
+    /// <summary>
+    /// The contract as a PDF, so the signer can keep their own copy.
+    /// </summary>
+    /// <remarks>
+    /// Authorised by the token and nothing else, like the rest of this controller. It
+    /// returns only the file: no ids, no lead, no audit trail. Before signing it
+    /// downloads watermarked unsigned; afterwards it carries both signatures.
+    /// </remarks>
+    [HttpGet("{token}/pdf")]
+    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Pdf(string token, CancellationToken ct)
+    {
+        var result = await _contracts.GetDocumentByTokenAsync(token, ct);
+        if (result.IsFailure) return result.Error.ToProblemResult();
+
+        Response.Headers.ContentDisposition =
+            $"inline; filename=\"{result.Value.FileName}\"";
+        return File(result.Value.Content, result.Value.ContentType);
+    }
+
     /// <summary>Declines the contract, which closes it.</summary>
     [HttpPost("{token}/decline")]
     [ProducesResponseType(typeof(PublicContractDto), StatusCodes.Status200OK)]

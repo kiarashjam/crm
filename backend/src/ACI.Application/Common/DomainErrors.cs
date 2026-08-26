@@ -33,6 +33,15 @@ public static class DomainErrors
             "Contract.NotAllowedInThisState", "That is not possible at this stage of the contract");
 
         /// <summary>
+        /// The document could not be rendered. Only reachable through a defect, since
+        /// rendering is pure and in-memory — but it must be a reported outcome rather
+        /// than an empty file, which a browser shows as a broken document with no
+        /// explanation at all.
+        /// </summary>
+        public static readonly Error DocumentUnavailable = new(
+            "Contract.DocumentUnavailable", "The contract document could not be produced");
+
+        /// <summary>
         /// Sending is blocked while any template placeholder is still unfilled,
         /// rather than posting a contract that reads "Dear {{lead.name}},".
         /// </summary>

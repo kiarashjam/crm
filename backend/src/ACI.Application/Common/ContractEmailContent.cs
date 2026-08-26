@@ -81,15 +81,25 @@ public static class ContractEmailContent
         "</div></body></html>";
 
     /// <summary>Step 3: the counterparty is asked to read and sign.</summary>
+    /// <param name="hasAttachment">
+    /// Whether the unsigned copy travels with the message. Said out loud, because an
+    /// attachment nobody mentions is an attachment nobody opens — and a recipient
+    /// who has been told to expect one will notice if a relay strips it.
+    /// </param>
     public static EmailContent ForSignature(
         string senderName, string recipientName, string organizationName,
-        string contractTitle, string signUrl)
+        string contractTitle, string signUrl, bool hasAttachment = false)
     {
         var subject = $"{organizationName}: please review and sign “{contractTitle}”";
+        var attachedText = hasAttachment
+            ? "A copy is attached to this email so you can read it at your leisure. It is " +
+              "marked unsigned until both parties have signed.\n\n"
+            : "";
         var text =
             $"Hi{Greeting(recipientName)},\n\n" +
             $"{organizationName} has sent you a contract to review and sign:\n\n" +
             $"    {contractTitle}\n\n" +
+            attachedText +
             "You can read it in full and sign it here:\n\n" +
             $"    {signUrl}\n\n" +
             "Nothing is agreed until you sign. If anything looks wrong, reply to this " +
@@ -101,6 +111,10 @@ public static class ContractEmailContent
             intro: $"{Escape(organizationName)} has sent you a contract to review and sign.",
             bodyHtml:
                 $"<p style=\"{PStyle}\"><strong>{Escape(contractTitle)}</strong></p>" +
+                (hasAttachment
+                    ? $"<p style=\"{MutedStyle}\">A copy is attached to this email so you can read it " +
+                      "at your leisure. It is marked unsigned until both parties have signed.</p>"
+                    : "") +
                 Button(signUrl, "Read and sign the contract") +
                 $"<p style=\"{MutedStyle}\">Nothing is agreed until you sign. If anything looks wrong, " +
                 "reply to this email instead of signing and we will sort it out.</p>",
@@ -144,16 +158,27 @@ public static class ContractEmailContent
     /// reply, and printable — and it is the same string whose hash was stamped at
     /// send time, so it is the evidence rather than a rendering of it.
     /// </remarks>
+    /// <param name="hasAttachment">
+    /// Whether the typeset copy travels with the message. The text stays in the body
+    /// either way: an inline copy survives a stripped attachment, an archive-to-text
+    /// rule, and a reply that quotes it.
+    /// </param>
     public static EmailContent Executed(
         string senderName, string recipientName, string organizationName,
-        string contractTitle, string contractBody, string signatureBlock)
+        string contractTitle, string contractBody, string signatureBlock,
+        bool hasAttachment = false)
     {
         var rule = new string('-', 60);
         var subject = $"Signed by both parties: “{contractTitle}”";
+        var attachedText = hasAttachment
+            ? "The signed contract is attached as a PDF for your records. The full text " +
+              "and the signature record are also below, so this email is a complete copy " +
+              "on its own.\n\n"
+            : "The full text and the signature record are below — keep this email as your copy.\n\n";
         var text =
             $"Hi{Greeting(recipientName)},\n\n" +
-            $"“{contractTitle}” has now been signed by both parties. The full text " +
-            "and the signature record are below — keep this email as your copy.\n\n" +
+            $"“{contractTitle}” has now been signed by both parties.\n\n" +
+            attachedText +
             rule + "\n\n" +
             contractBody + "\n\n" +
             rule + "\n\n" +
@@ -163,7 +188,10 @@ public static class ContractEmailContent
         var html = Document(senderName,
             heading: "Signed by both parties",
             intro: $"<strong>{Escape(contractTitle)}</strong> has now been signed by both parties. " +
-                   "The full text and the signature record are below — keep this email as your copy.",
+                   (hasAttachment
+                       ? "The signed contract is attached as a PDF for your records, and the full " +
+                         "text and signature record are below as well."
+                       : "The full text and the signature record are below — keep this email as your copy."),
             bodyHtml:
                 $"<pre style=\"{PreStyle}\">{Escape(contractBody)}</pre>" +
                 $"<div style=\"{SignatureBoxStyle}\"><pre style=\"{PreStyle}margin:0;background:none;border:0;padding:0;\">" +

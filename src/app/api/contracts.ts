@@ -11,7 +11,7 @@
 // backend, but a contract that pretends to have been sent — with a signing link
 // that goes nowhere — is worse than a feature that says it needs a server.
 
-import { authFetchJson, getApiBaseUrl, isUsingRealApi } from './apiClient';
+import { authFetch, authFetchJson, getApiBaseUrl, isUsingRealApi } from './apiClient';
 
 export type ContractStatus =
   | 'draft' | 'sent' | 'signed_by_client' | 'countersigned' | 'declined' | 'voided';
@@ -170,6 +170,51 @@ export async function voidContract(id: string, reason?: string): Promise<Contrac
   });
 }
 
+/* --------------------------------------------------------------- documents */
+
+/**
+ * The contract as a PDF.
+ *
+ * Fetched rather than linked, because the CRM endpoint needs the bearer token and
+ * a bare `<a href>` cannot carry one. The blob URL is the caller's to revoke —
+ * see `openContractPdf`, which is what components should use.
+ */
+export async function fetchContractPdf(id: string): Promise<Blob> {
+  requireApi();
+  const res = await authFetch(`/api/contracts/${id}/pdf`, { method: 'GET' });
+  if (!res.ok) {
+    throw new ContractError(
+      res.status === 404
+        ? 'That contract could not be found.'
+        : 'The contract document could not be produced.',
+    );
+  }
+  return await res.blob();
+}
+
+/**
+ * Opens the contract PDF in a new tab, and cleans up after itself.
+ *
+ * Opened rather than downloaded: the common case is reading the thing, and a file
+ * that lands silently in Downloads reads as nothing having happened. Returns false
+ * when the browser blocked the tab, so the caller can say so instead of leaving the
+ * user staring at an unchanged page.
+ */
+export async function openContractPdf(id: string): Promise<boolean> {
+  const blob = await fetchContractPdf(id);
+  const url = URL.createObjectURL(blob);
+  const opened = window.open(url, '_blank', 'noopener');
+  if (!opened) {
+    URL.revokeObjectURL(url);
+    return false;
+  }
+  // Long enough for the new tab to have loaded it. Revoking immediately races the
+  // navigation and shows an empty viewer; never revoking leaks the blob for the
+  // lifetime of the page.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return true;
+}
+
 /* ------------------------------------------------------------ public paths */
 
 /**
@@ -229,4 +274,15 @@ export function declinePublicContract(token: string, reason?: string): Promise<P
     method: 'POST',
     body: JSON.stringify({ reason }),
   });
+}
+
+/**
+ * The signer's own copy, as a URL they can open or save.
+ *
+ * A plain URL rather than a fetched blob: this endpoint takes no credential, the
+ * token in the path is the whole authorisation, and letting the browser fetch it
+ * directly means the PDF viewer's own print and save controls work normally.
+ */
+export function publicContractPdfUrl(token: string): string {
+  return publicUrl(`/api/public/contracts/${encodeURIComponent(token)}/pdf`);
 }

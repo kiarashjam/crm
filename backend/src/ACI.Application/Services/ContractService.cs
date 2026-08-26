@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ACI.Application.Common;
+using ACI.Application.Common.Pdf;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
@@ -218,7 +219,11 @@ public class ContractService : IContractService
 
         var emailSent = await _email.SendContractForSignatureEmailAsync(
             contract.CounterpartyEmail, contract.CounterpartyName,
-            org?.Name ?? "", contract.Title, signingUrl, ct);
+            org?.Name ?? "", contract.Title, signingUrl,
+            // The whole agreement, so they can read it before deciding to follow a
+            // link. Watermarked unsigned, so it cannot be mistaken for the executed
+            // copy that arrives later.
+            DocumentAttachment(contract, org?.Name ?? ""), ct);
 
         await LogEventAsync(
             contract.Id,
@@ -374,16 +379,20 @@ public class ContractService : IContractService
         var orgName = org?.Name ?? "";
         var block = BuildSignatureBlock(contract, orgName);
 
+        // Rendered once and attached to both messages, so the two parties are
+        // demonstrably holding the same file.
+        var document = DocumentAttachment(contract, orgName);
+
         var toClient = await _email.SendExecutedContractEmailAsync(
             contract.CounterpartyEmail, contract.CounterpartyName,
-            orgName, contract.Title, contract.Body, block, ct);
+            orgName, contract.Title, contract.Body, block, document, ct);
 
         var us = await _users.GetByIdAsync(userId, ct);
         var toUs = false;
         if (us is not null && !string.IsNullOrWhiteSpace(us.Email))
         {
             toUs = await _email.SendExecutedContractEmailAsync(
-                us.Email, us.Name ?? "", orgName, contract.Title, contract.Body, block, ct);
+                us.Email, us.Name ?? "", orgName, contract.Title, contract.Body, block, document, ct);
         }
 
         var both = toClient && toUs;
@@ -458,6 +467,129 @@ public class ContractService : IContractService
                 "Contract {ContractId} was signed but {Email} could not be notified", contract.Id, owner.Email);
         }
     }
+
+    public async Task<Result<ContractDocument>> GetDocumentAsync(
+        Guid contractId, Guid organizationId, CancellationToken ct = default)
+    {
+        var contract = await _contracts.GetByIdAsync(contractId, organizationId, ct);
+        if (contract is null) return Result.Failure<ContractDocument>(DomainErrors.Contract.NotFound);
+
+        var org = await _organizations.GetByIdAsync(organizationId, ct);
+        return Document(contract, org?.Name ?? "");
+    }
+
+    public async Task<Result<ContractDocument>> GetDocumentByTokenAsync(
+        string rawToken, CancellationToken ct = default)
+    {
+        var (contract, error) = await ResolveTokenAsync(rawToken, ct);
+        if (contract is null) return Result.Failure<ContractDocument>(error);
+
+        var org = await _organizations.GetByIdAsync(contract.OrganizationId, ct);
+        return Document(contract, org?.Name ?? "");
+    }
+
+    /// <summary>Wraps the rendered document, or reports that it could not be made.</summary>
+    private Result<ContractDocument> Document(Contract contract, string orgName)
+    {
+        var rendered = RenderDocument(contract, orgName);
+        return rendered is null
+            // Reported rather than returning an empty file: a browser handed zero
+            // bytes named ".pdf" shows a broken document with no explanation.
+            ? Result.Failure<ContractDocument>(DomainErrors.Contract.DocumentUnavailable)
+            : Result.Success(new ContractDocument(
+                DocumentFileName(contract), "application/pdf", rendered.Bytes));
+    }
+
+    /* ------------------------------------------------------ the document */
+
+    /// <summary>
+    /// The typeset copy of a contract, or null if it could not be produced.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Rendering is pure and in-memory, so the only way it fails is a defect. But a
+    /// defect here must not be able to stop a contract being signed or sent — the
+    /// plain text is the instrument, and the PDF is a copy of it. So this swallows
+    /// and logs rather than throwing, and every caller treats null as "send it
+    /// without the attachment".
+    /// </para>
+    /// <para>
+    /// A document whose party names could not be carried by the encoding is logged
+    /// as a warning and still sent: a copy with a substituted character is more use
+    /// than no copy, and the plain text in the same email is exact.
+    /// </para>
+    /// </remarks>
+    private ContractPdfResult? RenderDocument(Contract contract, string orgName)
+    {
+        try
+        {
+            var result = ContractPdf.Render(new ContractPdfRequest(
+                contract.Title, contract.Body, orgName, contract.CounterpartyName,
+                contract.Status,
+                Reference: Reference(contract.Id),
+                BodyHash: contract.BodyHashAtSend,
+                GeneratedAtUtc: DateTime.UtcNow,
+                ClientSignatureName: contract.ClientSignatureName,
+                ClientSignedAtUtc: contract.ClientSignedAtUtc,
+                ClientSignatureIp: contract.ClientSignatureIp,
+                CounterSignatureName: contract.CounterSignatureName,
+                CounterSignedAtUtc: contract.CounterSignedAtUtc,
+                CounterSignatureIp: contract.CounterSignatureIp));
+
+            if (result.UnrepresentableCharacters.Count > 0)
+            {
+                _logger.LogWarning(
+                    "Contract {ContractId} PDF substituted {Count} character(s) the document "
+                    + "encoding cannot carry: {Characters}. The emailed text is exact.",
+                    contract.Id, result.UnrepresentableCharacters.Count,
+                    string.Join(" ", result.UnrepresentableCharacters));
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            // Never fatal. Losing the attachment costs a nicety; failing the
+            // countersignature because of it would cost the contract.
+            _logger.LogError(ex, "Could not render the PDF for contract {ContractId}", contract.Id);
+            return null;
+        }
+    }
+
+    /// <summary>The document as an email attachment, or null.</summary>
+    private EmailAttachment? DocumentAttachment(Contract contract, string orgName)
+    {
+        var rendered = RenderDocument(contract, orgName);
+        return rendered is null
+            ? null
+            : new EmailAttachment(DocumentFileName(contract), "application/pdf", rendered.Bytes);
+    }
+
+    /// <summary>
+    /// What the file is called when it lands in somebody's downloads folder.
+    /// </summary>
+    /// <remarks>
+    /// Built from the title, the reference and the state, because "contract.pdf" in a
+    /// folder of thirty contracts is worth nothing. Restricted to characters that are
+    /// safe in a filename on every platform and in a Content-Disposition header —
+    /// a quote or a semicolon in a contract title would otherwise let the title
+    /// break out of the header.
+    /// </remarks>
+    internal static string DocumentFileName(Contract contract)
+    {
+        var stem = new string((contract.Title ?? "").Trim()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '-')
+            .ToArray());
+        while (stem.Contains("--", StringComparison.Ordinal)) stem = stem.Replace("--", "-");
+        stem = stem.Trim('-');
+        if (stem.Length > 60) stem = stem[..60].TrimEnd('-');
+        if (stem.Length == 0) stem = "Contract";
+
+        var state = contract.Status == ContractStatuses.Countersigned ? "signed" : contract.Status;
+        return $"{stem}-{Reference(contract.Id)}-{state}.pdf";
+    }
+
+    /// <summary>A short, quotable reference for a contract. The first block of its id.</summary>
+    internal static string Reference(Guid id) => id.ToString("N")[..8].ToUpperInvariant();
 
     /* ------------------------------------------------------------- voiding */
 

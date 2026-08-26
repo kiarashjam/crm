@@ -15,12 +15,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   FileText, Loader2, PenLine, Send, Sparkles, TriangleAlert, Copy, Check,
-  ShieldCheck, Clock, Eye, Ban, RefreshCw, MailWarning, ChevronDown,
+  ShieldCheck, Clock, Eye, Ban, RefreshCw, MailWarning, ChevronDown, FileDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  countersignContract, createContractDraft, listContractsForLead, resendExecutedCopy,
-  sendContract, updateContract, voidContract, ContractError,
+  countersignContract, createContractDraft, listContractsForLead, openContractPdf,
+  resendExecutedCopy, sendContract, updateContract, voidContract, ContractError,
   type Contract,
 } from '@/app/api/contracts';
 import { isUsingRealApi } from '@/app/api/apiClient';
@@ -364,6 +364,24 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
                   </div>
                 ) : (
                   <div className="mt-3 flex flex-wrap gap-2">
+                    {/* Available in every state. A draft opens watermarked, so what is
+                        reviewed on paper is the sheet the counterparty will get. */}
+                    <Button
+                      size="sm" variant="outline"
+                      onClick={() => void run(`pdf-${c.id}`, async () => {
+                        const opened = await openContractPdf(c.id);
+                        if (!opened) {
+                          toast.warning('Your browser blocked the new tab — allow pop-ups for this site.');
+                        }
+                      })}
+                      disabled={busy === `pdf-${c.id}`}
+                      className="gap-1.5"
+                    >
+                      {busy === `pdf-${c.id}`
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                        : <FileDown className="h-3.5 w-3.5" aria-hidden />}
+                      {c.status === 'countersigned' ? 'Signed PDF' : 'Open as PDF'}
+                    </Button>
                     {allowed.has('edit') && !readOnly && (
                       <Button
                         size="sm" variant="outline"

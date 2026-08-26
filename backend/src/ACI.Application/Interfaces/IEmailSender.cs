@@ -1,5 +1,14 @@
 namespace ACI.Application.Interfaces;
 
+/// <summary>A file to travel with a message.</summary>
+/// <param name="FileName">
+/// What the recipient sees and saves. Worth getting right: "contract.pdf" in a
+/// folder of thirty contracts is worth nothing.
+/// </param>
+/// <param name="ContentType">MIME type, e.g. <c>application/pdf</c>.</param>
+/// <param name="Content">The bytes.</param>
+public sealed record EmailAttachment(string FileName, string ContentType, byte[] Content);
+
 public interface IEmailSender
 {
     Task<bool> SendPasswordResetEmailAsync(string toEmail, string recipientName, string resetUrl, CancellationToken ct = default);
@@ -49,12 +58,17 @@ public interface IEmailSender
     /// <param name="organizationName">Who is asking them to sign.</param>
     /// <param name="contractTitle">Title of the contract.</param>
     /// <param name="signUrl">Absolute URL of the signing page, carrying the token.</param>
+    /// <param name="attachment">
+    /// The unsigned copy, watermarked, so the counterparty can read the whole
+    /// agreement in their own time before deciding to follow a link and sign it.
+    /// </param>
     Task<bool> SendContractForSignatureEmailAsync(
         string toEmail,
         string recipientName,
         string organizationName,
         string contractTitle,
         string signUrl,
+        EmailAttachment? attachment = null,
         CancellationToken ct = default);
 
     /// <summary>
@@ -72,14 +86,16 @@ public interface IEmailSender
     /// Sends the fully executed contract to one party.
     /// </summary>
     /// <remarks>
-    /// The whole contract text goes in the body rather than as an attachment.
-    /// There is no PDF generator in this system and no file storage to keep one
-    /// in, and an inline copy is readable in every mail client, printable, and
-    /// quotable — where a missing attachment is a support conversation. The
-    /// signature block carries both names, both timestamps and the body hash, so
-    /// the email is itself the evidence.
+    /// The whole contract text goes in the BODY as well as in the attachment, and
+    /// that redundancy is deliberate. The inline copy is readable in every mail
+    /// client, quotable in a reply, and survives an archive-to-text rule, where a
+    /// missing or stripped attachment is a support conversation. The attachment is
+    /// the copy somebody files and prints. The signature block carries both names,
+    /// both timestamps and the body hash, so the email is evidence on its own even
+    /// if the file never arrives.
     /// </remarks>
     /// <param name="signatureBlock">Rendered "signed by / on / hash" summary.</param>
+    /// <param name="attachment">The typeset copy, or null if it could not be rendered.</param>
     Task<bool> SendExecutedContractEmailAsync(
         string toEmail,
         string recipientName,
@@ -87,5 +103,6 @@ public interface IEmailSender
         string contractTitle,
         string contractBody,
         string signatureBlock,
+        EmailAttachment? attachment = null,
         CancellationToken ct = default);
 }
