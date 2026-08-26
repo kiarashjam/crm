@@ -93,6 +93,7 @@ import { isValidGuid } from './leads/utils';
 import { loadLeadReferrals, saveLeadReferrals } from './leads/leadReferralStore';
 import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignmentStore';
 import { parsePipeline, pipelineBadge } from './leads/leadPipeline';
+import { matchesLeadSearch, leadInitials } from './leads/leadText';
 import type { LeadForm } from './leads/types';
 
 /** Fallback row style when activity type is unknown (matches `note` in config). */
@@ -516,14 +517,13 @@ export default function Leads() {
   const applyClientLeadFilters = useCallback(
     (list: Lead[]) => {
       let result = [...list];
+      // Through `matchesLeadSearch` rather than inline: this filter threw
+      // "Cannot read properties of undefined (reading 'toLowerCase')" in
+      // production during an API outage, because it trusted name and email to be
+      // present. They are declared required, but that is a claim about data the
+      // server controls, and a search box must not be able to crash the list.
       if (debouncedSearch.trim()) {
-        const q = debouncedSearch.toLowerCase();
-        result = result.filter(
-          (l) =>
-            l.name.toLowerCase().includes(q) ||
-            l.email.toLowerCase().includes(q) ||
-            (l.phone && l.phone.includes(q)),
-        );
+        result = result.filter((l) => matchesLeadSearch(l, debouncedSearch));
       }
       if (filterStatuses.length > 0) result = result.filter((l) => filterStatuses.includes(l.status));
       if (filterSource !== 'all') result = result.filter((l) => l.source === filterSource);
@@ -2068,12 +2068,11 @@ export default function Leads() {
               const sourceBadgeClass = LEAD_SOURCE_BADGE_STYLES[sourceKey] ?? DEFAULT_SOURCE_BADGE_CLASS;
 
               // Get initials
-              const initials = lead.name
-                .split(' ')
-                .map((n) => n[0])
-                .slice(0, 2)
-                .join('')
-                .toUpperCase();
+              // Same reason as the search filter: `lead.name.split(' ')` throws
+              // outright on a record without one, and the old version also
+              // produced a blank avatar for "Jean  Dupont", whose split yields an
+              // empty middle element.
+              const initials = leadInitials(lead.name);
 
               // Get assignee info (orgMembers indexed once per render via useMemo below)
               const assignee = lead.assignedToId ? orgMembersById.get(lead.assignedToId) ?? null : null;
