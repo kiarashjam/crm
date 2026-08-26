@@ -1,4 +1,5 @@
 using ACI.Application.Configuration;
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -132,6 +133,14 @@ public sealed class SmtpEmailSender : IEmailSender
     /// delivery problem cannot fail the caller's operation.
     /// </summary>
     private async Task<bool> SendAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct)
+        => await SendAsync(toEmail, recipientName, subject, body, null, ct);
+
+    /// <summary>
+    /// Builds and delivers one message, with an optional HTML alternative.
+    /// Returns false (never throws) so a delivery problem cannot fail the
+    /// caller's operation.
+    /// </summary>
+    private async Task<bool> SendAsync(string toEmail, string recipientName, string subject, string body, string? htmlBody, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_options.FromAddress))
         {
@@ -145,7 +154,10 @@ public sealed class SmtpEmailSender : IEmailSender
             message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
             message.To.Add(new MailboxAddress(string.IsNullOrWhiteSpace(recipientName) ? toEmail : recipientName, toEmail));
             message.Subject = subject;
-            message.Body = new BodyBuilder { TextBody = body }.ToMessageBody();
+            // Both parts when HTML is supplied: the text alternative is what a
+            // plain-text client, a screen reader, or an archive-to-text rule sees,
+            // and for a contract that copy has to be complete on its own.
+            message.Body = new BodyBuilder { TextBody = body, HtmlBody = htmlBody }.ToMessageBody();
 
             using var client = new SmtpClient();
             var secure = !_options.UseSsl
@@ -167,5 +179,62 @@ public sealed class SmtpEmailSender : IEmailSender
             _logger.LogError(ex, "Failed to send \"{Subject}\" to {Email}", subject, toEmail);
             return false;
         }
+    }
+
+    // ── Contracts ────────────────────────────────────────────────────────────
+    //
+    // These three deliberately BREAK the convention used above. The other methods
+    // return `true` when SmtpHost is unset and LogResetLinksWhenSmtpNotConfigured
+    // is on, so a developer environment can pretend a reminder went out. For a
+    // contract that is exactly the wrong answer: the caller would record a
+    // counterparty as asked-to-sign when nothing left the building. So they log
+    // the link and return FALSE, and the caller surfaces that.
+
+    /// <summary>True when SMTP is configured well enough to attempt a send.</summary>
+    private bool SmtpConfigured(string what, string toEmail, string? linkForTheLog)
+    {
+        if (!string.IsNullOrWhiteSpace(_options.SmtpHost)) return true;
+
+        _logger.LogWarning(
+            "Email:SmtpHost is not set, so the {What} for {Email} was NOT sent. " +
+            "Pass the link on by hand if needed: {Link}",
+            what, toEmail, linkForTheLog ?? "(no link)");
+        return false;
+    }
+
+    // The wording and markup live in ContractEmailContent, so they can be tested
+    // and rendered without opening an SMTP connection. This class keeps only the
+    // decision of whether to send and the reporting of whether it went.
+
+    public async Task<bool> SendContractForSignatureEmailAsync(
+        string toEmail, string recipientName, string organizationName,
+        string contractTitle, string signUrl, CancellationToken ct = default)
+    {
+        if (!SmtpConfigured("contract signature request", toEmail, signUrl)) return false;
+        var email = ContractEmailContent.ForSignature(
+            _options.FromName, recipientName, organizationName, contractTitle, signUrl);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, ct);
+    }
+
+    public async Task<bool> SendContractSignedNotificationAsync(
+        string toEmail, string recipientName, string counterpartyName,
+        string contractTitle, string contractUrl, CancellationToken ct = default)
+    {
+        if (!SmtpConfigured("contract signed notification", toEmail, contractUrl)) return false;
+        var email = ContractEmailContent.SignedNotification(
+            _options.FromName, recipientName, counterpartyName, contractTitle, contractUrl);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, ct);
+    }
+
+    public async Task<bool> SendExecutedContractEmailAsync(
+        string toEmail, string recipientName, string organizationName,
+        string contractTitle, string contractBody, string signatureBlock,
+        CancellationToken ct = default)
+    {
+        if (!SmtpConfigured("executed contract copy", toEmail, null)) return false;
+        var email = ContractEmailContent.Executed(
+            _options.FromName, recipientName, organizationName, contractTitle,
+            contractBody, signatureBlock);
+        return await SendAsync(toEmail, recipientName, email.Subject, email.Text, email.Html, ct);
     }
 }

@@ -32,6 +32,7 @@ import { cn } from '@/app/components/ui/utils';
 import { StatusChangePopover } from './leads/components/StatusChangePopover';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { LeadPipelineTracker } from './leads/components/LeadPipelineTracker';
+import { ContractPanel } from './contracts/ContractPanel';
 import { parsePipeline, serializePipeline, type LeadPipeline } from './leads/leadPipeline';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
 import { recordManualStatus } from './leads/leadStatusSyncStore';
@@ -985,6 +986,13 @@ export default function LeadDetailPage() {
               previewStatus={isReadOnly ? undefined : (patch) => statusSync.preview(lead, pipeline, patch)}
               onConvert={isReadOnly ? undefined : () => navigate(`/leads?convertLeadId=${lead.id}`)}
             />
+          </div>
+
+          {/* Sits directly under the tracker because it drives it: sending
+              satisfies the Contract phase and full execution satisfies the
+              Signature phase, which the status auto-sync then carries through. */}
+          <div className="w-full px-[var(--page-padding)] pb-2">
+            <ContractPanel leadId={lead.id} leadName={lead.name} readOnly={isReadOnly} />
           </div>
 
           {/* Body: tabs + sidebar */}

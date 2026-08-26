@@ -6,6 +6,53 @@ namespace ACI.Application.Common;
 public static class DomainErrors
 {
     /// <summary>
+    /// Contract-related errors.
+    /// </summary>
+    public static class Contract
+    {
+        public static readonly Error NotFound = new(
+            "Contract.NotFound", "The contract was not found");
+
+        public static readonly Error LeadNotFound = new(
+            "Contract.LeadNotFound", "The lead this contract is for was not found");
+
+        public static readonly Error BodyRequired = new(
+            "Contract.BodyRequired", "The contract needs a body before it can be sent");
+
+        public static readonly Error CounterpartyEmailRequired = new(
+            "Contract.CounterpartyEmailRequired", "The contract needs an email address to send to");
+
+        public static readonly Error CounterpartyEmailInvalid = new(
+            "Contract.CounterpartyEmailInvalid", "That email address does not look valid");
+
+        /// <summary>
+        /// Refused because the state machine does not permit it — countersigning
+        /// before the client signed, editing after sending, signing twice.
+        /// </summary>
+        public static readonly Error NotAllowedInThisState = new(
+            "Contract.NotAllowedInThisState", "That is not possible at this stage of the contract");
+
+        /// <summary>
+        /// Sending is blocked while any template placeholder is still unfilled,
+        /// rather than posting a contract that reads "Dear {{lead.name}},".
+        /// </summary>
+        public static readonly Error HasUnresolvedFields = new(
+            "Contract.HasUnresolvedFields", "Fill in the highlighted placeholders before sending");
+
+        public static readonly Error SignatureNameRequired = new(
+            "Contract.SignatureNameRequired", "Type your full name as your signature");
+
+        public static readonly Error ConsentRequired = new(
+            "Contract.ConsentRequired", "Confirm you agree to be bound by this contract");
+
+        public static readonly Error LinkInvalid = new(
+            "Contract.LinkInvalid", "This signing link is not valid");
+
+        public static readonly Error LinkExpired = new(
+            "Contract.LinkExpired", "This signing link has expired. Ask for a new one.");
+    }
+
+    /// <summary>
     /// Contact-related errors.
     /// </summary>
     public static class Contact

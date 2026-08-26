@@ -27,6 +27,7 @@ const Settings = lazy(() => import('@/app/pages/Settings'));
 const Help = lazy(() => import('@/app/pages/Help'));
 const Privacy = lazy(() => import('@/app/pages/Privacy'));
 const Terms = lazy(() => import('@/app/pages/Terms'));
+const SignContract = lazy(() => import('@/app/pages/SignContract'));
 const Leads = lazy(() => import('@/app/pages/Leads'));
 const LeadDetailPage = lazy(() => import('@/app/pages/LeadDetailPage'));
 const LeadWebhook = lazy(() => import('@/app/pages/LeadWebhook'));
@@ -95,6 +96,15 @@ export default function App() {
                 <Route path="/privacy" element={
                   <Suspense fallback={<PageLoader />}>
                     <Privacy />
+                  </Suspense>
+                } />
+                {/* Public contract signing. Outside ProtectedLayout on purpose:
+                    the counterparty has no account, and requiring one to sign a
+                    contract somebody sent them is a dead end. The token in the URL
+                    is the whole authorisation. */}
+                <Route path="/sign/:token" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <SignContract />
                   </Suspense>
                 } />
                 <Route path="/terms" element={
