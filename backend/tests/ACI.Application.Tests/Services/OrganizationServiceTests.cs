@@ -263,9 +263,20 @@ public class OrganizationServiceTests
 
         // Assert
         result.IsSuccess.Should().BeTrue();
-        addedStatuses.Should().HaveCount(10); // 10 default statuses
-        addedStatuses.Select(s => s.Name).Should().Contain("New");
-        addedStatuses.Select(s => s.Name).Should().Contain("Qualified");
+
+        // The exact eight client stages, in order. This asserted 10 statuses and
+        // the presence of "Qualified" until the vocabulary was reworked, and has
+        // been failing ever since — unnoticed, because the backend deploy workflow
+        // runs restore, build and publish but never `dotnet test`.
+        //
+        // Naming them rather than counting them is deliberate: a count of 8 would
+        // still pass if the seed drifted to the wrong eight names, and this list
+        // has to stay in step with the AlignLeadStatusVocabulary migration and the
+        // client's FALLBACK_STATUSES.
+        addedStatuses.Select(s => s.Name).Should().Equal(
+            "New", "Attempted Contact", "Contacted", "Connected",
+            "Contract Pending", "Awaiting Signature", "Signed", "Lost / Not Interested");
+        addedStatuses.Select(s => s.DisplayOrder).Should().Equal(0, 1, 2, 3, 4, 5, 6, 7);
     }
 
     #endregion

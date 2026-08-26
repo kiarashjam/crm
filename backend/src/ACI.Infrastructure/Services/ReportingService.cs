@@ -66,8 +66,14 @@ public class ReportingService : IReportingService
                 continue;
             }
             var currency = MoneyText.NormaliseCurrency(d.Currency);
-            var current = sums.TryGetValue(currency, out var existing) ? existing : (0m, 0);
-            sums[currency] = (current.Value + amount, current.Count + 1);
+            // `out var existing` yields default((decimal, int)) when the key is
+            // absent, which is exactly the zero starting point wanted here. The
+            // previous form used a ternary with a bare `(0m, 0)` fallback, and
+            // because that literal carries no element names the whole expression
+            // unified to an unnamed `(decimal, int)` — losing `.Value` and
+            // `.Count` and failing to compile.
+            sums.TryGetValue(currency, out var existing);
+            sums[currency] = (existing.Value + amount, existing.Count + 1);
         }
         var totals = sums
             .Select(kv => new CurrencyTotalDto(kv.Key, kv.Value.Value, kv.Value.Count))
