@@ -26,6 +26,9 @@ export interface SavePipelineArgs {
   pipeline: LeadPipeline;
   statusOptions: StatusOption[];
   statusesLoaded: boolean;
+  /** The status list arrived empty / failed, so it is never arriving. Only
+   *  affects the SkipReason in the returned plan — the write is held either way. */
+  statusesUnavailable?: boolean;
   enabled: boolean;
   lastAutoStatus?: string;
   overrides?: Partial<Record<CanonicalStage, string>>;
@@ -60,6 +63,7 @@ export async function saveLeadPipeline(args: SavePipelineArgs): Promise<SavePipe
     currentStatus: previousStatus,
     statusOptions: args.statusOptions,
     statusesLoaded: args.statusesLoaded,
+    statusesUnavailable: args.statusesUnavailable,
     isConverted: lead.isConverted,
     enabled: args.enabled,
     lastAutoStatus: args.lastAutoStatus,

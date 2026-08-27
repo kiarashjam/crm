@@ -342,6 +342,77 @@ describe('resolveStatus — default vocabulary', () => {
   });
 });
 
+describe('resolveStatus — vocabularies that predate the agreed stages', () => {
+  // The list this application actually seeded before the eight stages were agreed.
+  // Verified against git history, not guessed: the first version of this block
+  // used an invented list and asserted the wrong thing about it.
+  const LEGACY = opts([
+    'New', 'Open', 'Attempted Contact', 'Contacted', 'Connected',
+    'In Progress', 'Qualified', 'Unqualified', 'Open Deal', 'Lost',
+  ]);
+
+  it('the legacy list resolves every stage, so an established org still syncs', () => {
+    // Worth pinning: it would be easy to assume the old vocabulary is the reason
+    // statuses stopped moving. It is not — driving the real app in a browser
+    // showed this list writing the status correctly. The cause was an org with NO
+    // statuses at all. If this ever regresses, the diagnosis changes.
+    expect(resolveStatus('attempted', LEGACY)?.name).toBe('Attempted Contact');
+    expect(resolveStatus('attempted', LEGACY)?.match).toBe('exact');
+    expect(resolveStatus('contacted', LEGACY)?.name).toBe('Contacted');
+    expect(resolveStatus('qualified', LEGACY)?.name).toBe('Qualified');
+    expect(resolveStatus('signed', LEGACY)?.name).toBe('Open Deal');
+    // No exact match for a booked meeting; one rung down understates progress but
+    // is true as far as it goes.
+    expect(resolveStatus('meeting_scheduled', LEGACY)?.match).toBe('fallback');
+  });
+
+  it('the agreed list resolves every stage EXACTLY, which is the point of it', () => {
+    const AGREED = opts([
+      'New', 'Attempted Contact', 'Contacted', 'Connected',
+      'Contract Pending', 'Awaiting Signature', 'Signed', 'Lost / Not Interested',
+    ]);
+    expect(resolveStatus('attempted', AGREED)?.match).toBe('exact');
+    expect(resolveStatus('meeting_held', AGREED)?.name).toBe('Connected');
+    expect(resolveStatus('contract_sent', AGREED)?.name).toBe('Awaiting Signature');
+    expect(resolveStatus('signed', AGREED)?.name).toBe('Signed');
+  });
+});
+
+describe('resolveStatus — New is never reachable as a FALLBACK', () => {
+  // `new` is the one rung of the downgrade chain that asserts nothing has
+  // happened. Every other step down understates progress, which is a tolerable
+  // loss; degrading to `new` would write "New" over "New" on a lead that has
+  // demonstrably been worked — a write that changes nothing, reported as
+  // success. Resolving to nothing instead surfaces as drift to reconcile.
+  //
+  // A vocabulary with a start and an end and nothing in between is the shape
+  // that provokes it.
+  const SPARSE = opts(['New', 'Won', 'Lost']);
+
+  it('a worked lead does not degrade to New', () => {
+    const stages: CanonicalStage[] = [
+      'attempted', 'contacted', 'meeting_scheduled', 'meeting_held',
+      'qualified', 'contract_pending', 'contract_sent',
+    ];
+    for (const stage of stages) {
+      const resolved = resolveStatus(stage, SPARSE);
+      if (resolved?.name === 'New') {
+        throw new Error(`${stage} resolved to New via a ${resolved.match} match`);
+      }
+    }
+  });
+
+  it('but New itself still resolves, or a new lead could not be labelled', () => {
+    expect(resolveStatus('new', SPARSE)?.name).toBe('New');
+    expect(resolveStatus('new', SPARSE)?.match).toBe('exact');
+  });
+
+  it('and an override may still pin a stage to New, because that is the org asking', () => {
+    // The guard is against silently degrading to New, not against a deliberate pin.
+    expect(resolveStatus('attempted', SPARSE, { attempted: 'New' })?.name).toBe('New');
+  });
+});
+
 describe('resolveStatus — richer and stranger vocabularies', () => {
   it('prefers the precise status when an org configures several', () => {
     const rich = opts(['New', 'Contacted', 'Negotiation', 'Contract Signed', 'Qualified', 'Lost']);
@@ -512,6 +583,43 @@ describe('planStatusSync — refuses to write when a human might disagree', () =
       pipeline: { depositStatus: 'paid' }, statusesLoaded: false,
     }));
     expect(plan).toMatchObject({ kind: 'skip', reason: 'statuses_loading' });
+  });
+
+  it('says the list is UNAVAILABLE, not loading, when it is never arriving', () => {
+    // This distinction is the whole bug. An org with no statuses configured left
+    // `statusesLoaded` false permanently, so every pipeline edit reported
+    // 'statuses_loading' — a transient-sounding reason for a state that never
+    // changes. The user logged step after step, the status sat on New, and
+    // nothing anywhere could explain why. Holding the write is still correct;
+    // reporting it as a temporary condition was not.
+    const plan = planStatusSync(ctx({
+      pipeline: { depositStatus: 'paid' },
+      statusesLoaded: false,
+      statusesUnavailable: true,
+    }));
+    expect(plan).toMatchObject({ kind: 'skip', reason: 'statuses_unavailable' });
+  });
+
+  it('an unavailable list still blocks the write — the reason changed, not the rule', () => {
+    // The gate exists so auto-sync cannot write a status the org does not have.
+    // Naming the cause must not have turned it into a write.
+    const plan = planStatusSync(ctx({
+      pipeline: { depositStatus: 'paid' },
+      statusesLoaded: false,
+      statusesUnavailable: true,
+    }));
+    expect(plan.kind).toBe('skip');
+  });
+
+  it('once the real list arrives, the flag is ignored and the write happens', () => {
+    // `statusesUnavailable` must not be able to keep the gate shut on its own —
+    // a stale flag would recreate the bug it exists to describe.
+    const plan = planStatusSync(ctx({
+      pipeline: { depositStatus: 'paid' },
+      statusesLoaded: true,
+      statusesUnavailable: true,
+    }));
+    expect(plan.kind).toBe('apply');
   });
 
   it('never touches a converted lead', () => {

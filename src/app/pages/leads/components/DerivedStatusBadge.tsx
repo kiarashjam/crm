@@ -48,6 +48,16 @@ export interface DerivedStatusBadgeProps {
   className?: string;
   /** Hides the padlock where the surrounding copy already says it is automatic. */
   showLock?: boolean;
+  /**
+   * This workspace has no lead statuses configured, so there is nothing for the
+   * pipeline to set the status TO and the write is held on every edit.
+   *
+   * Without this the badge went stale and told the user to "reconcile them from
+   * the tracker below" — advice that cannot be followed, because the tracker has
+   * no status to reconcile against either. Naming the real cause is the whole
+   * point of the badge carrying one.
+   */
+  statusesUnavailable?: boolean;
 }
 
 /**
@@ -58,7 +68,7 @@ export interface DerivedStatusBadgeProps {
  * the missing picker reading as a missing feature.
  */
 export function DerivedStatusBadge({
-  status, pipeline, className, showLock = true,
+  status, pipeline, className, showLock = true, statusesUnavailable = false,
 }: DerivedStatusBadgeProps) {
   const derived = deriveStage(pipeline);
 
@@ -76,11 +86,15 @@ export function DerivedStatusBadge({
 
   const cause = derived.phase === 0
     ? 'No pipeline steps recorded yet, so this is the lead\u2019s starting status.'
-    : stale
-      ? `This says "${status}", but the sales pipeline records ${derived.because} `
-        + `(Phase ${derived.phase}). Reconcile them from the tracker below.`
-      : `Set automatically from the sales pipeline: ${derived.because} (Phase ${derived.phase}). `
-        + 'Change it by editing that step.';
+    : statusesUnavailable
+      ? `The sales pipeline records ${derived.because} (Phase ${derived.phase}), but this `
+        + 'workspace has no lead statuses set up, so there is nothing to move the status to. '
+        + 'Add them in Settings \u2192 Lead statuses and it will catch up on the next step you log.'
+      : stale
+        ? `This says "${status}", but the sales pipeline records ${derived.because} `
+          + `(Phase ${derived.phase}). Reconcile them from the tracker below.`
+        : `Set automatically from the sales pipeline: ${derived.because} (Phase ${derived.phase}). `
+          + 'Change it by editing that step.';
 
   return (
     <span

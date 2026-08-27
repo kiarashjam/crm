@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using ACI.Application.Interfaces;
+using ACI.Domain.Common;
 using ACI.Application.Services;
 using ACI.Infrastructure;
 using ACI.Infrastructure.Persistence;
@@ -932,6 +933,42 @@ try
                 END;
             ");
             
+            // Create Notifications table if missing.
+            //
+            // AddNotifications is one of the two migrations with no .Designer.cs, so
+            // EF never discovered it and MigrateAsync never ran it -- yet
+            // AppDbContext has always exposed DbSet<Notification>. Every read of it
+            // therefore failed on "Invalid object name 'Notifications'". Mirrors the
+            // migration exactly, including the filtered unique index the reminder
+            // generator relies on to re-run without creating duplicates.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Notifications')
+                BEGIN
+                    CREATE TABLE [Notifications] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [UserId] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NULL,
+                        [Type] nvarchar(32) NOT NULL,
+                        [Title] nvarchar(512) NOT NULL,
+                        [Message] nvarchar(max) NULL,
+                        [Link] nvarchar(512) NULL,
+                        [Read] bit NOT NULL,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        [SourceKey] nvarchar(256) NULL,
+                        CONSTRAINT [PK_Notifications] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_Notifications_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId])
+                            REFERENCES [Organizations] ([Id]),
+                        CONSTRAINT [FK_Notifications_Users_UserId] FOREIGN KEY ([UserId])
+                            REFERENCES [Users] ([Id]) ON DELETE CASCADE
+                    );
+                    CREATE INDEX [IX_Notifications_CreatedAtUtc] ON [Notifications] ([CreatedAtUtc]);
+                    CREATE INDEX [IX_Notifications_OrganizationId] ON [Notifications] ([OrganizationId]);
+                    CREATE INDEX [IX_Notifications_UserId_OrganizationId_Read] ON [Notifications] ([UserId], [OrganizationId], [Read]);
+                    CREATE UNIQUE INDEX [IX_Notifications_UserId_SourceKey] ON [Notifications] ([UserId], [SourceKey])
+                        WHERE [SourceKey] IS NOT NULL;
+                END;
+            ");
+            
             // Fix existing orphan templates to be system templates
             await db.Database.ExecuteSqlRawAsync(@"
                 UPDATE [Templates] 
@@ -972,6 +1009,33 @@ try
             
             Log.Information("Seeding database...");
             await SeedData.SeedAsync(db, passwordHasher);
+            
+            // Bring EXISTING organisations onto the agreed lead status vocabulary.
+            //
+            // This app applies schema by the hand-written DDL above, not by EF
+            // migrations -- MigrateAsync only ever sees the three migrations that
+            // have a .Designer.cs, and AlignLeadStatusVocabulary has none, so it
+            // was never discovered and never ran. Established tenants kept the old
+            // six labels, the pipeline could not resolve a status against them, and
+            // leads stayed on "New" however much work was logged. So the alignment
+            // lives here, where this application's schema work actually happens.
+            //
+            // Runs after seeding so an organisation the seeder has just created is
+            // aligned in the same boot rather than the next one, and in its own
+            // try/catch so a stale vocabulary degrades the pipeline without taking
+            // the whole initialisation -- or /db-status -- down with it.
+            try
+            {
+                Log.Information("Aligning lead status vocabulary...");
+                var aligned = await db.Database.ExecuteSqlRawAsync(LeadStatusVocabulary.AlignmentSql());
+                Log.Information("Lead status vocabulary aligned ({Rows} row(s) affected)", aligned);
+            }
+            catch (Exception vocabEx)
+            {
+                Log.Error(vocabEx, "Could not align the lead status vocabulary. Organisations still on "
+                    + "retired labels will not have a status derived from their pipeline: {ErrorMessage}",
+                    vocabEx.Message);
+            }
             
             Log.Information("Database initialization complete");
         }

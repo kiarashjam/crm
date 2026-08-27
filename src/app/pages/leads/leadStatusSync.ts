@@ -490,6 +490,21 @@ export function resolveStatus(
   if (start === -1) return null;
   for (let i = start + 1; i < DOWNGRADE_CHAIN.length; i += 1) {
     const weaker = DOWNGRADE_CHAIN[i]!;
+    // NEVER degrade to `new`. Every other step down this chain understates
+    // progress, which is a tolerable loss; `new` ASSERTS that nothing has
+    // happened to a lead that has demonstrably been worked.
+    //
+    // This was not theoretical. An organisation whose status list predates the
+    // eight-stage vocabulary has nothing matching `attempted`, so logging the
+    // very first outreach derived `attempted`, found no status, fell all the way
+    // down here and wrote "New" — over the top of "New". The status never
+    // appeared to change, which reads as the whole feature being broken, and it
+    // happened on the first step every user takes.
+    //
+    // Resolving to nothing instead makes the plan a `skip: unresolvable`, which
+    // the drift strip surfaces as something to reconcile. A visible gap beats an
+    // invisible lie.
+    if (weaker === 'new') break;
     // Consult overrides on the way down as well: an org that renamed its whole
     // vocabulary pins several stages, and honouring them only for the derived
     // stage would strand exactly the case overrides exist for.
@@ -540,6 +555,7 @@ export function isStickyStatus(label: string): boolean {
 
 export type SkipReason =
   | 'statuses_loading'
+  | 'statuses_unavailable'
   | 'converted'
   | 'disabled'
   | 'no_signal'
@@ -608,6 +624,17 @@ export interface StatusSyncContext {
    *  FALLBACK_STATUSES synchronously, so syncing before the real list arrives
    *  could write a status this org does not actually have. */
   statusesLoaded: boolean;
+  /**
+   * The request finished and the org has NO statuses (or it failed outright).
+   *
+   * `statusesLoaded: false` used to mean both "still arriving" and "arrived
+   * empty", and the second is permanent: every pipeline edit skipped the status
+   * write, forever, with nothing anywhere saying so. Users logged step after
+   * step and watched the status sit on New — which is indistinguishable from the
+   * feature not existing. Holding the write is still right, but it has to be
+   * possible to SAY why, so the two states are told apart here.
+   */
+  statusesUnavailable?: boolean;
   isConverted?: boolean;
   /** Per-user opt-out. */
   enabled?: boolean;
@@ -653,7 +680,13 @@ function buildActivity(from: string, to: ResolvedStatus, derived: DerivedStage):
 export function planStatusSync(ctx: StatusSyncContext): StatusSyncPlan {
   const derived = deriveStage(ctx.pipeline);
 
-  if (!ctx.statusesLoaded) return { kind: 'skip', reason: 'statuses_loading', derived };
+  if (!ctx.statusesLoaded) {
+    return {
+      kind: 'skip',
+      reason: ctx.statusesUnavailable ? 'statuses_unavailable' : 'statuses_loading',
+      derived,
+    };
+  }
   if (ctx.isConverted) return { kind: 'skip', reason: 'converted', derived };
   if (ctx.enabled === false) return { kind: 'skip', reason: 'disabled', derived };
   if (derived.phase === 0 && derived.stage === 'new') {
