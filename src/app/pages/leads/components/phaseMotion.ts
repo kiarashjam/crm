@@ -49,6 +49,27 @@ export const PHASE_MOTION = {
   disclosure: { duration: 0.24, ease: EASE_OUT_EXPO },
   /** Chevron rotating. Slightly quicker than the fold so it leads it. */
   chevron: { duration: 0.2, ease: EASE_OUT_QUINT },
+
+  /* ── The presence layer ─────────────────────────────────────────────────
+     Everything below animates STATE CHANGES the tracker previously cut on:
+     the current pip moving, a chip being chosen, a caption being replaced.
+     Springs where a thing MOVES (physicality reads as responsiveness), tweens
+     where a thing is REPLACED (a swap should be quiet, not bouncy). */
+
+  /** The "you are here" ring gliding along the rail to the new current pip. */
+  railCursor: { type: 'spring', stiffness: 480, damping: 38, mass: 0.7 },
+  /** A check springing in the moment a choice or date lands. */
+  chipCheck: { type: 'spring', stiffness: 640, damping: 30, mass: 0.6 },
+  /** Neighbouring chips re-settling around the landed check's width. */
+  chipLayout: { duration: 0.18, ease: EASE_OUT_QUINT },
+  /** Caption / pill / count text replaced with continuity instead of a cut. */
+  swap: { duration: 0.18, ease: EASE_OUT_QUINT },
+  /**
+   * One pip of the full-completion cascade: when the fifth phase lands, the
+   * rail pops left to right, one small crest per pip. The per-pip delay is
+   * added at the call site; this is the shape of each pop.
+   */
+  cascadePop: { duration: 0.3, ease: EASE_OUT_QUINT, times: BADGE_TIMES },
 } as const;
 
 export type PhaseMotionTokens = typeof PHASE_MOTION;
