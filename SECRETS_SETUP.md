@@ -129,7 +129,7 @@ each person's **Settings → Notifications** toggles (`Email notifications` and
 | Port | `587` |
 | Username | the literal string `apikey` (**not** your email) |
 | Password | your SendGrid API key |
-| From address | `kia@bonapp.group` — and it must be **verified** in SendGrid (see below) |
+| From address | `info@pavillon46.ch` — and it must be **verified** in SendGrid (see below) |
 
 ### Verify the sender first (otherwise nothing sends)
 
@@ -137,9 +137,9 @@ SendGrid refuses mail from an unverified sender, so do this once before testing:
 
 **SendGrid → Settings → Sender Authentication**, then either
 
-- **Single Sender Verification** — quickest: add `kia@bonapp.group`, click the link in the
+- **Single Sender Verification** — quickest: add `info@pavillon46.ch`, click the link in the
   confirmation email SendGrid sends to it; or
-- **Authenticate Your Domain** (`bonapp.group`) — more DNS work, but far better
+- **Authenticate Your Domain** (`pavillon46.ch`) — more DNS work, but far better
   deliverability because the mail is then SPF/DKIM-signed and much less likely to land in spam.
 
 A `403 Forbidden` from the relay almost always means the from-address is not verified.
@@ -147,7 +147,7 @@ A `403 Forbidden` from the relay almost always means the from-address is not ver
 ### Azure deployment
 
 Host, username and sender are already committed as defaults in `appsettings.json`
-(`smtp.sendgrid.net` / `apikey` / `kia@bonapp.group`), so in practice only the
+(`smtp.sendgrid.net` / `apikey` / `info@pavillon46.ch`), so in practice only the
 **API key** and the **SPA URL** need setting.
 
 Add them in **Azure Portal → Web Apps → \<your-backend\> → Configuration → Application
@@ -158,7 +158,7 @@ environment variable):
 |------|-------|-----------|
 | `Email__SmtpPassword` | your SendGrid API key | **yes** — never committed |
 | `Email__FrontendBaseUrl` | SPA origin, no trailing slash, e.g. `https://mango-moss-0804bb403.1.azurestaticapps.net` | **yes** in production (default points at localhost) |
-| `Email__FromAddress` | overrides the committed default `kia@bonapp.group` | only to change the sender |
+| `Email__FromAddress` | overrides the committed default `info@pavillon46.ch` | only to change the sender |
 | `Email__SmtpHost` | overrides `smtp.sendgrid.net` | only for a different relay |
 | `Email__SmtpUser` | overrides `apikey` | only for a different relay |
 | `Email__FromName` | overrides `Cadence` | optional |
@@ -218,7 +218,7 @@ commit, treat it as compromised and rotate it in the SendGrid dashboard
 - [ ] `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_SECRET` added  
 - [ ] `VITE_API_URL` added as **variable** (optional)
 - [ ] `OpenAI__ApiKey` added (optional, for Intelligent Sales Writer)
-- [ ] `Email__SmtpPassword` set in Azure **or** `SENDGRID_API_KEY` added as a GitHub secret, and `kia@bonapp.group` verified in SendGrid
+- [ ] `Email__SmtpPassword` set in Azure **or** `SENDGRID_API_KEY` added as a GitHub secret, and `info@pavillon46.ch` verified in SendGrid
 - [ ] `Email__FrontendBaseUrl` set to the deployed SPA origin
 
 ---
