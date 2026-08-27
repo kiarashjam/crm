@@ -77,7 +77,15 @@ const HEADER_HOVER: Record<PhaseState, string> = {
   lost: 'hover:bg-rose-50/60',
 };
 
-/** A row of mutually-exclusive choice chips. */
+/**
+ * A row of mutually-exclusive choice chips.
+ *
+ * Selection is a MOMENT, not just a colour change: the chosen chip acknowledges
+ * the press under the finger (whileTap), a check springs in beside its label,
+ * and the neighbours re-settle around the new width as transforms rather than a
+ * jump. The check is what makes the chosen option scannable from across the row
+ * — colour alone asked the eye to compare border hues.
+ */
 function Choices<T extends string>({
   options, value, disabled, onPick,
 }: {
@@ -86,19 +94,24 @@ function Choices<T extends string>({
   disabled?: boolean;
   onPick: (v: T) => void;
 }) {
+  const reduce = useMotionPreference();
+  const t = usePhaseMotion(reduce);
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((o) => {
         const active = value === o.value;
         return (
-          <button
+          <motion.button
             key={o.value}
             type="button"
             disabled={disabled}
             aria-pressed={active}
             onClick={() => onPick(o.value)}
+            layout
+            transition={t.chipLayout}
+            whileTap={disabled || reduce ? undefined : { scale: 0.96 }}
             className={cn(
-              'rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors duration-150 disabled:opacity-50',
+              'flex items-center rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors duration-150 disabled:opacity-50',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1',
               active && o.tone === 'danger' && 'border-rose-300 bg-rose-50 text-rose-700',
               active && o.tone === 'success' && 'border-emerald-300 bg-emerald-50 text-emerald-700',
@@ -106,13 +119,24 @@ function Choices<T extends string>({
               !active && 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
             )}
           >
+            {active && (
+              <motion.span
+                aria-hidden
+                initial={reduce ? false : { scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={t.chipCheck}
+                className="mr-1.5 grid shrink-0 place-items-center"
+              >
+                <Check className="h-3.5 w-3.5" strokeWidth={3} />
+              </motion.span>
+            )}
             {o.label}
             {!active && o.hint && (
               <span className="ml-1.5 text-[10px] font-semibold text-slate-400">
                 → {o.hint}
               </span>
             )}
-          </button>
+          </motion.button>
         );
       })}
     </div>
@@ -235,7 +259,14 @@ function DropoutReasonField({
   );
 }
 
-/** A labelled date field. */
+/**
+ * A labelled date field.
+ *
+ * The tracker autosaves, so there is no submit to confirm a date was taken. The
+ * check springing in beside the label is that confirmation — the same mark, at
+ * the same weight, as a chosen chip, so "recorded" looks like one thing
+ * everywhere in the card.
+ */
 function DateField({
   label, value, disabled, onChange,
 }: {
@@ -244,9 +275,24 @@ function DateField({
   disabled?: boolean;
   onChange: (v: string) => void;
 }) {
+  const reduce = useMotionPreference();
+  const t = usePhaseMotion(reduce);
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <span className="flex items-center gap-1 text-xs font-medium text-slate-500">
+        {label}
+        {!!value && (
+          <motion.span
+            aria-hidden
+            initial={reduce ? false : { scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={t.chipCheck}
+            className="grid place-items-center text-emerald-600"
+          >
+            <Check className="h-3 w-3" strokeWidth={3} />
+          </motion.span>
+        )}
+      </span>
       <input
         type="date"
         value={value ?? ''}
@@ -435,14 +481,33 @@ function PhaseCard({
             <span className="text-[15px] font-semibold tracking-[-0.01em] text-slate-900">{title}</span>
             <span className="shrink-0 text-[11px] font-medium tabular-nums text-slate-500">Phase {n}</span>
             {PILL[state] && (
-              <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', PILL[state])}>
+              // Keyed on the state so a change REPLACES the pill with a small
+              // rise-in rather than restyling it in place — "In progress"
+              // becoming "Complete" is an event, and events read better arriving
+              // than mutating.
+              <motion.span
+                key={state}
+                initial={{ opacity: 0, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={t.swap}
+                className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', PILL[state])}
+              >
                 {PILL_TEXT[state]}
-              </span>
+              </motion.span>
             )}
           </span>
-          <span className={cn('mt-1 block text-xs transition-colors duration-[240ms]', CAPTION[state])}>
+          {/* Keyed on its own text: every caption change is the tracker saying
+              something new ("Waiting on: the date it was sent"), and new words
+              should arrive, not be swapped mid-glance. */}
+          <motion.span
+            key={caption}
+            initial={{ opacity: 0, y: 3 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={t.swap}
+            className={cn('mt-1 block text-xs transition-colors duration-[240ms]', CAPTION[state])}
+          >
             {caption}
-          </span>
+          </motion.span>
         </span>
 
         <span className="flex shrink-0 items-center gap-2 pt-1.5">
@@ -574,6 +639,18 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
   /** Only the card that just completed plays the one-shot beats — never a lost one. */
   const celebrates = (i: number) => justCompleted === i && !lost && !reduce;
 
+  /**
+   * The full-house beat: the FIFTH phase just landed, so the whole rail pops
+   * once, left to right — a crest running along everything that led here. Only
+   * for the finishing edit (one-shot via justCompleted), never on mount, never
+   * for a lost pipeline, and never under reduced motion.
+   */
+  const cascade = complete && justCompleted === PHASE_TITLES.length - 1 && !lost && !reduce;
+
+  // Scopes the rail cursor's layoutId to this tracker, so two trackers on one
+  // page (a comparison view, a storybook) cannot fling a ring across the screen.
+  const railId = useId();
+
   /** Jump to a phase from the rail: open it and scroll it into view. */
   const jumpTo = (i: number) => {
     disclosure.reveal(i);
@@ -599,33 +676,109 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
   );
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-slate-50/60 p-5">
+    <section
+      className={cn(
+        'relative overflow-hidden rounded-3xl border p-5',
+        // The section itself carries the mood, very quietly: a finished pipeline
+        // sits on the faintest emerald, a stopped one on the faintest rose. It
+        // is a wash, not a colour — the cards still have to do the work — but it
+        // means the state is legible before a single word is read.
+        'transition-colors duration-500',
+        complete ? 'border-emerald-200/70 bg-emerald-50/30'
+          : lost ? 'border-rose-200/70 bg-rose-50/30'
+            : 'border-slate-200 bg-slate-50/60',
+      )}
+    >
+      {/* A single soft light source behind the header, so the section reads as a
+          surface with depth rather than a flat grey box. Inert and unanimated:
+          decoration should not cost frames. */}
+      <span
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute -left-24 -top-32 h-64 w-[28rem] rounded-full blur-3xl',
+          'transition-colors duration-500',
+          complete ? 'bg-emerald-200/25' : lost ? 'bg-rose-200/20' : 'bg-indigo-200/25',
+        )}
+      />
+
       {/* The transition said in words. Polite, so it never interrupts. */}
       <p aria-live="polite" aria-atomic="true" className="sr-only">{announcement}</p>
 
-      <div className="mb-5">
+      <div className="relative mb-5">
         <h2 className="flex items-center gap-2 text-base font-bold text-slate-900">
-          <Sparkles className="h-4 w-4 text-indigo-600" /> Lead lifecycle
+          <motion.span
+            aria-hidden
+            initial={false}
+            // The one glint in the component, and it only fires the moment the
+            // whole pipeline lands — so it means "that's the lot", not "hello".
+            animate={cascade ? { rotate: [0, 18, 0], scale: [1, 1.25, 1] } : { rotate: 0, scale: 1 }}
+            transition={cascade ? { ...t.cascadePop, delay: 0.62 } : { duration: 0 }}
+            className="grid place-items-center"
+          >
+            <Sparkles className={cn(
+              'h-4 w-4 transition-colors duration-500',
+              complete ? 'text-emerald-600' : lost ? 'text-rose-500' : 'text-indigo-600',
+            )} />
+          </motion.span>
+          Lead lifecycle
         </h2>
         <p className={cn(
           'mt-0.5 text-[13px]',
           lost ? 'font-medium text-rose-700' : complete ? 'font-medium text-emerald-700' : 'text-slate-500',
         )}>
-          {lost
-            ? `Stopped — ${lost}`
-            : complete
-              ? 'All phases complete — ready to become a deal'
-              : `Currently in Phase ${phase}: ${PHASE_TITLES[phase - 1]}`}
+          {(() => {
+            const line = lost
+              ? `Stopped — ${lost}`
+              : complete
+                ? 'All phases complete — ready to become a deal'
+                : `Currently in Phase ${phase}: ${PHASE_TITLES[phase - 1]}`;
+            return (
+              <motion.span
+                key={line}
+                initial={{ opacity: 0, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={t.swap}
+                className="block"
+              >
+                {line}
+              </motion.span>
+            );
+          })()}
         </p>
 
         {/* The meter. Full width so the connectors read as distance travelled
             rather than as hyphens between dots. Every pip is a jump target. */}
-        <div className="mt-4 flex items-start gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:gap-3">
+        <div className="relative mt-4 flex items-start gap-2 rounded-2xl border border-slate-200 bg-white/90 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-[2px] sm:gap-3">
           <span className={cn(
-            'mt-1.5 shrink-0 text-[11px] font-bold tabular-nums',
+            'mt-1.5 flex shrink-0 text-[11px] font-bold tabular-nums',
             doneCount === PHASE_TITLES.length ? 'text-emerald-700' : 'text-slate-500',
           )}>
-            {doneCount}/{PHASE_TITLES.length}
+            {/* The count exists TWICE on purpose.
+                First as one contiguous string, visually hidden: the digit roll
+                below splits "3/5" across animated elements, and a fragmented
+                number is worse for a screen reader than a static one — it reads
+                "3" and "/5" as separate things. This is the real text.
+                Then the roll, aria-hidden: old value up and out, new value up and
+                in, because a number that mutates in place looks like a rendering
+                glitch and this number changing is the whole point. */}
+            <span className="sr-only">{doneCount}/{PHASE_TITLES.length}</span>
+            <span aria-hidden className="flex">
+              <span className="relative inline-block overflow-hidden">
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.span
+                    key={doneCount}
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -10, opacity: 0 }}
+                    transition={t.swap}
+                    className="inline-block"
+                  >
+                    {doneCount}
+                  </motion.span>
+                </AnimatePresence>
+              </span>
+              /{PHASE_TITLES.length}
+            </span>
           </span>
 
           <ol className="flex flex-1 items-start" aria-label="Pipeline progress">
@@ -637,35 +790,67 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
               const word = isDone ? 'complete' : isCurrent ? 'in progress' : isLostHere ? 'stopped here' : 'not started';
               return (
                 <li key={title} className={cn('flex items-start', i < PHASE_TITLES.length - 1 && 'flex-1')}>
-                  <button
+                  <motion.button
                     type="button"
                     onClick={() => jumpTo(i)}
                     aria-current={isCurrent ? 'step' : undefined}
+                    whileTap={reduce ? undefined : { scale: 0.94 }}
                     className={cn(
                       'group flex w-8 shrink-0 flex-col items-center gap-1.5 rounded-lg py-0.5 sm:w-[4.5rem]',
                       'transition-colors duration-150 hover:bg-slate-50',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
                     )}
                   >
-                    <span
-                      className={cn(
-                        'flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-bold transition-all duration-200',
-                        'group-hover:scale-110',
-                        // Filled = banked, OUTLINED = current, flat = future. A
-                        // shape difference, so it survives greyscale and
-                        // red-green deficiency where hue alone would not.
-                        isDone && 'border-emerald-500 bg-emerald-500 text-white',
-                        isCurrent && 'border-indigo-500 bg-white text-indigo-700 shadow-[0_0_0_4px_#e0e7ff]',
-                        isLostHere && 'border-rose-500 bg-rose-500 text-white',
-                        !isDone && !isCurrent && !isLostHere && 'border-slate-200 bg-slate-100 text-slate-400',
+                    {/* Hover scale lives on this wrapper, NOT the circle: the
+                        circle's transform belongs to the cascade keyframes, and
+                        an inline animated transform silently overrides a hover
+                        class on the same element. */}
+                    <span className="relative flex h-6 w-6 shrink-0 items-center justify-center transition-transform duration-200 group-hover:scale-110">
+                      {/* Presence, in two layers. The BREATH is the one loop the
+                          tracker allows itself — a slow soft swell saying "this
+                          is where the work is", paused entirely under reduced
+                          motion. The RING is a layout element: when the current
+                          phase changes it GLIDES along the rail to the new pip,
+                          which is the eye's answer to "where did I move to". */}
+                      {isCurrent && !reduce && (
+                        <motion.span
+                          aria-hidden
+                          className="absolute -inset-1.5 rounded-full bg-indigo-400/30"
+                          animate={{ scale: [1, 1.28, 1], opacity: [0.45, 0.12, 0.45] }}
+                          transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+                        />
                       )}
-                    >
-                      <span className="sr-only">{`Phase ${i + 1}, ${title}: ${word}. Show this phase.`}</span>
-                      <span aria-hidden>
-                        {isDone ? <Check className="h-3.5 w-3.5" strokeWidth={3} />
-                          : isLostHere ? <X className="h-3.5 w-3.5" strokeWidth={3} />
-                            : i + 1}
-                      </span>
+                      {isCurrent && (
+                        <motion.span
+                          aria-hidden
+                          layoutId={`${railId}-cursor`}
+                          transition={t.railCursor}
+                          className="absolute -inset-1 rounded-full bg-indigo-100/60 ring-2 ring-indigo-400/80"
+                        />
+                      )}
+                      <motion.span
+                        initial={false}
+                        animate={cascade ? { scale: [1, 1.16, 1] } : { scale: 1 }}
+                        transition={cascade ? { ...t.cascadePop, delay: 0.3 + i * 0.055 } : { duration: 0 }}
+                        className={cn(
+                          'relative flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-bold',
+                          'transition-colors duration-200',
+                          // Filled = banked, OUTLINED = current, flat = future. A
+                          // shape difference, so it survives greyscale and
+                          // red-green deficiency where hue alone would not.
+                          isDone && 'border-emerald-500 bg-emerald-500 text-white',
+                          isCurrent && 'border-indigo-500 bg-white text-indigo-700',
+                          isLostHere && 'border-rose-500 bg-rose-500 text-white',
+                          !isDone && !isCurrent && !isLostHere && 'border-slate-200 bg-slate-100 text-slate-400',
+                        )}
+                      >
+                        <span className="sr-only">{`Phase ${i + 1}, ${title}: ${word}. Show this phase.`}</span>
+                        <span aria-hidden>
+                          {isDone ? <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                            : isLostHere ? <X className="h-3.5 w-3.5" strokeWidth={3} />
+                              : i + 1}
+                        </span>
+                      </motion.span>
                     </span>
                     <span aria-hidden className={cn(
                       'hidden text-center text-[10px] font-medium leading-tight sm:block',
@@ -673,14 +858,14 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                     )}>
                       {title}
                     </span>
-                  </button>
+                  </motion.button>
                   {i < PHASE_TITLES.length - 1 && (
                     <span aria-hidden className="mt-[13px] h-[3px] flex-1 overflow-hidden rounded-full bg-slate-200">
                       <motion.span
                         initial={false}
                         animate={{ scaleX: done[i] ? 1 : 0 }}
                         transition={celebrates(i) ? t.connector : { duration: 0 }}
-                        className="block h-full w-full origin-left rounded-full bg-emerald-400"
+                        className="block h-full w-full origin-left rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500"
                       />
                     </span>
                   )}
