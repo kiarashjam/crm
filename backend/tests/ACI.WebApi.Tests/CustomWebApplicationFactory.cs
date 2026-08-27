@@ -2,6 +2,7 @@ using ACI.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -17,7 +18,23 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
-        
+
+        // No mail, ever. The Testing environment loads appsettings.json, where
+        // Email:SmtpHost is smtp.sendgrid.net — so anything that sends (invitations,
+        // a contract going out for signature) opened a real SMTP connection and hung
+        // until the HttpClient's 100-second timeout. An empty host is the sender's
+        // documented "log it instead of sending it" path, which is what a test host
+        // wants: the code under test still runs, and emailSent comes back false,
+        // which is a state the product is careful to report honestly.
+        builder.ConfigureAppConfiguration(config =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:SmtpHost"] = "",
+                ["Email:LogResetLinksWhenSmtpNotConfigured"] = "true",
+            });
+        });
+
         builder.ConfigureServices(services =>
         {
             // Remove existing DbContext registration
