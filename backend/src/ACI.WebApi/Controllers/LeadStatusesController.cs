@@ -63,8 +63,15 @@ public class LeadStatusesController : ControllerBase
     {
         var orgId = _currentUser.CurrentOrganizationId;
         if (orgId == null) return Problem(detail: "X-Organization-Id required", statusCode: StatusCodes.Status400BadRequest);
-        var list = await _leadStatusService.GetByOrganizationIdAsync(orgId.Value, ct);
-        return Ok(list);
+        // ToActionResult, NOT Ok(): the service returns Result<T>, and Ok() serialises
+        // the WRAPPER — {"isSuccess":true,"value":[...]} — where the client expects
+        // the array. This was the whole reason a pipeline step never moved a lead's
+        // status: `Array.isArray(list)` is false for an object, so the frontend read
+        // every response as an empty status list, held the status write back, and
+        // said nothing. The other three org-config controllers had it right; only
+        // this one did not, which is why only the status was affected.
+        var result = await _leadStatusService.GetByOrganizationIdAsync(orgId.Value, ct);
+        return result.ToActionResult();
     }
 
     /// <summary>
@@ -86,9 +93,11 @@ public class LeadStatusesController : ControllerBase
     {
         var orgId = _currentUser.CurrentOrganizationId;
         if (orgId == null) return Problem(detail: "X-Organization-Id required", statusCode: StatusCodes.Status400BadRequest);
-        var status = await _leadStatusService.GetByIdAsync(id, orgId.Value, ct);
-        if (status == null) return NotFound();
-        return Ok(status);
+        // The `status == null` check this replaces could never fire — Result<T> is a
+        // class and is never null — so a genuine not-found returned 200 carrying a
+        // failure envelope. ToActionResult maps the error to a real status code.
+        var result = await _leadStatusService.GetByIdAsync(id, orgId.Value, ct);
+        return result.ToActionResult();
     }
 
     /// <summary>
@@ -114,10 +123,8 @@ public class LeadStatusesController : ControllerBase
         var fail = await RequireOrgOwnerOrManager(ct);
         if (fail != null) return fail;
         var orgId = _currentUser.CurrentOrganizationId!.Value;
-        var status = await _leadStatusService.CreateAsync(orgId, request.Name, request.DisplayOrder, ct);
-        return status == null 
-            ? Problem(detail: "Failed to create status", statusCode: StatusCodes.Status400BadRequest) 
-            : Ok(status);
+        var result = await _leadStatusService.CreateAsync(orgId, request.Name, request.DisplayOrder, ct);
+        return result.ToActionResult();
     }
 
     /// <summary>
@@ -146,9 +153,8 @@ public class LeadStatusesController : ControllerBase
         var fail = await RequireOrgOwnerOrManager(ct);
         if (fail != null) return fail;
         var orgId = _currentUser.CurrentOrganizationId!.Value;
-        var status = await _leadStatusService.UpdateAsync(id, orgId, request.Name, request.DisplayOrder, ct);
-        if (status == null) return NotFound();
-        return Ok(status);
+        var result = await _leadStatusService.UpdateAsync(id, orgId, request.Name, request.DisplayOrder, ct);
+        return result.ToActionResult();
     }
 
     /// <summary>

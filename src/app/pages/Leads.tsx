@@ -209,6 +209,12 @@ export default function Leads() {
   // Gate auto status sync until the org's real status list has arrived —
   // FALLBACK_STATUSES is handed out synchronously and may not match this org.
   const [statusesLoaded, setStatusesLoaded] = useState(false);
+  // "Not loaded" has two causes and only one of them ever resolves. An org with
+  // no statuses configured (or a failing request) leaves the gate shut forever,
+  // and every pipeline edit then skipped the status write in total silence —
+  // which reads as the whole feature being broken. Tracked separately so the UI
+  // can say which of the two it is.
+  const [statusesUnavailable, setStatusesUnavailable] = useState(false);
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
@@ -345,6 +351,7 @@ export default function Leads() {
       [leadStatuses],
     ),
     statusesLoaded,
+    statusesUnavailable,
   });
   const sourceOptions = leadSources.length > 0 ? leadSources : FALLBACK_SOURCES.map((name) => ({ id: name, name, organizationId: '', displayOrder: 0 }));
 
@@ -606,7 +613,9 @@ export default function Leads() {
       setLeadStatuses(statuses ?? []);
       // See LeadDetailPage: an empty list means we are rendering
       // FALLBACK_STATUSES, so auto-sync must not act on it.
-      setStatusesLoaded((statuses?.length ?? 0) > 0);
+      const statusesReady = (statuses?.length ?? 0) > 0;
+      setStatusesLoaded(statusesReady);
+      setStatusesUnavailable(!statusesReady);
       setLeadSources(sources ?? []);
       if (stats) setLeadStats(stats);
 
@@ -2178,6 +2187,7 @@ export default function Leads() {
                             status={lead.status}
                             pipeline={parsePipeline(lead.pipelineState)}
                             className="px-2.5 py-1.5"
+                            statusesUnavailable={statusesUnavailable}
                           />
                           {lead.isConverted && (
                             <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-300/40 ring-1 ring-white/30">

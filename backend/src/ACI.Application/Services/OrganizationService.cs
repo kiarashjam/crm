@@ -1,6 +1,7 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -91,15 +92,11 @@ public sealed class OrganizationService : IOrganizationService
             await _organizationRepository.BackfillUserDataToOrganizationAsync(userId, org.Id, ct);
             
             // Seed default Lead Statuses.
-            // These mirror the 5-phase pipeline one-for-one so the status is always
-            // derivable from recorded work rather than typed in separately — see
-            // leadStatusSync.ts for the mapping. Kept in step with the
-            // AlignLeadStatusVocabulary migration, which brings existing
-            // organisations onto the same list.
-            var defaultStatuses = new[] {
-                "New", "Attempted Contact", "Contacted", "Connected",
-                "Contract Pending", "Awaiting Signature", "Signed", "Lost / Not Interested"
-            };
+            // Read from LeadStatusVocabulary rather than restated here: the same
+            // list has to be applied to organisations that already exist, and a
+            // vocabulary written down twice drifts. That is exactly what happened
+            // before — see the notes on LeadStatusVocabulary.
+            var defaultStatuses = LeadStatusVocabulary.Default;
             for (int i = 0; i < defaultStatuses.Length; i++)
             {
                 var status = new LeadStatus

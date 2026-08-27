@@ -119,6 +119,12 @@ export default function LeadDetailPage() {
   // Auto status sync must not run against FALLBACK_STATUSES while the org's real
   // list is still in flight — it could write a status this org does not have.
   const [statusesLoaded, setStatusesLoaded] = useState(false);
+  // "Not loaded" has two causes and only one of them ever resolves. An org with
+  // no statuses configured (or a failing request) leaves the gate shut forever,
+  // and every pipeline edit then skipped the status write in total silence —
+  // which reads as the whole feature being broken. Tracked separately so the UI
+  // can say which of the two it is.
+  const [statusesUnavailable, setStatusesUnavailable] = useState(false);
   const [sources, setSources] = useState<LeadSource[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -197,9 +203,13 @@ export default function LeadDetailPage() {
         // failure or an empty result `statusOptions` falls back to
         // FALLBACK_STATUSES, which is precisely the case this gate exists to
         // keep auto-sync away from — so it stays shut.
-        setStatusesLoaded(Array.isArray(v) && v.length > 0);
+        const ready = Array.isArray(v) && v.length > 0;
+        setStatusesLoaded(ready);
+        setStatusesUnavailable(!ready);
       })
-      .catch(() => { if (!cancelled) { setStatuses([]); setStatusesLoaded(false); } });
+      .catch(() => {
+        if (!cancelled) { setStatuses([]); setStatusesLoaded(false); setStatusesUnavailable(true); }
+      });
     getLeadSources().then((v) => { if (!cancelled) setSources(v); }).catch(() => { if (!cancelled) setSources([]); });
     return () => { cancelled = true; };
   }, []);
@@ -315,6 +325,7 @@ export default function LeadDetailPage() {
       [statusOptions, statuses],
     ),
     statusesLoaded,
+    statusesUnavailable,
   });
 
   // Memoised so the strip does not re-read localStorage on every render.
@@ -850,7 +861,11 @@ export default function LeadDetailPage() {
                       {/* Read-only: the status is derived from the pipeline below,
                           and the badge carries its own cause so "why does this say
                           Qualified?" is answerable without a picker. */}
-                      <DerivedStatusBadge status={lead.status} pipeline={pipeline} />
+                      <DerivedStatusBadge
+                        status={lead.status}
+                        pipeline={pipeline}
+                        statusesUnavailable={statusesUnavailable}
+                      />
                       {lead.isConverted && (
                         <span className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
                           <CheckCircle2 className="w-3.5 h-3.5" />

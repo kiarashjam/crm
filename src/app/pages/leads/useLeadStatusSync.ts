@@ -30,6 +30,9 @@ export interface UseLeadStatusSyncArgs {
   statusOptions: StatusOption[];
   /** False until the org's real status list has arrived. */
   statusesLoaded: boolean;
+  /** The list arrived EMPTY, or the request failed — so it is never arriving.
+   *  Distinguished from "still loading" so the UI can say which it is. */
+  statusesUnavailable?: boolean;
 }
 
 export interface SavePipelineOutcome {
@@ -40,7 +43,9 @@ export interface SavePipelineOutcome {
   stale: boolean;
 }
 
-export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStatusSyncArgs) {
+export function useLeadStatusSync({
+  statusOptions, statusesLoaded, statusesUnavailable,
+}: UseLeadStatusSyncArgs) {
   const [prefs, setPrefs] = useState(() => loadStatusSyncPrefs());
   const [refreshToken, setRefreshToken] = useState(0);
   useEffect(() => onStatusSyncChange(() => {
@@ -82,12 +87,13 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         currentStatus: lead.status ?? '',
         statusOptions,
         statusesLoaded,
+        statusesUnavailable,
         isConverted: lead.isConverted,
         enabled,
         lastAutoStatus: lastAutoFor(lead.id),
         overrides,
       }),
-    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
+    [statusOptions, statusesLoaded, statusesUnavailable, enabled, overrides, lastAutoFor],
   );
 
   /** Standing disagreement between status and pipeline, computed from state. */
@@ -117,12 +123,13 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         currentStatus: lead.status ?? '',
         statusOptions,
         statusesLoaded,
+        statusesUnavailable,
         isConverted: lead.isConverted,
         enabled,
         lastAutoStatus: lastAutoFor(lead.id),
         overrides,
       })?.name ?? null,
-    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
+    [statusOptions, statusesLoaded, statusesUnavailable, enabled, overrides, lastAutoFor],
   );
 
   /**
@@ -151,6 +158,7 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
         pipeline,
         statusOptions,
         statusesLoaded,
+        statusesUnavailable,
         enabled,
         lastAutoStatus: lastAutoFor(lead.id),
         overrides,
@@ -197,7 +205,7 @@ export function useLeadStatusSync({ statusOptions, statusesLoaded }: UseLeadStat
 
       return { ok: true, lead: result.lead, plan: result.plan, stale: false };
     },
-    [statusOptions, statusesLoaded, enabled, overrides, lastAutoFor],
+    [statusOptions, statusesLoaded, statusesUnavailable, enabled, overrides, lastAutoFor],
   );
 
   return useMemo(
