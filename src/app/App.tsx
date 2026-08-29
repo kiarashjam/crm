@@ -47,6 +47,30 @@ const CompanyDetail = lazy(() => import('@/app/pages/CompanyDetail'));
 const Contacts = lazy(() => import('@/app/pages/Contacts'));
 const ContactDetail = lazy(() => import('@/app/pages/ContactDetail'));
 const Team = lazy(() => import('@/app/pages/Team'));
+const Members = lazy(() => import('@/app/pages/Members'));
+const MemberDetail = lazy(() => import('@/app/pages/MemberDetail'));
+const Events = lazy(() => import('@/app/pages/Events'));
+const EventDetail = lazy(() => import('@/app/pages/EventDetail'));
+const Reservations = lazy(() => import('@/app/pages/Reservations'));
+const Loyalty = lazy(() => import('@/app/pages/Loyalty'));
+const Applications = lazy(() => import('@/app/pages/Applications'));
+const Charges = lazy(() => import('@/app/pages/Charges'));
+const Visits = lazy(() => import('@/app/pages/Visits'));
+const GiftCards = lazy(() => import('@/app/pages/GiftCards'));
+const Communications = lazy(() => import('@/app/pages/Communications'));
+const MemberPortal = lazy(() => import('@/app/pages/MemberPortal'));
+const Households = lazy(() => import('@/app/pages/Households'));
+const Subscriptions = lazy(() => import('@/app/pages/Subscriptions'));
+const Campaigns = lazy(() => import('@/app/pages/Campaigns'));
+const Donations = lazy(() => import('@/app/pages/Donations'));
+const Calendar = lazy(() => import('@/app/pages/Calendar'));
+const Statements = lazy(() => import('@/app/pages/Statements'));
+const HospitalityReports = lazy(() => import('@/app/pages/HospitalityReports'));
+const TabsPage = lazy(() => import('@/app/pages/Tabs'));
+const PosTerminal = lazy(() => import('@/app/pages/PosTerminal'));
+const HospitalitySettings = lazy(() => import('@/app/pages/HospitalitySettings'));
+const HospitalityDashboard = lazy(() => import('@/app/pages/HospitalityDashboard'));
+const MemberImport = lazy(() => import('@/app/pages/MemberImport'));
 
 function ProtectedLayout() {
   return (
@@ -141,6 +165,30 @@ export default function App() {
                     <Route path="/companies" element={<Companies />} />
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
+                    <Route path="/members" element={<Members />} />
+                    <Route path="/members/:id" element={<MemberDetail />} />
+                    <Route path="/events" element={<Events />} />
+                    <Route path="/events/:id" element={<EventDetail />} />
+                    <Route path="/reservations" element={<Reservations />} />
+                    <Route path="/loyalty" element={<Loyalty />} />
+                    <Route path="/applications" element={<Applications />} />
+                    <Route path="/charges" element={<Charges />} />
+                    <Route path="/visits" element={<Visits />} />
+                    <Route path="/gift-cards" element={<GiftCards />} />
+                    <Route path="/communications" element={<Communications />} />
+                    <Route path="/portal" element={<MemberPortal />} />
+                    <Route path="/households" element={<Households />} />
+                    <Route path="/subscriptions" element={<Subscriptions />} />
+                    <Route path="/campaigns" element={<Campaigns />} />
+                    <Route path="/donations" element={<Donations />} />
+                    <Route path="/calendar" element={<Calendar />} />
+                    <Route path="/statements" element={<Statements />} />
+                    <Route path="/club-reports" element={<HospitalityReports />} />
+                    <Route path="/tabs" element={<TabsPage />} />
+                    <Route path="/pos" element={<PosTerminal />} />
+                    <Route path="/hospitality-settings" element={<HospitalitySettings />} />
+                    <Route path="/hospitality" element={<HospitalityDashboard />} />
+                    <Route path="/members/import" element={<MemberImport />} />
                     <Route path="/settings" element={<Settings />} />
                   </Route>
                 </Route>
