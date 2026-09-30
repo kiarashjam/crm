@@ -1,4 +1,4 @@
-# Deploy to Azure Static Web Apps on every push to main (and on release)
+# Deploy to Azure Static Web Apps on every push to main (and on release / manual run)
 name: Build and deploy to Azure Static Web Apps
 
 on:
@@ -6,6 +6,7 @@ on:
     branches: [main]
   release:
     types: [published]
+  workflow_dispatch:
 
 env:
   NODE_VERSION: '20'
