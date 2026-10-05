@@ -16,6 +16,7 @@ public interface IActivityRepository
     Task<IReadOnlyList<Activity>> GetByContactIdAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<Activity>> GetByDealIdAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<Activity>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+    Task<IReadOnlyList<Activity>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid? organizationId, CancellationToken ct = default);
     Task<Activity?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Activity> AddAsync(Activity activity, CancellationToken ct = default);
     Task<Activity?> UpdateAsync(Activity activity, Guid userId, Guid? organizationId, CancellationToken ct = default);

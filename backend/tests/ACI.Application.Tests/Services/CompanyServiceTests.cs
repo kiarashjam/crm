@@ -621,7 +621,7 @@ public class CompanyServiceTests
         };
 
         _companyRepositoryMock
-            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>()))
+            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>(), It.IsAny<int?>()))
             .ReturnsAsync(companies);
 
         // Act
@@ -641,7 +641,7 @@ public class CompanyServiceTests
         var query = "NonExistent";
 
         _companyRepositoryMock
-            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>()))
+            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>(), It.IsAny<int?>()))
             .ReturnsAsync(new List<Company>());
 
         // Act

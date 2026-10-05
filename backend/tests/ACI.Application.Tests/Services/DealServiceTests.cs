@@ -461,7 +461,7 @@ public class DealServiceTests
         };
 
         _dealRepositoryMock
-            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>()))
+            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>(), It.IsAny<int?>()))
             .ReturnsAsync(deals);
 
         _activityRepositoryMock
@@ -485,7 +485,7 @@ public class DealServiceTests
         var query = "NonExistent";
 
         _dealRepositoryMock
-            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>()))
+            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>(), It.IsAny<int?>()))
             .ReturnsAsync(new List<Deal>());
 
         _activityRepositoryMock

@@ -29,7 +29,7 @@ public interface ILeadService
     /// <summary>
     /// Searches leads by name, email, or company.
     /// </summary>
-    Task<IReadOnlyList<LeadDto>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default);
+    Task<IReadOnlyList<LeadDto>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null);
 
     /// <summary>
     /// Retrieves a lead by its ID.

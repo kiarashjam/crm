@@ -22,5 +22,6 @@ internal sealed class ActivityConfiguration : IEntityTypeConfiguration<Activity>
         builder.HasOne(e => e.UpdatedByUser).WithMany().HasForeignKey(e => e.UpdatedByUserId).IsRequired(false);
         builder.HasIndex(e => e.OrganizationId);
         builder.HasIndex(e => e.LeadId);
+        builder.HasIndex(e => new { e.OrganizationId, e.LeadId });
     }
 }

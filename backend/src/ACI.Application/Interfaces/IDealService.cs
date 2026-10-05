@@ -21,7 +21,7 @@ public interface IDealService
     /// <summary>
     /// Searches deals by name or value.
     /// </summary>
-    Task<IReadOnlyList<DealDto>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default);
+    Task<IReadOnlyList<DealDto>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null);
 
     /// <summary>
     /// Retrieves a deal by its ID.

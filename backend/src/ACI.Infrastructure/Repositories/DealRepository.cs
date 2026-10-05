@@ -65,15 +65,24 @@ public sealed class DealRepository : IDealRepository
     public async Task<IReadOnlyList<Deal>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await IncludeRelated(FilterByUserAndOrg(_db.Deals, userId, organizationId)).OrderBy(d => d.Name).ToListAsync(ct);
 
-    public async Task<IReadOnlyList<Deal>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Deal>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null)
     {
         if (string.IsNullOrWhiteSpace(query))
-            return await GetByUserIdAsync(userId, organizationId, ct);
+        {
+            if (take is not > 0)
+                return await GetByUserIdAsync(userId, organizationId, ct);
+            return await IncludeRelated(FilterByUserAndOrg(_db.Deals.AsNoTracking(), userId, organizationId))
+                .OrderBy(d => d.Name)
+                .Take(take.Value)
+                .ToListAsync(ct);
+        }
         var q = query.Trim().ToLowerInvariant();
-        return await IncludeRelated(FilterByUserAndOrg(_db.Deals, userId, organizationId)
+        var matches = IncludeRelated(FilterByUserAndOrg(_db.Deals.AsNoTracking(), userId, organizationId)
             .Where(d => d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q)))
-            .OrderBy(d => d.Name)
-            .ToListAsync(ct);
+            .OrderBy(d => d.Name);
+        if (take is > 0)
+            return await matches.Take(take.Value).ToListAsync(ct);
+        return await matches.ToListAsync(ct);
     }
 
     public async Task<Deal?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>

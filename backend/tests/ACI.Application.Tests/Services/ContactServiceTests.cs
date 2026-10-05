@@ -511,7 +511,7 @@ public class ContactServiceTests
         };
 
         _contactRepositoryMock
-            .Setup(r => r.SearchAsync(userId, orgId, query, false, It.IsAny<CancellationToken>()))
+            .Setup(r => r.SearchAsync(userId, orgId, query, false, It.IsAny<CancellationToken>(), It.IsAny<int?>()))
             .ReturnsAsync(contacts);
         
         _activityRepositoryMock

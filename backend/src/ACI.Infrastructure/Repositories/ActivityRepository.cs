@@ -45,7 +45,7 @@ public sealed class ActivityRepository : IActivityRepository
         string? activityType = null,
         CancellationToken ct = default)
     {
-        var query = FilterByUserAndOrg(_db.Activities, userId, organizationId);
+        var query = FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId);
         query = ApplySearch(query, search);
         query = ApplyTypeFilter(query, activityType);
 
@@ -60,16 +60,16 @@ public sealed class ActivityRepository : IActivityRepository
     }
 
     public async Task<IReadOnlyList<Activity>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await IncludeRelated(FilterByUserAndOrg(_db.Activities, userId, organizationId)).OrderByDescending(a => a.CreatedAtUtc).ToListAsync(ct);
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId)).OrderByDescending(a => a.CreatedAtUtc).ToListAsync(ct);
 
     public async Task<IReadOnlyList<Activity>> GetByContactIdAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await IncludeRelated(FilterByUserAndOrg(_db.Activities, userId, organizationId))
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId))
             .Where(a => a.ContactId == contactId)
             .OrderByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Activity>> GetByDealIdAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await IncludeRelated(FilterByUserAndOrg(_db.Activities, userId, organizationId))
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId))
             .Where(a => a.DealId == dealId)
             .OrderByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
@@ -77,13 +77,29 @@ public sealed class ActivityRepository : IActivityRepository
     public async Task<IReadOnlyList<Activity>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         // For lead activities, show all activities for the lead within the organization (not just current user's)
         // This allows team members to see each other's interactions with leads
-        await IncludeRelated(_db.Activities)
+        await IncludeRelated(_db.Activities.AsNoTracking())
             .Where(a => a.LeadId == leadId && (organizationId == null ? a.OrganizationId == null : a.OrganizationId == organizationId))
             .OrderByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Activity>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid? organizationId, CancellationToken ct = default)
+    {
+        if (leadIds.Count == 0) return Array.Empty<Activity>();
+        var ids = leadIds.Where(id => id != Guid.Empty).Distinct().Take(100).ToList();
+        if (ids.Count == 0) return Array.Empty<Activity>();
+
+        // Scalar columns only. The leads list renders type, subject, body, and time,
+        // so joining contact, deal, lead, and user would multiply the payload for no benefit.
+        return await _db.Activities.AsNoTracking()
+            .Where(a => a.LeadId != null
+                && ids.Contains(a.LeadId.Value)
+                && (organizationId == null ? a.OrganizationId == null : a.OrganizationId == organizationId))
+            .OrderByDescending(a => a.CreatedAtUtc)
+            .ToListAsync(ct);
+    }
+
     public async Task<Activity?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await IncludeRelated(FilterByUserAndOrg(_db.Activities, userId, organizationId)).FirstOrDefaultAsync(a => a.Id == id, ct);
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId)).FirstOrDefaultAsync(a => a.Id == id, ct);
 
     public async Task<Activity> AddAsync(Activity activity, CancellationToken ct = default)
     {

@@ -37,7 +37,7 @@ public interface ICompanyService
     /// <param name="query">The search query.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A list of matching companies.</returns>
-    Task<IReadOnlyList<CompanyDto>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default);
+    Task<IReadOnlyList<CompanyDto>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null);
 
     /// <summary>
     /// Gets a company by its ID.

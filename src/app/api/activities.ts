@@ -152,6 +152,35 @@ export async function getActivitiesByLead(leadId: string): Promise<Activity[]> {
   return activityStore.list().filter((a) => a.leadId === leadId);
 }
 
+/** Activities for many leads in one request. Falls back to per-lead calls if the batch route is missing. */
+export async function getActivitiesByLeadIds(leadIds: string[]): Promise<Activity[]> {
+  const ids = [...new Set(leadIds.filter(Boolean))];
+  if (!ids.length) return [];
+  if (isUsingRealApi()) {
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
+    const lists = await Promise.all(
+      chunks.map(async (chunk) => {
+        const params = new URLSearchParams();
+        params.set('ids', chunk.join(','));
+        try {
+          const list = await authFetchJson<ActivityRaw[]>(`/api/activities/by-leads?${params.toString()}`);
+          return Array.isArray(list) ? list.map(mapActivity) : [];
+        } catch {
+          const perLead = await Promise.all(
+            chunk.map((id) => getActivitiesByLead(id).catch((): Activity[] => [])),
+          );
+          return perLead.flat();
+        }
+      }),
+    );
+    return lists.flat();
+  }
+  await delay(40);
+  const wanted = new Set(ids);
+  return activityStore.list().filter((a) => a.leadId && wanted.has(a.leadId));
+}
+
 /** Get activity counts per org member (HP-3). */
 export async function getOrgMemberActivityCounts(): Promise<Record<string, number>> {
   if (isUsingRealApi()) {

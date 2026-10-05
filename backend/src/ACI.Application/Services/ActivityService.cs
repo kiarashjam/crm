@@ -117,6 +117,17 @@ public class ActivityService : IActivityService
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<ActivityDto>> GetByLeadIdsAsync(
+        IReadOnlyCollection<Guid> leadIds,
+        Guid? organizationId,
+        CancellationToken ct = default)
+    {
+        if (leadIds.Count == 0) return Array.Empty<ActivityDto>();
+        var list = await _repository.GetByLeadIdsAsync(leadIds, organizationId, ct);
+        return list.Select(Map).ToList();
+    }
+
+    /// <inheritdoc />
     public async Task<Result<ActivityDto>> CreateAsync(
         Guid userId, 
         Guid? organizationId, 

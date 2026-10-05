@@ -84,13 +84,17 @@ public class LeadService : ILeadService
         Guid userId, 
         Guid? organizationId, 
         string query, 
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? take = null)
     {
         _logger.LogDebug(
             "Searching leads for user {UserId} with query '{Query}'",
             userId, query);
 
-        var list = await _repository.SearchAsync(userId, organizationId, query.Trim(), ct);
+        var trimmed = query.Trim();
+        var list = take is > 0
+            ? await _repository.SearchAsync(userId, organizationId, trimmed, ct, take)
+            : await _repository.SearchAsync(userId, organizationId, trimmed, ct);
 
         _logger.LogInformation(
             "Search returned {Count} leads for query '{Query}'",

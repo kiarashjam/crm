@@ -40,7 +40,7 @@ public interface IContactService
     /// <param name="includeArchived">Whether to include archived contacts.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A list of matching contacts.</returns>
-    Task<IReadOnlyList<ContactDto>> SearchAsync(Guid userId, Guid? organizationId, string query, bool includeArchived = false, CancellationToken ct = default);
+    Task<IReadOnlyList<ContactDto>> SearchAsync(Guid userId, Guid? organizationId, string query, bool includeArchived = false, CancellationToken ct = default, int? take = null);
 
     /// <summary>
     /// Retrieves a contact by its ID.
