@@ -12,6 +12,7 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
 import { authFetchJson } from '@/app/api/apiClient';
+import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import type { Company, Contact, Deal } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -33,6 +34,7 @@ export default function CompanyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [company, setCompany] = useState<Company | null>(null);
+  useDocumentTitle(company?.name, 'Companies');
   const [loading, setLoading] = useState(true);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);

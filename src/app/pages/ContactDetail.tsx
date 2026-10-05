@@ -14,6 +14,7 @@ import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { authFetchJson } from '@/app/api/apiClient';
+import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import {
   getActivitiesByContact, getTasksByContact,
   getDealsPaged, updateContact, deleteContact, archiveContact,
@@ -46,6 +47,7 @@ export default function ContactDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [contact, setContact] = useState<Contact | null>(null);
+  useDocumentTitle(contact?.name, 'Contacts');
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);

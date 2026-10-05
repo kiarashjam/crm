@@ -16,6 +16,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getCompaniesPaged, getCompanyStats, createCompany, updateCompany, deleteCompany, getDealsPaged, messages } from '@/app/api';
 import type { CompanyStatsItem } from '@/app/api/companies';
 import type { Company, Deal } from '@/app/api/types';
+import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -872,7 +873,7 @@ export default function Companies() {
                       <div className="flex-1 min-w-0">
                         <h3 
                           className="font-semibold text-slate-900 text-lg truncate group-hover:text-violet-600 transition-colors cursor-pointer"
-                          onClick={() => navigate(`/companies/${company.id}`)}
+                          onClick={() => navigate(recordHref(`/companies/${company.id}`, company.name, 'Companies'))}
                         >
                           {company.name}
                         </h3>

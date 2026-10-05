@@ -4,7 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Cadence — Sales at the right pace</title>
+    <title>Cadence</title>
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search);
+        var name = (params.get('name') || '').trim();
+        var section = (params.get('section') || '').trim();
+        if (!name && !section) return;
+        document.title = name && section
+          ? name + ' » ' + section + ' » Cadence'
+          : (name || section) + ' » Cadence';
+      })();
+    </script>
     <meta name="description" content="Full CRM with Intelligent Sales Writer. Manage leads, deals, and contacts—generate and send on-brand copy with one click. Find your rhythm." />
 
     <!-- Open Graph / Facebook, LinkedIn, Slack, Discord, iMessage -->

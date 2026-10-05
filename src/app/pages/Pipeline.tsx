@@ -85,6 +85,7 @@ import { STAGE_COLORS_MAP } from './pipeline/config';
 import { getStageList, groupDealsByStage, formatDealTotal, formatAmount, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
 import { dominantCurrencyOf } from '@/app/lib/money';
 import { getCurrencySymbol } from './pipeline/DealCard';
+import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { getTasks, createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
 import { useOrg } from '@/app/contexts/OrgContext';
@@ -121,11 +122,7 @@ export default function Pipeline() {
   const [detailDeal, setDetailDeal] = useState<Deal | null>(null);
 
   const openDealDetail = (deal: Deal) => {
-    const params = new URLSearchParams();
-    const name = deal.name?.trim();
-    if (name) params.set('name', name);
-    const query = params.toString();
-    window.open(`/deals/${deal.id}${query ? `?${query}` : ''}`, '_blank', 'noopener,noreferrer');
+    window.open(recordHref(`/deals/${deal.id}`, deal.name, 'Deals'), '_blank', 'noopener,noreferrer');
   };
   const [orgMembers, setOrgMembers] = useState<{ userId: string; name: string; email: string; role: number }[]>([]);
   

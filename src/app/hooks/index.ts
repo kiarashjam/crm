@@ -8,3 +8,4 @@ export { useParallax } from './useParallax';
 export { useDebounce } from './useDebounce';
 export { useLocalStorage } from './useLocalStorage';
 export { useMotionPreference } from './useMotionPreference';
+export { useDocumentTitle } from './useDocumentTitle';

@@ -17,6 +17,7 @@ import { getContactsPaged, createContact, updateContact, deleteContact, getCompa
 import { archiveContact, unarchiveContact } from '@/app/api/contacts';
 import { getTasks } from '@/app/api/tasks';
 import type { Contact, Company, Deal, TaskItem } from '@/app/api/types';
+import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { Input } from '@/app/components/ui/input';
 import { Button } from '@/app/components/ui/button';
 import { Label } from '@/app/components/ui/label';
@@ -922,7 +923,7 @@ export default function Contacts() {
                       <div className="flex-1 min-w-0">
                         <h3 
                           className="font-semibold text-slate-900 text-lg truncate group-hover:text-blue-600 transition-colors cursor-pointer"
-                          onClick={() => navigate(`/contacts/${contact.id}`)}
+                          onClick={() => navigate(recordHref(`/contacts/${contact.id}`, contact.name, 'Contacts'))}
                         >
                           {contact.name}
                         </h3>
