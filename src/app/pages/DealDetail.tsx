@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-
-const APP_TITLE = 'Cadence — Sales at the right pace';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -52,6 +50,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { getCurrencySymbol, UrgencyBadge, getDaysUntilClose, STAGE_COLORS } from './pipeline/DealCard';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 
 export default function DealDetail() {
   const { id } = useParams<{ id: string }>();
@@ -79,14 +78,7 @@ export default function DealDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  useEffect(() => {
-    const hinted = new URLSearchParams(window.location.search).get('name')?.trim();
-    const title = deal?.name?.trim() || hinted;
-    document.title = title || 'Deal';
-    return () => {
-      document.title = APP_TITLE;
-    };
-  }, [deal?.name]);
+  useDocumentTitle(deal?.name, 'Deals');
 
   useEffect(() => {
     if (!id) return;

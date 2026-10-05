@@ -20,6 +20,7 @@ import {
 import type { Lead, Company, Contact, LeadStatus, LeadSource, Activity, TaskItem } from '@/app/api/types';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
 import { useOrg } from '@/app/contexts/OrgContext';
+import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { Button } from '@/app/components/ui/button';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -111,6 +112,7 @@ export default function LeadDetailPage() {
 
   // Core data
   const [lead, setLead] = useState<Lead | null>(null);
+  useDocumentTitle(lead?.name, 'Leads');
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);

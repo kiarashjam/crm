@@ -38,6 +38,7 @@ import {
   type LeadStats,
 } from '@/app/api';
 import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
+import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
 import { useOrg } from '@/app/contexts/OrgContext';
@@ -1054,7 +1055,7 @@ export default function Leads() {
   // Lead detail lives on its own page (/leads/:id). A click opens that page
   // in a new browser tab so the list (filters, sort, scroll) stays put.
   const openDetail = (lead: Lead) => {
-    window.open(`/leads/${lead.id}`, '_blank', 'noopener,noreferrer');
+    window.open(recordHref(`/leads/${lead.id}`, lead.name, 'Leads'), '_blank', 'noopener,noreferrer');
   };
 
   // Migrate any legacy `?leadId=` deep-links to the new page, then handle

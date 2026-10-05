@@ -18,6 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
@@ -84,6 +85,7 @@ export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [task, setTask] = useState<TaskItem | null>(null);
+  useDocumentTitle(task?.title, 'Tasks');
   const [loading, setLoading] = useState(true);
 
   // Edit mode
