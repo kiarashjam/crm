@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Building2, User, ArrowRightCircle, Link2,
   Mail, Phone, Sparkles, Check, Tag, UserPlus, Info, CircleDot,
@@ -186,7 +186,6 @@ function saveLeadCreatedAtMap(createdAtByLeadId: Record<string, string>) {
 
 export default function Leads() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentOrgId } = useOrg();
 
@@ -646,9 +645,8 @@ export default function Leads() {
     fetchLeads();
   }, [fetchLeads]);
 
-  // Returning from a lead detail: once this page's rows have rendered, restore
-  // the scroll position saved in openDetail so the user lands back on the lead
-  // they were looking at. One-shot per mount; clears the stored value.
+  // Restore a stored list scroll position once the rows have rendered.
+  // One-shot per mount; clears the stored value.
   const scrollRestoredRef = useRef(false);
   useEffect(() => {
     if (loading || scrollRestoredRef.current || leads.length === 0) return;
@@ -949,17 +947,10 @@ export default function Leads() {
     setDialogOpen(true);
   };
 
-  // Lead detail now lives on its own page (/leads/:id). Clicking a card
-  // navigates instead of opening a modal. Stash the current list URL
-  // (including filters / sort / page) via router state so the detail page's
-  // Back / breadcrumb can return here with everything intact.
+  // Lead detail lives on its own page (/leads/:id). A click opens that page
+  // in a new browser tab so the list (filters, sort, scroll) stays put.
   const openDetail = (lead: Lead) => {
-    // Remember the list's scroll position so returning from the detail page
-    // lands back where the lead was, not at the top.
-    try { sessionStorage.setItem(LEAD_LIST_SCROLL_KEY, String(window.scrollY)); } catch { /* ignore */ }
-    navigate(`/leads/${lead.id}`, {
-      state: { from: location.pathname + location.search },
-    });
+    window.open(`/leads/${lead.id}`, '_blank', 'noopener,noreferrer');
   };
 
   // Migrate any legacy `?leadId=` deep-links to the new page, then handle

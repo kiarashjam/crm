@@ -39,7 +39,7 @@ const HELP: Record<string, HelpEntry> = {
       { emoji: '👤', title: 'Pick an owner', body: 'Choose who looks after each lead.' },
       { emoji: '📤', title: 'Download', body: 'Export the list to a spreadsheet.' },
     ],
-    tips: ['Click a lead to open everything about it.', 'Tip: press “n” to add, “/” to search.'],
+    tips: ['Click a lead to open its details in a new tab.', 'Tip: press “n” to add, “/” to search.'],
   },
   leadDetail: {
     emoji: '🧑', gradient: 'from-orange-500 to-amber-500',
