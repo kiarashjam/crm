@@ -119,6 +119,14 @@ export default function Pipeline() {
   const [deleteConfirmDeal, setDeleteConfirmDeal] = useState<Deal | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailDeal, setDetailDeal] = useState<Deal | null>(null);
+
+  const openDealDetail = (deal: Deal) => {
+    const params = new URLSearchParams();
+    const name = deal.name?.trim();
+    if (name) params.set('name', name);
+    const query = params.toString();
+    window.open(`/deals/${deal.id}${query ? `?${query}` : ''}`, '_blank', 'noopener,noreferrer');
+  };
   const [orgMembers, setOrgMembers] = useState<{ userId: string; name: string; email: string; role: number }[]>([]);
   
   // HP-8: Close deal dialog state
@@ -1260,7 +1268,7 @@ export default function Pipeline() {
                         onMoveStage={handleMoveStage}
                         onEdit={setEditDeal}
                         onDelete={setDeleteConfirmDeal}
-                        onOpenDetail={setDetailDeal}
+                        onOpenDetail={openDealDetail}
                         taskCountsByDeal={taskCountsByDeal}
                         onAddTask={(dealId) => setAddTaskDealId(dealId)}
                         readOnly={isReadOnly}
@@ -1304,7 +1312,7 @@ export default function Pipeline() {
                             <td className="py-4 px-6">
                               <button
                                 type="button"
-                                onClick={() => setDetailDeal(deal)}
+                                onClick={() => openDealDetail(deal)}
                                 className="font-semibold text-slate-800 hover:text-emerald-600 text-left transition-colors group-hover:translate-x-1 transform duration-200"
                               >
                                 {deal.name}

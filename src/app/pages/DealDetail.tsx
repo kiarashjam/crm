@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+
+const APP_TITLE = 'Cadence — Sales at the right pace';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -76,6 +78,15 @@ export default function DealDetail() {
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    const hinted = new URLSearchParams(window.location.search).get('name')?.trim();
+    const title = deal?.name?.trim() || hinted;
+    document.title = title || 'Deal';
+    return () => {
+      document.title = APP_TITLE;
+    };
+  }, [deal?.name]);
 
   useEffect(() => {
     if (!id) return;
