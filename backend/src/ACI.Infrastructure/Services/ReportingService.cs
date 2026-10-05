@@ -41,14 +41,14 @@ public class ReportingService : IReportingService
     /// </summary>
     private IQueryable<Deal> ScopedDeals(Guid userId, Guid? organizationId)
         => organizationId == null
-            ? _db.Deals.Where(d => d.UserId == userId && d.OrganizationId == null)
-            : _db.Deals.Where(d => d.OrganizationId == organizationId);
+            ? _db.Deals.AsNoTracking().Where(d => d.UserId == userId && d.OrganizationId == null)
+            : _db.Deals.AsNoTracking().Where(d => d.OrganizationId == organizationId);
 
     /// <summary>Leads in scope, matching <c>LeadRepository</c>.</summary>
     private IQueryable<Lead> ScopedLeads(Guid userId, Guid? organizationId)
         => organizationId == null
-            ? _db.Leads.Where(l => l.UserId == userId && l.OrganizationId == null)
-            : _db.Leads.Where(l => l.OrganizationId == organizationId);
+            ? _db.Leads.AsNoTracking().Where(l => l.UserId == userId && l.OrganizationId == null)
+            : _db.Leads.AsNoTracking().Where(l => l.OrganizationId == organizationId);
 
     /// <summary>
     /// Totals per currency, largest first, plus a count of the deals whose value
@@ -88,7 +88,9 @@ public class ReportingService : IReportingService
     public async Task<DashboardStatsDto> GetDashboardStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         var leadsCount = await ScopedLeads(userId, organizationId).CountAsync(ct);
-        var deals = await ScopedDeals(userId, organizationId).ToListAsync(ct);
+        var deals = await ScopedDeals(userId, organizationId)
+            .Select(d => new Deal { IsWon = d.IsWon, Value = d.Value, Currency = d.Currency })
+            .ToListAsync(ct);
 
         var activeDeals = deals.Where(d => d.IsWon == null).ToList();
         var wonCount = deals.Count(d => d.IsWon == true);
@@ -110,10 +112,13 @@ public class ReportingService : IReportingService
 
     public async Task<IReadOnlyList<PipelineStageValueDto>> GetPipelineValueByStageAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var deals = await ScopedDeals(userId, organizationId).Where(d => d.IsWon == null).ToListAsync(ct);
+        var deals = await ScopedDeals(userId, organizationId)
+            .Where(d => d.IsWon == null)
+            .Select(d => new { d.DealStageId, d.Stage, d.Value, d.Currency })
+            .ToListAsync(ct);
 
         var stageIds = deals.Where(d => d.DealStageId != null).Select(d => d.DealStageId!.Value).Distinct().ToList();
-        var stages = await _db.DealStages.Where(s => stageIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        var stages = await _db.DealStages.AsNoTracking().Where(s => stageIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
 
         // Grouped by stage AND currency: a stage holding CHF and EUR deals yields
         // two rows rather than one meaningless sum.
@@ -141,8 +146,14 @@ public class ReportingService : IReportingService
     public async Task<IReadOnlyList<PipelineValueByAssigneeDto>> GetPipelineValueByAssigneeAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         var deals = await ScopedDeals(userId, organizationId)
-            .Include(d => d.Assignee)
             .Where(d => d.IsWon == null)
+            .Select(d => new
+            {
+                d.AssigneeId,
+                AssigneeName = d.Assignee != null ? d.Assignee.Name : null,
+                d.Value,
+                d.Currency,
+            })
             .ToListAsync(ct);
 
         var rows = deals
@@ -156,7 +167,7 @@ public class ReportingService : IReportingService
                 var assigneeId = g.Key.AssigneeKey;
                 var assigneeName = string.IsNullOrEmpty(assigneeId)
                     ? "Unassigned"
-                    : (g.First().Assignee?.Name ?? "Unknown");
+                    : (g.First().AssigneeName ?? "Unknown");
                 var value = g.Sum(d => MoneyText.TryParseAmount(d.Value, out var v) ? v : 0m);
                 return new PipelineValueByAssigneeDto(assigneeId, assigneeName, g.Key.Currency, g.Count(), value);
             })

@@ -68,22 +68,30 @@ public sealed class ContactRepository : IContactRepository
         return await query.Include(c => c.Company).OrderBy(c => c.Name).ToListAsync(ct);
     }
 
-    public async Task<IReadOnlyList<Contact>> SearchAsync(Guid userId, Guid? organizationId, string query, bool includeArchived = false, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Contact>> SearchAsync(Guid userId, Guid? organizationId, string query, bool includeArchived = false, CancellationToken ct = default, int? take = null)
     {
         if (string.IsNullOrWhiteSpace(query))
-            return await GetByUserIdAsync(userId, organizationId, includeArchived, ct);
+        {
+            if (take is not > 0)
+                return await GetByUserIdAsync(userId, organizationId, includeArchived, ct);
+            var all = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
+            if (!includeArchived) all = all.Where(c => !c.IsArchived);
+            return await all.Include(c => c.Company).OrderBy(c => c.Name).Take(take.Value).ToListAsync(ct);
+        }
         var q = query.Trim().ToLowerInvariant();
-        var baseQuery = FilterByUserAndOrg(_db.Contacts, userId, organizationId);
+        var baseQuery = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
         if (!includeArchived) baseQuery = baseQuery.Where(c => !c.IsArchived);
-        return await baseQuery
+        var matches = baseQuery
             .Where(c =>
                 c.Name.ToLower().Contains(q) ||
                 c.Email.ToLower().Contains(q) ||
                 (c.Phone != null && c.Phone.Contains(q)) ||
                 (c.JobTitle != null && c.JobTitle.ToLower().Contains(q)))
             .Include(c => c.Company)
-            .OrderBy(c => c.Name)
-            .ToListAsync(ct);
+            .OrderBy(c => c.Name);
+        if (take is > 0)
+            return await matches.Take(take.Value).ToListAsync(ct);
+        return await matches.ToListAsync(ct);
     }
 
     public async Task<Contact?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>

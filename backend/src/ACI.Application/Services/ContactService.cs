@@ -83,13 +83,17 @@ public class ContactService : IContactService
         Guid? organizationId, 
         string query, 
         bool includeArchived = false, 
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? take = null)
     {
         _logger.LogDebug(
             "Searching contacts for user {UserId} with query '{Query}'",
             userId, query);
 
-        var list = await _repository.SearchAsync(userId, organizationId, query.Trim(), includeArchived, ct);
+        var trimmed = query.Trim();
+        var list = take is > 0
+            ? await _repository.SearchAsync(userId, organizationId, trimmed, includeArchived, ct, take)
+            : await _repository.SearchAsync(userId, organizationId, trimmed, includeArchived, ct);
         var lastByContact = await _activityRepository.GetLastActivityByContactIdsAsync(
             userId, organizationId, list.Select(c => c.Id), ct);
 

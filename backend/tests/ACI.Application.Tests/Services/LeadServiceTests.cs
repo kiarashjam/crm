@@ -273,7 +273,7 @@ public class LeadServiceTests
         };
 
         _leadRepositoryMock
-            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>()))
+            .Setup(r => r.SearchAsync(userId, orgId, query, It.IsAny<CancellationToken>(), It.IsAny<int?>()))
             .ReturnsAsync(leads);
 
         // Act

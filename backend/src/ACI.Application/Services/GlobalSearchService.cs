@@ -35,18 +35,16 @@ public class GlobalSearchService : IGlobalSearchService
         var q = (query ?? "").Trim();
         
         _logger.LogDebug("Global search for user {UserId}, query: '{Query}'", userId, q);
-        
-        var leadsTask = _leadService.SearchAsync(userId, organizationId, q, ct);
-        var contactsTask = _contactService.SearchAsync(userId, organizationId, q, false, ct); // Don't include archived contacts
-        var companiesTask = _companyService.SearchAsync(userId, organizationId, q, ct);
-        var dealsTask = _dealService.SearchAsync(userId, organizationId, q, ct);
 
-        await Task.WhenAll(leadsTask, contactsTask, companiesTask, dealsTask);
+        if (q.Length < 2)
+            return new GlobalSearchResultDto([], [], [], []);
 
-        var leads = (await leadsTask).Take(MaxPerType).ToList();
-        var contacts = (await contactsTask).Take(MaxPerType).ToList();
-        var companies = (await companiesTask).Take(MaxPerType).ToList();
-        var deals = (await dealsTask).Take(MaxPerType).ToList();
+        // One DbContext cannot run queries in parallel. Each search is capped in SQL
+        // so four small sequential reads stay faster than four full-table loads.
+        var leads = (await _leadService.SearchAsync(userId, organizationId, q, ct, MaxPerType)).ToList();
+        var contacts = (await _contactService.SearchAsync(userId, organizationId, q, false, ct, MaxPerType)).ToList();
+        var companies = (await _companyService.SearchAsync(userId, organizationId, q, ct, MaxPerType)).ToList();
+        var deals = (await _dealService.SearchAsync(userId, organizationId, q, ct, MaxPerType)).ToList();
 
         _logger.LogInformation(
             "Global search completed for user {UserId}: {LeadCount} leads, {ContactCount} contacts, {CompanyCount} companies, {DealCount} deals",

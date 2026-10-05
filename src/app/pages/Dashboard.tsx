@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Copy, Check, Send } from 'lucide-react';
 import { getCurrentUser, isDemoMode } from '@/app/lib/auth';
@@ -15,7 +15,7 @@ import {
   getLeads,
   getContacts,
   getDeals,
-  getActivities,
+  getActivitiesPaged,
   sendCopyToCrm,
 } from '@/app/api';
 import { 
@@ -124,10 +124,9 @@ export default function Dashboard() {
       // Left null on failure, which the widget renders as a dash rather than a
       // number nobody counted.
       .catch(() => {});
-
-    getActivities()
-      .then(guard((activities) => {
-        setRecentActivity(mostRecent(activities, 5));
+    getActivitiesPaged({ page: 1, pageSize: 5 })
+      .then(guard((result) => {
+        setRecentActivity(mostRecent(result.items, 5));
         mark('activity', true);
       }))
       .catch(() => mark('activity', false));
@@ -142,13 +141,41 @@ export default function Dashboard() {
       .then(guard((s) => { setPipelineByAssignee(s); mark('team', true); }))
       .catch(() => { mark('team', false); });
 
-    // Recipients for copy personalisation. A failure here only costs the picker
-    // some options, so it stays quiet.
-    getLeads().then(guard(setLeads)).catch(() => setLeads([]));
-    getContacts().then(guard(setContacts)).catch(() => setContacts([]));
-    getDeals().then(guard(setDeals)).catch(() => setDeals([]));
     return () => { cancelled = true; };
   }, []);
+
+  // Recipient lists are only needed once someone opens the picker.
+  const loadedRecipients = useRef({ lead: false, contact: false, deal: false });
+  useEffect(() => {
+    if (!showRecipientPicker || !recipientType) return;
+    if (loadedRecipients.current[recipientType]) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        if (recipientType === 'lead') {
+          const rows = await getLeads();
+          if (cancelled) return;
+          setLeads(rows);
+        } else if (recipientType === 'contact') {
+          const rows = await getContacts();
+          if (cancelled) return;
+          setContacts(rows);
+        } else {
+          const rows = await getDeals();
+          if (cancelled) return;
+          setDeals(rows);
+        }
+        loadedRecipients.current[recipientType] = true;
+      } catch {
+        if (cancelled) return;
+        if (recipientType === 'lead') setLeads([]);
+        else if (recipientType === 'contact') setContacts([]);
+        else setDeals([]);
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [showRecipientPicker, recipientType]);
 
   useEffect(() => {
     if (!templateId) return;

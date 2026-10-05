@@ -68,6 +68,12 @@ public interface IActivityService
     Task<IReadOnlyList<ActivityDto>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     /// <summary>
+    /// Gets activities for many leads in one query. Used by the leads list so it
+    /// does not call the per-lead endpoint once per card.
+    /// </summary>
+    Task<IReadOnlyList<ActivityDto>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
     /// Creates a new activity.
     /// </summary>
     /// <param name="userId">The user ID.</param>

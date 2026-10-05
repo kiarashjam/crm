@@ -65,11 +65,15 @@ public class CompanyService : ICompanyService
         Guid userId, 
         Guid? organizationId, 
         string query, 
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        int? take = null)
     {
         _logger.LogDebug("Searching companies for user {UserId} with query '{Query}'", userId, query);
         
-        var list = await _repository.SearchAsync(userId, organizationId, query ?? "", ct);
+        var trimmed = query ?? "";
+        var list = take is > 0
+            ? await _repository.SearchAsync(userId, organizationId, trimmed, ct, take)
+            : await _repository.SearchAsync(userId, organizationId, trimmed, ct);
         
         _logger.LogDebug("Search returned {Count} companies for query '{Query}'", list.Count, query);
         

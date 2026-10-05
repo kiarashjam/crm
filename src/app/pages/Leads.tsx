@@ -31,6 +31,7 @@ import {
   getLeadSources,
   convertLead,
   getActivitiesByLead,
+  getActivitiesByLeadIds,
   createActivity,
   messages,
   type ConvertLeadRequest,
@@ -473,6 +474,11 @@ export default function Leads() {
     [],
   );
 
+  // Only "Assigned to me" needs the signed-in user. Keeping that out of the
+  // dependency list when another filter is active stops the list from refetching
+  // the moment the user object arrives.
+  const assignmentUserId = filterAssignment === 'me' ? currentUser?.id : undefined;
+
   const applyAssignmentFilter = useCallback(
     (list: Lead[]) => {
       if (filterAssignment === 'all') return list;
@@ -480,11 +486,11 @@ export default function Leads() {
         return list.filter((l) => !l.assignedToId);
       }
       // 'me' resolves to the current user's id; any other value is treated as a userId.
-      const targetUserId = filterAssignment === 'me' ? currentUser?.id : filterAssignment;
+      const targetUserId = filterAssignment === 'me' ? assignmentUserId : filterAssignment;
       if (!targetUserId) return list;
       return list.filter((l) => l.assignedToId === targetUserId);
     },
-    [filterAssignment, currentUser?.id],
+    [filterAssignment, assignmentUserId],
   );
 
   // Lead-pipeline filter — applied against each lead's server pipelineState.
@@ -565,24 +571,32 @@ export default function Leads() {
     [debouncedSearch, filterStatuses, filterSource, filterConverted, sortField, sortDirection],
   );
 
+  const activityRequestRef = useRef(0);
+  const contactsRef = useRef(contacts);
+  contactsRef.current = contacts;
+
   const loadPageActivities = useCallback(async (leadIds: string[]) => {
+    const requestId = ++activityRequestRef.current;
     if (!leadIds.length) {
       setPageActivities(new Map());
       return;
     }
     try {
-      const results = await Promise.all(
-        leadIds.map((id) => getActivitiesByLead(id).catch((): Activity[] => [])),
-      );
+      const list = await getActivitiesByLeadIds(leadIds);
+      if (requestId !== activityRequestRef.current) return;
       const map = new Map<string, Activity[]>();
-      leadIds.forEach((id, index) => {
-        const list = results[index] ?? [];
-        list.sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt));
-        map.set(id, list);
-      });
+      for (const id of leadIds) map.set(id, []);
+      for (const activity of list) {
+        if (!activity.leadId) continue;
+        const bucket = map.get(activity.leadId);
+        if (bucket) bucket.push(activity);
+      }
+      for (const bucket of map.values()) {
+        bucket.sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt));
+      }
       setPageActivities(map);
     } catch {
-      setPageActivities(new Map());
+      if (requestId === activityRequestRef.current) setPageActivities(new Map());
     }
   }, []);
 
@@ -597,28 +611,40 @@ export default function Leads() {
     }
   }, [companies.length, contacts.length]);
 
+  const lookupCacheRef = useRef<{ orgId: string | null; statuses: LeadStatus[]; sources: LeadSource[] } | null>(null);
+
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
-      // Load the ancillary lookups independently so a failure in any one of them
-      // (e.g. a permission error on statuses/sources/stats) can't blank out the
-      // entire leads list — the list itself, with each lead's status, must still
-      // render for every org member regardless of role.
-      const [statuses, sources, stats] = await Promise.all([
-        getLeadStatuses().catch(() => [] as LeadStatus[]),
-        getLeadSources().catch(() => [] as LeadSource[]),
-        getLeadStats().catch(() => null),
-      ]);
-      setLeadStatuses(statuses ?? []);
-      // See LeadDetailPage: an empty list means we are rendering
-      // FALLBACK_STATUSES, so auto-sync must not act on it.
-      const statusesReady = (statuses?.length ?? 0) > 0;
-      setStatusesLoaded(statusesReady);
-      setStatusesUnavailable(!statusesReady);
-      setLeadSources(sources ?? []);
-      if (stats) setLeadStats(stats);
+      // Statuses and sources rarely change, so keep them for this org and load
+      // them in parallel with the lead page instead of blocking the list on them.
+      // An empty status list means we are rendering FALLBACK_STATUSES, so do not
+      // cache that result — auto-sync must not act on it.
+      const lookupsPromise = (async () => {
+        const cached = lookupCacheRef.current;
+        if (cached && cached.orgId === currentOrgId) return cached;
+        const [statuses, sources] = await Promise.all([
+          getLeadStatuses().catch(() => [] as LeadStatus[]),
+          getLeadSources().catch(() => [] as LeadSource[]),
+        ]);
+        const next = {
+          orgId: currentOrgId,
+          statuses: statuses ?? [],
+          sources: sources ?? [],
+        };
+        if (next.statuses.length > 0) lookupCacheRef.current = next;
+        return next;
+      })();
 
-      const contactsById = new Map(contacts.map((c) => [c.id, c]));
+      const applyLookups = (lookups: { statuses: LeadStatus[]; sources: LeadSource[] }) => {
+        setLeadStatuses(lookups.statuses);
+        const statusesReady = lookups.statuses.length > 0;
+        setStatusesLoaded(statusesReady);
+        setStatusesUnavailable(!statusesReady);
+        setLeadSources(lookups.sources);
+      };
+
+      const contactsById = new Map(contactsRef.current.map((c) => [c.id, c]));
       // The paged API takes a single status. When the user picks more than one
       // status, filters by assignment, or applies a sales-tracker axis (all
       // client-side data), filter client-side instead.
@@ -627,8 +653,18 @@ export default function Leads() {
         || filterStatuses.length > 1
         || activeSalesFilterCount > 0;
 
+      const statsPromise = getLeadStats().catch(() => null);
+      let pageItems: Lead[] = [];
+
       if (useClientMode) {
-        const allLeadsRaw = await getLeads();
+        const [lookups, stats, allLeadsRaw] = await Promise.all([
+          lookupsPromise,
+          statsPromise,
+          getLeads(),
+        ]);
+        applyLookups(lookups);
+        if (stats) setLeadStats(stats);
+
         let merged = mergeLeadsWithLocalData(Array.isArray(allLeadsRaw) ? allLeadsRaw : [], contactsById);
         merged = applyClientLeadFilters(merged);
         merged = applyAssignmentFilter(merged);
@@ -636,48 +672,61 @@ export default function Leads() {
         const count = merged.length;
         const pages = Math.ceil(count / pageSize) || 0;
         const start = (currentPage - 1) * pageSize;
-        const pageItems = merged.slice(start, start + pageSize);
+        pageItems = merged.slice(start, start + pageSize);
         setLeads(pageItems);
         setTotalCount(count);
         setTotalPages(pages);
-        await loadPageActivities(pageItems.map((l) => l.id));
         if (pages > 0 && currentPage > pages) {
-          const params = new URLSearchParams(searchParams);
-          params.set('page', String(pages));
-          setSearchParams(params, { replace: true });
+          setSearchParams((prev) => {
+            const params = new URLSearchParams(prev);
+            params.set('page', String(pages));
+            return params;
+          }, { replace: true });
         }
       } else {
-        const paged = await getLeadsPaged({
-          page: currentPage,
-          pageSize,
-          search: debouncedSearch || undefined,
-          status: filterStatuses.length === 1 ? filterStatuses[0] : undefined,
-          source: filterSource !== 'all' ? filterSource : undefined,
-          converted: filterConverted,
-          sortBy: sortField,
-          sortDir: sortDirection,
-        });
+        const [lookups, stats, paged] = await Promise.all([
+          lookupsPromise,
+          statsPromise,
+          getLeadsPaged({
+            page: currentPage,
+            pageSize,
+            search: debouncedSearch || undefined,
+            status: filterStatuses.length === 1 ? filterStatuses[0] : undefined,
+            source: filterSource !== 'all' ? filterSource : undefined,
+            converted: filterConverted,
+            sortBy: sortField,
+            sortDir: sortDirection,
+          }),
+        ]);
+        applyLookups(lookups);
+        if (stats) setLeadStats(stats);
+
         const merged = mergeLeadsWithLocalData(paged.items, contactsById);
+        pageItems = merged;
         setLeads(merged);
         setTotalCount(paged.totalCount);
         setTotalPages(paged.totalPages);
-        await loadPageActivities(merged.map((l) => l.id));
 
         // If URL page is past the end (e.g. after deletes), jump to last page
         const pages = paged.totalPages;
         if (pages > 0 && currentPage > pages) {
-          const params = new URLSearchParams(searchParams);
-          params.set('page', String(pages));
-          setSearchParams(params, { replace: true });
+          setSearchParams((prev) => {
+            const params = new URLSearchParams(prev);
+            params.set('page', String(pages));
+            return params;
+          }, { replace: true });
         }
       }
+
+      // Interactions fill in after the cards are visible.
+      void loadPageActivities(pageItems.map((l) => l.id));
     } catch {
       toast.error(messages.errors.loadFailed);
     } finally {
       setLoading(false);
     }
   }, [
-    contacts,
+    currentOrgId,
     currentPage,
     pageSize,
     debouncedSearch,
@@ -687,8 +736,6 @@ export default function Leads() {
     filterAssignment,
     sortField,
     sortDirection,
-    currentUser?.id,
-    searchParams,
     setSearchParams,
     mergeLeadsWithLocalData,
     applyClientLeadFilters,

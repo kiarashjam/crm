@@ -144,6 +144,31 @@ public class ActivitiesController : ControllerBase
     }
 
     /// <summary>
+    /// Retrieves activities for many leads in one request.
+    /// </summary>
+    /// <param name="ids">Comma-separated lead ids. At most 100 are queried.</param>
+    /// <param name="ct">Cancellation token.</param>
+    [HttpGet("by-leads")]
+    [ProducesResponseType(typeof(IReadOnlyList<ActivityDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<IReadOnlyList<ActivityDto>>> GetByLeads([FromQuery] string? ids, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var leadIds = (ids ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => Guid.TryParse(value, out var id) ? id : Guid.Empty)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .Take(100)
+            .ToArray();
+
+        var list = await _activityService.GetByLeadIdsAsync(leadIds, _currentUser.CurrentOrganizationId, ct);
+        return Ok(list);
+    }
+
+    /// <summary>
     /// Retrieves all activities linked to a specific lead.
     /// </summary>
     /// <param name="leadId">The lead ID.</param>

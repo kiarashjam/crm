@@ -33,5 +33,7 @@ internal sealed class LeadConfiguration : IEntityTypeConfiguration<Lead>
         builder.HasIndex(e => e.OrganizationId);
         builder.HasIndex(e => e.IsConverted);
         builder.HasIndex(e => e.AssignedToUserId);
+        builder.HasIndex(e => new { e.OrganizationId, e.CreatedAtUtc });
+        builder.HasIndex(e => new { e.OrganizationId, e.Status });
     }
 }

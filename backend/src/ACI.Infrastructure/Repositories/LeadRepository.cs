@@ -102,12 +102,7 @@ public sealed class LeadRepository : ILeadRepository
         var query = BuildFilteredQuery(_db, userId, organizationId, options);
 
         var totalCount = await query.CountAsync(ct);
-        var items = await query
-            .Include(l => l.Company)
-            .Include(l => l.AssignedToUser)
-            .Skip(skip)
-            .Take(take)
-            .ToListAsync(ct);
+        var items = await MaterializeListAsync(query.Skip(skip).Take(take), ct);
 
         return (items, totalCount);
     }
@@ -117,24 +112,34 @@ public sealed class LeadRepository : ILeadRepository
         var query = FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId);
         var oneWeekAgo = DateTime.UtcNow.AddDays(-7);
 
-        var total = await query.CountAsync(ct);
-        var converted = await query.CountAsync(l => l.IsConverted, ct);
-        var active = total - converted;
-        var newLeads = await query.CountAsync(l => l.Status == "New", ct);
-        var contacted = await query.CountAsync(l =>
-            l.Status == "Contacted" || l.Status == "Attempted Contact" || l.Status == "Connected", ct);
-        // "Qualified or beyond". Spans both status vocabularies on purpose: the
-        // older list used a literal "Qualified", the current one replaces it with
-        // Contract Pending / Awaiting Signature / Signed. Matching only the old
-        // label would silently report zero for every organisation on the new one.
-        var qualified = await query.CountAsync(l =>
-            l.Status == "Qualified" || l.Status == "Contract Pending"
-            || l.Status == "Awaiting Signature" || l.Status == "Signed", ct);
-        var thisWeek = await query.CountAsync(l => l.CreatedAtUtc >= oneWeekAgo, ct);
-        var hotLeads = await query.CountAsync(l => !l.IsConverted && l.LeadScore >= 70, ct);
-        var conversionRate = total > 0 ? (int)Math.Round((double)converted / total * 100) : 0;
+        // One grouped query instead of eight separate COUNT round-trips.
+        // "Qualified or beyond" spans both status vocabularies: the older list
+        // used a literal "Qualified", the current one uses Contract Pending /
+        // Awaiting Signature / Signed.
+        var row = await query
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                Converted = g.Count(l => l.IsConverted),
+                NewLeads = g.Count(l => l.Status == "New"),
+                Contacted = g.Count(l =>
+                    l.Status == "Contacted" || l.Status == "Attempted Contact" || l.Status == "Connected"),
+                Qualified = g.Count(l =>
+                    l.Status == "Qualified" || l.Status == "Contract Pending"
+                    || l.Status == "Awaiting Signature" || l.Status == "Signed"),
+                ThisWeek = g.Count(l => l.CreatedAtUtc >= oneWeekAgo),
+                HotLeads = g.Count(l => !l.IsConverted && l.LeadScore >= 70),
+            })
+            .FirstOrDefaultAsync(ct);
 
-        return new LeadStatsDto(total, converted, active, newLeads, contacted, qualified, conversionRate, thisWeek, hotLeads);
+        if (row == null)
+            return new LeadStatsDto(0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+        var active = row.Total - row.Converted;
+        var conversionRate = row.Total > 0 ? (int)Math.Round((double)row.Converted / row.Total * 100) : 0;
+        return new LeadStatsDto(
+            row.Total, row.Converted, active, row.NewLeads, row.Contacted, row.Qualified, conversionRate, row.ThisWeek, row.HotLeads);
     }
 
     public async Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, CancellationToken ct = default)
@@ -144,33 +149,71 @@ public sealed class LeadRepository : ILeadRepository
     }
 
     public async Task<IReadOnlyList<Lead>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await ApplySort(
+        await MaterializeListAsync(
+            ApplySort(
                 ApplySearch(FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId), null),
-                new LeadQueryOptions { SortBy = "name", SortDir = "asc" })
-            .Include(l => l.Company)
-            .Include(l => l.AssignedToUser)
-            .ToListAsync(ct);
+                new LeadQueryOptions { SortBy = "name", SortDir = "asc" }),
+            ct);
 
-    public async Task<IReadOnlyList<Lead>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Lead>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null)
     {
         if (string.IsNullOrWhiteSpace(query))
-            return await GetByUserIdAsync(userId, organizationId, ct);
+        {
+            if (take is not > 0)
+                return await GetByUserIdAsync(userId, organizationId, ct);
+            return await MaterializeListAsync(
+                ApplySort(
+                    FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId),
+                    new LeadQueryOptions { SortBy = "name", SortDir = "asc" })
+                .Take(take.Value),
+                ct);
+        }
+
         var q = query.Trim().ToLowerInvariant();
-        return await ApplySort(
-                FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
-                    .Where(l => l.Name.ToLower().Contains(q) || l.Email.ToLower().Contains(q) ||
-                                (l.Phone != null && l.Phone.Contains(q))),
-                new LeadQueryOptions { SortBy = "name", SortDir = "asc" })
-            .Include(l => l.Company)
-            .Include(l => l.AssignedToUser)
-            .ToListAsync(ct);
+        var filtered = ApplySort(
+            FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
+                .Where(l => l.Name.ToLower().Contains(q) || l.Email.ToLower().Contains(q) ||
+                            (l.Phone != null && l.Phone.Contains(q))),
+            new LeadQueryOptions { SortBy = "name", SortDir = "asc" });
+        if (take is > 0)
+            filtered = filtered.Take(take.Value);
+        return await MaterializeListAsync(filtered, ct);
     }
 
-    public async Task<Lead?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
-            .Include(l => l.Company)
-            .Include(l => l.AssignedToUser)
-            .FirstOrDefaultAsync(l => l.Id == id, ct);
+    public async Task<Lead?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var matches = await MaterializeListAsync(
+            FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId).Where(l => l.Id == id),
+            ct);
+        return matches.Count > 0 ? matches[0] : null;
+    }
+
+    /// <summary>
+    /// Loads lead rows plus company and assignee names only.
+    /// Avoids joining the full User row (password hash, 2FA secret, and the rest).
+    /// </summary>
+    private static async Task<List<Lead>> MaterializeListAsync(IQueryable<Lead> query, CancellationToken ct)
+    {
+        var rows = await query
+            .Select(l => new
+            {
+                Lead = l,
+                CompanyName = l.Company != null ? l.Company.Name : null,
+                AssigneeName = l.AssignedToUser != null ? l.AssignedToUser.Name : null,
+            })
+            .ToListAsync(ct);
+
+        var list = new List<Lead>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (row.Lead.CompanyId is Guid companyId && row.CompanyName != null)
+                row.Lead.Company = new Company { Id = companyId, Name = row.CompanyName };
+            if (row.Lead.AssignedToUserId is Guid assigneeId && row.AssigneeName != null)
+                row.Lead.AssignedToUser = new User { Id = assigneeId, Name = row.AssigneeName };
+            list.Add(row.Lead);
+        }
+        return list;
+    }
 
     public async Task<Lead> AddAsync(Lead lead, CancellationToken ct = default)
     {

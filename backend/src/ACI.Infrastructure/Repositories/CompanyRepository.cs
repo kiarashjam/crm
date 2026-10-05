@@ -59,14 +59,22 @@ public sealed class CompanyRepository : ICompanyRepository
             .ToListAsync(ct);
 
     // HP-13: Reuse ApplySearch to avoid duplicated filter logic
-    public async Task<IReadOnlyList<Company>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Company>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null)
     {
         if (string.IsNullOrWhiteSpace(query))
-            return await GetByUserIdAsync(userId, organizationId, ct);
-        var baseQuery = FilterByUserAndOrg(_db.Companies, userId, organizationId);
+        {
+            if (take is not > 0)
+                return await GetByUserIdAsync(userId, organizationId, ct);
+            return await FilterByUserAndOrg(_db.Companies.AsNoTracking(), userId, organizationId)
+                .OrderBy(c => c.Name)
+                .Take(take.Value)
+                .ToListAsync(ct);
+        }
+        var cap = take is > 0 ? take.Value : 20;
+        var baseQuery = FilterByUserAndOrg(_db.Companies.AsNoTracking(), userId, organizationId);
         return await ApplySearch(baseQuery, query)
             .OrderBy(c => c.Name)
-            .Take(20)
+            .Take(cap)
             .ToListAsync(ct);
     }
 
