@@ -28,32 +28,60 @@ export type ContractSigned = 'yes' | 'pending' | 'no';
 export type DepositStatus = 'paid' | 'pending' | 'not_paid';
 
 /**
- * Why a lead walked away. ONE list, used at both the Meeting and the Contract
- * phase — asked for explicitly so drop-off reasons stay comparable across
- * stages instead of becoming two vocabularies that cannot be reported together.
+ * Why a lead walked away. ONE list, used at every phase where the client can say
+ * no — not interested at outreach, after the meeting, no longer interested at the
+ * contract, declining to sign, never paying — asked for explicitly so drop-off
+ * reasons stay comparable across stages instead of becoming several vocabularies
+ * that cannot be reported together.
+ *
+ * The codes are stored in every lead's pipeline JSON, so they are identifiers, not
+ * wording. When this list was replaced, the four original reasons each had a
+ * direct equivalent in the new one, so they KEPT their codes and took the new
+ * wording — `has_kids` reads "Children Not Permitted", `too_soon` reads "Unable
+ * to Commit or Plan This Far in Advance". Leads recorded under the old wording
+ * therefore still show a reason, in today's words, and count in the same report
+ * column as leads recorded since. Renaming a code instead would have
+ * orphaned every lead already holding it: no label to show, and a column of its
+ * own in the report that no menu can produce any more.
  */
-export type DropoutReason = 'has_kids' | 'not_within_budget' | 'too_soon' | 'other';
+export type DropoutReason =
+  | 'no_response'
+  | 'relocating'
+  | 'not_within_budget'
+  | 'project_expectations'
+  | 'has_kids'
+  | 'location_too_far'
+  | 'too_soon'
+  | 'insufficient_time'
+  | 'other';
 
 export const DROPOUT_REASON_LABELS: Record<DropoutReason, string> = {
-  has_kids: 'Has kids / not kid-friendly club',
-  not_within_budget: 'Not within budget',
-  too_soon: 'Too soon',
-  other: 'Other',
+  no_response: 'No Response',
+  relocating: 'Relocating Outside Switzerland',
+  not_within_budget: 'Membership Fee Considered Too High',
+  project_expectations: 'Project Did Not Meet Expectations',
+  has_kids: 'Children Not Permitted',
+  location_too_far: 'Location Considered Too Far',
+  too_soon: 'Unable to Commit or Plan This Far in Advance',
+  insufficient_time: 'Insufficient Time to Justify Membership',
+  other: 'Other Reason',
 };
 
 /** Menu order, so every phase presents the options identically. */
 export const DROPOUT_REASONS: DropoutReason[] = [
-  'has_kids', 'not_within_budget', 'too_soon', 'other',
+  'no_response', 'relocating', 'not_within_budget', 'project_expectations',
+  'has_kids', 'location_too_far', 'too_soon', 'insufficient_time', 'other',
 ];
 
 /**
  * Why WE turned them down — a different question, so a different list.
  *
- * The drop-out reasons above are all the customer's: has kids, not within
- * budget, too soon. None of them is something we would be reporting about our
- * OWN decision to reject an application, and forcing that list onto a rejection
- * would produce a report that reads as customer sentiment while actually
- * recording our admissions policy.
+ * The drop-out reasons above are all the customer's: the fee, the location,
+ * children not being permitted, not being able to commit yet. None of them is
+ * something we would be reporting about our OWN decision to reject an
+ * application, and forcing that list onto a rejection would produce a report
+ * that reads as customer sentiment while actually recording our admissions
+ * policy.
  */
 export type RejectionReason =
   | 'does_not_meet_criteria'
@@ -268,8 +296,8 @@ export function lostPhase(p: LeadPipeline): number | null {
  *
  * A rejection draws on a different vocabulary because it answers a different
  * question. "Profile rejected" is us declining them, and none of the drop-out
- * reasons — has kids, not within budget, too soon — is something we would be
- * reporting about our own admissions decision.
+ * reasons — fee too high, location too far, children not permitted — is
+ * something we would be reporting about our own admissions decision.
  */
 const FAILURE_RULES: (FailurePoint & { hit: (p: LeadPipeline) => boolean })[] = [
   {
@@ -413,7 +441,7 @@ export interface ReasonByStageRow {
  * not record a failure at all.
  *
  * Drop-outs and rejections are reported as SEPARATE rows even at the same phase.
- * Adding "profile rejected" into the same bucket as "not within budget" would
+ * Adding "profile rejected" into the same bucket as "fee considered too high" would
  * produce a chart that reads as customer sentiment while half of it is our own
  * admissions decisions.
  *
@@ -464,6 +492,49 @@ export function dropoutReasonBreakdown(pipelines: LeadPipeline[]): ReasonByStage
   // reads down the funnel.
   return [...rows.values()].sort((a, b) =>
     a.phase - b.phase || (a.kind === b.kind ? 0 : a.kind === 'dropout' ? -1 : 1));
+}
+
+/** One table of the breakdown: a single vocabulary's columns and its rows. */
+export interface ReasonTable {
+  kind: FailureKind;
+  /** This table's OWN vocabulary, in menu order — never the other kind's. */
+  columns: { key: string; label: string }[];
+  rows: ReasonByStageRow[];
+  /** Failures in this table, and how many of them still have no reason. */
+  total: number;
+  missing: number;
+}
+
+/**
+ * The breakdown split into one table per vocabulary, ready to render.
+ *
+ * A drop-out row and a rejection row have different columns, so they cannot
+ * share a table without merging the two vocabularies — the thing
+ * `dropoutReasonBreakdown` keeps them in separate rows to avoid. The report used
+ * to render every row under the drop-out columns anyway, so a rejection's counts,
+ * keyed by rejection codes, missed every lookup: a rejected lead showed as a row
+ * of dashes with a total, its recorded reason appeared nowhere on the page, and
+ * it was added into the "drop-outs have no reason" footnote as though it were one.
+ *
+ * Splitting here rather than in the component keeps "which columns belong to
+ * which rows" in one place that a test can hold, instead of a filter and a
+ * vocabulary choice that have to be kept in step by hand at the call site.
+ */
+export function reasonTables(rows: ReasonByStageRow[]): Record<FailureKind, ReasonTable> {
+  const build = (kind: FailureKind): ReasonTable => {
+    const vocabulary: readonly string[] = kind === 'rejection' ? REJECTION_REASONS : DROPOUT_REASONS;
+    const labels: Readonly<Record<string, string>> =
+      kind === 'rejection' ? REJECTION_REASON_LABELS : DROPOUT_REASON_LABELS;
+    const mine = rows.filter((r) => r.kind === kind);
+    return {
+      kind,
+      columns: vocabulary.map((key) => ({ key, label: labels[key] ?? key })),
+      rows: mine,
+      total: mine.reduce((n, r) => n + r.total, 0),
+      missing: mine.reduce((n, r) => n + r.missing, 0),
+    };
+  };
+  return { dropout: build('dropout'), rejection: build('rejection') };
 }
 
 /** One recorded fact inside a phase. */

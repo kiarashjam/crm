@@ -14,8 +14,12 @@ import {
   isReasonComplete,
   dropoutReasonText,
   dropoutReasonBreakdown,
+  reasonTables,
+  parsePipeline,
   DROPOUT_REASONS,
   DROPOUT_REASON_LABELS,
+  REJECTION_REASONS,
+  REJECTION_REASON_LABELS,
   PHASE_TITLES,
   type LeadPipeline,
 } from './leadPipeline';
@@ -346,22 +350,70 @@ describe('drop-out reason capture', () => {
   });
 
   it('renders the free text as the reason when Other is chosen', () => {
-    expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'not_within_budget' })).toBe('Not within budget');
+    expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'not_within_budget' })).toBe('Membership Fee Considered Too High');
     expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'other', dropoutReasonOther: 'Moving abroad' })).toBe('Moving abroad');
     expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'other' })).toBeNull();
     expect(dropoutReasonText({})).toBeNull();
   });
 
-  it('offers exactly the four agreed options, once', () => {
-    expect(DROPOUT_REASONS).toEqual(['has_kids', 'not_within_budget', 'too_soon', 'other']);
+  it('offers exactly the agreed nine options, in the agreed order, once', () => {
+    // The list as the client wrote it, word for word. Pinned on the LABELS rather
+    // than the codes because the labels are what was asked for; the codes are an
+    // implementation detail (see the next test for why four of them are older
+    // than their wording).
+    expect(DROPOUT_REASONS.map((r) => DROPOUT_REASON_LABELS[r])).toEqual([
+      'No Response',
+      'Relocating Outside Switzerland',
+      'Membership Fee Considered Too High',
+      'Project Did Not Meet Expectations',
+      'Children Not Permitted',
+      'Location Considered Too Far',
+      'Unable to Commit or Plan This Far in Advance',
+      'Insufficient Time to Justify Membership',
+      'Other Reason',
+    ]);
     expect(new Set(DROPOUT_REASONS).size).toBe(DROPOUT_REASONS.length);
-    for (const r of DROPOUT_REASONS) expect(DROPOUT_REASON_LABELS[r]).toBeTruthy();
+    // "Other" stays last and keeps its mandatory free-text box.
+    expect(DROPOUT_REASONS[DROPOUT_REASONS.length - 1]).toBe('other');
+  });
+
+  it('INVARIANT: every code ever saved still reads as a reason', () => {
+    // These four are every drop-out code this application has EVER written —
+    // the list held exactly these from the day it was introduced until it was
+    // replaced. Leads in the database carry them in their pipeline JSON.
+    //
+    // Replacing the list must not orphan them. Each had a direct equivalent in
+    // the new list, so each kept its code and took the new wording. If one of
+    // these is ever dropped from DROPOUT_REASONS, every lead holding it loses
+    // its reason on screen and grows a report column no menu can produce.
+    const everSaved = ['has_kids', 'not_within_budget', 'too_soon', 'other'] as const;
+    for (const code of everSaved) {
+      expect(DROPOUT_REASONS).toContain(code);
+      expect(DROPOUT_REASON_LABELS[code]).toBeTruthy();
+    }
+    // And each now reads as its equivalent, not as something unrelated.
+    expect(DROPOUT_REASON_LABELS.has_kids).toMatch(/children/i);
+    expect(DROPOUT_REASON_LABELS.not_within_budget).toMatch(/fee|too high/i);
+    expect(DROPOUT_REASON_LABELS.too_soon).toMatch(/unable to commit|in advance/i);
+    expect(DROPOUT_REASON_LABELS.other).toMatch(/^other/i);
+  });
+
+  it('a lead recorded under the old wording reads in the new wording', () => {
+    // The end-to-end version of the invariant above: a pipeline exactly as it was
+    // saved before the list changed still produces a readable reason and still
+    // counts as having one.
+    const savedBeforeTheChange = parsePipeline(JSON.stringify({
+      contractStatus: 'no_longer_interested', dropoutReason: 'too_soon', dropoutReasonPhase: 3,
+    }));
+    expect(isReasonComplete(savedBeforeTheChange)).toBe(true);
+    expect(dropoutReasonText(savedBeforeTheChange))
+      .toBe('Unable to Commit or Plan This Far in Advance');
   });
 
   it('says on the card that a reason is still owed', () => {
     expect(phaseCaptions(MET_NO)[1]).toBe('Not interested after meeting · waiting on: a reason');
-    expect(phaseCaptions({ ...MET_NO, dropoutReason: 'too_soon' })[1])
-      .toBe('Not interested after meeting · Too soon');
+    expect(phaseCaptions({ ...MET_NO, dropoutReason: 'insufficient_time' })[1])
+      .toBe('Not interested after meeting · Insufficient Time to Justify Membership');
     expect(phaseCaptions(CONTRACT_NO)[2]).toBe('No longer interested · waiting on: a reason');
   });
 });
@@ -442,5 +494,85 @@ describe('dropoutReasonBreakdown', () => {
       { stillInterested: false, contractStatus: 'no_longer_interested', dropoutReason: 'too_soon', dropoutReasonPhase: 2 },
     ]);
     expect(rows.reduce((n, r) => n + r.total, 0)).toBe(1);
+  });
+});
+
+describe('reasonTables — one table per vocabulary', () => {
+  // The report used to render every breakdown row under the drop-out columns.
+  // A rejection row's counts are keyed by REJECTION codes, so every lookup missed:
+  // a rejected lead showed as a row of dashes, its recorded reason appeared
+  // nowhere, and it was summed into "drop-outs have no reason" as though it were
+  // one. These pin the split that the report now renders from.
+  const leads: LeadPipeline[] = [
+    { contractStatus: 'no_longer_interested', dropoutReason: 'too_soon', dropoutReasonPhase: 3 },
+    { contractStatus: 'profile_rejected', rejectionReason: 'does_not_meet_criteria' },
+    { contractStatus: 'profile_rejected', rejectionReason: 'does_not_meet_criteria' },
+    { contractStatus: 'profile_rejected', rejectionReason: 'no_capacity' },
+    { contractStatus: 'profile_rejected' }, // rejected, reason not given yet
+  ];
+  const tables = reasonTables(dropoutReasonBreakdown(leads));
+
+  it('a rejection lands in the rejection table, under its own reason', () => {
+    expect(tables.rejection.rows).toHaveLength(1);
+    const row = tables.rejection.rows[0]!;
+    expect(row.kind).toBe('rejection');
+    expect(row.counts.does_not_meet_criteria).toBe(2);
+    expect(row.counts.no_capacity).toBe(1);
+  });
+
+  it('each table offers its own vocabulary as columns — never the other one', () => {
+    expect(tables.rejection.columns.map((c) => c.label)).toEqual(
+      REJECTION_REASONS.map((r) => REJECTION_REASON_LABELS[r]));
+    expect(tables.dropout.columns.map((c) => c.label)).toEqual(
+      DROPOUT_REASONS.map((r) => DROPOUT_REASON_LABELS[r]));
+    // The labels a reader would look for are in the right table and only there.
+    const rejectionLabels = tables.rejection.columns.map((c) => c.label);
+    const dropoutLabels = tables.dropout.columns.map((c) => c.label);
+    expect(rejectionLabels).toContain('Does not meet membership criteria');
+    expect(dropoutLabels).not.toContain('Does not meet membership criteria');
+    expect(rejectionLabels).not.toContain('Unable to Commit or Plan This Far in Advance');
+  });
+
+  it('INVARIANT: every count in a row has a column to show it in', () => {
+    // The bug, stated generally. A count keyed by something outside its table's
+    // columns is a recorded reason the page cannot display.
+    for (const table of [tables.dropout, tables.rejection]) {
+      const columns = new Set(table.columns.map((c) => c.key));
+      for (const row of table.rows) {
+        for (const [key, n] of Object.entries(row.counts)) {
+          if (n > 0) expect(columns, `${table.kind} count "${key}" has no column`).toContain(key);
+        }
+      }
+    }
+  });
+
+  it('a drop-out stays in the drop-out table', () => {
+    expect(tables.dropout.rows).toHaveLength(1);
+    expect(tables.dropout.rows[0]!.kind).toBe('dropout');
+    expect(tables.dropout.rows[0]!.counts.too_soon).toBe(1);
+  });
+
+  it('totals are per table, so rejections no longer swell the drop-out footnote', () => {
+    expect(tables.dropout.total).toBe(1);
+    expect(tables.dropout.missing).toBe(0);
+    expect(tables.rejection.total).toBe(4);
+    expect(tables.rejection.missing).toBe(1);
+  });
+
+  it('rows within a table are unique by phase and kind, so they can key a list', () => {
+    // Phase 3 holds a drop-out row AND a rejection row; keyed by phase alone the
+    // two collided.
+    const all = [...tables.dropout.rows, ...tables.rejection.rows];
+    const keys = all.map((r) => `${r.phase}:${r.kind}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(all.filter((r) => r.phase === 3)).toHaveLength(2);
+  });
+
+  it('with no rejections, the rejection table is empty rather than absent', () => {
+    const none = reasonTables(dropoutReasonBreakdown([leads[0]!]));
+    expect(none.rejection.rows).toEqual([]);
+    expect(none.rejection.total).toBe(0);
+    // Its columns are still defined, so the shape never depends on the data.
+    expect(none.rejection.columns.length).toBe(REJECTION_REASONS.length);
   });
 });
