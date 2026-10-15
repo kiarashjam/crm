@@ -28,32 +28,60 @@ export type ContractSigned = 'yes' | 'pending' | 'no';
 export type DepositStatus = 'paid' | 'pending' | 'not_paid';
 
 /**
- * Why a lead walked away. ONE list, used at both the Meeting and the Contract
- * phase — asked for explicitly so drop-off reasons stay comparable across
- * stages instead of becoming two vocabularies that cannot be reported together.
+ * Why a lead walked away. ONE list, used at every phase where the client can say
+ * no — not interested at outreach, after the meeting, no longer interested at the
+ * contract, declining to sign, never paying — asked for explicitly so drop-off
+ * reasons stay comparable across stages instead of becoming several vocabularies
+ * that cannot be reported together.
+ *
+ * The codes are stored in every lead's pipeline JSON, so they are identifiers, not
+ * wording. When this list was replaced, the four original reasons each had a
+ * direct equivalent in the new one, so they KEPT their codes and took the new
+ * wording — `has_kids` reads "Children Not Permitted", `too_soon` reads "Unable
+ * to Commit or Plan This Far in Advance". Leads recorded under the old wording
+ * therefore still show a reason, in today's words, and count in the same report
+ * column as leads recorded since. Renaming a code instead would have
+ * orphaned every lead already holding it: no label to show, and a column of its
+ * own in the report that no menu can produce any more.
  */
-export type DropoutReason = 'has_kids' | 'not_within_budget' | 'too_soon' | 'other';
+export type DropoutReason =
+  | 'no_response'
+  | 'relocating'
+  | 'not_within_budget'
+  | 'project_expectations'
+  | 'has_kids'
+  | 'location_too_far'
+  | 'too_soon'
+  | 'insufficient_time'
+  | 'other';
 
 export const DROPOUT_REASON_LABELS: Record<DropoutReason, string> = {
-  has_kids: 'Has kids / not kid-friendly club',
-  not_within_budget: 'Not within budget',
-  too_soon: 'Too soon',
-  other: 'Other',
+  no_response: 'No Response',
+  relocating: 'Relocating Outside Switzerland',
+  not_within_budget: 'Membership Fee Considered Too High',
+  project_expectations: 'Project Did Not Meet Expectations',
+  has_kids: 'Children Not Permitted',
+  location_too_far: 'Location Considered Too Far',
+  too_soon: 'Unable to Commit or Plan This Far in Advance',
+  insufficient_time: 'Insufficient Time to Justify Membership',
+  other: 'Other Reason',
 };
 
 /** Menu order, so every phase presents the options identically. */
 export const DROPOUT_REASONS: DropoutReason[] = [
-  'has_kids', 'not_within_budget', 'too_soon', 'other',
+  'no_response', 'relocating', 'not_within_budget', 'project_expectations',
+  'has_kids', 'location_too_far', 'too_soon', 'insufficient_time', 'other',
 ];
 
 /**
  * Why WE turned them down — a different question, so a different list.
  *
- * The drop-out reasons above are all the customer's: has kids, not within
- * budget, too soon. None of them is something we would be reporting about our
- * OWN decision to reject an application, and forcing that list onto a rejection
- * would produce a report that reads as customer sentiment while actually
- * recording our admissions policy.
+ * The drop-out reasons above are all the customer's: the fee, the location,
+ * children not being permitted, not being able to commit yet. None of them is
+ * something we would be reporting about our OWN decision to reject an
+ * application, and forcing that list onto a rejection would produce a report
+ * that reads as customer sentiment while actually recording our admissions
+ * policy.
  */
 export type RejectionReason =
   | 'does_not_meet_criteria'
@@ -268,8 +296,8 @@ export function lostPhase(p: LeadPipeline): number | null {
  *
  * A rejection draws on a different vocabulary because it answers a different
  * question. "Profile rejected" is us declining them, and none of the drop-out
- * reasons — has kids, not within budget, too soon — is something we would be
- * reporting about our own admissions decision.
+ * reasons — fee too high, location too far, children not permitted — is
+ * something we would be reporting about our own admissions decision.
  */
 const FAILURE_RULES: (FailurePoint & { hit: (p: LeadPipeline) => boolean })[] = [
   {
@@ -413,7 +441,7 @@ export interface ReasonByStageRow {
  * not record a failure at all.
  *
  * Drop-outs and rejections are reported as SEPARATE rows even at the same phase.
- * Adding "profile rejected" into the same bucket as "not within budget" would
+ * Adding "profile rejected" into the same bucket as "fee considered too high" would
  * produce a chart that reads as customer sentiment while half of it is our own
  * admissions decisions.
  *

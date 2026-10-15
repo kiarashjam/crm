@@ -14,6 +14,7 @@ import {
   isReasonComplete,
   dropoutReasonText,
   dropoutReasonBreakdown,
+  parsePipeline,
   DROPOUT_REASONS,
   DROPOUT_REASON_LABELS,
   PHASE_TITLES,
@@ -346,22 +347,70 @@ describe('drop-out reason capture', () => {
   });
 
   it('renders the free text as the reason when Other is chosen', () => {
-    expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'not_within_budget' })).toBe('Not within budget');
+    expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'not_within_budget' })).toBe('Membership Fee Considered Too High');
     expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'other', dropoutReasonOther: 'Moving abroad' })).toBe('Moving abroad');
     expect(dropoutReasonText({ ...MET_NO, dropoutReason: 'other' })).toBeNull();
     expect(dropoutReasonText({})).toBeNull();
   });
 
-  it('offers exactly the four agreed options, once', () => {
-    expect(DROPOUT_REASONS).toEqual(['has_kids', 'not_within_budget', 'too_soon', 'other']);
+  it('offers exactly the agreed nine options, in the agreed order, once', () => {
+    // The list as the client wrote it, word for word. Pinned on the LABELS rather
+    // than the codes because the labels are what was asked for; the codes are an
+    // implementation detail (see the next test for why four of them are older
+    // than their wording).
+    expect(DROPOUT_REASONS.map((r) => DROPOUT_REASON_LABELS[r])).toEqual([
+      'No Response',
+      'Relocating Outside Switzerland',
+      'Membership Fee Considered Too High',
+      'Project Did Not Meet Expectations',
+      'Children Not Permitted',
+      'Location Considered Too Far',
+      'Unable to Commit or Plan This Far in Advance',
+      'Insufficient Time to Justify Membership',
+      'Other Reason',
+    ]);
     expect(new Set(DROPOUT_REASONS).size).toBe(DROPOUT_REASONS.length);
-    for (const r of DROPOUT_REASONS) expect(DROPOUT_REASON_LABELS[r]).toBeTruthy();
+    // "Other" stays last and keeps its mandatory free-text box.
+    expect(DROPOUT_REASONS[DROPOUT_REASONS.length - 1]).toBe('other');
+  });
+
+  it('INVARIANT: every code ever saved still reads as a reason', () => {
+    // These four are every drop-out code this application has EVER written —
+    // the list held exactly these from the day it was introduced until it was
+    // replaced. Leads in the database carry them in their pipeline JSON.
+    //
+    // Replacing the list must not orphan them. Each had a direct equivalent in
+    // the new list, so each kept its code and took the new wording. If one of
+    // these is ever dropped from DROPOUT_REASONS, every lead holding it loses
+    // its reason on screen and grows a report column no menu can produce.
+    const everSaved = ['has_kids', 'not_within_budget', 'too_soon', 'other'] as const;
+    for (const code of everSaved) {
+      expect(DROPOUT_REASONS).toContain(code);
+      expect(DROPOUT_REASON_LABELS[code]).toBeTruthy();
+    }
+    // And each now reads as its equivalent, not as something unrelated.
+    expect(DROPOUT_REASON_LABELS.has_kids).toMatch(/children/i);
+    expect(DROPOUT_REASON_LABELS.not_within_budget).toMatch(/fee|too high/i);
+    expect(DROPOUT_REASON_LABELS.too_soon).toMatch(/unable to commit|in advance/i);
+    expect(DROPOUT_REASON_LABELS.other).toMatch(/^other/i);
+  });
+
+  it('a lead recorded under the old wording reads in the new wording', () => {
+    // The end-to-end version of the invariant above: a pipeline exactly as it was
+    // saved before the list changed still produces a readable reason and still
+    // counts as having one.
+    const savedBeforeTheChange = parsePipeline(JSON.stringify({
+      contractStatus: 'no_longer_interested', dropoutReason: 'too_soon', dropoutReasonPhase: 3,
+    }));
+    expect(isReasonComplete(savedBeforeTheChange)).toBe(true);
+    expect(dropoutReasonText(savedBeforeTheChange))
+      .toBe('Unable to Commit or Plan This Far in Advance');
   });
 
   it('says on the card that a reason is still owed', () => {
     expect(phaseCaptions(MET_NO)[1]).toBe('Not interested after meeting · waiting on: a reason');
-    expect(phaseCaptions({ ...MET_NO, dropoutReason: 'too_soon' })[1])
-      .toBe('Not interested after meeting · Too soon');
+    expect(phaseCaptions({ ...MET_NO, dropoutReason: 'insufficient_time' })[1])
+      .toBe('Not interested after meeting · Insufficient Time to Justify Membership');
     expect(phaseCaptions(CONTRACT_NO)[2]).toBe('No longer interested · waiting on: a reason');
   });
 });
