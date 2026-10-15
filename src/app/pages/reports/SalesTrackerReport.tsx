@@ -22,8 +22,7 @@ import { cn } from '@/app/components/ui/utils';
 import { Kpi, Panel, type Accent } from './ReportUI';
 import { buildTrackedRowsFromLeads, leadHasTrackerData } from '../leads/leadTrackerMap';
 import {
-  parsePipeline, dropoutReasonBreakdown,
-  DROPOUT_REASONS, DROPOUT_REASON_LABELS,
+  parsePipeline, dropoutReasonBreakdown, reasonTables, type ReasonTable,
 } from '../leads/leadPipeline';
 import {
   computeKpis,
@@ -88,6 +87,69 @@ function accentFor(tone: string): Accent {
   return 'indigo';
 }
 
+/**
+ * One reason table: a single vocabulary's columns over the rows that use it.
+ *
+ * Drop-outs and rejections each get their own, because their columns differ.
+ * Rendering a rejection under the drop-out columns is how its recorded reason
+ * used to vanish from this page — every lookup missed and the row read as dashes.
+ */
+function ReasonTableView({ table, label, noun }: {
+  table: ReasonTable;
+  /** Accessible name, so the two tables can be told apart without seeing them. */
+  label: string;
+  /** What one failure in this table is called, for the footnote. */
+  noun: string;
+}) {
+  return (
+    <>
+      <div className="overflow-x-auto">
+        <table aria-label={label} className="w-full text-left text-xs">
+          <thead>
+            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
+              <th className="py-2 pr-3 font-semibold">Phase</th>
+              {table.columns.map((c) => (
+                <th key={c.key} className="py-2 pr-3 text-right font-semibold">{c.label}</th>
+              ))}
+              <th className="py-2 pr-3 text-right font-semibold">No reason yet</th>
+              <th className="py-2 text-right font-semibold">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row) => (
+              // Phase alone is not a unique key: phase 3 can hold a drop-out row
+              // and a rejection row at the same time.
+              <tr key={`${row.phase}:${row.kind}`} className="border-b border-slate-100 last:border-b-0">
+                <td className="py-2 pr-3 font-semibold text-slate-800">
+                  {row.phaseTitle}
+                  <span className="ml-1 font-normal text-slate-400">· phase {row.phase}</span>
+                </td>
+                {table.columns.map((c) => (
+                  <td key={c.key} className="py-2 pr-3 text-right tabular-nums text-slate-600">
+                    {row.counts[c.key] || '—'}
+                  </td>
+                ))}
+                <td className={cn(
+                  'py-2 pr-3 text-right font-semibold tabular-nums',
+                  row.missing > 0 ? 'text-rose-600' : 'text-slate-300',
+                )}>
+                  {row.missing || '—'}
+                </td>
+                <td className="py-2 text-right font-bold tabular-nums text-slate-800">{row.total}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {table.missing > 0 && (
+        <p className="mt-2 text-[11px] text-rose-600">
+          {table.missing} of {table.total} {noun} have no reason recorded yet.
+        </p>
+      )}
+    </>
+  );
+}
+
 export function SalesTrackerReport({ leads }: Props) {
   const rows = useMemo(() => buildTrackedRowsFromLeads(leads), [leads]);
   // Reasons live on the lead's own pipelineState, not on the tracked-row
@@ -96,10 +158,9 @@ export function SalesTrackerReport({ leads }: Props) {
     () => dropoutReasonBreakdown(leads.map((l) => parsePipeline(l.pipelineState))),
     [leads],
   );
-  const reasonTotals = useMemo(() => ({
-    total: reasonRows.reduce((n, r) => n + r.total, 0),
-    missing: reasonRows.reduce((n, r) => n + r.missing, 0),
-  }), [reasonRows]);
+  // One table per vocabulary. Totals are per table too: summing rejections into
+  // the drop-out footnote counted our own decisions as unexplained drop-outs.
+  const reasonTablesByKind = useMemo(() => reasonTables(reasonRows), [reasonRows]);
   const waitlistTotal = leads.length;
   const trackedCount = useMemo(() => leads.filter(leadHasTrackerData).length, [leads]);
 
@@ -407,48 +468,29 @@ export function SalesTrackerReport({ leads }: Props) {
         {/* Drop-off reasons, broken down by the stage they were recorded at. */}
         <ChartCard
           title="Why they did not proceed"
-          subtitle="Reason by the phase it was logged at — Meeting vs Contract"
+          subtitle="Reason by the phase it was logged at"
         >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
-                  <th className="py-2 pr-3 font-semibold">Phase</th>
-                  {DROPOUT_REASONS.map((r) => (
-                    <th key={r} className="py-2 pr-3 text-right font-semibold">{DROPOUT_REASON_LABELS[r]}</th>
-                  ))}
-                  <th className="py-2 pr-3 text-right font-semibold">No reason yet</th>
-                  <th className="py-2 text-right font-semibold">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reasonRows.map((row) => (
-                  <tr key={row.phase} className="border-b border-slate-100 last:border-b-0">
-                    <td className="py-2 pr-3 font-semibold text-slate-800">
-                      {row.phaseTitle}
-                      <span className="ml-1 font-normal text-slate-400">· phase {row.phase}</span>
-                    </td>
-                    {DROPOUT_REASONS.map((r) => (
-                      <td key={r} className="py-2 pr-3 text-right tabular-nums text-slate-600">
-                        {row.counts[r] || '—'}
-                      </td>
-                    ))}
-                    <td className={cn(
-                      'py-2 pr-3 text-right font-semibold tabular-nums',
-                      row.missing > 0 ? 'text-rose-600' : 'text-slate-300',
-                    )}>
-                      {row.missing || '—'}
-                    </td>
-                    <td className="py-2 text-right font-bold tabular-nums text-slate-800">{row.total}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {reasonTotals.missing > 0 && (
-            <p className="mt-2 text-[11px] text-rose-600">
-              {reasonTotals.missing} of {reasonTotals.total} drop-outs have no reason recorded yet.
-            </p>
+          <ReasonTableView
+            table={reasonTablesByKind.dropout}
+            label="Drop-out reasons by phase"
+            noun="drop-outs"
+          />
+
+          {/* Our decisions, not theirs — so a separate table with its own
+              vocabulary, never extra columns on the one above. */}
+          {reasonTablesByKind.rejection.rows.length > 0 && (
+            <div className="mt-5 border-t border-slate-100 pt-4">
+              <h4 className="text-xs font-semibold text-slate-700">Turned down by us</h4>
+              <p className="mb-2 mt-0.5 text-[11px] text-slate-400">
+                Applications we declined, by the reason recorded. Kept apart from the
+                reasons above: those were the client&rsquo;s decision, these are ours.
+              </p>
+              <ReasonTableView
+                table={reasonTablesByKind.rejection}
+                label="Rejection reasons by phase"
+                noun="rejections"
+              />
+            </div>
           )}
         </ChartCard>
       </div>

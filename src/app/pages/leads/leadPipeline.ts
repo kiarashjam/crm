@@ -494,6 +494,49 @@ export function dropoutReasonBreakdown(pipelines: LeadPipeline[]): ReasonByStage
     a.phase - b.phase || (a.kind === b.kind ? 0 : a.kind === 'dropout' ? -1 : 1));
 }
 
+/** One table of the breakdown: a single vocabulary's columns and its rows. */
+export interface ReasonTable {
+  kind: FailureKind;
+  /** This table's OWN vocabulary, in menu order — never the other kind's. */
+  columns: { key: string; label: string }[];
+  rows: ReasonByStageRow[];
+  /** Failures in this table, and how many of them still have no reason. */
+  total: number;
+  missing: number;
+}
+
+/**
+ * The breakdown split into one table per vocabulary, ready to render.
+ *
+ * A drop-out row and a rejection row have different columns, so they cannot
+ * share a table without merging the two vocabularies — the thing
+ * `dropoutReasonBreakdown` keeps them in separate rows to avoid. The report used
+ * to render every row under the drop-out columns anyway, so a rejection's counts,
+ * keyed by rejection codes, missed every lookup: a rejected lead showed as a row
+ * of dashes with a total, its recorded reason appeared nowhere on the page, and
+ * it was added into the "drop-outs have no reason" footnote as though it were one.
+ *
+ * Splitting here rather than in the component keeps "which columns belong to
+ * which rows" in one place that a test can hold, instead of a filter and a
+ * vocabulary choice that have to be kept in step by hand at the call site.
+ */
+export function reasonTables(rows: ReasonByStageRow[]): Record<FailureKind, ReasonTable> {
+  const build = (kind: FailureKind): ReasonTable => {
+    const vocabulary: readonly string[] = kind === 'rejection' ? REJECTION_REASONS : DROPOUT_REASONS;
+    const labels: Readonly<Record<string, string>> =
+      kind === 'rejection' ? REJECTION_REASON_LABELS : DROPOUT_REASON_LABELS;
+    const mine = rows.filter((r) => r.kind === kind);
+    return {
+      kind,
+      columns: vocabulary.map((key) => ({ key, label: labels[key] ?? key })),
+      rows: mine,
+      total: mine.reduce((n, r) => n + r.total, 0),
+      missing: mine.reduce((n, r) => n + r.missing, 0),
+    };
+  };
+  return { dropout: build('dropout'), rejection: build('rejection') };
+}
+
 /** One recorded fact inside a phase. */
 export interface PhaseStep {
   /** What this field records, e.g. "Meeting date". */

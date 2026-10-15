@@ -14,9 +14,12 @@ import {
   isReasonComplete,
   dropoutReasonText,
   dropoutReasonBreakdown,
+  reasonTables,
   parsePipeline,
   DROPOUT_REASONS,
   DROPOUT_REASON_LABELS,
+  REJECTION_REASONS,
+  REJECTION_REASON_LABELS,
   PHASE_TITLES,
   type LeadPipeline,
 } from './leadPipeline';
@@ -491,5 +494,85 @@ describe('dropoutReasonBreakdown', () => {
       { stillInterested: false, contractStatus: 'no_longer_interested', dropoutReason: 'too_soon', dropoutReasonPhase: 2 },
     ]);
     expect(rows.reduce((n, r) => n + r.total, 0)).toBe(1);
+  });
+});
+
+describe('reasonTables — one table per vocabulary', () => {
+  // The report used to render every breakdown row under the drop-out columns.
+  // A rejection row's counts are keyed by REJECTION codes, so every lookup missed:
+  // a rejected lead showed as a row of dashes, its recorded reason appeared
+  // nowhere, and it was summed into "drop-outs have no reason" as though it were
+  // one. These pin the split that the report now renders from.
+  const leads: LeadPipeline[] = [
+    { contractStatus: 'no_longer_interested', dropoutReason: 'too_soon', dropoutReasonPhase: 3 },
+    { contractStatus: 'profile_rejected', rejectionReason: 'does_not_meet_criteria' },
+    { contractStatus: 'profile_rejected', rejectionReason: 'does_not_meet_criteria' },
+    { contractStatus: 'profile_rejected', rejectionReason: 'no_capacity' },
+    { contractStatus: 'profile_rejected' }, // rejected, reason not given yet
+  ];
+  const tables = reasonTables(dropoutReasonBreakdown(leads));
+
+  it('a rejection lands in the rejection table, under its own reason', () => {
+    expect(tables.rejection.rows).toHaveLength(1);
+    const row = tables.rejection.rows[0]!;
+    expect(row.kind).toBe('rejection');
+    expect(row.counts.does_not_meet_criteria).toBe(2);
+    expect(row.counts.no_capacity).toBe(1);
+  });
+
+  it('each table offers its own vocabulary as columns — never the other one', () => {
+    expect(tables.rejection.columns.map((c) => c.label)).toEqual(
+      REJECTION_REASONS.map((r) => REJECTION_REASON_LABELS[r]));
+    expect(tables.dropout.columns.map((c) => c.label)).toEqual(
+      DROPOUT_REASONS.map((r) => DROPOUT_REASON_LABELS[r]));
+    // The labels a reader would look for are in the right table and only there.
+    const rejectionLabels = tables.rejection.columns.map((c) => c.label);
+    const dropoutLabels = tables.dropout.columns.map((c) => c.label);
+    expect(rejectionLabels).toContain('Does not meet membership criteria');
+    expect(dropoutLabels).not.toContain('Does not meet membership criteria');
+    expect(rejectionLabels).not.toContain('Unable to Commit or Plan This Far in Advance');
+  });
+
+  it('INVARIANT: every count in a row has a column to show it in', () => {
+    // The bug, stated generally. A count keyed by something outside its table's
+    // columns is a recorded reason the page cannot display.
+    for (const table of [tables.dropout, tables.rejection]) {
+      const columns = new Set(table.columns.map((c) => c.key));
+      for (const row of table.rows) {
+        for (const [key, n] of Object.entries(row.counts)) {
+          if (n > 0) expect(columns, `${table.kind} count "${key}" has no column`).toContain(key);
+        }
+      }
+    }
+  });
+
+  it('a drop-out stays in the drop-out table', () => {
+    expect(tables.dropout.rows).toHaveLength(1);
+    expect(tables.dropout.rows[0]!.kind).toBe('dropout');
+    expect(tables.dropout.rows[0]!.counts.too_soon).toBe(1);
+  });
+
+  it('totals are per table, so rejections no longer swell the drop-out footnote', () => {
+    expect(tables.dropout.total).toBe(1);
+    expect(tables.dropout.missing).toBe(0);
+    expect(tables.rejection.total).toBe(4);
+    expect(tables.rejection.missing).toBe(1);
+  });
+
+  it('rows within a table are unique by phase and kind, so they can key a list', () => {
+    // Phase 3 holds a drop-out row AND a rejection row; keyed by phase alone the
+    // two collided.
+    const all = [...tables.dropout.rows, ...tables.rejection.rows];
+    const keys = all.map((r) => `${r.phase}:${r.kind}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(all.filter((r) => r.phase === 3)).toHaveLength(2);
+  });
+
+  it('with no rejections, the rejection table is empty rather than absent', () => {
+    const none = reasonTables(dropoutReasonBreakdown([leads[0]!]));
+    expect(none.rejection.rows).toEqual([]);
+    expect(none.rejection.total).toBe(0);
+    // Its columns are still defined, so the shape never depends on the data.
+    expect(none.rejection.columns.length).toBe(REJECTION_REASONS.length);
   });
 });
