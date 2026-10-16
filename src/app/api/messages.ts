@@ -3,7 +3,7 @@
 export const messages = {
   copy: {
     generated: 'Copy generated.',
-    sentToCrm: 'Copy sent to CRM.',
+    sentToCrm: 'Saved on the record.',
     copied: 'Copied to clipboard.',
   },
   settings: {
