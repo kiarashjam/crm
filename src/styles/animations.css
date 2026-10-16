@@ -802,6 +802,49 @@
 .loading-dot:nth-child(2) { animation-delay: -0.16s; }
 .loading-dot:nth-child(3) { animation-delay: 0s; }
 
+/* Settings hero badge: a small bob, and the slider knobs trade places. */
+@keyframes settings-badge-float {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-7px) rotate(2.5deg); }
+}
+
+@keyframes settings-knob-slide {
+  0%, 100% { transform: translateY(2.5px); }
+  50% { transform: translateY(-3.5px); }
+}
+
+@keyframes settings-spark {
+  0%, 100% { opacity: 0.15; transform: scale(0.6) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1) rotate(20deg); }
+}
+
+.settings-hero-badge {
+  animation: settings-badge-float 2.6s ease-in-out infinite;
+}
+
+.settings-knob {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: settings-knob-slide 1.8s ease-in-out infinite;
+}
+
+.settings-knob-late {
+  animation-delay: -0.9s;
+}
+
+.settings-spark {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: white;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.25);
+  animation: settings-spark 1.8s ease-in-out infinite;
+}
+
+.settings-spark-a { top: 7px; right: 8px; }
+.settings-spark-b { bottom: 9px; left: 8px; animation-delay: -0.9s; }
+
 /* Reduce motion preference support */
 @media (prefers-reduced-motion: reduce) {
   .page-transition,
@@ -816,10 +859,17 @@
   .animate-row-in,
   .animate-shimmer,
   .skeleton-pulse,
-  .loading-dot {
+  .loading-dot,
+  .settings-hero-badge,
+  .settings-knob {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
     filter: none !important;
+  }
+
+  .settings-spark {
+    animation: none !important;
+    opacity: 0 !important;
   }
 }

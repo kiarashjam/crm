@@ -200,6 +200,15 @@ const HELP: Record<string, HelpEntry> = {
       { emoji: '🏢', title: 'Workspaces', body: 'Each one has its own leads, deals and team.' },
     ],
   },
+  mcp: {
+    emoji: '🤖', gradient: 'from-orange-500 to-amber-500',
+    title: 'Ask Claude', tagline: 'Connect one organization, then ask about its records.',
+    features: [
+      { emoji: '1️⃣', title: 'Create the key', body: 'An owner or manager generates the organization key on this page.' },
+      { emoji: '2️⃣', title: 'Paste the connector', body: 'In Claude, add a connector with the name, address, and Authorization header from this page.' },
+      { emoji: '👀', title: 'Read only', body: 'Claude can look up leads, contacts, deals, and tasks. It cannot change them.' },
+    ],
+  },
   leadWebhook: {
     emoji: '🌐', gradient: 'from-orange-500 to-amber-500',
     title: 'Lead webhook', tagline: 'Auto-capture leads from your website or forms.',
