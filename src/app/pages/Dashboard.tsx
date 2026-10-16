@@ -39,6 +39,8 @@ import { CopyStatsWidget } from './dashboard/CopyStatsWidget';
 import { RecentActivity } from './dashboard/RecentActivity';
 import { TeamPerformance } from './dashboard/TeamPerformance';
 import { SalesWriter } from './dashboard/SalesWriter';
+import { NextActions } from '@/app/salesAgent/NextActions';
+import type { WriterBrief } from '@/app/salesAgent/writerBrief';
 import { copyTypes, goals } from './dashboard/config';
 import { mostRecent } from './dashboard/dashboardData';
 import type { DashboardStats, CopyStats, PipelineStage } from './dashboard/types';
@@ -106,6 +108,25 @@ export default function Dashboard() {
   
   const user = getCurrentUser();
   const displayName = user?.name ?? 'there';
+  const writerAnchor = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const state = location.state as {
+      writerBrief?: WriterBrief;
+      writerRecipient?: { type: 'lead' | 'contact' | 'deal'; id: string; name: string } | null;
+    } | null;
+    if (!state?.writerBrief) return;
+    setSelectedType(state.writerBrief.copyTypeId);
+    setGoal(state.writerBrief.goal);
+    setContext(state.writerBrief.context);
+    if (state.writerRecipient) {
+      setSelectedRecipient(state.writerRecipient);
+      setRecipientType(state.writerRecipient.type);
+      setShowRecipientPicker(false);
+    }
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    writerAnchor.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  }, [location.state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -267,6 +288,8 @@ export default function Dashboard() {
             failed={failed.crm}
           />
 
+          <NextActions />
+
         {/* Main Content Grid */}
         <div className="space-y-8">
           <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
@@ -277,6 +300,7 @@ export default function Dashboard() {
               <PipelineChart stages={pipelineByStage} loaded={loaded.stages} failed={failed.stages} />
 
               {/* Intelligent Sales Writer - Extracted Component */}
+              <div id="sales-writer" ref={writerAnchor} className="scroll-mt-24">
               <SalesWriter
                 selectedType={selectedType}
                 setSelectedType={setSelectedType}
@@ -302,6 +326,7 @@ export default function Dashboard() {
                 recipientSearch={recipientSearch}
                 setRecipientSearch={setRecipientSearch}
               />
+              </div>
 
               {/* Generated Copy Display */}
               {generatedCopy && (

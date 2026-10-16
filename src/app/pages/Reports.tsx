@@ -17,6 +17,7 @@ import { getDeals, getLeads, getActivities } from '@/app/api';
 import type { Deal, Lead, Activity } from '@/app/api/types';
 import { SalesTrackerReport } from './reports/SalesTrackerReport';
 import { SectionHead, Kpi, Panel, NoData, BarList, Funnel } from './reports/ReportUI';
+import { NextActions } from '@/app/salesAgent/NextActions';
 import {
   summariseDeals, summariseLeads, statusFunnel, groupSum, topNWithOther,
   activityByDay, newLeadsByWeek, dealState, parseMoney,
@@ -158,6 +159,8 @@ export default function Reports() {
               subtitle="Pipeline, leads, lifecycle and activity — every figure computed from your own records."
             />
           </Reveal>
+
+          <NextActions />
 
           {failed && (
             <div className="mt-5 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
