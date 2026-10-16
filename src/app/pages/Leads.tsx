@@ -5,13 +5,14 @@ import {
   Mail, Phone, Sparkles, Check, Tag, UserPlus, Info, CircleDot,
   Upload, RefreshCw, Users, Handshake, ArrowRight, CheckCircle2,
   SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, X, Download,
-  TrendingUp, Target, Clock, Zap, BarChart3, Calendar, AlertCircle, Activity as ActivityIcon,
+  Target, Clock, Zap, Calendar, AlertCircle, Activity as ActivityIcon,
   MessageSquarePlus, UserCircle, ChevronDown, AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageEnter, Reveal } from '@/app/components/motion/PageEnter';
 import { LeadsListSkeleton } from './leads/components/LeadsListSkeleton';
+import { LeadPipelineStrip } from './leads/LeadPipelineStrip';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
@@ -343,6 +344,15 @@ export default function Leads() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- derived from leadStatuses
     [leadStatuses],
   );
+
+  // The figure counts every vocabulary the stat uses, including a lead still
+  // marked "Qualified" after the org list moved on. The filter has to use that
+  // same set, or the button turns on and the list goes empty.
+  const qualifiedFilterNames = useMemo(() => {
+    const names = new Set(qualifiedStatusNames);
+    for (const name of QUALIFIED_OR_BEYOND) names.add(name);
+    return [...names];
+  }, [qualifiedStatusNames]);
 
   // Keeps lead.status honest as pipeline steps change from the list cards.
   const statusSync = useLeadStatusSync({
@@ -1469,98 +1479,35 @@ export default function Leads() {
           </div>
         </Reveal>
 
-          {/* Stats Cards */}
           {!loading && totalCount > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-              {/* Total Leads */}
-              <Reveal variant="pop" index={1} className="group relative bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-50 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <BarChart3 className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-slate-900 tracking-tight">{stats.total}</p>
-                  <p className="text-xs font-medium text-slate-500 mt-1">Total Leads</p>
-                </div>
-              </Reveal>
-
-              {/* Active Leads */}
-              <Reveal variant="pop" index={2} 
-                className="group relative bg-white rounded-2xl border border-blue-100 p-5 shadow-sm hover:shadow-xl hover:shadow-blue-100 hover:border-blue-200 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { setFilterConverted('active'); setShowFilters(true); }}
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-50 to-blue-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Target className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-blue-600 tracking-tight">{stats.active}</p>
-                  <p className="text-xs font-medium text-blue-600/70 mt-1">Active</p>
-                </div>
-              </Reveal>
-
-              {/* Hot Leads */}
-              <Reveal variant="pop" index={3} className="group relative bg-white rounded-2xl border border-amber-100 p-5 shadow-sm hover:shadow-xl hover:shadow-amber-100 hover:border-amber-200 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-amber-50 to-amber-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Zap className="w-5 h-5 text-amber-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-amber-600 tracking-tight">{stats.hotLeads}</p>
-                  <p className="text-xs font-medium text-amber-600/70 mt-1">Hot Leads</p>
-                </div>
-              </Reveal>
-
-              {/* Conversion Rate */}
-              <Reveal variant="pop" index={4} 
-                className="group relative bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-5 shadow-lg shadow-emerald-500/20 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { setFilterConverted('converted'); setShowFilters(true); }}
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-bl-[60px] -mr-2 -mt-2" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3">
-                    <TrendingUp className="w-5 h-5 text-white" />
-                  </div>
-                  <p className="text-3xl font-bold text-white tracking-tight">{stats.conversionRate}%</p>
-                  <p className="text-xs font-medium text-white/80 mt-1">Converted</p>
-                  <div className="mt-3">
-                    <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-white rounded-full transition-all duration-500"
-                        style={{ width: `${stats.conversionRate}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </Reveal>
-
-              {/* New This Week */}
-              <Reveal variant="pop" index={5} className="group relative bg-white rounded-2xl border border-purple-100 p-5 shadow-sm hover:shadow-xl hover:shadow-purple-100 hover:border-purple-200 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-purple-50 to-purple-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Calendar className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-purple-600 tracking-tight">{stats.thisWeek}</p>
-                  <p className="text-xs font-medium text-purple-600/70 mt-1">This Week</p>
-                </div>
-              </Reveal>
-
-              {/* Qualified Leads */}
-              <Reveal variant="pop" index={6} 
-                className="group relative bg-white rounded-2xl border border-cyan-100 p-5 shadow-sm hover:shadow-xl hover:shadow-cyan-100 hover:border-cyan-200 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { setFilterStatuses(qualifiedStatusNames); setShowFilters(true); }}
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-100 to-cyan-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <CheckCircle2 className="w-5 h-5 text-cyan-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-cyan-600 tracking-tight">{stats.qualified}</p>
-                  <p className="text-xs font-medium text-cyan-600/70 mt-1">Qualified</p>
-                </div>
-              </Reveal>
-            </div>
+            <LeadPipelineStrip
+              stats={stats}
+              activeOn={filterConverted === 'active'}
+              convertedOn={filterConverted === 'converted'}
+              qualifiedOn={
+                qualifiedFilterNames.length > 0
+                && filterStatuses.length === qualifiedFilterNames.length
+                && qualifiedFilterNames.every((name) => filterStatuses.includes(name))
+              }
+              qualifiedFilterable={qualifiedFilterNames.length > 0}
+              onActive={() => {
+                setFilterConverted((current) => (current === 'active' ? 'all' : 'active'));
+                setShowFilters(true);
+              }}
+              onConverted={() => {
+                setFilterConverted((current) => (current === 'converted' ? 'all' : 'converted'));
+                setShowFilters(true);
+              }}
+              onQualified={() => {
+                setFilterStatuses((current) => {
+                  const on = qualifiedFilterNames.length > 0
+                    && current.length === qualifiedFilterNames.length
+                    && qualifiedFilterNames.every((name) => current.includes(name));
+                  return on ? [] : qualifiedFilterNames;
+                });
+                setShowFilters(true);
+              }}
+            />
           )}
 
           {/* Quick Insights Banner */}

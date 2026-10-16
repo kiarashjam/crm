@@ -44,6 +44,8 @@ public class LeadService : ILeadService
             "Getting paged leads for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}",
             userId, organizationId, page, pageSize);
 
+        await _contactRepository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
+
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, options, ct);
 
@@ -69,6 +71,8 @@ public class LeadService : ILeadService
         _logger.LogDebug(
             "Getting leads for user {UserId}, organization {OrganizationId}",
             userId, organizationId);
+
+        await _contactRepository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
 
         var list = await _repository.GetByUserIdAsync(userId, organizationId, ct);
         
@@ -179,6 +183,7 @@ public class LeadService : ILeadService
         };
 
         entity = await _repository.AddAsync(entity, ct);
+        await _contactRepository.EnsurePersonContactAsync(entity, ct);
 
         _logger.LogInformation(
             "Lead {LeadId} created successfully for user {UserId}",
@@ -251,6 +256,8 @@ public class LeadService : ILeadService
                 id);
             return DomainErrors.General.ServerError;
         }
+
+        await _contactRepository.EnsurePersonContactAsync(updated, ct);
 
         _logger.LogInformation(
             "Lead {LeadId} updated successfully",

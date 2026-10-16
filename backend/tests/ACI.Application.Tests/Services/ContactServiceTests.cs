@@ -20,6 +20,9 @@ public class ContactServiceTests
     public ContactServiceTests()
     {
         _contactRepositoryMock = new Mock<IContactRepository>();
+        _contactRepositoryMock
+            .Setup(r => r.EnsureMissingPersonContactsAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         _activityRepositoryMock = new Mock<IActivityRepository>();
         _loggerMock = new Mock<ILogger<ContactService>>();
         

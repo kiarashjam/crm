@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Search, Plus, Pencil, Trash2, Building2, Mail, Phone, Briefcase,
   User, X, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Activity as ActivityIcon,
-  MessageSquare, Clock, Users, Sparkles, Send, BarChart3, AlertCircle,
+  MessageSquare, Clock, Users, Sparkles, Paperclip, BarChart3, AlertCircle,
   ExternalLink, Archive, ArchiveRestore
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -976,8 +976,8 @@ export default function Contacts() {
                               Edit Contact
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => navigate('/send', { state: { contactId: contact.id, contactName: contact.name } })}>
-                              <Send className="w-4 h-4 mr-2" />
-                              Send Message
+                              <Paperclip className="w-4 h-4 mr-2" />
+                              Attach copy
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleArchiveToggle(contact)}>
                               {contact.isArchived ? (
@@ -1113,8 +1113,8 @@ export default function Contacts() {
                         onClick={() => navigate('/send', { state: { contactId: contact.id, contactName: contact.name } })}
                         className="h-8 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                       >
-                        <MessageSquare className="w-3.5 h-3.5 mr-1" />
-                        Message
+                        <Paperclip className="w-3.5 h-3.5 mr-1" />
+                        Attach copy
                       </Button>
                     </div>
                   </div>

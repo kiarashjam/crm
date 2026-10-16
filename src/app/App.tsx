@@ -31,7 +31,6 @@ const SignContract = lazy(() => import('@/app/pages/SignContract'));
 const Leads = lazy(() => import('@/app/pages/Leads'));
 const LeadDetailPage = lazy(() => import('@/app/pages/LeadDetailPage'));
 const LeadWebhook = lazy(() => import('@/app/pages/LeadWebhook'));
-const McpSetup = lazy(() => import('@/app/pages/McpSetup'));
 const LeadImport = lazy(() => import('@/app/pages/LeadImport'));
 const Pipeline = lazy(() => import('@/app/pages/Pipeline'));
 const DealDetail = lazy(() => import('@/app/pages/DealDetail'));
@@ -143,7 +142,7 @@ export default function App() {
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
                     <Route path="/settings" element={<Settings />} />
-                    <Route path="/mcp" element={<McpSetup />} />
+                    <Route path="/mcp" element={<Navigate to="/settings?tab=claude" replace />} />
                   </Route>
                 </Route>
                 

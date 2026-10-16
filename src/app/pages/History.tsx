@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, RotateCcw, Search, Mail, MessageSquare, FileText, Briefcase, History as HistoryIcon, Send } from 'lucide-react';
+import { Copy, RotateCcw, Search, Mail, MessageSquare, FileText, Briefcase, History as HistoryIcon, Paperclip } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -222,10 +222,10 @@ export default function History() {
                             type="button"
                             onClick={() => handleSendAgain(item)}
                             className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700 font-medium transition-colors focus-visible:rounded"
-                            aria-label="Send again to CRM"
+                            aria-label="Attach this writing to a record"
                           >
-                            <Send className="w-4 h-4" aria-hidden />
-                            Send again
+                            <Paperclip className="w-4 h-4" aria-hidden />
+                            Attach again
                           </button>
                           <button
                             type="button"
@@ -249,7 +249,7 @@ export default function History() {
               title={items.length === 0 ? 'No copy history yet' : 'No results found'}
               description={
                 items.length === 0
-                  ? 'Copy you send to CRM will appear here. Generate and send your first copy to get started.'
+                  ? 'Writing you save on a lead, contact, or deal shows up here.'
                   : 'Try a different search term.'
               }
               actionLabel={items.length === 0 ? 'Create your first copy' : undefined}

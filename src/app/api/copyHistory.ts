@@ -50,7 +50,7 @@ export async function getCopyHistory(): Promise<CopyHistoryItem[]> {
   return [...list].sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
 }
 
-/** Add an item to history (e.g. after "Send to CRM"). */
+/** Add an item to history after writing is saved on a record. */
 export async function addToCopyHistory(item: Omit<CopyHistoryItem, 'id' | 'createdAt'>): Promise<CopyHistoryItem> {
   if (isUsingRealApi()) {
     await authFetchJson<{ success: boolean; message: string }>('/api/copy/send', {

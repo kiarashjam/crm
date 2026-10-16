@@ -23,8 +23,8 @@ function pushTo<T>(map: Map<string, T[]>, key: string, value: T) {
   else map.set(key, [value]);
 }
 
-export async function findDuplicateContacts(): Promise<DuplicateGroup<Contact>[]> {
-  const contacts = await getContacts();
+/** Same grouping the Duplicates page uses. Pure, so the sales list can share it. */
+export function duplicateContactGroups<T extends { id: string; name?: string | null; email?: string | null }>(contacts: T[]): DuplicateGroup<T>[] {
   const groups: DuplicateGroup<Contact>[] = [];
   const grouped = new Set<string>();
 
@@ -52,8 +52,12 @@ export async function findDuplicateContacts(): Promise<DuplicateGroup<Contact>[]
   return groups;
 }
 
-export async function findDuplicateCompanies(): Promise<DuplicateGroup<Company>[]> {
-  const companies = await getCompanies();
+export async function findDuplicateContacts(): Promise<DuplicateGroup<Contact>[]> {
+  return duplicateContactGroups(await getContacts());
+}
+
+/** Same grouping the Duplicates page uses. Pure, so the sales list can share it. */
+export function duplicateCompanyGroups<T extends { id: string; name?: string | null; domain?: string | null; website?: string | null }>(companies: T[]): DuplicateGroup<T>[] {
   const groups: DuplicateGroup<Company>[] = [];
   const grouped = new Set<string>();
 
@@ -79,6 +83,10 @@ export async function findDuplicateCompanies(): Promise<DuplicateGroup<Company>[
     if (list.length > 1) groups.push({ key: `name:${n}`, reason: 'Same name', records: list });
   }
   return groups;
+}
+
+export async function findDuplicateCompanies(): Promise<DuplicateGroup<Company>[]> {
+  return duplicateCompanyGroups(await getCompanies());
 }
 
 export async function mergeContacts(primaryId: string, duplicateIds: string[]): Promise<boolean> {

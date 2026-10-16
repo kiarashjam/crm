@@ -1,102 +1,157 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { CheckCircle, Search, FileText } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { CheckCircle, Paperclip, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
-import EmptyState from '@/app/components/EmptyState';
+import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { getContacts, getDeals, getLeads, sendCopyToCrm } from '@/app/api';
 import type { Contact, Deal, Lead } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
 
-type ObjectType = 'contact' | 'deal' | 'lead' | 'workflow' | 'email';
+type ObjectType = 'lead' | 'contact' | 'deal';
+
+type Incoming = {
+  copy?: string;
+  copyTypeLabel?: string;
+  contactId?: string;
+  contactName?: string;
+  dealId?: string;
+  leadId?: string;
+};
+
+type RecordChoice = { id: string; name: string; sub: string };
+
+const TYPES: { id: ObjectType; label: string; sub: string }[] = [
+  { id: 'lead', label: 'Lead', sub: 'Someone you are still qualifying' },
+  { id: 'contact', label: 'Contact', sub: 'A person already in your book' },
+  { id: 'deal', label: 'Deal', sub: 'An open opportunity' },
+];
+
+function readIncoming(state: unknown): Incoming {
+  if (!state || typeof state !== 'object') return {};
+  const source = state as Record<string, unknown>;
+  const text = (key: string) => (typeof source[key] === 'string' ? (source[key] as string) : undefined);
+  return {
+    copy: text('copy'),
+    copyTypeLabel: text('copyTypeLabel'),
+    contactId: text('contactId'),
+    contactName: text('contactName'),
+    dealId: text('dealId'),
+    leadId: text('leadId'),
+  };
+}
+
+function presetFrom(incoming: Incoming): { type: ObjectType; id: string; name?: string } | null {
+  if (incoming.leadId) return { type: 'lead', id: incoming.leadId };
+  if (incoming.dealId) return { type: 'deal', id: incoming.dealId };
+  if (incoming.contactId) return { type: 'contact', id: incoming.contactId, name: incoming.contactName };
+  return null;
+}
+
+function matches(query: string, parts: Array<string | number | undefined | null>): boolean {
+  return parts.some((part) => String(part ?? '').toLowerCase().includes(query));
+}
+
+function recordPath(type: ObjectType, id: string): string {
+  if (type === 'lead') return `/leads/${id}`;
+  if (type === 'deal') return `/deals/${id}`;
+  return `/contacts/${id}`;
+}
 
 export default function SendToCrm() {
   const location = useLocation();
-  const state = location.state as { copy?: string; copyTypeLabel?: string } | null;
-  const copy = state?.copy ?? '';
-  const copyTypeLabel = state?.copyTypeLabel ?? 'Copy';
+  const navigate = useNavigate();
+  const incoming = readIncoming(location.state);
+  const preset = presetFrom(incoming);
 
-  const [objectType, setObjectType] = useState<ObjectType>('contact');
+  const [draft, setDraft] = useState(incoming.copy ?? '');
+  const [copyTypeLabel] = useState(incoming.copyTypeLabel?.trim() || 'Note');
+  const [objectType, setObjectType] = useState<ObjectType>(preset?.type ?? 'lead');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedRecord, setSelectedRecord] = useState<{ id: string; name: string } | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<{ id: string; name: string } | null>(
+    preset ? { id: preset.id, name: preset.name ?? 'Selected record' } : null,
+  );
   const [isSent, setIsSent] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const renamedPreset = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getContacts(), getDeals(), getLeads()])
-      .then(([c, d, l]) => {
-        if (!cancelled) {
-          setContacts(c);
-          setDeals(d);
-          setLeads(l);
-          setLoading(false);
-        }
-      })
-      .catch(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+    setLoading(true);
+    setLoadError(false);
+    Promise.allSettled([getContacts(), getDeals(), getLeads()]).then(([contactsResult, dealsResult, leadsResult]) => {
+      if (cancelled) return;
+      if (contactsResult.status === 'fulfilled') setContacts(Array.isArray(contactsResult.value) ? contactsResult.value : []);
+      if (dealsResult.status === 'fulfilled') setDeals(Array.isArray(dealsResult.value) ? dealsResult.value : []);
+      if (leadsResult.status === 'fulfilled') setLeads(Array.isArray(leadsResult.value) ? leadsResult.value : []);
+      const failed = [contactsResult, dealsResult, leadsResult].some((result) => result.status === 'rejected');
+      setLoadError(failed);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
-  const filteredContacts = searchQuery.trim()
-    ? contacts.filter(
-        (c) =>
-          c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.email.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : contacts;
+  useEffect(() => {
+    if (loading || renamedPreset.current || !preset) return;
+    const found =
+      preset.type === 'lead'
+        ? leads.find((lead) => lead.id === preset.id)
+        : preset.type === 'deal'
+          ? deals.find((deal) => deal.id === preset.id)
+          : contacts.find((contact) => contact.id === preset.id);
+    if (!found) return;
+    renamedPreset.current = true;
+    setSelectedRecord((current) => (current?.id === found.id ? { id: found.id, name: found.name } : current));
+  }, [loading, leads, deals, contacts, preset]);
 
-  const filteredDeals = searchQuery.trim()
-    ? deals.filter(
-        (d) =>
-          d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          d.value.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : deals;
+  const query = searchQuery.trim().toLowerCase();
+  const records: RecordChoice[] =
+    objectType === 'contact'
+      ? contacts
+          .filter((contact) => !query || matches(query, [contact.name, contact.email, contact.companyName]))
+          .map((contact) => ({ id: contact.id, name: contact.name, sub: contact.email || contact.companyName || 'Contact' }))
+      : objectType === 'deal'
+        ? deals
+            .filter((deal) => !query || matches(query, [deal.name, deal.value, deal.stage, deal.companyName]))
+            .map((deal) => ({
+              id: deal.id,
+              name: deal.name,
+              sub: [deal.value, deal.stage].filter(Boolean).join(' · ') || 'Deal',
+            }))
+        : leads
+            .filter((lead) => !query || matches(query, [lead.name, lead.email, lead.status, lead.companyName]))
+            .map((lead) => ({
+              id: lead.id,
+              name: lead.name,
+              sub: [lead.email, lead.status].filter(Boolean).join(' · ') || 'Lead',
+            }));
 
-  const filteredLeads = searchQuery.trim()
-    ? leads.filter(
-        (l) =>
-          l.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          l.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (l.status && l.status.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : leads;
-
-  const records = objectType === 'contact'
-    ? filteredContacts.map((c) => ({ id: c.id, name: c.name, sub: c.email }))
-    : objectType === 'deal'
-      ? filteredDeals.map((d) => ({
-          id: d.id,
-          name: d.name,
-          sub: d.stage ? `${d.value} · ${d.stage}` : d.value,
-        }))
-      : objectType === 'lead'
-        ? filteredLeads.map((l) => ({
-            id: l.id,
-            name: l.name,
-            sub: l.status ? `${l.email} · ${l.status}` : l.email,
-          }))
-        : [];
+  const orderedRecords = selectedRecord
+    ? [...records.filter((record) => record.id === selectedRecord.id), ...records.filter((record) => record.id !== selectedRecord.id)]
+    : records;
 
   const handleSend = async () => {
-    if (!selectedRecord || !copy.trim()) return;
+    if (!selectedRecord || !draft.trim()) return;
     setSending(true);
     try {
       await sendCopyToCrm({
         objectType,
         recordId: selectedRecord.id,
         recordName: selectedRecord.name,
-        copy,
+        copy: draft.trim(),
         copyTypeLabel,
       });
-      toast.success(messages.copy.sentToCrm);
+      toast.success(`Saved on ${selectedRecord.name}`);
       setIsSent(true);
     } catch {
       toast.error(messages.errors.generic);
@@ -105,185 +160,234 @@ export default function SendToCrm() {
     }
   };
 
-  if (!copy.trim() && !isSent) {
-    return (
-      <div className="min-h-screen flex flex-col bg-gradient-subtle">
-        <AppHeader />
-        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          <h1 className="sr-only">Send to CRM</h1>
-          <EmptyState
-            icon={FileText}
-            title="No copy to send"
-            description="Generate copy on the dashboard first, then come back here to send it to a contact or deal."
-            actionLabel="Go to Dashboard"
-            actionHref="/dashboard"
-          />
-        </main>
-      </div>
-    );
-  }
+  const typeLabel = TYPES.find((type) => type.id === objectType)?.label ?? 'Record';
+  const emptyListHref = objectType === 'lead' ? '/leads' : objectType === 'deal' ? '/deals' : '/contacts';
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
-
-      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        <div className="w-full">
+      <PageTransition>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           {!isSent ? (
-            <>
-              <div className="mb-8">
-                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-2">Send to CRM</h1>
-                <p className="text-slate-600">Save your generated copy to a contact or deal in Cadence</p>
+            <div className="w-full max-w-6xl">
+              <div className="mb-8 flex items-start gap-4">
+                <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700" aria-hidden>
+                  <Paperclip className="h-5 w-5" />
+                </div>
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Attach copy</h1>
+                  <p className="mt-2 max-w-2xl text-slate-600">
+                    Save this writing on a lead, contact, or deal. It stays in Cadence and shows up in History. It is not emailed, and it does not leave this workspace.
+                  </p>
+                </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-slate-700 mb-3">
-                    Select object type
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {[
-                      { id: 'lead' as const, label: 'Lead', sub: 'Sales prospect' },
-                      { id: 'contact' as const, label: 'Contact', sub: 'Individual person' },
-                      { id: 'deal' as const, label: 'Deal', sub: 'Sales opportunity' },
-                      { id: 'workflow' as const, label: 'Workflow', sub: 'Automation sequence' },
-                      { id: 'email' as const, label: 'Email draft', sub: 'Save as template' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => {
-                          setObjectType(opt.id);
-                          setSelectedRecord(null);
-                        }}
-                        className={`p-4 rounded-xl border-2 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 ${
-                          objectType === opt.id
-                            ? 'border-orange-500 bg-orange-50 text-slate-900'
-                            : 'border-slate-200 hover:border-orange-200 bg-white'
-                        }`}
-                      >
-                        <p className="font-semibold text-slate-900">{opt.label}</p>
-                        <p className="text-xs text-slate-600 mt-0.5">{opt.sub}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {(objectType === 'contact' || objectType === 'deal' || objectType === 'lead') && (
-                  <div className="mb-8">
-                    <label className="block text-sm font-medium text-slate-700 mb-3">
-                      Select specific record
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                  <div className="mb-4 flex items-baseline justify-between gap-3">
+                    <label htmlFor="attach-copy" className="text-sm font-medium text-slate-700">
+                      Writing
                     </label>
-                    <div className="mb-3">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" aria-hidden />
-                        <input
-                          type="search"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          placeholder={`Search ${objectType}s...`}
-                          className="w-full h-11 pl-10 pr-4 border border-slate-300 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none transition-colors"
-                          aria-label={`Search ${objectType}s`}
-                        />
-                      </div>
-                      {searchQuery.trim() && records.length === 0 && !loading && (
-                        <p className="text-sm text-slate-500 mt-2">
-                          No results for &quot;{searchQuery.trim()}&quot;. Try a different search.
-                        </p>
-                      )}
+                    {incoming.copyTypeLabel ? (
+                      <p className="text-xs font-medium text-violet-700">{copyTypeLabel}</p>
+                    ) : null}
+                  </div>
+                  <textarea
+                    id="attach-copy"
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    rows={12}
+                    placeholder="Paste a draft, or write the note you want to keep on this record."
+                    className="w-full resize-y rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                  />
+                  <p className="mt-3 text-sm text-slate-500">
+                    Need a first draft?{' '}
+                    <Link to="/dashboard" className="font-medium text-orange-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded">
+                      Write with AI on the dashboard
+                    </Link>
+                    , then come back here. History can also open a past draft on this page.
+                  </p>
+                </section>
+
+                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                  <fieldset>
+                    <legend className="text-sm font-medium text-slate-700">Save it on</legend>
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      {TYPES.map((type) => (
+                        <button
+                          key={type.id}
+                          type="button"
+                          aria-pressed={objectType === type.id}
+                          onClick={() => {
+                            setObjectType(type.id);
+                            setSearchQuery('');
+                            if (preset?.type === type.id) {
+                              setSelectedRecord({ id: preset.id, name: preset.name ?? selectedRecord?.name ?? 'Selected record' });
+                            } else {
+                              setSelectedRecord(null);
+                            }
+                          }}
+                          className={`min-h-11 rounded-xl border-2 px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 ${
+                            objectType === type.id
+                              ? 'border-orange-500 bg-orange-50'
+                              : 'border-slate-200 bg-white hover:border-orange-200'
+                          }`}
+                        >
+                          <span className="block text-sm font-semibold text-slate-900">{type.label}</span>
+                          <span className="mt-0.5 block text-xs text-slate-600">{type.sub}</span>
+                        </button>
+                      ))}
                     </div>
+                  </fieldset>
+
+                  <div className="mt-6">
+                    <label htmlFor="attach-search" className="sr-only">
+                      Search {typeLabel.toLowerCase()}s
+                    </label>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
+                      <input
+                        id="attach-search"
+                        type="search"
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        placeholder={`Search ${typeLabel.toLowerCase()}s`}
+                        className="h-11 w-full rounded-lg border border-slate-300 bg-white pl-10 pr-4 text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                      />
+                    </div>
+                  </div>
+
+                  {selectedRecord ? (
+                    <p className="mt-4 text-sm text-slate-700">
+                      Saving on <span className="font-semibold text-slate-900">{selectedRecord.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRecord(null)}
+                        className="ml-3 font-medium text-orange-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded"
+                      >
+                        Clear
+                      </button>
+                    </p>
+                  ) : null}
+
+                  <div className="mt-4">
                     {loading ? (
-                      <div className="py-10 flex justify-center">
+                      <div className="flex justify-center py-10">
                         <LoadingSpinner size="md" />
                       </div>
                     ) : (
-                      <div className="border border-slate-200 rounded-xl divide-y max-h-64 overflow-y-auto">
-                        {records.map((record) => (
-                          <label
-                            key={record.id}
-                            className="flex items-center p-4 hover:bg-slate-50 cursor-pointer transition-colors"
-                          >
-                            <input
-                              type="radio"
-                              name="record"
-                              value={record.id}
-                              checked={selectedRecord?.id === record.id}
-                              onChange={() => setSelectedRecord({ id: record.id, name: record.name })}
-                              className="w-4 h-4 text-orange-600 focus:ring-orange-500 focus:ring-offset-0"
-                            />
-                            <div className="ml-3 min-w-0">
-                              <p className="font-medium text-slate-900 truncate">{record.name}</p>
-                              <p className="text-sm text-slate-600 truncate">{record.sub}</p>
-                            </div>
-                          </label>
-                        ))}
-                        {records.length === 0 && (
-                          <div className="p-6 text-center text-slate-500 text-sm">No records found</div>
+                      <div role="radiogroup" aria-label={`Choose a ${typeLabel.toLowerCase()}`} className="max-h-72 divide-y overflow-y-auto rounded-xl border border-slate-200">
+                        {orderedRecords.map((record) => {
+                          const selected = selectedRecord?.id === record.id;
+                          return (
+                            <label
+                              key={record.id}
+                              className={`flex min-h-11 cursor-pointer items-center px-4 py-3 transition-colors ${selected ? 'bg-orange-50' : 'hover:bg-slate-50'}`}
+                            >
+                              <input
+                                type="radio"
+                                name="attach-record"
+                                value={record.id}
+                                checked={selected}
+                                onChange={() => setSelectedRecord({ id: record.id, name: record.name })}
+                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 focus:ring-offset-0"
+                              />
+                              <span className="ml-3 min-w-0">
+                                <span className="block truncate font-medium text-slate-900">{record.name}</span>
+                                <span className="block truncate text-sm text-slate-600">{record.sub}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                        {orderedRecords.length === 0 && (
+                          <div className="px-4 py-8 text-center text-sm text-slate-500">
+                            {query ? (
+                              <>No {typeLabel.toLowerCase()}s match “{searchQuery.trim()}”.</>
+                            ) : (
+                              <>
+                                No {typeLabel.toLowerCase()}s yet.{' '}
+                                <Link to={emptyListHref} className="font-medium text-orange-700 underline-offset-2 hover:underline">
+                                  Add one
+                                </Link>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
+                    {loadError && !loading ? (
+                      <p className="mt-3 text-sm text-rose-700">
+                        Some records did not load.{' '}
+                        <button
+                          type="button"
+                          onClick={() => setReloadKey((key) => key + 1)}
+                          className="font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded"
+                        >
+                          Try again
+                        </button>
+                      </p>
+                    ) : null}
                   </div>
-                )}
 
-                {(objectType === 'workflow' || objectType === 'email') && (
-                  <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
-                    In the demo, select Contact or Deal to send your copy. Workflow and Email draft will be available with a full CRM integration.
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  disabled={!selectedRecord || sending || (objectType !== 'contact' && objectType !== 'deal' && objectType !== 'lead')}
-                  className="w-full h-12 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
-                >
-                  {sending ? 'Sending...' : 'Confirm & Send'}
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={!selectedRecord || !draft.trim() || sending}
+                    className="mt-6 h-12 w-full rounded-lg bg-orange-600 font-semibold text-white transition-colors hover:bg-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
+                  >
+                    {sending ? 'Saving…' : selectedRecord ? `Save on ${selectedRecord.name}` : 'Choose a record to save'}
+                  </button>
+                </section>
               </div>
-            </>
+            </div>
           ) : (
-            <div className="text-center">
-              <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6" aria-hidden>
-                <CheckCircle className="w-12 h-12 text-emerald-600" />
+            <div className="mx-auto max-w-lg text-center">
+              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100" aria-hidden>
+                <CheckCircle className="h-12 w-12 text-emerald-600" />
               </div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mb-4">Successfully Sent!</h1>
-              <p className="text-slate-600 mb-2 max-w-md mx-auto">
-                Your copy has been added to your CRM and is ready to use.
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Saved in Cadence</h1>
+              <p className="mx-auto mt-3 max-w-md text-slate-600">
+                The writing is now on {selectedRecord?.name ?? 'that record'} and in History. Nothing was emailed.
               </p>
-              {selectedRecord && (
-                <p className="text-sm font-medium text-slate-700 mb-6">
-                  Copy added to <strong>{selectedRecord.name}</strong> ({objectType}).
-                </p>
-              )}
-
-              {selectedRecord && (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-8 text-left max-w-md mx-auto">
-                  <p className="text-sm text-slate-600 mb-2">Sent to</p>
-                  <p className="font-semibold text-slate-900 mb-1">{selectedRecord.name}</p>
-                  <p className="text-sm text-slate-600 capitalize">{objectType}</p>
+              {selectedRecord ? (
+                <div className="mx-auto mt-6 rounded-xl border border-slate-200 bg-white p-6 text-left shadow-sm">
+                  <p className="text-sm text-slate-600">Saved on</p>
+                  <p className="mt-1 font-semibold text-slate-900">{selectedRecord.name}</p>
+                  <p className="text-sm capitalize text-slate-600">{objectType}</p>
                 </div>
-              )}
-
-              <div className="flex gap-4 justify-center flex-wrap">
+              ) : null}
+              <div className="mt-8 flex flex-wrap justify-center gap-3">
+                {selectedRecord ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate(recordPath(objectType, selectedRecord.id))}
+                    className="h-11 min-w-[140px] rounded-lg bg-orange-600 px-4 font-semibold text-white transition-colors hover:bg-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                  >
+                    Open {selectedRecord.name}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={() => navigate('/dashboard')}
-                  className="flex-1 min-w-[140px] h-11 bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                  onClick={() => {
+                    setIsSent(false);
+                    setSelectedRecord(null);
+                  }}
+                  className="h-11 min-w-[140px] rounded-lg border-2 border-slate-200 bg-white px-4 font-semibold text-slate-900 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
                 >
-                  Create Another
+                  Save on someone else
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate('/history')}
-                  className="flex-1 min-w-[140px] h-11 bg-white hover:bg-slate-50 text-slate-900 border-2 border-slate-200 font-semibold rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                  className="h-11 min-w-[140px] rounded-lg border-2 border-slate-200 bg-white px-4 font-semibold text-slate-900 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
                 >
-                  View History
+                  View history
                 </button>
               </div>
             </div>
           )}
-        </div>
-      </main>
+        </main>
+      </PageTransition>
     </div>
   );
 }

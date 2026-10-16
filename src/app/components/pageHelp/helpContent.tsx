@@ -177,10 +177,11 @@ const HELP: Record<string, HelpEntry> = {
     ],
   },
   send: {
-    emoji: '📨', gradient: 'from-orange-500 to-rose-500',
-    title: 'Send to CRM', tagline: 'Push your AI copy into the right record.',
+    emoji: '📎', gradient: 'from-violet-500 to-orange-500',
+    title: 'Attach copy', tagline: 'Save writing on a lead, contact, or deal.',
     features: [
-      { emoji: '🎯', title: 'Route content', body: 'Drop a draft onto a contact, lead or deal.' },
+      { emoji: '✍️', title: 'The writing', body: 'Paste it here, or open a draft from the dashboard or History.' },
+      { emoji: '📌', title: 'The record', body: 'Pick who it belongs to. Cadence keeps it in History. It is not emailed.' },
     ],
   },
   settings: {
@@ -190,7 +191,7 @@ const HELP: Record<string, HelpEntry> = {
       { emoji: '✨', title: 'Brand & AI', body: 'Set your voice and tone for the AI writer.' },
       { emoji: '🧩', title: 'Custom fields', body: 'Add your own fields to any record.' },
       { emoji: '📋', title: 'Pipelines', body: 'Customize your deal stages.' },
-      { emoji: '🔔', title: 'More', body: 'Notifications, appearance, security and account.' },
+      { emoji: '🤖', title: 'Claude', body: 'Open the Claude item to connect this organization and copy the values Claude needs.' },
     ],
   },
   organizations: {

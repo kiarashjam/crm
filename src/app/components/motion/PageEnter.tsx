@@ -18,7 +18,7 @@ import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import {
   REVEAL_WINDOW_MS, isRevealing, revealMotion, staggerDelay,
   type RevealVariant, type StaggerOpts,
-} from './pageEnter';
+} from './revealTiming';
 
 interface EnterContext {
   /** Whether a child mounting right now should animate. */

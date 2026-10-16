@@ -112,8 +112,8 @@ export default function Help() {
                     4
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Send to your CRM</h3>
-                    <p className="text-slate-700">Select the contact or deal, confirm, and the copy is sent. It’s stored in your copy history so you can reuse or reference it later.</p>
+                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Attach it to a record</h3>
+                    <p className="text-slate-700">Open Attach copy, pick a lead, contact, or deal, and save. The writing stays in Cadence and in History. Nothing is emailed.</p>
                   </div>
                 </div>
               </div>
@@ -128,7 +128,7 @@ export default function Help() {
                 <strong>Cadence is the only CRM you need.</strong> All your data — contacts, deals, leads, copy history — stays in Cadence. No external CRM is required.
               </p>
               <p className="text-slate-700">
-                When you use “Send to CRM” in the app, you’re saving copy to a contact or deal <strong>in Cadence</strong> — nothing is sent to an external system.
+                Attach copy saves writing on a lead, contact, or deal <strong>in Cadence</strong>. Nothing is emailed and nothing is sent to another system.
               </p>
             </div>
           </section>
