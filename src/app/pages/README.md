@@ -10,7 +10,7 @@ Route-level components for the Cadence frontend. Each page has a short README be
 | `/login` | Login | [Login.README.md](./Login.README.md) | Sign in / register / 2FA; demo when no backend |
 | `/connect` | Connection | [Connection.README.md](./Connection.README.md) | Connect CRM account; skip or continue → settings |
 | `/dashboard` | Dashboard | [Dashboard.README.md](./Dashboard.README.md) | Generate copy: type, goal, context, length → displays inline |
-| `/send` | SendToCrm | [SendToCrm.README.md](./SendToCrm.README.md) | Attach copy to contact or deal; no-results hint under search |
+| `/send` | SendToCrm | [SendToCrm.README.md](./SendToCrm.README.md) | Attach writing to a lead, contact, or deal |
 | `/templates` | Templates | [Templates.README.md](./Templates.README.md) | Browse templates → use on dashboard |
 | `/history` | History | [History.README.md](./History.README.md) | List, search, copy, regenerate, send again; no-results hint |
 | `/leads` | Leads | [Leads.README.md](./Leads.README.md) | List, search, add, edit, delete, convert leads; count; no-results hint |

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Copy, Check, Send } from 'lucide-react';
+import { Copy, Check, Paperclip } from 'lucide-react';
 import { getCurrentUser, isDemoMode } from '@/app/lib/auth';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -367,15 +367,15 @@ export default function Dashboard() {
                               copy: generatedCopy.body,
                               copyTypeLabel: generatedCopy.copyTypeLabel,
                             });
-                            toast.success(`Copy sent to ${selectedRecipient.name}`);
+                            toast.success(`Saved on ${selectedRecipient.name}`);
                           } catch {
-                            toast.error('Failed to send copy to CRM');
+                            toast.error('Could not save this writing');
                           }
                         }}
                         className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg transition-colors"
                       >
-                        <Send className="w-4 h-4" />
-                        Send to CRM
+                        <Paperclip className="w-4 h-4" />
+                        Save on {selectedRecipient.name}
                       </button>
                     )}
                   </div>

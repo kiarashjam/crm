@@ -1,21 +1,21 @@
-# Send to CRM
+# Attach copy
 
 **Route:** `/send`  
 **File:** `SendToCrm.tsx`
 
 ## Purpose
 
-Attach generated copy to a contact or deal in the CRM. User picks object type (contact/deal/workflow/email), selects a record when applicable, and sends.
+Save a piece of writing on a lead, contact, or deal inside Cadence. The writing is stored in copy history. Nothing is emailed and nothing is sent to another system.
 
 ## Behavior
 
-- Receives `location.state`: `{ copy?, copyTypeLabel? }`. If no copy and not yet sent, shows EmptyState (“No copy to send”, “Go to Dashboard” → `/dashboard`) with `main id={MAIN_CONTENT_ID}` and sr-only h1 for accessibility.
-- Object type: Contact, Deal, Workflow, Email draft. Only Contact and Deal show record list + search; Workflow and Email show amber notice: “In the demo, select Contact or Deal to send your copy…”
-- Loads `getContacts()` and `getDeals()` with `cancelled` cleanup; search filters by name/email or name/value. No-results hint under search when query returns no records. User selects one record; “Confirm & Send” calls `sendCopyToCrm(...)` → toast (`messages`) → success view.
-- Success view: “Successfully Sent!”, sent-to record card, “Create Another” (→ `/dashboard`), “View History” (→ `/history`).
-- AppHeader; uses `MAIN_CONTENT_ID` for skip link when not in empty state.
+- The page is usable on its own. Paste or write the text here, or arrive with `location.state.copy` and `copyTypeLabel` from History.
+- Contacts can open this page with `contactId` and `contactName`. That contact is selected, and the writing box stays empty until you add text.
+- Object types are Lead, Contact, and Deal. Search matches name, email, company, status, value, or stage. Missing fields do not crash the filter.
+- Lists load with `Promise.allSettled`. A failed list shows a retry line and does not wipe the lists that succeeded.
+- “Save on {name}” calls `sendCopyToCrm`. Success offers Open the record, Save on someone else, and View history.
 
 ## API / Data
 
-- **GET:** `getContacts()`, `getDeals()`
+- **GET:** `getContacts()`, `getDeals()`, `getLeads()`
 - **POST:** `sendCopyToCrm({ objectType, recordId, recordName, copy, copyTypeLabel })`
