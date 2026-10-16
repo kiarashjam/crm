@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   staggerDelay, isRevealing, revealMotion, REVEAL_WINDOW_MS,
-} from './pageEnter';
+} from './revealTiming';
 
 describe('staggerDelay', () => {
   it('cascades the first few items', () => {
