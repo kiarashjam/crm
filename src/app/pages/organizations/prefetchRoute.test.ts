@@ -50,7 +50,7 @@ describe('the table itself', () => {
       '/dashboard', '/leads', '/leads/import', '/leads/webhook', '/leads/x',
       '/deals', '/deals/x', '/tasks', '/tasks/x', '/contacts', '/contacts/x',
       '/companies', '/companies/x', '/reports', '/activities', '/sequences',
-      '/settings', '/team', '/send', '/templates', '/history',
+      '/settings', '/mcp', '/team', '/send', '/templates', '/history',
     ];
     for (const path of known) {
       const key = routeChunkKey(path);

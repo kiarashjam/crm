@@ -99,7 +99,8 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
         </h2>
         <p className="text-slate-600 text-sm">
           Connect the real API (<code className="text-xs bg-slate-100 px-1 rounded">VITE_API_URL</code>) to configure
-          inbound webhooks from this screen.
+          inbound webhooks from this screen. To ask Claude about this organization, open{' '}
+          <Link to="/mcp" className="text-orange-600 font-medium hover:underline">Ask Claude</Link>.
         </p>
       </div>
     );
@@ -112,7 +113,10 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
           <Link2 className="w-5 h-5 text-orange-600" />
           Integrations
         </h2>
-        <p className="text-slate-600 text-sm">Select an organization to see webhook URLs and passwords.</p>
+        <p className="text-slate-600 text-sm">
+          Select an organization to see webhook URLs and passwords. Claude setup is on{' '}
+          <Link to="/mcp" className="text-orange-600 font-medium hover:underline">Ask Claude</Link>.
+        </p>
       </div>
     );
   }
@@ -134,9 +138,13 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
           Integrations
         </h2>
         <p className="text-slate-600 text-sm mt-1">
-          POST JSON leads from external tools. Full API-key setup and code samples are on{' '}
+          POST JSON leads from external tools on{' '}
           <Link to="/leads/webhook" className="text-orange-600 font-medium hover:underline">
             Lead webhook
+          </Link>
+          . To let Claude read this organization’s leads and tasks, follow{' '}
+          <Link to="/mcp" className="text-orange-600 font-medium hover:underline">
+            Ask Claude
           </Link>
           .
         </p>

@@ -65,7 +65,7 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
   { id: 'brand', label: 'Brand & AI', icon: Sparkles, description: 'Brand voice and AI copy settings' },
   { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme, layout, and display options' },
   { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Email and in-app notifications' },
-  { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound JSON webhooks and URLs' },
+  { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Webhooks and AI assistants (MCP)' },
   { id: 'organization', label: 'Team', icon: Users, description: 'Organization and team members' },
   { id: 'pipelines', label: 'Pipelines', icon: Kanban, description: 'Sales pipeline stages' },
   { id: 'customFields', label: 'Custom Fields', icon: SlidersHorizontal, description: 'Add your own fields to records' },
@@ -677,8 +677,15 @@ export default function Settings() {
             <div className="relative px-6 lg:px-8 py-8 lg:py-10">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
                 <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                    <Settings2 className="w-8 h-8 text-white" />
+                  <div className="settings-hero-badge relative w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
+                    <span className="settings-spark settings-spark-a" aria-hidden="true" />
+                    <span className="settings-spark settings-spark-b" aria-hidden="true" />
+                    <svg viewBox="0 0 24 24" className="relative w-8 h-8 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M20 7h-9" />
+                      <path d="M14 17H5" />
+                      <circle className="settings-knob" cx="7" cy="7" r="3" />
+                      <circle className="settings-knob settings-knob-late" cx="17" cy="17" r="3" />
+                    </svg>
                   </div>
                   <div>
                     <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Settings</h1>

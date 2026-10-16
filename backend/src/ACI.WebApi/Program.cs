@@ -50,14 +50,26 @@ try
     builder.Host.UseSerilog();
 
     // CORS Configuration
+    var browserOrigins = builder.Configuration["Cors:AllowedOrigins"]?.Split(',', StringSplitOptions.RemoveEmptyEntries)
+        ?? ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"];
     builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
         {
-            policy.WithOrigins(builder.Configuration["Cors:AllowedOrigins"]?.Split(',', StringSplitOptions.RemoveEmptyEntries) ?? ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"])
+            policy.WithOrigins(browserOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod()
                 .AllowCredentials();
+        });
+        // Claude and other MCP hosts call /mcp from their own origins, including preflight OPTIONS.
+        options.AddPolicy("Mcp", policy =>
+        {
+            policy.SetIsOriginAllowed(origin =>
+                    ACI.WebApi.Mcp.McpController.IsAllowedOrigin(origin)
+                    || browserOrigins.Any(allowed => string.Equals(allowed, origin, StringComparison.OrdinalIgnoreCase)))
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .WithExposedHeaders("MCP-Protocol-Version", "Mcp-Session-Id");
         });
     });
 
@@ -158,6 +170,7 @@ try
     builder.Services.AddScoped<ILeadStatusService, LeadStatusService>();
     builder.Services.AddScoped<ILeadSourceService, LeadSourceService>();
     builder.Services.AddScoped<IGlobalSearchService, GlobalSearchService>();
+    builder.Services.AddScoped<ACI.WebApi.Mcp.CrmMcpTools>();
 
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
@@ -182,6 +195,17 @@ try
                 ValidAudience = jwtAudience,
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.Zero,
+            };
+            options.Events = new JwtBearerEvents
+            {
+                // Claude sends the organization API key as Authorization: Bearer aci_….
+                // That is not a JWT; skip bearer validation so the MCP action can read the key.
+                OnMessageReceived = context =>
+                {
+                    if (context.Request.Path.StartsWithSegments("/mcp"))
+                        context.NoResult();
+                    return Task.CompletedTask;
+                }
             };
         });
     builder.Services.AddAuthorization();

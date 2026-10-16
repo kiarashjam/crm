@@ -31,6 +31,7 @@ export function routeChunkKey(path: string): string | null {
   const exact = clean.replace(/\/+$/, '') || '/';
   if (exact === '/leads/import') return 'leads/import';
   if (exact === '/leads/webhook') return 'leads/webhook';
+  if (exact === '/mcp') return 'mcp';
 
   const detail = DETAIL.exec(exact);
   if (detail) return `${detail[1]}/detail`;
@@ -58,6 +59,7 @@ const LOADERS: Record<string, () => Promise<unknown>> = {
   activities: () => import('@/app/pages/Activities'),
   sequences: () => import('@/app/pages/Sequences'),
   settings: () => import('@/app/pages/Settings'),
+  mcp: () => import('@/app/pages/McpSetup'),
   team: () => import('@/app/pages/Team'),
   send: () => import('@/app/pages/SendToCrm'),
   templates: () => import('@/app/pages/Templates'),
