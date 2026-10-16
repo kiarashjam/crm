@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { PageEnter, Reveal } from './PageEnter';
-import { REVEAL_WINDOW_MS } from './pageEnter';
+import { REVEAL_WINDOW_MS } from './revealTiming';
 
 // Capture what each motion element is constructed with.
 const seen: { initial: unknown; transition?: { delay?: number } }[] = [];

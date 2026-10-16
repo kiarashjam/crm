@@ -190,7 +190,7 @@ const HELP: Record<string, HelpEntry> = {
       { emoji: '✨', title: 'Brand & AI', body: 'Set your voice and tone for the AI writer.' },
       { emoji: '🧩', title: 'Custom fields', body: 'Add your own fields to any record.' },
       { emoji: '📋', title: 'Pipelines', body: 'Customize your deal stages.' },
-      { emoji: '🔔', title: 'More', body: 'Notifications, appearance, security and account.' },
+      { emoji: '🤖', title: 'Claude', body: 'Open the Claude item to connect this organization and copy the values Claude needs.' },
     ],
   },
   organizations: {
