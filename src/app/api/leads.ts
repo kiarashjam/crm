@@ -2,6 +2,7 @@ import type { Lead, PagedResult, PaginationParams } from './types';
 import { mockLeads } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
+import { ensureDemoPersonContacts } from './contacts';
 import { QUALIFIED_OR_BEYOND, statusIn } from '@/app/pages/leads/leadStatusSync';
 
 function delay(ms: number): Promise<void> {
@@ -183,6 +184,7 @@ export async function getLeadsPaged(params: LeadListParams = {}): Promise<PagedR
   }
 
   await delay(300);
+  ensureDemoPersonContacts();
   const filtered = applyMockLeadFilters(leadStore.list(), params);
   const totalCount = filtered.length;
   const totalPages = Math.ceil(totalCount / pageSize) || 0;
@@ -271,6 +273,7 @@ export async function getLeads(): Promise<Lead[]> {
     return Array.isArray(list) ? list.map(mapLead) : [];
   }
   await delay(300);
+  ensureDemoPersonContacts();
   return leadStore.list();
 }
 
@@ -329,7 +332,9 @@ export async function createLead(params: {
     convertedAtUtc: undefined,
     createdAtUtc: new Date().toISOString(),
   };
-  return leadStore.add(created);
+  const saved = leadStore.add(created);
+  ensureDemoPersonContacts();
+  return saved;
 }
 
 /** Update a lead. */
@@ -359,7 +364,9 @@ export async function updateLead(
     return lead ? mapLead(lead) : null;
   }
   await delay(200);
-  return leadStore.update(id, params as Partial<Lead>);
+  const updated = leadStore.update(id, params as Partial<Lead>);
+  ensureDemoPersonContacts();
+  return updated;
 }
 
 /**

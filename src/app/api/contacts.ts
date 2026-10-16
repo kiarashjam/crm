@@ -1,5 +1,5 @@
 import type { Contact, PagedResult, PaginationParams } from './types';
-import { mockContacts } from './mockData';
+import { mockContacts, mockLeads } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
@@ -15,6 +15,101 @@ function getStored(): Contact[] | null {
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+const LEADS_KEY = 'crm.mock.leads.v1';
+
+function normalizeName(value?: string | null): string {
+  return (value ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean).join(' ');
+}
+
+function digits(value?: string | null): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
+function readDemoLeads(): Array<{ id: string; name: string; email: string; phone?: string; companyId?: string; description?: string }> {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(LEADS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    return [];
+  }
+  return mockLeads;
+}
+
+/** Demo mode: every lead with a name and email also exists as a contact. */
+export function ensureDemoPersonContacts(): void {
+  const leads = readDemoLeads();
+  const contacts = contactStore.list();
+  for (const lead of leads) {
+    const name = lead.name?.trim() ?? '';
+    const email = lead.email?.trim() ?? '';
+    if (!name || !email) continue;
+    if (contacts.some((contact) => !contact.isArchived && contact.convertedFromLeadId === lead.id)) continue;
+    const byEmail = contacts.find(
+      (contact) => !contact.isArchived && contact.email.trim().toLowerCase() === email.toLowerCase(),
+    );
+    if (byEmail) {
+      if (!byEmail.convertedFromLeadId) {
+        const updated = contactStore.update(byEmail.id, { convertedFromLeadId: lead.id });
+        if (updated) {
+          const index = contacts.findIndex((contact) => contact.id === byEmail.id);
+          if (index >= 0) contacts[index] = updated;
+        }
+      }
+      continue;
+    }
+    contacts.unshift(contactStore.add({
+      id: mockId('contact'),
+      name,
+      email,
+      phone: lead.phone,
+      companyId: lead.companyId,
+      description: lead.description,
+      convertedFromLeadId: lead.id,
+      isArchived: false,
+      createdAtUtc: new Date().toISOString(),
+    }));
+  }
+}
+
+function comparison(field: string, yours?: string | null, theirs?: string | null, same = false): ContactFieldComparison {
+  return {
+    field,
+    yours: yours?.trim() ? yours.trim() : null,
+    theirs: theirs?.trim() ? theirs.trim() : null,
+    same,
+  };
+}
+
+function isDemoLookalike(contact: Contact, other: Contact): boolean {
+  const sameName = normalizeName(contact.name).length > 1 && normalizeName(contact.name) === normalizeName(other.name);
+  const sameEmail = contact.email.trim().length > 0 && contact.email.trim().toLowerCase() === other.email.trim().toLowerCase();
+  const contactPhone = digits(contact.phone);
+  const samePhone = contactPhone.length >= 7 && contactPhone === digits(other.phone);
+  return (sameEmail ? 2 : 0) + (sameName ? 1 : 0) + (samePhone ? 1 : 0) >= 2;
+}
+
+function reassignStoredContact(key: string, fromId: string, toId: string): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return;
+    let changed = false;
+    for (const row of list) {
+      if (row && typeof row === 'object' && row.contactId === fromId) {
+        row.contactId = toId;
+        changed = true;
+      }
+    }
+    if (changed) localStorage.setItem(key, JSON.stringify(list));
+  } catch {
+    // Demo storage can be missing. The real API moves these records itself.
+  }
 }
 
 interface ApiContact {
@@ -99,7 +194,8 @@ export async function getContactsPaged(
   
   // Mock implementation with client-side pagination
   await delay(300);
-  let stored = getStored() ?? [...mockContacts];
+  ensureDemoPersonContacts();
+  let stored = (getStored() ?? [...mockContacts]).filter((contact) => includeArchived || !contact.isArchived);
   
   // Apply search filter
   if (search?.trim()) {
@@ -135,8 +231,9 @@ export async function getContacts(includeArchived = false): Promise<Contact[]> {
     return Array.isArray(list) ? list.map(mapContact) : [];
   }
   await delay(300);
+  ensureDemoPersonContacts();
   const stored = getStored();
-  return stored ?? [...mockContacts];
+  return (stored ?? [...mockContacts]).filter((contact) => includeArchived || !contact.isArchived);
 }
 
 /** Search contacts by name or email (non-paginated, for backward compatibility). */
@@ -262,6 +359,80 @@ export async function unarchiveContact(id: string): Promise<boolean> {
   }
   await delay(200);
   return contactStore.update(id, { isArchived: false } as Partial<Contact>) !== null;
+}
+
+export interface ContactFieldComparison {
+  field: string;
+  yours: string | null;
+  theirs: string | null;
+  same: boolean;
+}
+
+export interface ContactLookalike {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  fields: ContactFieldComparison[];
+}
+
+/** Load one contact. */
+export async function getContactById(id: string): Promise<Contact | null> {
+  if (isUsingRealApi()) {
+    const data = await authFetchJson<ApiContact>(`/api/contacts/${id}`);
+    return data ? mapContact(data) : null;
+  }
+  await delay(150);
+  return contactStore.byId(id) ?? null;
+}
+
+export async function getContactLookalikes(id: string): Promise<ContactLookalike[]> {
+  if (isUsingRealApi()) {
+    const list = await authFetchJson<ContactLookalike[]>(`/api/contacts/${id}/lookalikes`);
+    return Array.isArray(list) ? list : [];
+  }
+  ensureDemoPersonContacts();
+  const contacts = contactStore.list();
+  const contact = contacts.find((row) => row.id === id);
+  if (!contact || contact.isArchived) return [];
+  return contacts
+    .filter((other) => other.id !== id && !other.isArchived && isDemoLookalike(contact, other))
+    .slice(0, 5)
+    .map((other) => ({
+      id: other.id,
+      name: other.name,
+      email: other.email,
+      phone: other.phone ?? null,
+      fields: [
+        comparison('Name', contact.name, other.name, normalizeName(contact.name) === normalizeName(other.name)),
+        comparison('Email', contact.email, other.email, contact.email.trim().toLowerCase() === other.email.trim().toLowerCase()),
+        comparison('Phone', contact.phone, other.phone, digits(contact.phone).length >= 7 && digits(contact.phone) === digits(other.phone)),
+      ],
+    }));
+}
+
+export async function mergePersonContacts(keepId: string, otherContactId: string): Promise<boolean> {
+  if (isUsingRealApi()) {
+    const res = await authFetch(`/api/contacts/${keepId}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ otherContactId }),
+    });
+    return res.status === 204;
+  }
+  if (keepId === otherContactId) return false;
+  const keep = contactStore.byId(keepId);
+  const drop = contactStore.byId(otherContactId);
+  if (!keep || !drop || keep.isArchived || drop.isArchived) return false;
+  reassignStoredContact('crm.mock.deals.v1', otherContactId, keepId);
+  reassignStoredContact('crm.mock.tasks.v1', otherContactId, keepId);
+  reassignStoredContact('crm.mock.activities.v1', otherContactId, keepId);
+  contactStore.update(keepId, {
+    phone: keep.phone || drop.phone,
+    companyId: keep.companyId || drop.companyId,
+    jobTitle: keep.jobTitle || drop.jobTitle,
+    convertedFromLeadId: keep.convertedFromLeadId || drop.convertedFromLeadId,
+  });
+  return contactStore.update(otherContactId, { isArchived: true, convertedFromLeadId: undefined }) !== null;
 }
 
 /** Check if an email already exists. */

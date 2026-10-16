@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowLeft, Copy, Eye, EyeOff, Key, RefreshCw, AlertTriangle, Bot, Check } from 'lucide-react';
+import { Copy, Eye, EyeOff, Key, RefreshCw, AlertTriangle, Bot, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import AppHeader from '@/app/components/AppHeader';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
-import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { getApiBaseUrl, isUsingRealApi } from '@/app/api/apiClient';
 import { generateWebhookApiKey, getWebhookInfo, type WebhookInfo } from '@/app/api/webhook';
 import { isOrgAdmin } from '@/app/api/organizations';
@@ -48,7 +44,7 @@ function CopyRow({
   );
 }
 
-export default function McpSetup() {
+export function ClaudeSection() {
   const { currentOrg } = useOrg();
   const [info, setInfo] = useState<WebhookInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,8 +52,6 @@ export default function McpSetup() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [regenerateConfirm, setRegenerateConfirm] = useState(false);
   const [client, setClient] = useState<McpClient>('claude');
-
-  useDocumentTitle('Ask Claude', 'Connect');
 
   useEffect(() => {
     if (!isUsingRealApi() || !currentOrg?.id) {
@@ -129,29 +123,16 @@ export default function McpSetup() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-subtle">
-      <AppHeader />
-      <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        <Link
-          to="/settings?tab=integrations"
-          className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-orange-600 mb-6 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-          Back to integrations
-        </Link>
-
-        <div className="max-w-3xl pb-24">
-          <div className="flex items-start gap-4 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white shadow-lg shrink-0">
-              <Bot className="w-6 h-6" aria-hidden="true" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Ask Claude about {orgName}</h1>
-              <p className="text-slate-600 mt-2 text-base leading-relaxed">
-                Connect this organization once. After that, ask questions in a normal Claude chat. Claude can read leads, contacts, companies, deals, and tasks. It cannot add, edit, or delete them.
-              </p>
-            </div>
-          </div>
+    <div className="p-6 space-y-6">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+          <Bot className="w-5 h-5 text-orange-600" aria-hidden="true" />
+          Ask Claude about {orgName}
+        </h2>
+        <p className="text-slate-600 mt-2 text-sm leading-relaxed">
+          Connect this organization once. After that, ask questions in a normal Claude chat. Claude can read leads, contacts, companies, deals, and tasks. It cannot add, edit, or delete them.
+        </p>
+      </div>
 
           {!claudeCanReach && (
             <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4" role="status">
@@ -179,7 +160,7 @@ export default function McpSetup() {
 
               <TabsContent value="claude" className="space-y-6">
                 <ol className="space-y-6">
-                  <li className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                  <li className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                     <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-600 text-sm font-bold text-white">1</span>
                       <Key className="w-5 h-5 text-orange-600" aria-hidden="true" />
@@ -203,7 +184,7 @@ export default function McpSetup() {
                     </div>
                   </li>
 
-                  <li className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                  <li className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                     <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-600 text-sm font-bold text-white">2</span>
                       Paste these values into Claude
@@ -221,7 +202,7 @@ export default function McpSetup() {
                     </div>
                   </li>
 
-                  <li className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                  <li className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                     <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                       <span className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-600 text-sm font-bold text-white">3</span>
                       Ask in a normal Claude chat
@@ -297,8 +278,6 @@ export default function McpSetup() {
               </TabsContent>
             </Tabs>
           )}
-        </div>
-      </main>
 
       <AlertDialog open={regenerateConfirm} onOpenChange={setRegenerateConfirm}>
         <AlertDialogContent>
@@ -393,7 +372,7 @@ function FileGuide({
   onCopy: () => void;
 }) {
   return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+    <section className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <ol className="mt-4 space-y-2 text-sm text-slate-700 leading-relaxed list-decimal pl-5">
         {steps.map((step) => (
