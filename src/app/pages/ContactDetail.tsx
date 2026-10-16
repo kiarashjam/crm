@@ -13,12 +13,12 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
-import { authFetchJson } from '@/app/api/apiClient';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import {
   getActivitiesByContact, getTasksByContact,
   getDealsPaged, updateContact, deleteContact, archiveContact,
-  unarchiveContact, createActivity, messages
+  unarchiveContact, createActivity, messages,
+  getContactById, getContactLookalikes, mergePersonContacts, type ContactLookalike,
 } from '@/app/api';
 import type { Contact, Activity, TaskItem, Deal } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
@@ -40,8 +40,6 @@ import {
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
-
-type ContactRaw = Contact & Record<string, unknown>;
 
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>();
@@ -67,17 +65,34 @@ export default function ContactDetail() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [lookalike, setLookalike] = useState<ContactLookalike | null>(null);
+  const [merging, setMerging] = useState(false);
+  const [dismissedLookalike, setDismissedLookalike] = useState(false);
+  const [recordRevision, setRecordRevision] = useState(0);
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    authFetchJson<ContactRaw>(`/api/contacts/${id}`)
-      .then((c) => { if (c) setContact(c as Contact); })
+    getContactById(id)
+      .then((c) => { if (c) setContact(c); })
       .catch(() => {
         toast.error('Failed to load contact');
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, recordRevision]);
+
+  useEffect(() => {
+    if (!id) {
+      setLookalike(null);
+      return;
+    }
+    let cancelled = false;
+    setDismissedLookalike(false);
+    getContactLookalikes(id)
+      .then((list) => { if (!cancelled) setLookalike(list[0] ?? null); })
+      .catch(() => { if (!cancelled) setLookalike(null); });
+    return () => { cancelled = true; };
+  }, [id, recordRevision]);
 
   // Load activities
   useEffect(() => {
@@ -87,7 +102,7 @@ export default function ContactDetail() {
       .then(setActivities)
       .catch(() => setActivities([]))
       .finally(() => setActivitiesLoading(false));
-  }, [id]);
+  }, [id, recordRevision]);
 
   // Load tasks
   useEffect(() => {
@@ -97,7 +112,7 @@ export default function ContactDetail() {
       .then(setContactTasks)
       .catch(() => setContactTasks([]))
       .finally(() => setTasksLoading(false));
-  }, [id]);
+  }, [id, recordRevision]);
 
   // Load deals filtered by contactId (server-side)
   useEffect(() => {
@@ -109,7 +124,7 @@ export default function ContactDetail() {
       })
       .catch(() => setDeals([]))
       .finally(() => setDealsLoading(false));
-  }, [id]);
+  }, [id, recordRevision]);
 
   const openEdit = () => {
     if (!contact) return;
@@ -207,8 +222,8 @@ export default function ContactDetail() {
       if (ok) {
         toast.success(contact.isArchived ? 'Contact unarchived' : 'Contact archived');
         // Reload contact data via direct API
-        const refreshed = await authFetchJson<ContactRaw>(`/api/contacts/${contact.id}`);
-        if (refreshed) setContact(refreshed as Contact);
+        const refreshed = await getContactById(contact.id);
+        if (refreshed) setContact(refreshed);
       }
     } catch {
       toast.error('Failed to update archive status');
@@ -280,6 +295,66 @@ export default function ContactDetail() {
               </WriteOnly>
             </div>
           </div>
+
+          {lookalike && !dismissedLookalike && (
+            <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5" aria-labelledby="same-person-heading">
+              <h2 id="same-person-heading" className="text-base font-semibold text-amber-950">
+                Is this the same person as {lookalike.name}?
+              </h2>
+              <p className="mt-1 text-sm text-amber-900">
+                These two contacts share a name, email, or phone. Compare them, then keep one person or leave them separate.
+              </p>
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-amber-800">
+                      <th className="py-1 pr-3 font-medium">Field</th>
+                      <th className="py-1 pr-3 font-medium">This contact</th>
+                      <th className="py-1 pr-3 font-medium">Other contact</th>
+                      <th className="py-1 font-medium">Match</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(lookalike.fields ?? []).map((field) => (
+                      <tr key={field.field} className="border-t border-amber-200/80">
+                        <td className="py-2 pr-3 font-medium text-slate-800">{field.field}</td>
+                        <td className="py-2 pr-3 text-slate-700">{field.yours || '—'}</td>
+                        <td className="py-2 pr-3 text-slate-700">{field.theirs || '—'}</td>
+                        <td className="py-2 text-slate-700">{field.same ? 'Same' : 'Different'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <WriteOnly>
+                  <Button
+                    type="button"
+                    className="h-11 bg-orange-600 hover:bg-orange-500"
+                    disabled={merging}
+                    onClick={async () => {
+                      if (!contact) return;
+                      setMerging(true);
+                      try {
+                        const ok = await mergePersonContacts(contact.id, lookalike.id);
+                        if (!ok) { toast.error('Could not merge these contacts'); return; }
+                        toast.success('Merged into one person');
+                        setLookalike(null);
+                        setRecordRevision((current) => current + 1);
+                      } finally {
+                        setMerging(false);
+                      }
+                    }}
+                  >
+                    {merging ? 'Merging…' : 'Yes, merge into this contact'}
+                  </Button>
+                </WriteOnly>
+                <Button type="button" variant="outline" className="h-11" onClick={() => setDismissedLookalike(true)}>
+                  No, keep them separate
+                </Button>
+              </div>
+            </section>
+          )}
 
           {/* Contact Header */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6">

@@ -152,6 +152,28 @@ public class ContactsController : ControllerBase
         return result.ToActionResult();
     }
 
+    /// <summary>People who look like this contact, with a field-by-field comparison.</summary>
+    [HttpGet("{id:guid}/lookalikes")]
+    public async Task<ActionResult<IReadOnlyList<ContactLookalikeDto>>> Lookalikes(Guid id, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var list = await _contactService.FindLookalikesAsync(id, userId.Value, _currentUser.CurrentOrganizationId, ct);
+        return Ok(list);
+    }
+
+    /// <summary>Keeps this contact and folds the other person into it.</summary>
+    [HttpPost("{id:guid}/merge")]
+    public async Task<ActionResult> Merge(Guid id, [FromBody] MergeContactsRequest request, CancellationToken ct)
+    {
+        if (request == null || request.OtherContactId == Guid.Empty)
+            return BadRequest();
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await _contactService.MergeAsync(id, request.OtherContactId, userId.Value, _currentUser.CurrentOrganizationId, ct);
+        return result.ToNoContentResult();
+    }
+
     /// <summary>
     /// Creates a new contact.
     /// </summary>

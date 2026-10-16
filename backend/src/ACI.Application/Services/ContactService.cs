@@ -40,6 +40,8 @@ public class ContactService : IContactService
             "Getting paged contacts for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}', companyId {CompanyId}",
             userId, organizationId, page, pageSize, search, companyId);
 
+        await _repository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
+
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, includeArchived, companyId, ct);
         
@@ -65,6 +67,8 @@ public class ContactService : IContactService
         _logger.LogDebug(
             "Getting contacts for user {UserId}, organization {OrganizationId}, includeArchived: {IncludeArchived}",
             userId, organizationId, includeArchived);
+
+        await _repository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
 
         var list = await _repository.GetByUserIdAsync(userId, organizationId, includeArchived, ct);
         var lastByContact = await _activityRepository.GetLastActivityByContactIdsAsync(
@@ -360,6 +364,46 @@ public class ContactService : IContactService
     {
         return await _repository.EmailExistsAsync(email, organizationId, excludeContactId, ct);
     }
+
+    public async Task<IReadOnlyList<ContactLookalikeDto>> FindLookalikesAsync(
+        Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var contact = await _repository.GetByIdAsync(id, userId, organizationId, ct);
+        if (contact == null || contact.IsArchived) return [];
+
+        var others = await _repository.FindLookalikesAsync(contact, ct);
+        return others.Select(other => new ContactLookalikeDto(
+            other.Id,
+            other.Name,
+            other.Email,
+            other.Phone,
+            Compare(contact, other))).ToList();
+    }
+
+    public async Task<Result> MergeAsync(
+        Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var merged = await _repository.MergeIntoAsync(keepId, dropId, userId, organizationId, ct);
+        if (!merged) return DomainErrors.Contact.NotFound;
+        _logger.LogInformation("Merged contact {DropId} into {KeepId}", dropId, keepId);
+        return Result.Success();
+    }
+
+    private static IReadOnlyList<ContactFieldComparisonDto> Compare(Contact yours, Contact theirs) =>
+    [
+        Field("Name", yours.Name, theirs.Name, Normalize(yours.Name) == Normalize(theirs.Name)),
+        Field("Email", yours.Email, theirs.Email, yours.Email.Trim().ToLowerInvariant() == theirs.Email.Trim().ToLowerInvariant()),
+        Field("Phone", yours.Phone, theirs.Phone, Digits(yours.Phone) == Digits(theirs.Phone) && Digits(yours.Phone).Length >= 7),
+    ];
+
+    private static ContactFieldComparisonDto Field(string name, string? yours, string? theirs, bool same) =>
+        new(name, string.IsNullOrWhiteSpace(yours) ? null : yours.Trim(), string.IsNullOrWhiteSpace(theirs) ? null : theirs.Trim(), same);
+
+    private static string Normalize(string? value) =>
+        string.Join(' ', (value ?? "").Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+    private static string Digits(string? value) =>
+        new string((value ?? "").Where(char.IsDigit).ToArray());
 
     private static ContactDto Map(Contact e, DateTime? lastActivityAtUtc = null) =>
         new ContactDto(

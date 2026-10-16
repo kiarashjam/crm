@@ -112,4 +112,8 @@ public interface IContactService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>True if the email exists, false otherwise.</returns>
     Task<bool> EmailExistsAsync(string email, Guid? organizationId, Guid? excludeContactId = null, CancellationToken ct = default);
+
+    Task<IReadOnlyList<ContactLookalikeDto>> FindLookalikesAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

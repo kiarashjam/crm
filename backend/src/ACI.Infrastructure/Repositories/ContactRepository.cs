@@ -177,4 +177,153 @@ public sealed class ContactRepository : IContactRepository
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    public async Task EnsurePersonContactAsync(Lead lead, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(lead.Name) || string.IsNullOrWhiteSpace(lead.Email))
+            return;
+
+        var linked = await _db.Contacts.FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct);
+        if (linked != null)
+        {
+            await RememberContactOnLeadAsync(lead, linked.Id, ct);
+            return;
+        }
+
+        if (lead.ConvertedToContactId is Guid existingId)
+        {
+            var existing = await _db.Contacts.FirstOrDefaultAsync(c => c.Id == existingId && !c.IsArchived, ct);
+            if (existing != null)
+                return;
+        }
+
+        var email = lead.Email.Trim();
+        var byEmail = await _db.Contacts.FirstOrDefaultAsync(
+            c => !c.IsArchived && c.Email == email && c.OrganizationId == lead.OrganizationId, ct);
+        if (byEmail != null)
+        {
+            if (byEmail.ConvertedFromLeadId == null)
+                byEmail.ConvertedFromLeadId = lead.Id;
+            await RememberContactOnLeadAsync(lead, byEmail.Id, ct);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
+        var contact = new Contact
+        {
+            Id = Guid.NewGuid(),
+            UserId = lead.UserId,
+            OrganizationId = lead.OrganizationId,
+            Name = lead.Name.Trim(),
+            Email = email,
+            Phone = string.IsNullOrWhiteSpace(lead.Phone) ? null : lead.Phone.Trim(),
+            CompanyId = lead.CompanyId,
+            Description = string.IsNullOrWhiteSpace(lead.Description) ? null : lead.Description.Trim(),
+            CreatedAtUtc = DateTime.UtcNow,
+            ConvertedFromLeadId = lead.Id,
+        };
+        _db.Contacts.Add(contact);
+        await RememberContactOnLeadAsync(lead, contact.Id, ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task EnsureMissingPersonContactsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var linkedLeadIds = _db.Contacts
+            .Where(c => c.ConvertedFromLeadId != null)
+            .Select(c => c.ConvertedFromLeadId!.Value);
+
+        var leads = organizationId == null
+            ? _db.Leads.Where(l => l.UserId == userId && l.OrganizationId == null)
+            : _db.Leads.Where(l => l.OrganizationId == organizationId);
+
+        for (var pass = 0; pass < 20; pass++)
+        {
+            var missing = await leads
+                .Where(l => l.Name != "" && l.Email != "" && l.ConvertedToContactId == null && !linkedLeadIds.Contains(l.Id))
+                .OrderBy(l => l.CreatedAtUtc)
+                .Take(50)
+                .ToListAsync(ct);
+
+            if (missing.Count == 0) return;
+            foreach (var lead in missing)
+                await EnsurePersonContactAsync(lead, ct);
+        }
+    }
+
+    public async Task<IReadOnlyList<Contact>> FindLookalikesAsync(Contact contact, CancellationToken ct = default)
+    {
+        var name = NormalizeName(contact.Name);
+        var email = contact.Email.Trim().ToLowerInvariant();
+        var phone = Digits(contact.Phone);
+
+        var others = await FilterByUserAndOrg(_db.Contacts.AsNoTracking(), contact.UserId, contact.OrganizationId)
+            .Where(c => c.Id != contact.Id && !c.IsArchived)
+            .ToListAsync(ct);
+
+        return others
+            .Where(other => IsLookalike(name, email, phone, other))
+            .Take(5)
+            .ToList();
+    }
+
+    public async Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        if (keepId == dropId) return false;
+        var keep = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == keepId, ct);
+        var drop = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == dropId, ct);
+        if (keep == null || drop == null || keep.IsArchived || drop.IsArchived) return false;
+
+        foreach (var deal in await _db.Deals.Where(d => d.ContactId == dropId).ToListAsync(ct))
+            deal.ContactId = keepId;
+        foreach (var task in await _db.TaskItems.Where(t => t.ContactId == dropId).ToListAsync(ct))
+            task.ContactId = keepId;
+        foreach (var activity in await _db.Activities.Where(a => a.ContactId == dropId).ToListAsync(ct))
+            activity.ContactId = keepId;
+        foreach (var lead in await _db.Leads.Where(l => l.ConvertedToContactId == dropId).ToListAsync(ct))
+            lead.ConvertedToContactId = keepId;
+
+        if (drop.ConvertedFromLeadId is Guid leadId && keep.ConvertedFromLeadId == null)
+            keep.ConvertedFromLeadId = leadId;
+        drop.ConvertedFromLeadId = null;
+
+        if (string.IsNullOrWhiteSpace(keep.Phone) && !string.IsNullOrWhiteSpace(drop.Phone))
+            keep.Phone = drop.Phone;
+        if (keep.CompanyId == null && drop.CompanyId != null)
+            keep.CompanyId = drop.CompanyId;
+        if (string.IsNullOrWhiteSpace(keep.JobTitle) && !string.IsNullOrWhiteSpace(drop.JobTitle))
+            keep.JobTitle = drop.JobTitle;
+
+        drop.IsArchived = true;
+        drop.ArchivedAtUtc = DateTime.UtcNow;
+        drop.ArchivedByUserId = userId;
+        keep.UpdatedAtUtc = DateTime.UtcNow;
+        keep.UpdatedByUserId = userId;
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    private async Task RememberContactOnLeadAsync(Lead lead, Guid contactId, CancellationToken ct)
+    {
+        var tracked = await _db.Leads.FirstOrDefaultAsync(l => l.Id == lead.Id, ct);
+        if (tracked == null) return;
+        tracked.ConvertedToContactId = contactId;
+        lead.ConvertedToContactId = contactId;
+    }
+
+    private static bool IsLookalike(string name, string email, string phone, Contact other)
+    {
+        var sameName = name.Length > 1 && NormalizeName(other.Name) == name;
+        var sameEmail = email.Length > 0 && other.Email.Trim().ToLowerInvariant() == email;
+        var otherPhone = Digits(other.Phone);
+        var samePhone = phone.Length >= 7 && otherPhone == phone;
+        var score = (sameEmail ? 2 : 0) + (sameName ? 1 : 0) + (samePhone ? 1 : 0);
+        return score >= 2;
+    }
+
+    private static string NormalizeName(string? value) =>
+        string.Join(' ', (value ?? "").Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+    private static string Digits(string? value) =>
+        new string((value ?? "").Where(char.IsDigit).ToArray());
 }

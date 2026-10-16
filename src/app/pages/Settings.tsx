@@ -5,7 +5,7 @@ import {
   User, Palette, Bell, Shield,
   ChevronRight,
   Settings2, Sparkles,
-  Link2,
+  Link2, Bot,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -57,15 +57,17 @@ import {
 import type { Pipeline, DealStage } from '@/app/api/types';
 import { BrandSection } from './settings/components/BrandSection';
 import { IntegrationsSection } from './settings/components/IntegrationsSection';
+import { ClaudeSection } from './McpSetup';
 
-type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
+type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
 
 const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; description: string }[] = [
   { id: 'profile', label: 'Profile', icon: User, description: 'Personal information and preferences' },
   { id: 'brand', label: 'Brand & AI', icon: Sparkles, description: 'Brand voice and AI copy settings' },
   { id: 'appearance', label: 'Appearance', icon: Palette, description: 'Theme, layout, and display options' },
   { id: 'notifications', label: 'Notifications', icon: Bell, description: 'Email and in-app notifications' },
-  { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Webhooks and AI assistants (MCP)' },
+  { id: 'integrations', label: 'Integrations', icon: Link2, description: 'Inbound webhooks and URLs' },
+  { id: 'claude', label: 'Claude', icon: Bot, description: 'Read this organization in Claude' },
   { id: 'organization', label: 'Team', icon: Users, description: 'Organization and team members' },
   { id: 'pipelines', label: 'Pipelines', icon: Kanban, description: 'Sales pipeline stages' },
   { id: 'customFields', label: 'Custom Fields', icon: SlidersHorizontal, description: 'Add your own fields to records' },
@@ -559,6 +561,8 @@ export default function Settings() {
         return <NotificationsSection settings={settings} updateSettings={updateSettings} />;
       case 'integrations':
         return <IntegrationsSection currentOrg={currentOrg} />;
+      case 'claude':
+        return <ClaudeSection />;
       case 'organization':
         return (
           <OrganizationSection
