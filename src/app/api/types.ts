@@ -100,6 +100,18 @@ export interface Lead {
   pipelineState?: string;
   tags?: string[];
   createdAtUtc?: string;
+  jobTitle?: string;
+  country?: string;
+  industry?: string;
+  companySize?: string;
+  firstResponseAtUtc?: string;
+  firstResponseDueAtUtc?: string;
+  slaBreached?: boolean;
+  queueId?: string;
+  territoryId?: string;
+  emailOpenCount?: number;
+  enrichedDomain?: string;
+  scoreIsManual?: boolean;
 }
 
 export interface Deal {
@@ -324,6 +336,9 @@ export interface UserSettings {
   showActivityStatus: boolean;
   allowAnalytics: boolean;
 
+  /** Last agent turns for this signed-in user. */
+  agentMemoryJson?: string;
+
   // Metadata
   createdAtUtc?: string;
   updatedAtUtc?: string;
@@ -370,6 +385,7 @@ export interface UpdateUserSettingsRequest {
   // Privacy
   showActivityStatus?: boolean;
   allowAnalytics?: boolean;
+  agentMemoryJson?: string;
 }
 
 export interface TimezoneOption {

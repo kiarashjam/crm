@@ -4,26 +4,27 @@ import { Button } from '@/app/components/ui/button';
 
 interface BulkActionsBarProps {
   count: number;
+  members: { userId: string; name: string }[];
   onClear: () => void;
   onBulkDelete: () => Promise<void>;
+  onBulkApply: (patch: { status?: string; source?: string; assignedToUserId?: string }) => Promise<void>;
 }
 
 /**
- * Sticky toolbar shown above the leads list when leads are selected.
- *
- * Bulk status change used to live here and has been removed, not hidden: a lead's
- * status is derived from its own 5-phase pipeline, and setting thirty leads to
- * "Qualified" in one click would assert progress that none of their pipelines
- * records. The next pipeline edit on any of them would silently undo it, which is
- * worse than not offering it. Moving a batch forward means recording the step that
- * actually happened, one lead at a time.
+ * Sticky toolbar for the leads that are checked.
+ * Status, source, and owner are written together for the whole selection.
  */
 export function BulkActionsBar({
   count,
+  members,
   onClear,
   onBulkDelete,
+  onBulkApply,
 }: BulkActionsBarProps) {
-  const [busy, setBusy] = useState<null | 'delete'>(null);
+  const [busy, setBusy] = useState<null | 'delete' | 'apply'>(null);
+  const [status, setStatus] = useState('');
+  const [source, setSource] = useState('');
+  const [owner, setOwner] = useState('');
 
   const runDelete = async () => {
     setBusy('delete');
@@ -34,42 +35,37 @@ export function BulkActionsBar({
     }
   };
 
+  const runApply = async () => {
+    setBusy('apply');
+    try {
+      await onBulkApply({
+        status: status || undefined,
+        source: source || undefined,
+        assignedToUserId: owner || undefined,
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
-    <div className="sticky top-2 z-30 mb-3 flex items-center justify-between gap-3 rounded-2xl border border-indigo-200/70 bg-gradient-to-r from-indigo-50 via-white to-violet-50 px-4 py-2.5 shadow-lg shadow-indigo-100/60 backdrop-blur">
-      <div className="flex items-center gap-3 min-w-0">
-        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-semibold shadow">
-          {count}
-        </span>
-        <div className="flex flex-col">
-          <span className="text-sm font-semibold text-slate-900">
-            {count} lead{count === 1 ? '' : 's'} selected
-          </span>
-          <span className="text-xs text-slate-500">Status follows each lead's own pipeline</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={busy !== null}
-          onClick={runDelete}
-          className="gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-        >
-          {busy === 'delete' ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Trash2 className="w-4 h-4" />
-          )}
+    <div className="sticky top-2 z-30 mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-200/70 bg-white px-4 py-2.5">
+      <span className="text-sm font-semibold text-slate-900">{count} selected</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={status} onChange={(e) => setStatus(e.target.value)} placeholder="Status" className="h-8 w-28 rounded-lg border border-slate-200 px-2 text-sm" />
+        <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Source" className="h-8 w-28 rounded-lg border border-slate-200 px-2 text-sm" />
+        <select value={owner} onChange={(e) => setOwner(e.target.value)} className="h-8 rounded-lg border border-slate-200 px-2 text-sm">
+          <option value="">Owner</option>
+          {members.map((m) => <option key={m.userId} value={m.userId}>{m.name}</option>)}
+        </select>
+        <Button variant="outline" size="sm" disabled={busy !== null} onClick={runApply}>
+          {busy === 'apply' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Apply'}
+        </Button>
+        <Button variant="outline" size="sm" disabled={busy !== null} onClick={runDelete} className="gap-1.5 text-red-600 border-red-200">
+          {busy === 'delete' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
           Delete
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClear}
-          disabled={busy !== null}
-          aria-label="Clear selection"
-          className="h-8 w-8 p-0 text-slate-500 hover:text-slate-700"
-        >
+        <Button variant="ghost" size="sm" onClick={onClear} aria-label="Clear selection" className="h-8 w-8 p-0">
           <X className="w-4 h-4" />
         </Button>
       </div>

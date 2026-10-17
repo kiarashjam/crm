@@ -105,4 +105,7 @@ public interface IEmailSender
         string signatureBlock,
         EmailAttachment? attachment = null,
         CancellationToken ct = default);
+
+    /// <summary>Plain message used by outreach sequences.</summary>
+    Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default);
 }

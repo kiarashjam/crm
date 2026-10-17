@@ -26,12 +26,16 @@ public class ActivityServiceTests
         _contactRepositoryMock = new Mock<IContactRepository>();
         _dealRepositoryMock = new Mock<IDealRepository>();
         _loggerMock = new Mock<ILogger<ActivityService>>();
+        var automation = new Mock<ILeadAutomation>();
+        automation.Setup(a => a.MarkFirstResponseAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         _sut = new ActivityService(
             _activityRepositoryMock.Object,
             _leadRepositoryMock.Object,
             _contactRepositoryMock.Object,
             _dealRepositoryMock.Object,
+            automation.Object,
             _loggerMock.Object);
     }
 

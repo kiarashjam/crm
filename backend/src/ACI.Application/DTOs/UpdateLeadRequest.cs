@@ -83,4 +83,16 @@ public record UpdateLeadRequest
     /// </summary>
     [StringLength(8000, ErrorMessage = "Pipeline state is too large")]
     public string? PipelineState { get; init; }
+
+    [StringLength(200)]
+    public string? JobTitle { get; init; }
+
+    [StringLength(80)]
+    public string? Country { get; init; }
+
+    [StringLength(120)]
+    public string? Industry { get; init; }
+
+    [StringLength(40)]
+    public string? CompanySize { get; init; }
 }

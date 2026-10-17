@@ -19,6 +19,7 @@ import {
 } from '@/app/api';
 import type { Lead, Company, Contact, LeadStatus, LeadSource, Activity, TaskItem } from '@/app/api/types';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
+import { LeadStatusTimeline } from './leads/components/LeadStatusTimeline';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { Button } from '@/app/components/ui/button';
@@ -1205,6 +1206,14 @@ export default function LeadDetailPage() {
                     <InlineField label="Name" value={lead.name} onSave={saveName} readOnly={isReadOnly} icon={<UserIcon className="w-3.5 h-3.5" />} />
                     <InlineField label="Email" type="email" value={lead.email ?? ''} onSave={saveEmail} readOnly={isReadOnly} icon={<Mail className="w-3.5 h-3.5" />} />
                     <InlineField label="Phone" type="tel" value={lead.phone ?? ''} onSave={savePhone} readOnly={isReadOnly} icon={<Phone className="w-3.5 h-3.5" />} />
+                    {lead.firstResponseDueAtUtc && (
+                      <p className="text-xs text-slate-500">
+                        First response due {new Date(lead.firstResponseDueAtUtc).toLocaleString()}
+                        {lead.slaBreached ? ' · late' : lead.firstResponseAtUtc ? ' · answered' : ' · waiting'}
+                        {lead.enrichedDomain ? ` · company from ${lead.enrichedDomain}` : ''}
+                      </p>
+                    )}
+                    <LeadStatusTimeline leadId={lead.id} />
                     <SidebarSelectField label="Company" icon={<Building2 className="w-3.5 h-3.5 text-slate-400" />}>
                       <Select value={lead.companyId ?? ''} disabled={isReadOnly} onValueChange={(v) => setCompanyId(v === '__none__' ? '' : v)}>
                         <SelectTrigger className="h-9 text-sm">

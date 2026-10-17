@@ -23,6 +23,16 @@ public class AppDbContext : DbContext
     public DbSet<Deal> Deals => Set<Deal>();
     public DbSet<DealStageChange> DealStageChanges => Set<DealStageChange>();
     public DbSet<Lead> Leads => Set<Lead>();
+    public DbSet<LeadStatusEvent> LeadStatusEvents => Set<LeadStatusEvent>();
+    public DbSet<LeadScoringRule> LeadScoringRules => Set<LeadScoringRule>();
+    public DbSet<LeadAssignmentRule> LeadAssignmentRules => Set<LeadAssignmentRule>();
+    public DbSet<LeadTerritory> LeadTerritories => Set<LeadTerritory>();
+    public DbSet<LeadQueue> LeadQueues => Set<LeadQueue>();
+    public DbSet<LeadCaptureForm> LeadCaptureForms => Set<LeadCaptureForm>();
+    public DbSet<LeadOpsSettings> LeadOpsSettings => Set<LeadOpsSettings>();
+    public DbSet<OutreachSequence> OutreachSequences => Set<OutreachSequence>();
+    public DbSet<OutreachStep> OutreachSteps => Set<OutreachStep>();
+    public DbSet<OutreachEnrollment> OutreachEnrollments => Set<OutreachEnrollment>();
     public DbSet<TaskItem> TaskItems => Set<TaskItem>();
     public DbSet<TaskComment> TaskComments => Set<TaskComment>();
     public DbSet<Activity> Activities => Set<Activity>();

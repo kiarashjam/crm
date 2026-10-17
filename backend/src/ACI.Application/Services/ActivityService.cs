@@ -15,6 +15,7 @@ public class ActivityService : IActivityService
     private readonly ILeadRepository _leadRepository;
     private readonly IContactRepository _contactRepository;
     private readonly IDealRepository _dealRepository;
+    private readonly ILeadAutomation _automation;
     private readonly ILogger<ActivityService> _logger;
 
     // HP-1: All 9 activity types supported (matches frontend config)
@@ -25,12 +26,14 @@ public class ActivityService : IActivityService
         ILeadRepository leadRepository,
         IContactRepository contactRepository,
         IDealRepository dealRepository,
+        ILeadAutomation automation,
         ILogger<ActivityService> logger)
     {
         _repository = repository;
         _leadRepository = leadRepository;
         _contactRepository = contactRepository;
         _dealRepository = dealRepository;
+        _automation = automation;
         _logger = logger;
     }
 
@@ -206,6 +209,8 @@ public class ActivityService : IActivityService
             };
             
             entity = await _repository.AddAsync(entity, ct);
+            if (entity.LeadId.HasValue)
+                await _automation.MarkFirstResponseAsync(entity.LeadId.Value, userId, organizationId, entity.Type, ct);
 
             _logger.LogInformation("Successfully created activity {ActivityId} of type '{Type}'", entity.Id, entity.Type);
             // Re-fetch so the DTO can include the related entity and creator-user names.

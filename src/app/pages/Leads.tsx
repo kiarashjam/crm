@@ -41,6 +41,7 @@ import {
 import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
+import { bulkUpdateLeads } from '@/app/api/leadOps';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { Button } from '@/app/components/ui/button';
@@ -1256,6 +1257,14 @@ export default function Leads() {
     }
   };
 
+  const runBulkApply = async (patch: { status?: string; source?: string; assignedToUserId?: string }) => {
+    if (!patch.status && !patch.source && !patch.assignedToUserId) return;
+    const result = await bulkUpdateLeads({ ids: Array.from(selectedIds), ...patch });
+    toast.success(`Updated ${result.updated}`);
+    clearSelection();
+    await fetchLeads();
+  };
+
   const handleLeadUpdate = (updatedLead: Lead) => {
     const existingLead = leads.find((l) => l.id === updatedLead.id);
     const resolvedReferredByContactId = updatedLead.referredByContactId ?? existingLead?.referredByContactId;
@@ -1455,6 +1464,10 @@ export default function Leads() {
               <div className="flex items-center gap-3">
                 {!isReadOnly && (
                   <>
+                    <Button onClick={() => navigate('/leads/routing')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
+                      <SlidersHorizontal className="w-4 h-4" />
+                      <span className="hidden sm:inline">Routing</span>
+                    </Button>
                     <Button onClick={() => navigate('/leads/webhook')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
                       <Link2 className="w-4 h-4" />
                       <span className="hidden sm:inline">Webhook</span>
@@ -1988,8 +2001,10 @@ export default function Leads() {
           {selectedIds.size > 0 && !isReadOnly && (
             <BulkActionsBar
               count={selectedIds.size}
+              members={orgMembers}
               onClear={clearSelection}
               onBulkDelete={runBulkDelete}
+              onBulkApply={runBulkApply}
             />
           )}
           <div className="space-y-3">

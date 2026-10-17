@@ -29,6 +29,21 @@ public class Lead : Common.BaseEntity
     /// the shape; the backend just persists it so the whole org shares one view.
     /// </summary>
     public string? PipelineState { get; set; }
+    public string? JobTitle { get; set; }
+    public string? Country { get; set; }
+    public string? Industry { get; set; }
+    public string? CompanySize { get; set; }
+    /// <summary>True when a person typed the score. Automatic rules leave it alone.</summary>
+    public bool ScoreIsManual { get; set; }
+    public DateTime? FirstResponseAtUtc { get; set; }
+    public DateTime? FirstResponseDueAtUtc { get; set; }
+    public bool SlaBreached { get; set; }
+    public DateTime? SlaNotifiedAtUtc { get; set; }
+    public Guid? QueueId { get; set; }
+    public Guid? TerritoryId { get; set; }
+    public int EmailOpenCount { get; set; }
+    /// <summary>Domain taken from the email when the company was filled in automatically.</summary>
+    public string? EnrichedDomain { get; set; }
     public bool IsConverted { get; set; }
     public DateTime? ConvertedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; }
