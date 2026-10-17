@@ -36,9 +36,9 @@ afterwards that there is nowhere to put the labels.
 5. **Attach the annotation layer** — anchor dots, leader lines, labels — in the
    accent colour, as a separate group. Use `scripts/layout_callouts.py` so the
    leaders cannot cross.
-6. **Lint it** with `scripts/check_illustration.py`, then look at the rendered
-   result yourself. The linter catches geometry; only your eye catches "this
-   doesn't look like a kettle".
+6. **Lint it** with `scripts/check_illustration.py`, then render it with
+   `scripts/render.cjs` and look at the PNG yourself. The linter catches
+   geometry; only your eye catches "this doesn't look like a kettle".
 
 ## Canvas budget
 
@@ -95,6 +95,10 @@ Each callout is three parts: an **anchor dot** on the part being named, a
   the right gutter, vertically centred on its leader's horizontal segment.
 - Keep labels to 1–4 words, wrapping at ~24 characters. If a label needs a
   sentence, it is a caption or a key entry, not a label.
+- **Give every callout its own anchor.** Two dots closer than ~18px read as
+  one, and their leaders fan out from a single spot, so the reader can't tell
+  which label means which. Anchor each on a distinct part of the feature — the
+  hub and the path leading to it, not two points on the same edge.
 - **Leaders must not cross.** Crossing leaders make the reader trace lines with
   a finger. `scripts/layout_callouts.py` guarantees this by assigning each
   anchor to the nearer gutter and then keeping label order monotonic in the
@@ -113,8 +117,8 @@ in the order the reader will actually encounter the parts.
 
 ## Scripts
 
-Both scripts are plain Python 3, no dependencies. Run them from the skill
-directory or with an absolute path; pass input as a JSON file.
+The two Python scripts are plain Python 3, no dependencies; the renderer is a
+small Node script. Run them from the skill directory or with an absolute path.
 
 **`scripts/layout_callouts.py`** — turns a list of anchors + label texts into a
 ready-to-paste SVG `<g>` of dots, leaders and labels, with gutter assignment,
@@ -143,9 +147,10 @@ arithmetic here rather than by hand; eyeballing label y-positions is where the
 hours go.
 
 **`scripts/check_illustration.py`** — lints a finished SVG and exits non-zero on
-problems: text outside the viewBox, overlapping label boxes, crossing leaders,
-more than three font sizes, missing `<title>`/`<desc>`, accent colour leaking
-into the subject group.
+problems: text outside the viewBox, overlapping label boxes, leaders that cross
+or lie on top of each other, anchors too close to tell apart, more than three
+font sizes, missing `<title>`/`<desc>`, accent colour leaking into the subject
+group.
 
 ```bash
 python3 scripts/check_illustration.py figure.svg
@@ -153,6 +158,16 @@ python3 scripts/check_illustration.py figure.svg
 
 Run it before showing the figure. It is fast and it catches the things that are
 embarrassing to miss.
+
+**`scripts/render.cjs`** — renders the SVG to a PNG at its own size, using
+Playwright's Chromium (a local or global install), so you can look at it.
+`--dark` renders with the dark palette; check both whenever the figure will be
+seen in an app that follows the system theme.
+
+```bash
+node scripts/render.cjs figure.svg            # figure.png beside it
+node scripts/render.cjs figure.svg out.png --dark
+```
 
 ## Delivering the figure
 

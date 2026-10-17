@@ -6,7 +6,8 @@ obvious once the figure is in front of someone else:
 
   * text that falls outside the viewBox (silently cropped by most renderers)
   * label boxes that overlap each other
-  * leader lines that cross
+  * leader lines that cross, run on top of one another, or start from anchors
+    so close together that the reader cannot tell which dot each label means
   * more than three font sizes, which reads as accidental rather than designed
   * the accent colour leaking into the subject, which destroys the "subject vs.
     what we're saying about it" split that makes the accent work at all
@@ -25,6 +26,7 @@ Exits 1 if any error is found, or if --strict is given and there are warnings.
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -32,6 +34,7 @@ import xml.etree.ElementTree as ET
 SVG_NS = "http://www.w3.org/2000/svg"
 CHAR_W_RATIO = 0.55
 MIN_TEXT_GAP = 2.0          # px of slack before two labels count as overlapping
+MIN_ANCHOR_GAP = 18.0       # px between two anchor dots before they read as one
 ACCENT_LIKE = re.compile(r"#[0-9a-fA-F]{3,8}|rgb\(|var\(--accent")
 
 
@@ -139,6 +142,30 @@ def seg_cross(p1, p2, p3, p4) -> bool:
     return o1 != o2 and o3 != o4 and o1 != 0 and o2 != 0 and o3 != 0 and o4 != 0
 
 
+def seg_overlap(p1, p2, p3, p4, tol=4.0, min_len=10.0) -> bool:
+    """True when two segments are near-parallel, within `tol` px, and share a run.
+
+    Crossing is not the only way two leaders become unreadable: laid along the
+    same line, they merge into one stroke and the eye cannot tell which label
+    belongs to which dot.
+    """
+    ax, ay = p2[0] - p1[0], p2[1] - p1[1]
+    bx, by = p4[0] - p3[0], p4[1] - p3[1]
+    la, lb = math.hypot(ax, ay), math.hypot(bx, by)
+    if la < min_len or lb < min_len:
+        return False
+    if abs(ax * by - ay * bx) / (la * lb) > math.sin(math.radians(4)):
+        return False                       # not parallel
+    ux, uy = ax / la, ay / la
+    dist = abs((p3[0] - p1[0]) * uy - (p3[1] - p1[1]) * ux)
+    if dist > tol:
+        return False                       # parallel but apart
+    t3 = (p3[0] - p1[0]) * ux + (p3[1] - p1[1]) * uy
+    t4 = (p4[0] - p1[0]) * ux + (p4[1] - p1[1]) * uy
+    shared = min(la, max(t3, t4)) - max(0.0, min(t3, t4))
+    return shared > min_len
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -222,6 +249,26 @@ def main() -> int:
                     break
             if hit:
                 crossings += 1
+    overlaps = 0
+    for i, la in enumerate(leaders):
+        for lb in leaders[i + 1:]:
+            if any(seg_overlap(p1, p2, p3, p4)
+                   for p1, p2 in zip(la["pts"], la["pts"][1:])
+                   for p3, p4 in zip(lb["pts"], lb["pts"][1:])):
+                overlaps += 1
+    close = []
+    for i, la in enumerate(leaders):
+        for lb in leaders[i + 1:]:
+            (x1, y1), (x2, y2) = la["pts"][0], lb["pts"][0]
+            d = math.hypot(x1 - x2, y1 - y2)
+            if d < MIN_ANCHOR_GAP:
+                close.append(f"({x1:.0f},{y1:.0f}) and ({x2:.0f},{y2:.0f}), {d:.0f}px apart")
+    for c in close:
+        errors.append(f"anchors {c}: their leaders fan out from what reads as one dot; "
+                      f"anchor each callout on a distinct part of the drawing")
+    if overlaps:
+        errors.append(f"{overlaps} pair(s) of leader lines run on top of each other; "
+                      f"anchor them further apart, or on different parts of the feature")
     if crossings:
         errors.append(f"{crossings} pair(s) of leader lines cross; send each anchor to "
                       f"the nearer gutter and keep label order matching anchor order "

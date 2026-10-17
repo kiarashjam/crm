@@ -89,81 +89,81 @@
   </g>
   <g id="annotations">
     <g class="callout" data-label="Spout filter">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 428.0 294.0 L 236.0 294.0 L 208.0 294.0"/>
-      <circle cx="428.0" cy="294.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 428.0 294.0 L 236.0 294.0 L 208.0 294.0"/>
+      <circle cx="428.0" cy="294.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="200.0" y="299.0" text-anchor="end" font-size="14" font-weight="500">
         <tspan x="200.0" dy="0">Spout filter</tspan>
       </text>
     </g>
     <g class="callout" data-label="Fill line, 1.7 L">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 556.0 468.0 L 236.0 468.0 L 208.0 468.0"/>
-      <circle cx="556.0" cy="468.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 556.0 468.0 L 236.0 468.0 L 208.0 468.0"/>
+      <circle cx="556.0" cy="468.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="200.0" y="473.0" text-anchor="end" font-size="14" font-weight="500">
         <tspan x="200.0" dy="0">Fill line, 1.7 L</tspan>
       </text>
     </g>
     <g class="callout" data-label="Double wall, 9 mm">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 466.0 514.0 L 236.0 514.0 L 208.0 514.0"/>
-      <circle cx="466.0" cy="514.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 466.0 514.0 L 236.0 514.0 L 208.0 514.0"/>
+      <circle cx="466.0" cy="514.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="200.0" y="510.5" text-anchor="end" font-size="14" font-weight="500">
         <tspan x="200.0" dy="0">Double wall, 9 mm</tspan>
         <tspan x="200.0" dy="17">cavity</tspan>
       </text>
     </g>
     <g class="callout" data-label="Concealed heating">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 560.0 606.0 L 236.0 606.0 L 208.0 606.0"/>
-      <circle cx="560.0" cy="606.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 560.0 606.0 L 236.0 606.0 L 208.0 606.0"/>
+      <circle cx="560.0" cy="606.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="200.0" y="602.5" text-anchor="end" font-size="14" font-weight="500">
         <tspan x="200.0" dy="0">Concealed heating</tspan>
         <tspan x="200.0" dy="17">element</tspan>
       </text>
     </g>
     <g class="callout" data-label="Cordless base contacts">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 600.0 648.0 L 236.0 648.0 L 208.0 648.0"/>
-      <circle cx="600.0" cy="648.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 600.0 648.0 L 236.0 648.0 L 208.0 648.0"/>
+      <circle cx="600.0" cy="648.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="200.0" y="653.0" text-anchor="end" font-size="14" font-weight="500">
         <tspan x="200.0" dy="0">Cordless base contacts</tspan>
       </text>
     </g>
     <g class="callout" data-label="Lid knob">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 600.0 202.0 L 964.0 202.0 L 992.0 202.0"/>
-      <circle cx="600.0" cy="202.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 600.0 202.0 L 964.0 202.0 L 992.0 202.0"/>
+      <circle cx="600.0" cy="202.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="1000.0" y="207.0" text-anchor="start" font-size="14" font-weight="500">
         <tspan x="1000.0" dy="0">Lid knob</tspan>
       </text>
     </g>
     <g class="callout" data-label="Lid seal">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 700.0 242.0 L 964.0 242.0 L 992.0 242.0"/>
-      <circle cx="700.0" cy="242.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 700.0 242.0 L 964.0 242.0 L 992.0 242.0"/>
+      <circle cx="700.0" cy="242.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="1000.0" y="247.0" text-anchor="start" font-size="14" font-weight="500">
         <tspan x="1000.0" dy="0">Lid seal</tspan>
       </text>
     </g>
     <g class="callout" data-label="Steam channel in the">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 800.0 300.0 L 964.0 300.0 L 992.0 300.0"/>
-      <circle cx="800.0" cy="300.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 800.0 300.0 L 964.0 300.0 L 992.0 300.0"/>
+      <circle cx="800.0" cy="300.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="1000.0" y="296.5" text-anchor="start" font-size="14" font-weight="500">
         <tspan x="1000.0" dy="0">Steam channel in the</tspan>
         <tspan x="1000.0" dy="17">handle wall</tspan>
       </text>
     </g>
     <g class="callout" data-label="Water level window">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 704.0 362.0 L 964.0 362.0 L 992.0 362.0"/>
-      <circle cx="704.0" cy="362.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 704.0 362.0 L 964.0 362.0 L 992.0 362.0"/>
+      <circle cx="704.0" cy="362.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="1000.0" y="367.0" text-anchor="start" font-size="14" font-weight="500">
         <tspan x="1000.0" dy="0">Water level window</tspan>
       </text>
     </g>
     <g class="callout" data-label="Insulated handle">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 864.0 422.0 L 964.0 422.0 L 992.0 422.0"/>
-      <circle cx="864.0" cy="422.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 864.0 422.0 L 964.0 422.0 L 992.0 422.0"/>
+      <circle cx="864.0" cy="422.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="1000.0" y="427.0" text-anchor="start" font-size="14" font-weight="500">
         <tspan x="1000.0" dy="0">Insulated handle</tspan>
       </text>
     </g>
     <g class="callout" data-label="Bimetallic strip and">
-      <path class="leader" fill="none" stroke="#C2410C" stroke-width="1" d="M 715.0 555.0 L 964.0 555.0 L 992.0 555.0"/>
-      <circle cx="715.0" cy="555.0" r="3" fill="#C2410C"/>
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 715.0 555.0 L 964.0 555.0 L 992.0 555.0"/>
+      <circle cx="715.0" cy="555.0" r="3" fill="var(--accent, #C2410C)"/>
       <text class="label" x="1000.0" y="551.5" text-anchor="start" font-size="14" font-weight="500">
         <tspan x="1000.0" dy="0">Bimetallic strip and</tspan>
         <tspan x="1000.0" dy="17">contacts</tspan>

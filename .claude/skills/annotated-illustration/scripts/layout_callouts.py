@@ -145,7 +145,7 @@ def esc(s: str) -> str:
 def render_gutter(labels: list[Label], spec: dict) -> list[str]:
     width = spec["width"]
     gutter = spec["gutter"]
-    accent = spec["accent"]
+    accent = f'var(--accent, {spec["accent"]})'
     fs = spec["font_size"]
     out = []
     for l in sorted(labels, key=lambda l: l.index):
@@ -179,7 +179,7 @@ def render_gutter(labels: list[Label], spec: dict) -> list[str]:
 
 
 def render_numbered(labels: list[Label], spec: dict) -> list[str]:
-    accent = spec["accent"]
+    accent = f'var(--accent, {spec["accent"]})'
     fs = spec["font_size"]
     width, bottom = spec["width"], spec["bottom"]
     out = []
