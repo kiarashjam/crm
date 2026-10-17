@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Sparkles,
   User,
+  UserCircle,
   LogOut,
   ChevronDown,
   Users,
