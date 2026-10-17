@@ -1,0 +1,17 @@
+{
+  "width": 1200, "height": 800, "gutter": 240, "top": 96, "bottom": 712,
+  "accent": "#C2410C",
+  "callouts": [
+    {"x": 428, "y": 294, "text": "Spout filter",                     "side": "left"},
+    {"x": 556, "y": 468, "text": "Fill line, 1.7 L",                 "side": "left"},
+    {"x": 466, "y": 514, "text": "Double wall, 9 mm cavity",         "side": "left"},
+    {"x": 560, "y": 606, "text": "Concealed heating element",        "side": "left"},
+    {"x": 600, "y": 648, "text": "Cordless base contacts",           "side": "left"},
+    {"x": 600, "y": 202, "text": "Lid knob",                         "side": "right"},
+    {"x": 700, "y": 242, "text": "Lid seal",                         "side": "right"},
+    {"x": 800, "y": 300, "text": "Steam channel in the handle wall", "side": "right"},
+    {"x": 704, "y": 362, "text": "Water level window",               "side": "right"},
+    {"x": 864, "y": 422, "text": "Insulated handle",                 "side": "right"},
+    {"x": 715, "y": 555, "text": "Bimetallic strip and contacts",    "side": "right"}
+  ]
+}
