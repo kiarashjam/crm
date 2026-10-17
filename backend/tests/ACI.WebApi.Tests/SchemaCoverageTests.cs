@@ -151,6 +151,37 @@ public class SchemaCoverageTests
     }
 
     [Fact]
+    public void EveryIndexOnATableTheDdlCreatesIsCreatedByTheDdlToo()
+    {
+        // The same gap one level down. #57's tables were created by hand-written DDL
+        // without the indexes their EF configuration declares, so the follow-up
+        // runner scanned OutreachEnrollments whole every minute on every instance,
+        // and each public form submission scanned for its token. A table the DDL
+        // creates gets its indexes from the DDL or not at all.
+        using var db = NewContext();
+        var migrationSql = DiscoveredMigrationSql();
+        var ddl = ProgramDdl();
+
+        var missing = new List<string>();
+        foreach (var entity in db.Model.GetEntityTypes())
+        {
+            var table = entity.GetTableName();
+            if (string.IsNullOrEmpty(table)) continue;
+            // Only tables this application creates itself; a migration-created table
+            // gets its indexes from the migration.
+            if (!ddl.Contains($"CREATE TABLE [{table}]", StringComparison.Ordinal)) continue;
+            if (migrationSql.Contains($"CREATE TABLE [{table}]", StringComparison.Ordinal)) continue;
+            foreach (var index in entity.GetIndexes())
+            {
+                var name = index.GetDatabaseName();
+                if (name != null && !ddl.Contains(name, StringComparison.Ordinal)) missing.Add($"{table}: {name}");
+            }
+        }
+
+        missing.Should().BeEmpty("an index the model declares but nothing creates does not exist in production");
+    }
+
+    [Fact]
     public void ProgramAppliesTheLeadStatusAlignment()
     {
         // Not a string search for the SQL — the point is that Program.cs calls the

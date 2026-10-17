@@ -144,8 +144,10 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
     public async Task<IReadOnlyList<Guid>> MemberUserIdsAsync(Guid? organizationId, CancellationToken ct = default)
     {
         if (organizationId == null) return Array.Empty<Guid>();
+        // People who can work a lead: current members, not Viewers. A Viewer cannot
+        // log activity, so every lead routed to one breached its response deadline.
         return await _db.OrganizationMembers
-            .Where(m => m.OrganizationId == organizationId)
+            .Where(m => m.OrganizationId == organizationId && m.Role != ACI.Domain.Enums.OrgMemberRole.Viewer)
             .Select(m => m.UserId)
             .ToListAsync(ct);
     }

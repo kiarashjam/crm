@@ -749,6 +749,44 @@ try
                 );
             ");
 
+            // The indexes the model declares for the tables above. The DDL created the
+            // tables without them, so the follow-up runner — once a minute, on every
+            // instance — scanned OutreachEnrollments whole for due rows, and every
+            // public form submission scanned LeadCaptureForms for its token. Each one
+            // is guarded and caught on its own: this whole routine shares a single
+            // catch, and one failure would otherwise skip every statement after it.
+            await db.Database.ExecuteSqlRawAsync(@"
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutreachEnrollments_Status_NextActionAtUtc')
+                        CREATE INDEX [IX_OutreachEnrollments_Status_NextActionAtUtc] ON [OutreachEnrollments] ([Status], [NextActionAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LeadCaptureForms_PublicToken')
+                        CREATE UNIQUE INDEX [IX_LeadCaptureForms_PublicToken] ON [LeadCaptureForms] ([PublicToken]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LeadStatusEvents_LeadId')
+                        CREATE INDEX [IX_LeadStatusEvents_LeadId] ON [LeadStatusEvents] ([LeadId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LeadOpsSettings_OrganizationId')
+                        CREATE INDEX [IX_LeadOpsSettings_OrganizationId] ON [LeadOpsSettings] ([OrganizationId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutreachSteps_SequenceId')
+                        CREATE INDEX [IX_OutreachSteps_SequenceId] ON [OutreachSteps] ([SequenceId]);
+                END TRY BEGIN CATCH END CATCH;
+
+                -- Scoring rules saved with the retired 'qualified' status match nobody:
+                -- no current status contains it. Point them at the agreed stage, which
+                -- also counts every stage after it. Idempotent: a second run finds none.
+                BEGIN TRY
+                    UPDATE [LeadScoringRules]
+                    SET [Field] = 'stageAtLeast', [MatchValue] = 'Contract Pending'
+                    WHERE LOWER([Field]) = 'status' AND LOWER(LTRIM(RTRIM([MatchValue]))) = 'qualified';
+                END TRY BEGIN CATCH END CATCH;
+            ");
+
             // Contracts and their audit trail.
             //
             // Raw idempotent DDL rather than an EF migration, matching how every

@@ -156,15 +156,23 @@ public sealed class LeadAutomation : ILeadAutomation
         return countryHit || industryHit;
     }
 
-    private static List<Guid> Pool(LeadAssignmentRule rule, IReadOnlyList<LeadQueue> queues, IReadOnlyList<Guid> members)
+    /// <summary>
+    /// Who this rule may assign to: its queue, else its own list, else everyone —
+    /// always narrowed to people who can still work a lead (current members who are
+    /// not Viewers). Queue and rule lists are saved ids and go stale: someone who
+    /// left the workspace stayed in the rotation, kept getting every second lead,
+    /// and was sent each lead's name in the response-deadline alert.
+    /// </summary>
+    internal static List<Guid> Pool(LeadAssignmentRule rule, IReadOnlyList<LeadQueue> queues, IReadOnlyList<Guid> members)
     {
+        var eligible = members.ToHashSet();
         if (rule.QueueId != null)
         {
             var queue = queues.FirstOrDefault(q => q.Id == rule.QueueId);
-            var fromQueue = ParseIds(queue?.MemberUserIds);
+            var fromQueue = ParseIds(queue?.MemberUserIds).Where(eligible.Contains).Distinct().ToList();
             if (fromQueue.Count > 0) return fromQueue;
         }
-        var listed = ParseIds(rule.MemberUserIds);
+        var listed = ParseIds(rule.MemberUserIds).Where(eligible.Contains).Distinct().ToList();
         if (listed.Count > 0) return listed;
         return members.Distinct().ToList();
     }

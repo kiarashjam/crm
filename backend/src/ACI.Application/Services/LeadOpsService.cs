@@ -1,6 +1,7 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 
 namespace ACI.Application.Services;
@@ -370,7 +371,11 @@ public sealed class LeadOpsService : ILeadOpsService
             .Select(g =>
             {
                 var list = g.ToList();
-                var qualified = list.Count(l => l.IsConverted || l.Status.Contains("qualif", StringComparison.OrdinalIgnoreCase));
+                // "Qualified" means met and still interested: Contract Pending or later
+                // in the agreed stages. It used to look for "qualif" in the status,
+                // which no current status contains — so Qualified always equalled
+                // Converted, and "Unqualified" would have matched.
+                var qualified = list.Count(l => l.IsConverted || LeadStatusVocabulary.ReachedStage(l.Status, "Contract Pending"));
                 var converted = list.Count(l => l.IsConverted);
                 var responses = list.Where(l => l.FirstResponseAtUtc != null)
                     .Select(l => (l.FirstResponseAtUtc!.Value - l.CreatedAtUtc).TotalHours)
