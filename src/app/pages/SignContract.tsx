@@ -28,6 +28,7 @@ import {
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 /**
  * What happens after they sign.
@@ -144,6 +145,7 @@ export default function SignContract() {
   const { token = '' } = useParams<{ token: string }>();
   const [contract, setContract] = useState<PublicContract | null>(null);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [name, setName] = useState('');

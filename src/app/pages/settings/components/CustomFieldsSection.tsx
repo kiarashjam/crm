@@ -13,6 +13,7 @@ import {
   getFieldDefinitions, createFieldDefinition, deleteFieldDefinition,
   type CustomFieldEntity, type CustomFieldType, type CustomFieldDef,
 } from '@/app/api';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const ENTITIES: { id: CustomFieldEntity; label: string }[] = [
   { id: 'lead', label: 'Leads' },
@@ -34,6 +35,7 @@ export function CustomFieldsSection() {
   const [entity, setEntity] = useState<CustomFieldEntity>('lead');
   const [defs, setDefs] = useState<CustomFieldDef[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [label, setLabel] = useState('');
   const [type, setType] = useState<CustomFieldType>('text');
   const [options, setOptions] = useState('');

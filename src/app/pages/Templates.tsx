@@ -17,6 +17,7 @@ import {
 } from '@/app/api/templates';
 import type { Template, CopyTypeId } from '@/app/api/types';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const categoryIcons: Record<string, typeof Mail> = {
   Sales: Mail,
@@ -72,6 +73,7 @@ const emptyFormData: TemplateFormData = {
 export default function Templates() {
   const [templates, setTemplates] = useState<ExtendedTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [showModal, setShowModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ExtendedTemplate | null>(null);
   const [formData, setFormData] = useState<TemplateFormData>(emptyFormData);

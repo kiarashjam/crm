@@ -52,6 +52,7 @@ import {
   type EventStatus,
   type EventVisibility,
 } from '@/app/api/events';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -124,6 +125,7 @@ function formatCurrency(n: number): string {
 export default function Events() {
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | EventStatus>('All');
   const [dialogOpen, setDialogOpen] = useState(false);

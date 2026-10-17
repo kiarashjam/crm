@@ -89,6 +89,7 @@ import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { getTasks, createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
 import { useOrg } from '@/app/contexts/OrgContext';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 export default function Pipeline() {
   const { isReadOnly } = useOrg();
@@ -96,6 +97,7 @@ export default function Pipeline() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({

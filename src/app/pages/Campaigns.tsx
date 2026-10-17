@@ -54,6 +54,7 @@ import {
   type MemberStatus,
 } from '@/app/api/members';
 import { CHANNELS, CATEGORIES, type CommChannel, type CommCategory } from '@/app/api/communications';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const STATUS_BADGE: Record<Campaign['status'], string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -85,6 +86,7 @@ function formatDateTime(iso: string): string {
 export default function Campaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({

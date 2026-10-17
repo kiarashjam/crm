@@ -40,6 +40,7 @@ import {
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>();
@@ -47,6 +48,7 @@ export default function ContactDetail() {
   const [contact, setContact] = useState<Contact | null>(null);
   useDocumentTitle(contact?.name, 'Contacts');
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [activityForm, setActivityForm] = useState({ type: 'Note', subject: '', body: '' });

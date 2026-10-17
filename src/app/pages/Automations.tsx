@@ -25,6 +25,7 @@ import {
   type AutomationRule, type TriggerType, type ActionType, type AutomationAction,
 } from '@/app/api';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const ACTION_ICON: Record<ActionType, React.ElementType> = {
   create_task: CheckSquare, send_email: Mail, notify: Bell, assign: UserPlus, add_to_sequence: Workflow,
@@ -37,6 +38,7 @@ const newAction = (type: ActionType = 'create_task'): DraftAction => ({ type, co
 export default function Automations() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<AutomationRule | null>(null);
 

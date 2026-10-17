@@ -46,6 +46,7 @@ import {
   type TabVenue,
 } from '@/app/api/tabs';
 import { getMembers, type Member } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -63,6 +64,7 @@ export default function Tabs() {
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [openDialog, setOpenDialog] = useState(false);
   const [addingTo, setAddingTo] = useState<string | null>(null);
 

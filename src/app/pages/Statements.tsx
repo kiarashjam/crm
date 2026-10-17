@@ -21,6 +21,7 @@ import {
 } from '@/app/components/ui/select';
 import { getMembers, type Member } from '@/app/api/members';
 import { getCharges, getPayments, type Charge, type Payment, PAYMENT_METHOD_LABELS } from '@/app/api/charges';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -54,6 +55,7 @@ export default function Statements() {
   const [charges, setCharges] = useState<Charge[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [memberId, setMemberId] = useState<string>('');
   const [cursor, setCursor] = useState<Date>(() => {
     const d = new Date();

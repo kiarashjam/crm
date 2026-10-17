@@ -51,6 +51,7 @@ import {
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 // Common industries for filtering
 const INDUSTRIES = [
@@ -89,6 +90,7 @@ export default function Companies() {
   const [companyStatsMap, setCompanyStatsMap] = useState<Map<string, CompanyStatsItem>>(new Map());
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   

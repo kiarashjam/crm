@@ -52,6 +52,7 @@ import {
 import { createMockStore, mockId } from '@/app/api/mockStore';
 import { getMembers, type Member } from '@/app/api/members';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from '@/app/api/loyalty';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 // Attendees live entirely in the demo store — there's no real-backend endpoint
 // for them yet, but the structure is server-friendly when one shows up.
@@ -174,6 +175,7 @@ export default function EventDetail() {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [addDialog, setAddDialog] = useState(false);
   const [addForm, setAddForm] = useState({
     memberId: '',

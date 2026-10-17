@@ -66,6 +66,24 @@ describe('NextActions', () => {
     expect(screen.getByText(/Record why they dropped out/)).toBeTruthy();
   });
 
+  it('shows the whole lead plan on the lead page', async () => {
+    leads.mockResolvedValue([
+      { id: 'l1', name: 'Ada', email: 'a@example.com', status: 'New', pipelineState: '{}' },
+    ]);
+    quietLists();
+
+    render(
+      <MemoryRouter initialEntries={['/leads/l1']}>
+        <NextActions />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Plan for Ada' })).toBeTruthy();
+    expect(screen.getByText('Meeting')).toBeTruthy();
+    expect(screen.getByText('Deposit')).toBeTruthy();
+    expect(screen.getAllByText('Later').length).toBeGreaterThan(1);
+  });
+
   it('stays hidden when every list fails', async () => {
     leads.mockRejectedValue(new Error('down'));
     deals.mockRejectedValue(new Error('down'));

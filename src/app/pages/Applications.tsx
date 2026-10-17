@@ -50,6 +50,7 @@ import {
   type ApplicationStatus,
 } from '@/app/api/applications';
 import { MEMBER_TIERS, TIER_DUES, type MemberTier } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -106,6 +107,7 @@ function formatDate(iso: string): string {
 export default function Applications() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | ApplicationStatus>('All');
   const [dialogOpen, setDialogOpen] = useState(false);

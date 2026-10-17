@@ -55,6 +55,7 @@ import {
   type LoyaltyReason,
 } from '@/app/api/loyalty';
 import { getMembers, MEMBER_TIERS, type Member, type MemberTier } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const KIND_BADGE: Record<LoyaltyEntryKind, string> = {
   Earned: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -109,6 +110,7 @@ export default function Loyalty() {
   const [entries, setEntries] = useState<LoyaltyEntry[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [kindFilter, setKindFilter] = useState<'All' | LoyaltyEntryKind>('All');
   const [dialogOpen, setDialogOpen] = useState(false);

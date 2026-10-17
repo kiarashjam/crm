@@ -45,6 +45,7 @@ import {
   type VisitVenue,
 } from '@/app/api/visits';
 import { getMembers, type Member } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const VENUE_COLOR: Record<VisitVenue, string> = {
   Dining: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -85,6 +86,7 @@ export default function Visits() {
   const [visits, setVisits] = useState<Visit[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [venueFilter, setVenueFilter] = useState<'All' | VisitVenue>('All');
   const [dialogOpen, setDialogOpen] = useState(false);

@@ -14,6 +14,7 @@ import {
 } from '@/app/api';
 import type { Contact, Company } from '@/app/api/types';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 interface Row { id: string; title: string; subtitle: string }
 
@@ -21,6 +22,7 @@ export default function Duplicates() {
   const [contactGroups, setContactGroups] = useState<DuplicateGroup<Contact>[]>([]);
   const [companyGroups, setCompanyGroups] = useState<DuplicateGroup<Company>[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
 
   const scan = () => {
     setLoading(true);

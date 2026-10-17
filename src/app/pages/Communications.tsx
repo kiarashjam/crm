@@ -48,6 +48,7 @@ import {
   type CommStatus,
 } from '@/app/api/communications';
 import { getMembers, type Member } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const CHANNEL_ICON: Record<CommChannel, React.ElementType> = {
   Email: Mail,
@@ -92,6 +93,7 @@ export default function Communications() {
   const [comms, setComms] = useState<Communication[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [channelFilter, setChannelFilter] = useState<'All' | CommChannel>('All');
   const [categoryFilter, setCategoryFilter] = useState<'All' | CommCategory>('All');

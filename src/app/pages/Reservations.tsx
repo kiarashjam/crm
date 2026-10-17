@@ -53,6 +53,7 @@ import {
   type Resource,
   type ResourceKind,
 } from '@/app/api/reservations';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const KIND_ICON: Record<ResourceKind, React.ElementType> = {
   Dining: Coffee,
@@ -141,6 +142,7 @@ export default function Reservations() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [resourceFilter, setResourceFilter] = useState<string>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | ReservationStatus>('All');

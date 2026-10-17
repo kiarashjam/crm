@@ -32,6 +32,7 @@ import {
 } from '@/app/api/hospitalitySettings';
 import { MEMBER_TIERS, type MemberTier } from '@/app/api/members';
 import { VISIT_VENUES, type VisitVenue } from '@/app/api/visits';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const TIER_COLOR: Record<MemberTier, string> = {
   Bronze: 'from-amber-400 to-amber-600',
@@ -43,6 +44,7 @@ const TIER_COLOR: Record<MemberTier, string> = {
 export default function HospitalitySettings() {
   const [settings, setSettings] = useState<Settings_ | null>(null);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [newBenefit, setNewBenefit] = useState<Record<MemberTier, string>>({

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Copy, Check, Paperclip } from 'lucide-react';
 import { getCurrentUser, isDemoMode } from '@/app/lib/auth';
 import AppHeader from '@/app/components/AppHeader';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { PageTransition } from '@/app/components/PageTransition';
 import {
   getTemplateById,
@@ -39,7 +40,6 @@ import { CopyStatsWidget } from './dashboard/CopyStatsWidget';
 import { RecentActivity } from './dashboard/RecentActivity';
 import { TeamPerformance } from './dashboard/TeamPerformance';
 import { SalesWriter } from './dashboard/SalesWriter';
-import { NextActions } from '@/app/salesAgent/NextActions';
 import type { WriterBrief } from '@/app/salesAgent/writerBrief';
 import { copyTypes, goals } from './dashboard/config';
 import { mostRecent } from './dashboard/dashboardData';
@@ -77,6 +77,7 @@ export default function Dashboard() {
    * different things and only the middle one is a zero.
    */
   const [loaded, setLoaded] = useState({ crm: false, stages: false, team: false, activity: false });
+  usePageLoading(!loaded.crm);
   const [failed, setFailed] = useState({ crm: false, stages: false, team: false, activity: false });
   
   // Recipient selection states
@@ -287,8 +288,6 @@ export default function Dashboard() {
             loaded={loaded.crm}
             failed={failed.crm}
           />
-
-          <NextActions />
 
         {/* Main Content Grid */}
         <div className="space-y-8">

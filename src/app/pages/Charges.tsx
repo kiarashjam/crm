@@ -56,6 +56,7 @@ import {
   type Payment,
 } from '@/app/api/charges';
 import { getMembers, type Member } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const STATUS_BADGE: Record<ChargeStatus, string> = {
   Pending: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
@@ -94,6 +95,7 @@ export default function Charges() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | ChargeStatus>('All');
   const [memberFilter, setMemberFilter] = useState<string>('All');

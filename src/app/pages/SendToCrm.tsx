@@ -9,6 +9,7 @@ import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { getContacts, getDeals, getLeads, sendCopyToCrm } from '@/app/api';
 import type { Contact, Deal, Lead } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 type ObjectType = 'lead' | 'contact' | 'deal';
 
@@ -79,6 +80,7 @@ export default function SendToCrm() {
   const [isSent, setIsSent] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const renamedPreset = useRef(false);

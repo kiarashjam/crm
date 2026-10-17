@@ -16,6 +16,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { Button } from '@/app/components/ui/button';
 import { getEvents, type ClubEvent } from '@/app/api/events';
 import { getReservations, type Reservation } from '@/app/api/reservations';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -50,6 +51,7 @@ export default function Calendar() {
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
 

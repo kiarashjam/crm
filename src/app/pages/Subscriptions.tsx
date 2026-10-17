@@ -50,6 +50,7 @@ import {
   type SubscriptionStatus,
 } from '@/app/api/subscriptions';
 import { getMembers, type Member } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const STATUS_BADGE: Record<SubscriptionStatus, string> = {
   Active: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -82,6 +83,7 @@ export default function Subscriptions() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | SubscriptionStatus>('All');
   const [dialogOpen, setDialogOpen] = useState(false);
