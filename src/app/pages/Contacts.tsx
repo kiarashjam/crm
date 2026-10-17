@@ -52,6 +52,7 @@ import {
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 export default function Contacts() {
   const navigate = useNavigate();
@@ -69,6 +70,7 @@ export default function Contacts() {
   // HP-12: Task visibility on contacts
   const [allTasks, setAllTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   const [dialogOpen, setDialogOpen] = useState(false);

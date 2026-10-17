@@ -29,6 +29,7 @@ import {
 } from '@/app/api';
 import type { Lead } from '@/app/api/types';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const STEP_META: Record<SequenceStepType, { icon: React.ElementType; label: string; tone: string }> = {
   email: { icon: Mail, label: 'Email', tone: 'bg-blue-100 text-blue-700' },
@@ -53,6 +54,7 @@ export default function Sequences() {
   const [sequences, setSequences] = useState<Sequence[]>([]);
   const [enrollmentsBySeq, setEnrollmentsBySeq] = useState<Record<string, SequenceEnrollment[]>>({});
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Sequence | null>(null);
   const [enrollFor, setEnrollFor] = useState<Sequence | null>(null);

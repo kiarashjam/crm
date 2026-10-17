@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import {
-  ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2, ArrowRightCircle,
+  ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
-  MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle, Eye,
+  MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -31,6 +31,7 @@ import {
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
 import { DerivedStatusBadge } from './leads/components/DerivedStatusBadge';
+import { LeadDetailToolbar } from './leads/components/LeadDetailToolbar';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { LeadPipelineTracker } from './leads/components/LeadPipelineTracker';
 import { ContractPanel } from './contracts/ContractPanel';
@@ -53,6 +54,7 @@ import SaveLeadAsContactDialog from '@/app/components/SaveLeadAsContactDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 type Tab = 'activity' | 'tasks' | 'notes';
 
@@ -114,6 +116,7 @@ export default function LeadDetailPage() {
   const [lead, setLead] = useState<Lead | null>(null);
   useDocumentTitle(lead?.name, 'Leads');
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [notFound, setNotFound] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -740,86 +743,19 @@ export default function LeadDetailPage() {
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full" tabIndex={-1}>
-          {/* Sticky toolbar */}
-          <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
-            <div className="flex w-full items-center justify-between gap-3 px-[var(--page-padding)] py-2.5">
-              <div className="flex min-w-0 items-center gap-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate(backUrl)}
-                  className="gap-1.5 text-slate-600 hover:text-slate-900"
-                  aria-label="Back to leads"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span className="hidden sm:inline">Back</span>
-                </Button>
-                <span className="hidden h-5 w-px bg-slate-200 sm:block" />
-                <Link to={backUrl} className="hidden text-sm text-slate-500 hover:text-slate-700 sm:inline">Leads</Link>
-                <span className="hidden text-slate-300 sm:inline">/</span>
-                <span className="truncate text-sm font-medium text-slate-700">{lead.name}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {isReadOnly ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-700">
-                    <Eye className="h-3.5 w-3.5" /> View only
-                  </span>
-                ) : (
-                  <>
-                    {lead.email && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setEmailOpen(true)}
-                        className="gap-1.5 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      >
-                        <Mail className="w-4 h-4" />
-                        <span className="hidden sm:inline">Email</span>
-                      </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={openEdit}
-                      className="gap-1.5 border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
-                    >
-                      <Pencil className="w-4 h-4" />
-                      <span className="hidden sm:inline">Edit</span>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSaveContactOpen(true)}
-                      className="gap-1.5 border-violet-200 bg-white text-violet-700 hover:bg-violet-50 hover:text-violet-800"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                      <span className="hidden sm:inline">Save as contact</span>
-                    </Button>
-                    {!lead.isConverted && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => navigate(`/leads?convertLeadId=${lead.id}`)}
-                        className="gap-1.5 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
-                      >
-                        <ArrowRightCircle className="w-4 h-4" />
-                        <span className="hidden sm:inline">Convert</span>
-                      </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setDeleteOpen(true)}
-                      className="gap-1.5 border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      <span className="hidden sm:inline">Delete</span>
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
+          <LeadDetailToolbar
+            name={lead.name}
+            backUrl={backUrl}
+            readOnly={isReadOnly}
+            hasEmail={Boolean(lead.email)}
+            converted={Boolean(lead.isConverted)}
+            onBack={() => navigate(backUrl)}
+            onEmail={() => setEmailOpen(true)}
+            onEdit={openEdit}
+            onSaveContact={() => setSaveContactOpen(true)}
+            onConvert={() => navigate(`/leads?convertLeadId=${lead.id}`)}
+            onDelete={() => setDeleteOpen(true)}
+          />
 
           {/* Hero — status-tinted gradient backdrop with decorative blurs gives the page depth */}
           <section className="relative isolate overflow-hidden border-b border-slate-200/70 bg-gradient-to-br from-white via-slate-50/60 to-white">

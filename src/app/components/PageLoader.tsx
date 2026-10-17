@@ -1,11 +1,13 @@
 import { PageSkeleton, ContentSkeleton, CenteredLoader } from './PageSkeleton';
+import { usePageLoading } from './LoadingOverlay';
 
 /**
- * Full page loading state for lazy-loaded routes
- * Shows a beautiful skeleton that matches the page layout
+ * Route-level loading. The shared overlay plays the entrance and exit;
+ * this fallback only holds that overlay while the next page is still arriving.
  */
 export function PageLoader() {
-  return <PageSkeleton />;
+  usePageLoading(true);
+  return null;
 }
 
 /**

@@ -88,11 +88,13 @@ import { KanbanColumnComponent } from './tasks/components/KanbanColumn';
 import { TaskGroupSection } from './tasks/components/TaskGroupSection';
 import { TaskDetailModal } from './tasks/components/TaskDetailModal';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);

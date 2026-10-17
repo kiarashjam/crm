@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const CODE_EXAMPLES = {
   curl: `curl -X POST \\
@@ -97,6 +98,7 @@ export default function LeadWebhook() {
   const { currentOrg } = useOrg();
   const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [generating, setGenerating] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [regenerateConfirm, setRegenerateConfirm] = useState(false);

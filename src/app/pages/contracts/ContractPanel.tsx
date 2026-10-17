@@ -31,6 +31,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { cn } from '@/app/components/ui/utils';
 import { ContractProgress } from './ContractProgress';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 /** Fields the seeded template asks for that the CRM cannot know. */
 const ASK_FOR: { key: string; label: string; placeholder: string }[] = [
@@ -143,6 +144,7 @@ interface Props {
 export function ContractPanel({ leadId, leadName, readOnly }: Props) {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [busy, setBusy] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<string | null>(null);

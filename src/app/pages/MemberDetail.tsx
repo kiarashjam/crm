@@ -41,6 +41,7 @@ import { getReservations, type Reservation } from '@/app/api/reservations';
 import { getLoyaltyLedger, type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
 import { getCommunications, type Communication } from '@/app/api/communications';
 import { getGiftCards, type GiftCard } from '@/app/api/giftCards';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -98,6 +99,7 @@ export default function MemberDetail() {
   const [comms, setComms] = useState<Communication[]>([]);
   const [giftCards, setGiftCards] = useState<GiftCard[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [deleting, setDeleting] = useState(false);
 
   const load = async () => {

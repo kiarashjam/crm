@@ -54,6 +54,7 @@ import {
   type GiftCardRedemption,
 } from '@/app/api/giftCards';
 import { getMembers, type Member } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -76,6 +77,7 @@ export default function GiftCards() {
   const [redemptions, setRedemptions] = useState<GiftCardRedemption[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | GiftCardStatus>('All');
   const [issueDialog, setIssueDialog] = useState(false);

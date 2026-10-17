@@ -7,6 +7,7 @@ import { isUsingRealApi } from '@/app/api/apiClient';
 import type { Organization } from '@/app/api/organizations';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const EXAMPLE_JSON = `{
   "name": "Jane Doe",
@@ -20,6 +21,7 @@ const EXAMPLE_JSON = `{
 export function IntegrationsSection({ currentOrg }: { currentOrg: Organization | null }) {
   const [info, setInfo] = useState<WebhookInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
 

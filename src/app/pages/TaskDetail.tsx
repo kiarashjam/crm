@@ -55,6 +55,7 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { cn } from '@/app/components/ui/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const STATUS_OPTIONS: { value: TaskStatusType; label: string; icon: typeof Circle; color: string }[] = [
   { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-400' },
@@ -87,6 +88,7 @@ export default function TaskDetail() {
   const [task, setTask] = useState<TaskItem | null>(null);
   useDocumentTitle(task?.title, 'Tasks');
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
 
   // Edit mode
   const [editing, setEditing] = useState(false);

@@ -51,12 +51,14 @@ import { cn } from '@/app/components/ui/utils';
 import { getCurrencySymbol, UrgencyBadge, getDaysUntilClose, STAGE_COLORS } from './pipeline/DealCard';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 export default function DealDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [deal, setDeal] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
 
   // Activities
   const [activities, setActivities] = useState<Activity[]>([]);

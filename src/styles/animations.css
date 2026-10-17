@@ -1,3 +1,20 @@
+@keyframes cadence-loader-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cadence-loader-spin,
+.cadence-loader-spin-reverse {
+  transform-origin: 36px 36px;
+}
+
+.cadence-loader-spin {
+  animation: cadence-loader-spin 0.9s linear infinite;
+}
+
+.cadence-loader-spin-reverse {
+  animation: cadence-loader-spin 1.35s linear infinite reverse;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;

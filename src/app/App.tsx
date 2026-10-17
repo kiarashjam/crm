@@ -10,6 +10,7 @@ import { QueryProvider } from '@/app/providers';
 import { OrgProvider, useOrgOptional } from '@/app/contexts/OrgContext';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import { isUsingRealApi } from '@/app/api/apiClient';
+import { PageLoadingProvider } from '@/app/components/LoadingOverlay';
 
 // Eager-loaded pages (critical path)
 import Homepage from '@/app/pages/Homepage';
@@ -101,6 +102,7 @@ export default function App() {
       <ThemeProvider>
         <QueryProvider>
           <BrowserRouter>
+            <PageLoadingProvider>
             <OrgProvider>
               <SkipLink />
               <Toaster position="top-center" richColors closeButton />
@@ -198,6 +200,7 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </OrgProvider>
+            </PageLoadingProvider>
           </BrowserRouter>
         </QueryProvider>
       </ThemeProvider>

@@ -54,6 +54,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 // Role mapping
 const ROLES = {
@@ -323,6 +324,7 @@ export default function Team() {
   const [pendingInvites, setPendingInvites] = useState<InviteDto[]>([]);
   const [joinRequests, setJoinRequests] = useState<JoinRequestDto[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [selectedMember, setSelectedMember] = useState<OrgMemberDto | null>(null);

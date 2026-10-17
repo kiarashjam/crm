@@ -96,6 +96,7 @@ import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignment
 import { parsePipeline, pipelineBadge } from './leads/leadPipeline';
 import { matchesLeadSearch, leadInitials } from './leads/leadText';
 import type { LeadForm } from './leads/types';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 /** Fallback row style when activity type is unknown (matches `note` in config). */
 const DEFAULT_ACTIVITY_TYPE = ACTIVITY_TYPES[3]!;
@@ -219,6 +220,7 @@ export default function Leads() {
   const [statusesUnavailable, setStatusesUnavailable] = useState(false);
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   

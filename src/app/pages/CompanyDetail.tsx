@@ -27,6 +27,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { getCurrencySymbol } from './pipeline/DealCard';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 type CompanyRaw = Company & Record<string, unknown>;
 
@@ -36,6 +37,7 @@ export default function CompanyDetail() {
   const [company, setCompany] = useState<Company | null>(null);
   useDocumentTitle(company?.name, 'Companies');
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [deals, setDeals] = useState<Deal[]>([]);

@@ -46,6 +46,7 @@ import {
   type DonationCause,
 } from '@/app/api/donations';
 import { getMembers, type Member } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const CAUSE_COLOR: Record<DonationCause, string> = {
   StaffSupport: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -77,6 +78,7 @@ export default function Donations() {
   const [donations, setDonations] = useState<Donation[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [causeFilter, setCauseFilter] = useState<'All' | DonationCause>('All');
   const [dialogOpen, setDialogOpen] = useState(false);

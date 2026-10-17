@@ -49,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { WriteOnly } from '@/app/components/WriteOnly';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const ACTIVITY_TYPES = [
   { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-600', borderColor: 'border-emerald-200' },
@@ -106,6 +107,7 @@ export default function Activities() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [filter, setFilter] = useState<ActivityFilter>('all');
   const [filterContactId, setFilterContactId] = useState('');
   const [filterDealId, setFilterDealId] = useState('');

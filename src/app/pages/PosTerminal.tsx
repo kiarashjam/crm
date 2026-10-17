@@ -51,6 +51,7 @@ import { checkIn, VISIT_VENUES, type VisitVenue } from '@/app/api/visits';
 import { openTab, TAB_VENUES, VENUE_LABELS as TAB_VENUE_LABELS, type TabVenue } from '@/app/api/tabs';
 import { createCharge, CHARGE_KINDS, type ChargeKind } from '@/app/api/charges';
 import { getGiftCards, redeemGiftCard, type GiftCard } from '@/app/api/giftCards';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -70,6 +71,7 @@ export default function PosTerminal() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Member | null>(null);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [busy, setBusy] = useState(false);
   const [actionDialog, setActionDialog] = useState<
     null | 'visit' | 'tab' | 'charge' | 'redeemGiftCard' | 'redeemPoints'

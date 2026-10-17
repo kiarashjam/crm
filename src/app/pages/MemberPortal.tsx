@@ -40,6 +40,7 @@ import { getReservations, type Reservation } from '@/app/api/reservations';
 import { getLoyaltyLedger, type LoyaltyEntry, POINTS_PER_DOLLAR } from '@/app/api/loyalty';
 import { getEvents, type ClubEvent } from '@/app/api/events';
 import { getVisits, type Visit } from '@/app/api/visits';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const TIER_BAR: Record<MemberTier, string> = {
   Bronze: 'from-amber-300 to-amber-500',
@@ -87,6 +88,7 @@ export default function MemberPortal() {
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
 
   const load = async () => {
     try {

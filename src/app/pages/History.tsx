@@ -10,6 +10,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getCopyHistory } from '@/app/api';
 import type { CopyHistoryItem } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const typeIcons: Record<string, typeof Mail> = {
   'Sales Email': Mail,
@@ -38,6 +39,7 @@ export default function History() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [items, setItems] = useState<CopyHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigate = useNavigate();
 

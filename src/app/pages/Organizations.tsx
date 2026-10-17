@@ -37,6 +37,7 @@ import {
 import { isUsingRealApi } from '@/app/api/apiClient';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { getCurrentUser } from '@/app/lib/auth';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import DemoBanner from '@/app/components/DemoBanner';
@@ -140,6 +141,7 @@ export default function Organizations() {
     organizations, pendingInvites, refreshOrgs, loading, hasFetched,
     currentOrgId, setCurrentOrg,
   } = useOrg();
+  usePageLoading(!hasFetched || loading);
 
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);

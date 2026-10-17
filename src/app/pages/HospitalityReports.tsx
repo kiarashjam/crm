@@ -23,6 +23,7 @@ import { getCharges, type Charge, type ChargeKind } from '@/app/api/charges';
 import { getVisits, type VisitVenue } from '@/app/api/visits';
 import { getLoyaltyLedger } from '@/app/api/loyalty';
 import { getEvents } from '@/app/api/events';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -66,6 +67,7 @@ export default function HospitalityReports() {
   const [ledger, setLedger] = useState<Awaited<ReturnType<typeof getLoyaltyLedger>>>([]);
   const [events, setEvents] = useState<Awaited<ReturnType<typeof getEvents>>>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
 
   const load = async () => {
     try {

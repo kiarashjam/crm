@@ -32,6 +32,7 @@ import { getApplications, type Application } from '@/app/api/applications';
 import { getCharges, type Charge } from '@/app/api/charges';
 import { getSubscriptions, type Subscription } from '@/app/api/subscriptions';
 import { getTabs, VENUE_LABELS as TAB_VENUE_LABELS, type OpenTab } from '@/app/api/tabs';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const day = 86_400_000;
 
@@ -96,6 +97,7 @@ export default function HospitalityDashboard() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
 
   const load = async () => {
     try {

@@ -54,6 +54,7 @@ import {
   type MemberStatus,
   type DuesFrequency,
 } from '@/app/api/members';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -118,6 +119,7 @@ function formatCurrency(n: number): string {
 export default function Members() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [search, setSearch] = useState('');
   const [tierFilter, setTierFilter] = useState<'All' | MemberTier>('All');
   const [statusFilter, setStatusFilter] = useState<'All' | MemberStatus>('All');

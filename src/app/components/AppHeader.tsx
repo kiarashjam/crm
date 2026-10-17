@@ -29,6 +29,7 @@ import { Button } from '@/app/components/ui/button';
 import DemoBanner from './DemoBanner';
 import ReadOnlyBanner from './ReadOnlyBanner';
 import { AppSideNav } from './AppSideNav';
+import { NextActions } from '@/app/salesAgent/NextActions';
 
 // HP-9: Global search bar component
 function GlobalSearchBar() {
@@ -380,6 +381,9 @@ export default function AppHeader() {
     </header>
     <DemoBanner />
     <ReadOnlyBanner />
+    <div className="w-full px-[var(--page-padding)] pt-4">
+      <NextActions />
+    </div>
     </>
   );
 }

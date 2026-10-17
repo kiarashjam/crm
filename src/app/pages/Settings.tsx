@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
@@ -94,6 +95,7 @@ export default function Settings() {
 
   // Settings state
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  usePageLoading(settings === null);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 

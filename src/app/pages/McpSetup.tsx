@@ -20,6 +20,7 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { buildMcpConfig, exampleQuestions, isReachableByClaude, mcpServerName, type McpClient } from './mcp/config';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 function CopyRow({
   label,
@@ -48,6 +49,7 @@ export function ClaudeSection() {
   const { currentOrg } = useOrg();
   const [info, setInfo] = useState<WebhookInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [generating, setGenerating] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [regenerateConfirm, setRegenerateConfirm] = useState(false);

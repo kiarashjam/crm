@@ -10,6 +10,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import PageHero from '@/app/components/PageHero';
 import { cn } from '@/app/components/ui/utils';
 import { getAuditLog, type AuditEvent, type AuditEntity, type AuditAction } from '@/app/api';
+import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const ACTION_META: Record<AuditAction, { icon: React.ElementType; tone: string }> = {
   created: { icon: Plus, tone: 'bg-emerald-100 text-emerald-600' },
@@ -47,6 +48,7 @@ function relTime(iso: string): string {
 export default function AuditLog() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  usePageLoading(loading);
   const [filter, setFilter] = useState<AuditEntity | 'all'>('all');
 
   useEffect(() => {
