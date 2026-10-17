@@ -9,6 +9,8 @@ import {
   MessageSquarePlus, UserCircle, ChevronDown, AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ApiError } from '@/app/api/apiClient';
+import { createLeadOrOfferDuplicate } from './leads/createLeadOrOfferDuplicate';
 import AppHeader from '@/app/components/AppHeader';
 import { PageEnter, Reveal } from '@/app/components/motion/PageEnter';
 import { LeadsListSkeleton } from './leads/components/LeadsListSkeleton';
@@ -20,7 +22,6 @@ import {
   getLeadsPaged,
   getLeadStats,
   getLeadById,
-  createLead,
   updateLead,
   assignLead,
   deleteLead,
@@ -220,7 +221,14 @@ export default function Leads() {
   // can say which of the two it is.
   const [statusesUnavailable, setStatusesUnavailable] = useState(false);
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
+  // `loading` is only the first load of a workspace: it blanks the list for the
+  // skeleton and holds the full-page overlay. Every later fetch (each debounced
+  // search keystroke, a page change, a save) used to do the same — the page
+  // dimmed and the list vanished while typing. Those now keep the list on screen
+  // and set `refreshing` instead.
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const loadedForOrgRef = useRef<string | null | undefined>(undefined);
   usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
@@ -628,7 +636,9 @@ export default function Leads() {
   const lookupCacheRef = useRef<{ orgId: string | null; statuses: LeadStatus[]; sources: LeadSource[] } | null>(null);
 
   const fetchLeads = useCallback(async () => {
-    setLoading(true);
+    const first = loadedForOrgRef.current !== currentOrgId;
+    if (first) setLoading(true);
+    else setRefreshing(true);
     try {
       // Statuses and sources rarely change, so keep them for this org and load
       // them in parallel with the lead page instead of blocking the list on them.
@@ -734,10 +744,12 @@ export default function Leads() {
 
       // Interactions fill in after the cards are visible.
       void loadPageActivities(pageItems.map((l) => l.id));
+      loadedForOrgRef.current = currentOrgId;
     } catch {
       toast.error(messages.errors.loadFailed);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [
     currentOrgId,
@@ -966,21 +978,32 @@ export default function Leads() {
     status?: string;
     description?: string;
   }) => {
-    const created = await createLead({
-      name: input.name,
-      email: input.email,
-      phone: input.phone,
-      companyId: input.companyId && isValidGuid(input.companyId) ? input.companyId : undefined,
-      source: input.source,
-      status: input.status,
-      description: input.description,
-    });
-    if (!created) {
-      toast.error('Failed to create lead');
-      return;
+    const onAdded = async () => {
+      toast.success('Lead added');
+      await fetchLeads();
+    };
+    try {
+      const created = await createLeadOrOfferDuplicate({
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        companyId: input.companyId && isValidGuid(input.companyId) ? input.companyId : undefined,
+        source: input.source,
+        status: input.status,
+        description: input.description,
+      }, onAdded);
+      // Keep the dialog open on a duplicate, so "Create anyway" or a new email are both one step away.
+      if (created === 'offered') return false;
+      if (!created) {
+        toast.error('Failed to create lead');
+        return false;
+      }
+      await onAdded();
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to create lead');
+      return false;
     }
-    toast.success('Lead added');
-    await fetchLeads();
   };
 
   const openConvert = (lead: Lead) => {
@@ -1257,12 +1280,22 @@ export default function Leads() {
     }
   };
 
-  const runBulkApply = async (patch: { status?: string; source?: string; assignedToUserId?: string }) => {
-    if (!patch.status && !patch.source && !patch.assignedToUserId) return;
-    const result = await bulkUpdateLeads({ ids: Array.from(selectedIds), ...patch });
-    toast.success(`Updated ${result.updated}`);
-    clearSelection();
-    await fetchLeads();
+  const runBulkApply = async (patch: { source?: string; assignedToUserId?: string }) => {
+    if (!patch.source && !patch.assignedToUserId) return;
+    try {
+      const result = await bulkUpdateLeads({ ids: Array.from(selectedIds), ...patch });
+      // Converted leads are skipped by the server; say so rather than letting the
+      // count quietly fall short of the selection.
+      const skipped = result.missing > 0 ? ` ${result.missing} skipped (converted, or no longer available).` : '';
+      if (result.updated > 0) toast.success(`Updated ${result.updated} lead${result.updated === 1 ? '' : 's'}.${skipped}`);
+      else toast.warning(`Nothing was updated.${skipped}`);
+      clearSelection();
+      await fetchLeads();
+    } catch (err) {
+      // There was no catch at all: a failure was an unhandled rejection and the
+      // user saw nothing happen.
+      toast.error(err instanceof Error && err.message ? err.message : 'Those leads could not be updated.');
+    }
   };
 
   const handleLeadUpdate = (updatedLead: Lead) => {
@@ -1350,7 +1383,12 @@ export default function Leads() {
           toast.error(messages.errors.generic);
         }
       } else {
-        const created = await createLead({
+        const onCreated = async () => {
+          toast.success(messages.success.leadCreated);
+          setDialogOpen(false);
+          await fetchLeads();
+        };
+        const created = await createLeadOrOfferDuplicate({
           name: form.name.trim(),
           email: form.email.trim(),
           phone: form.phone.trim() || undefined,
@@ -1362,17 +1400,14 @@ export default function Leads() {
           leadScore: validLeadScore,
           description: form.description.trim() || undefined,
           lifecycleStage: form.lifecycleStage || undefined,
-        });
-        if (created) {
-          toast.success(messages.success.leadCreated);
-          setDialogOpen(false);
-          await fetchLeads();
-        } else {
-          toast.error(messages.errors.generic);
-        }
+        }, onCreated);
+        if (created === 'offered') return;
+        if (created) await onCreated();
+        else toast.error(messages.errors.generic);
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      // The server's reason when it gave one (e.g. "An open lead with this email already exists").
+      toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
     } finally {
       setSaving(false);
     }
@@ -1456,7 +1491,7 @@ export default function Leads() {
                 <div>
                   <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Leads</h1>
                   <p className="text-slate-400 mt-1">
-                    {loading ? 'Loading…' : 'Manage and qualify your sales leads'}
+                    {loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage and qualify your sales leads'}
                   </p>
                 </div>
               </div>

@@ -6,6 +6,7 @@ import {
   MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { ApiError } from '@/app/api/apiClient';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
@@ -311,7 +312,7 @@ export default function LeadDetailPage() {
       return true;
     } catch (err) {
       console.error('updateLead failed', err);
-      toast.error('Failed to save');
+      toast.error(err instanceof ApiError && err.message ? err.message : 'Failed to save');
       return false;
     }
   }, [lead]);
@@ -678,8 +679,9 @@ export default function LeadDetailPage() {
         .catch(() => { /* non-fatal */ });
       toast.success(messages.success.leadUpdated);
       setEditOpen(false);
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      // The server's reason when it gave one — e.g. another open lead already has this email.
+      toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
     } finally {
       setSavingEdit(false);
     }
@@ -1213,7 +1215,7 @@ export default function LeadDetailPage() {
                         {lead.enrichedDomain ? ` · company from ${lead.enrichedDomain}` : ''}
                       </p>
                     )}
-                    <LeadStatusTimeline leadId={lead.id} />
+                    <LeadStatusTimeline leadId={lead.id} status={lead.status} />
                     <SidebarSelectField label="Company" icon={<Building2 className="w-3.5 h-3.5 text-slate-400" />}>
                       <Select value={lead.companyId ?? ''} disabled={isReadOnly} onValueChange={(v) => setCompanyId(v === '__none__' ? '' : v)}>
                         <SelectTrigger className="h-9 text-sm">

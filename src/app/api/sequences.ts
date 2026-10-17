@@ -5,7 +5,7 @@
 // actually fires each step; in demo mode we persist sequences + enrollments
 // locally and track progress so the UI is fully exercisable offline.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { ApiError, authFetch, authFetchJson, isUsingRealApi } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -104,19 +104,43 @@ const enrollmentStore = createMockStore<SequenceEnrollment>({
 function nowIso() { return new Date().toISOString(); }
 
 // ---- Sequences CRUD ----
-// Each call tries the backend, then falls back to the local store so these
-// features work even when the API doesn't implement the endpoint yet.
+// The live API, or the local store in demo mode — never one after the other.
+// These used to fall back to the local store whenever the API call failed, so a
+// refused enrolment (the lead asked not to be contacted, say) or a save that hit a
+// network error was written to this browser instead and reported as a success:
+// the toast said "enrolled", the row appeared, and nothing was ever sent.
+
+function liveOrDemo<T>(live: () => Promise<T>, demo: () => Promise<T>): Promise<T> {
+  return isUsingRealApi() ? live() : demo();
+}
+
+/** A write whose response has no body: reject unless the server accepted it. */
+async function sendOrThrow(path: string, init: RequestInit): Promise<true> {
+  const res = await authFetch(path, init);
+  if (res.ok) return true;
+  let message = 'That could not be saved.';
+  try {
+    const problem = (await res.json()) as { detail?: string; title?: string };
+    message = problem.detail || problem.title || message;
+  } catch {
+    // no problem body
+  }
+  throw new ApiError(message, res.status);
+}
 
 export async function getSequences(): Promise<Sequence[]> {
-  return apiWithFallback(
+  return liveOrDemo(
     async () => { const res = await authFetchJson<Sequence[]>('/api/sequences'); return Array.isArray(res) ? res : []; },
     async () => { await delay(150); return [...sequenceStore.list()].sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc)); },
   );
 }
 
 export async function getSequence(id: string): Promise<Sequence | null> {
-  return apiWithFallback(
-    () => authFetchJson<Sequence>(`/api/sequences/${id}`),
+  return liveOrDemo(
+    () => authFetchJson<Sequence>(`/api/sequences/${id}`).catch((err: unknown) => {
+      if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
+    }),
     async () => { await delay(100); return sequenceStore.byId(id) ?? null; },
   );
 }
@@ -129,7 +153,7 @@ export interface SequenceInput {
 }
 
 export async function createSequence(input: SequenceInput): Promise<Sequence | null> {
-  return apiWithFallback(
+  return liveOrDemo(
     () => authFetchJson<Sequence>('/api/sequences', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
       await delay(200);
@@ -146,7 +170,7 @@ export async function createSequence(input: SequenceInput): Promise<Sequence | n
 }
 
 export async function updateSequence(id: string, input: Partial<SequenceInput>): Promise<Sequence | null> {
-  return apiWithFallback(
+  return liveOrDemo(
     () => authFetchJson<Sequence>(`/api/sequences/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
     async () => {
       await delay(200);
@@ -158,8 +182,8 @@ export async function updateSequence(id: string, input: Partial<SequenceInput>):
 }
 
 export async function deleteSequence(id: string): Promise<boolean> {
-  return apiWithFallback(
-    async () => { const res = await authFetch(`/api/sequences/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+  return liveOrDemo(
+    () => sendOrThrow(`/api/sequences/${id}`, { method: 'DELETE' }),
     async () => { await delay(150); return sequenceStore.remove(id); },
   );
 }
@@ -167,7 +191,7 @@ export async function deleteSequence(id: string): Promise<boolean> {
 // ---- Enrollments ----
 
 export async function getEnrollments(sequenceId?: string): Promise<SequenceEnrollment[]> {
-  return apiWithFallback(
+  return liveOrDemo(
     async () => {
       const q = sequenceId ? `?sequenceId=${sequenceId}` : '';
       const res = await authFetchJson<SequenceEnrollment[]>(`/api/sequences/enrollments${q}`);
@@ -186,7 +210,7 @@ export interface EnrollInput {
 }
 
 export async function enrollInSequence(input: EnrollInput): Promise<SequenceEnrollment | null> {
-  return apiWithFallback(
+  return liveOrDemo(
     () => authFetchJson<SequenceEnrollment>('/api/sequences/enroll', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
       await delay(180);
@@ -209,15 +233,15 @@ export async function enrollInSequence(input: EnrollInput): Promise<SequenceEnro
 }
 
 export async function setEnrollmentStatus(id: string, status: EnrollmentStatus): Promise<boolean> {
-  return apiWithFallback(
-    async () => { const res = await authFetch(`/api/sequences/enrollments/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); if (!res.ok) throw new Error('failed'); return true; },
+  return liveOrDemo(
+    () => sendOrThrow(`/api/sequences/enrollments/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
     async () => { await delay(100); return enrollmentStore.update(id, { status }) != null; },
   );
 }
 
 export async function unenroll(id: string): Promise<boolean> {
-  return apiWithFallback(
-    async () => { const res = await authFetch(`/api/sequences/enrollments/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+  return liveOrDemo(
+    () => sendOrThrow(`/api/sequences/enrollments/${id}`, { method: 'DELETE' }),
     async () => { await delay(100); return enrollmentStore.remove(id); },
   );
 }

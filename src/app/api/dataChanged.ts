@@ -28,11 +28,15 @@ export function onDataChanged(listener: () => void): () => void {
 
 /**
  * Writes that change no CRM record: signing in and security, notification
- * read-marks, the AI writer's drafts, personal settings. Announcing them would
- * make every listener re-read for nothing — the Settings page, for one, POSTs
- * to /api/auth/2fa/setup every time it opens.
+ * read-marks, the AI writer's drafts, personal settings, and lead routing setup
+ * (rules, queues, territories, deadline, forms — they shape future leads, not
+ * today's). Announcing them would make every listener re-read for nothing — the
+ * Settings page, for one, POSTs to /api/auth/2fa/setup every time it opens.
  */
-const NOT_RECORD_WRITES = ['/api/auth/', '/api/notifications', '/api/copy', '/api/settings'];
+const NOT_RECORD_WRITES = ['/api/auth/', '/api/notifications', '/api/copy', '/api/settings', '/api/lead-ops/'];
+
+/** …except these, under an excluded prefix, which do change records. */
+const RECORD_WRITES_UNDER_EXCLUDED = ['/api/lead-ops/bulk'];
 
 /** Whether a successful request with this method and path changed records. */
 export function changesRecords(method: string | undefined, path: string): boolean {
@@ -45,5 +49,6 @@ export function changesRecords(method: string | undefined, path: string): boolea
     // Not a URL after all; use it as given.
   }
   const lower = pathname.toLowerCase();
+  if (RECORD_WRITES_UNDER_EXCLUDED.some((prefix) => lower.startsWith(prefix))) return true;
   return !NOT_RECORD_WRITES.some((prefix) => lower.startsWith(prefix));
 }

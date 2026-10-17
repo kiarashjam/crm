@@ -257,9 +257,11 @@ export default function LeadImport() {
           result.failed++;
           result.errors.push({ row: i + 2, name: lead.name, error: 'Failed to create lead' });
         }
-      } catch {
+      } catch (err) {
         result.failed++;
-        result.errors.push({ row: i + 2, name: lead?.name || '(empty)', error: 'API error' });
+        // Say why — most often the email already belongs to an open lead, which is
+        // skipped rather than imported a second time.
+        result.errors.push({ row: i + 2, name: lead?.name || '(empty)', error: err instanceof Error && err.message ? err.message : 'API error' });
       }
       
       setImportProgress(Math.round(((i + 1) / mappedData.length) * 100));

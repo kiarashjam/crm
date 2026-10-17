@@ -24,6 +24,15 @@ describe('which writes count as a record change', () => {
     expect(changesRecords('POST', '/api/copy/generate')).toBe(false);
     expect(changesRecords('PUT', '/api/settings')).toBe(false);
   });
+
+  it('lead routing setup does not, but a bulk edit of leads does', () => {
+    // Adding a queue on the routing page used to make the sales agent re-read
+    // all eight of its lists.
+    expect(changesRecords('POST', '/api/lead-ops/queues')).toBe(false);
+    expect(changesRecords('PUT', '/api/lead-ops/scoring')).toBe(false);
+    expect(changesRecords('DELETE', '/api/lead-ops/assignment/1')).toBe(false);
+    expect(changesRecords('POST', '/api/lead-ops/bulk')).toBe(true);
+  });
 });
 
 describe('the signal', () => {

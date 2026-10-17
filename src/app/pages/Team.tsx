@@ -348,7 +348,12 @@ export default function Team() {
   const isAdmin = isOrgAdmin(currentOrg);
 
   const loadData = async () => {
-    if (!currentOrgId) return;
+    // With no workspace there is nothing to load — this returned with `loading`
+    // still true, and the full-page overlay never went away.
+    if (!currentOrgId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       // Every member can list org members. Pending invites and join requests
