@@ -15,6 +15,7 @@ public class LeadService : ILeadService
     private readonly ICompanyRepository _companyRepository;
     private readonly IContactRepository _contactRepository;
     private readonly IDealRepository _dealRepository;
+    private readonly ILeadAutomation _automation;
     private readonly ILogger<LeadService> _logger;
 
     public LeadService(
@@ -22,12 +23,14 @@ public class LeadService : ILeadService
         ICompanyRepository companyRepository, 
         IContactRepository contactRepository, 
         IDealRepository dealRepository,
+        ILeadAutomation automation,
         ILogger<LeadService> logger)
     {
         _repository = repository;
         _companyRepository = companyRepository;
         _contactRepository = contactRepository;
         _dealRepository = dealRepository;
+        _automation = automation;
         _logger = logger;
     }
 
@@ -162,6 +165,17 @@ public class LeadService : ILeadService
             return DomainErrors.Lead.EmailInvalid;
         }
 
+        if (!request.AllowDuplicate)
+        {
+            var duplicate = await _automation.FindOpenDuplicateAsync(organizationId, request.Email, null, ct);
+            if (duplicate != null)
+            {
+                return new Error(
+                    "Lead.Duplicate",
+                    $"An open lead with this email already exists ({duplicate.Name}).");
+            }
+        }
+
         var entity = new Lead
         {
             Id = Guid.NewGuid(),
@@ -176,13 +190,20 @@ public class LeadService : ILeadService
             LeadSourceId = request.LeadSourceId,
             LeadStatusId = request.LeadStatusId,
             LeadScore = request.LeadScore,
+            ScoreIsManual = request.LeadScore.HasValue,
             LastContactedAt = request.LastContactedAt,
             Description = request.Description?.Trim(),
             LifecycleStage = request.LifecycleStage?.Trim(),
+            JobTitle = request.JobTitle?.Trim(),
+            Country = request.Country?.Trim(),
+            Industry = request.Industry?.Trim(),
+            CompanySize = request.CompanySize?.Trim(),
             CreatedAtUtc = DateTime.UtcNow,
         };
 
+        await _automation.PrepareNewAsync(entity, ct);
         entity = await _repository.AddAsync(entity, ct);
+        await _automation.RecordStatusAsync(entity, null, entity.Status, userId, ct);
         await _contactRepository.EnsurePersonContactAsync(entity, ct);
 
         _logger.LogInformation(
@@ -229,6 +250,15 @@ public class LeadService : ILeadService
             return DomainErrors.Lead.EmailInvalid;
         }
 
+        if (request.Email != null && !request.Email.Trim().Equals(existing.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            var duplicate = await _automation.FindOpenDuplicateAsync(organizationId, request.Email, existing.Id, ct);
+            if (duplicate != null)
+                return new Error("Lead.Duplicate", $"An open lead with this email already exists ({duplicate.Name}).");
+        }
+
+        var previousStatus = existing.Status;
+
         // Apply partial updates
         if (request.Name != null) existing.Name = request.Name.Trim();
         if (request.Email != null) existing.Email = request.Email.Trim();
@@ -238,11 +268,22 @@ public class LeadService : ILeadService
         if (request.Status != null) existing.Status = request.Status.Trim();
         if (request.LeadSourceId.HasValue) existing.LeadSourceId = request.LeadSourceId;
         if (request.LeadStatusId.HasValue) existing.LeadStatusId = request.LeadStatusId;
-        if (request.LeadScore.HasValue) existing.LeadScore = request.LeadScore;
+        if (request.LeadScore.HasValue)
+        {
+            existing.LeadScore = request.LeadScore;
+            existing.ScoreIsManual = true;
+        }
         if (request.LastContactedAt.HasValue) existing.LastContactedAt = request.LastContactedAt;
         if (request.Description != null) existing.Description = request.Description.Trim();
         if (request.LifecycleStage != null) existing.LifecycleStage = request.LifecycleStage.Trim();
         if (request.PipelineState != null) existing.PipelineState = request.PipelineState;
+        if (request.JobTitle != null) existing.JobTitle = request.JobTitle.Trim();
+        if (request.Country != null) existing.Country = request.Country.Trim();
+        if (request.Industry != null) existing.Industry = request.Industry.Trim();
+        if (request.CompanySize != null) existing.CompanySize = request.CompanySize.Trim();
+
+        if (!existing.ScoreIsManual)
+            await _automation.RescoreAsync(existing, ct);
 
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
@@ -258,6 +299,8 @@ public class LeadService : ILeadService
         }
 
         await _contactRepository.EnsurePersonContactAsync(updated, ct);
+        if (!string.Equals(previousStatus, updated.Status, StringComparison.Ordinal))
+            await _automation.RecordStatusAsync(updated, previousStatus, updated.Status, userId, ct);
 
         _logger.LogInformation(
             "Lead {LeadId} updated successfully",
@@ -542,5 +585,19 @@ public class LeadService : ILeadService
             e.CreatedAtUtc,
             e.AssignedToUserId,
             e.AssignedToUser?.Name,
-            e.PipelineState);
+            e.PipelineState,
+            e.JobTitle,
+            e.Country,
+            e.Industry,
+            e.CompanySize,
+            e.FirstResponseAtUtc,
+            e.FirstResponseDueAtUtc,
+            e.SlaBreached,
+            e.QueueId,
+            null,
+            e.TerritoryId,
+            null,
+            e.EmailOpenCount,
+            e.EnrichedDomain,
+            e.ScoreIsManual);
 }

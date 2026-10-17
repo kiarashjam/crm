@@ -36,6 +36,18 @@ type LeadRaw = {
   assignedToUserId?: string | null;
   assignedToName?: string | null;
   pipelineState?: string | null;
+  jobTitle?: string | null;
+  country?: string | null;
+  industry?: string | null;
+  companySize?: string | null;
+  firstResponseAtUtc?: string | null;
+  firstResponseDueAtUtc?: string | null;
+  slaBreached?: boolean;
+  queueId?: string | null;
+  territoryId?: string | null;
+  emailOpenCount?: number;
+  enrichedDomain?: string | null;
+  scoreIsManual?: boolean;
 };
 
 function mapLead(d: LeadRaw): Lead {
@@ -60,6 +72,18 @@ function mapLead(d: LeadRaw): Lead {
     assignedToId: d.assignedToUserId ?? undefined,
     assignedToName: d.assignedToName ?? undefined,
     pipelineState: d.pipelineState ?? undefined,
+    jobTitle: d.jobTitle ?? undefined,
+    country: d.country ?? undefined,
+    industry: d.industry ?? undefined,
+    companySize: d.companySize ?? undefined,
+    firstResponseAtUtc: d.firstResponseAtUtc ?? undefined,
+    firstResponseDueAtUtc: d.firstResponseDueAtUtc ?? undefined,
+    slaBreached: d.slaBreached ?? false,
+    queueId: d.queueId ?? undefined,
+    territoryId: d.territoryId ?? undefined,
+    emailOpenCount: d.emailOpenCount ?? 0,
+    enrichedDomain: d.enrichedDomain ?? undefined,
+    scoreIsManual: d.scoreIsManual ?? false,
   };
 }
 

@@ -159,6 +159,9 @@ public static class DomainErrors
         
         public static readonly Error InvalidSource = new(
             "Lead.InvalidSource", "The lead source is invalid");
+
+        public static readonly Error Duplicate = new(
+            "Lead.Duplicate", "An open lead with this email already exists");
     }
 
     /// <summary>

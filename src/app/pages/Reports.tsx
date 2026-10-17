@@ -16,6 +16,7 @@ import { cn } from '@/app/components/ui/utils';
 import { getDeals, getLeads, getActivities } from '@/app/api';
 import type { Deal, Lead, Activity } from '@/app/api/types';
 import { SalesTrackerReport } from './reports/SalesTrackerReport';
+import { ConversionReportPanel } from './reports/ConversionReportPanel';
 import { SectionHead, Kpi, Panel, NoData, BarList, Funnel } from './reports/ReportUI';
 import {
   summariseDeals, summariseLeads, statusFunnel, groupSum, topNWithOther,
@@ -392,6 +393,8 @@ export default function Reports() {
               )}
             </Panel>
           </Reveal>
+
+          <ConversionReportPanel />
 
           <p className={cn(
             'mt-8 rounded-2xl border border-slate-200 bg-white/70 px-4 py-3',

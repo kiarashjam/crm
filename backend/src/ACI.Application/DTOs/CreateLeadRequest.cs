@@ -79,4 +79,19 @@ public record CreateLeadRequest
     /// </summary>
     [StringLength(50, ErrorMessage = "Lifecycle stage cannot exceed 50 characters")]
     public string? LifecycleStage { get; init; }
+
+    [StringLength(200)]
+    public string? JobTitle { get; init; }
+
+    [StringLength(80)]
+    public string? Country { get; init; }
+
+    [StringLength(120)]
+    public string? Industry { get; init; }
+
+    [StringLength(40)]
+    public string? CompanySize { get; init; }
+
+    /// <summary>When true, a second open lead with the same email is allowed.</summary>
+    public bool AllowDuplicate { get; init; }
 }

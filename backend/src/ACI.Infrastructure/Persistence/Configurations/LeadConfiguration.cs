@@ -17,6 +17,11 @@ internal sealed class LeadConfiguration : IEntityTypeConfiguration<Lead>
         builder.Property(e => e.Status).HasMaxLength(64).IsRequired();
         builder.Property(e => e.Description).HasMaxLength(2000);
         builder.Property(e => e.LifecycleStage).HasMaxLength(64);
+        builder.Property(e => e.JobTitle).HasMaxLength(200);
+        builder.Property(e => e.Country).HasMaxLength(80);
+        builder.Property(e => e.Industry).HasMaxLength(120);
+        builder.Property(e => e.CompanySize).HasMaxLength(40);
+        builder.Property(e => e.EnrichedDomain).HasMaxLength(200);
 
         // Relationships
         builder.HasOne(e => e.User).WithMany(u => u.Leads).HasForeignKey(e => e.UserId);

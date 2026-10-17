@@ -27,6 +27,9 @@ public sealed class EmailSettings
     /// </summary>
     public string FrontendBaseUrl { get; set; } = "http://localhost:5173";
 
+    /// <summary>Absolute origin of this API, used for the email-open pixel.</summary>
+    public string ApiBaseUrl { get; set; } = "http://localhost:5160";
+
     /// <summary>
     /// When SMTP is not configured, log the reset URL and treat send as successful so local dev can complete the flow.
     /// Disable in production when real SMTP is required.

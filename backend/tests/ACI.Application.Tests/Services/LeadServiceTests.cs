@@ -32,12 +32,22 @@ public class LeadServiceTests
             .Returns(Task.CompletedTask);
         _dealRepositoryMock = new Mock<IDealRepository>();
         _loggerMock = new Mock<ILogger<LeadService>>();
+        var automation = new Mock<ILeadAutomation>();
+        automation.Setup(a => a.FindOpenDuplicateAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Lead?)null);
+        automation.Setup(a => a.PrepareNewAsync(It.IsAny<Lead>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        automation.Setup(a => a.RecordStatusAsync(It.IsAny<Lead>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        automation.Setup(a => a.RescoreAsync(It.IsAny<Lead>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         _sut = new LeadService(
             _leadRepositoryMock.Object,
             _companyRepositoryMock.Object,
             _contactRepositoryMock.Object,
             _dealRepositoryMock.Object,
+            automation.Object,
             _loggerMock.Object);
     }
 

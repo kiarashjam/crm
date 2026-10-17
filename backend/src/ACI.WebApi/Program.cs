@@ -152,6 +152,9 @@ try
     builder.Services.AddScoped<IContactService, ContactService>();
     builder.Services.AddScoped<IDealService, DealService>();
     builder.Services.AddScoped<ILeadService, LeadService>();
+    builder.Services.AddScoped<ILeadAutomation, LeadAutomation>();
+    builder.Services.AddScoped<ILeadOpsService, LeadOpsService>();
+    builder.Services.AddScoped<ISequenceService, SequenceService>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
@@ -174,6 +177,7 @@ try
 
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
@@ -528,6 +532,8 @@ try
                     ALTER TABLE [UserSettings] ADD [ShowActivityStatus] bit NOT NULL DEFAULT 1;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'AllowAnalytics')
                     ALTER TABLE [UserSettings] ADD [AllowAnalytics] bit NOT NULL DEFAULT 1;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'AgentMemoryJson')
+                    ALTER TABLE [UserSettings] ADD [AgentMemoryJson] nvarchar(4000) NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'CreatedAtUtc')
                     ALTER TABLE [UserSettings] ADD [CreatedAtUtc] datetime2 NOT NULL DEFAULT GETUTCDATE();
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'UpdatedAtUtc')
@@ -582,6 +588,138 @@ try
                 END;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'PipelineState')
                     ALTER TABLE [Leads] ADD [PipelineState] nvarchar(max) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'JobTitle')
+                    ALTER TABLE [Leads] ADD [JobTitle] nvarchar(200) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'Country')
+                    ALTER TABLE [Leads] ADD [Country] nvarchar(80) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'Industry')
+                    ALTER TABLE [Leads] ADD [Industry] nvarchar(120) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'CompanySize')
+                    ALTER TABLE [Leads] ADD [CompanySize] nvarchar(40) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'ScoreIsManual')
+                    ALTER TABLE [Leads] ADD [ScoreIsManual] bit NOT NULL CONSTRAINT DF_Leads_ScoreIsManual DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'FirstResponseAtUtc')
+                    ALTER TABLE [Leads] ADD [FirstResponseAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'FirstResponseDueAtUtc')
+                    ALTER TABLE [Leads] ADD [FirstResponseDueAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'SlaBreached')
+                    ALTER TABLE [Leads] ADD [SlaBreached] bit NOT NULL CONSTRAINT DF_Leads_SlaBreached DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'SlaNotifiedAtUtc')
+                    ALTER TABLE [Leads] ADD [SlaNotifiedAtUtc] datetime2 NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'QueueId')
+                    ALTER TABLE [Leads] ADD [QueueId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'TerritoryId')
+                    ALTER TABLE [Leads] ADD [TerritoryId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'EmailOpenCount')
+                    ALTER TABLE [Leads] ADD [EmailOpenCount] int NOT NULL CONSTRAINT DF_Leads_EmailOpenCount DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'EnrichedDomain')
+                    ALTER TABLE [Leads] ADD [EnrichedDomain] nvarchar(200) NULL;
+            ");
+
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadStatusEvents')
+                CREATE TABLE [LeadStatusEvents] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [LeadId] uniqueidentifier NOT NULL,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [FromStatus] nvarchar(64) NULL,
+                    [ToStatus] nvarchar(64) NOT NULL,
+                    [ChangedByUserId] uniqueidentifier NULL,
+                    [ChangedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadScoringRules')
+                CREATE TABLE [LeadScoringRules] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [Field] nvarchar(40) NOT NULL,
+                    [MatchValue] nvarchar(120) NULL,
+                    [Points] int NOT NULL,
+                    [IsActive] bit NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadAssignmentRules')
+                CREATE TABLE [LeadAssignmentRules] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [Name] nvarchar(120) NOT NULL,
+                    [Kind] nvarchar(32) NOT NULL,
+                    [Priority] int NOT NULL,
+                    [SourceMatch] nvarchar(80) NULL,
+                    [TerritoryId] uniqueidentifier NULL,
+                    [QueueId] uniqueidentifier NULL,
+                    [MemberUserIds] nvarchar(2000) NULL,
+                    [LastIndex] int NOT NULL,
+                    [IsActive] bit NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadTerritories')
+                CREATE TABLE [LeadTerritories] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [Name] nvarchar(120) NOT NULL,
+                    [Countries] nvarchar(500) NULL,
+                    [Industries] nvarchar(500) NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadQueues')
+                CREATE TABLE [LeadQueues] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [Name] nvarchar(120) NOT NULL,
+                    [MemberUserIds] nvarchar(2000) NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadCaptureForms')
+                CREATE TABLE [LeadCaptureForms] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [CreatedByUserId] uniqueidentifier NOT NULL,
+                    [Name] nvarchar(120) NOT NULL,
+                    [PublicToken] nvarchar(64) NOT NULL,
+                    [IsActive] bit NOT NULL,
+                    [SuccessMessage] nvarchar(300) NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadOpsSettings')
+                CREATE TABLE [LeadOpsSettings] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [SlaHours] int NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'OutreachSequences')
+                CREATE TABLE [OutreachSequences] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [UserId] uniqueidentifier NOT NULL,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [Name] nvarchar(160) NOT NULL,
+                    [Description] nvarchar(500) NULL,
+                    [Status] nvarchar(20) NOT NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL,
+                    [UpdatedAtUtc] datetime2 NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'OutreachSteps')
+                CREATE TABLE [OutreachSteps] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [SequenceId] uniqueidentifier NOT NULL,
+                    [SortOrder] int NOT NULL,
+                    [Type] nvarchar(20) NOT NULL,
+                    [DayOffset] int NOT NULL,
+                    [Subject] nvarchar(200) NULL,
+                    [Body] nvarchar(4000) NULL,
+                    [TaskTitle] nvarchar(200) NULL,
+                    [Note] nvarchar(1000) NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'OutreachEnrollments')
+                CREATE TABLE [OutreachEnrollments] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [SequenceId] uniqueidentifier NOT NULL,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [EnrolledByUserId] uniqueidentifier NOT NULL,
+                    [TargetType] nvarchar(20) NOT NULL,
+                    [TargetId] uniqueidentifier NOT NULL,
+                    [TargetName] nvarchar(200) NOT NULL,
+                    [TargetEmail] nvarchar(256) NULL,
+                    [Status] nvarchar(20) NOT NULL,
+                    [CurrentStep] int NOT NULL,
+                    [EnrolledAtUtc] datetime2 NOT NULL,
+                    [NextActionAtUtc] datetime2 NULL
+                );
             ");
 
             // Contracts and their audit trail.
