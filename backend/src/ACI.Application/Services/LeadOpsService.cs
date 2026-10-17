@@ -23,7 +23,12 @@ public interface ILeadOpsService
     Task<IReadOnlyList<CaptureFormDto>> GetFormsAsync(Guid? organizationId, CancellationToken ct = default);
     Task<CaptureFormDto> CreateFormAsync(Guid userId, Guid? organizationId, string name, CancellationToken ct = default);
     Task<PublicCaptureFormDto?> GetPublicFormAsync(string token, CancellationToken ct = default);
-    Task<Result<LeadDto>> CaptureAsync(string token, PublicCaptureRequest request, CancellationToken ct = default);
+    Task<Result<PublicCaptureReceipt>> CaptureAsync(string token, PublicCaptureRequest request, CancellationToken ct = default);
+    /// <summary>
+    /// When an open lead with this email already exists, record the new inquiry on
+    /// it and tell its owner, and return its id. Null when there is no such lead.
+    /// </summary>
+    Task<Guid?> AttachInquiryAsync(Guid? organizationId, Guid actingUserId, string email, string source, string summary, CancellationToken ct = default);
     Task<IReadOnlyList<LeadStatusEventDto>> HistoryAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Result<BulkLeadUpdateResult>> BulkUpdateAsync(Guid userId, Guid? organizationId, BulkLeadUpdateRequest request, CancellationToken ct = default);
     Task<ConversionReportDto> ConversionReportAsync(Guid? organizationId, CancellationToken ct = default);
@@ -38,19 +43,22 @@ public sealed class LeadOpsService : ILeadOpsService
     private readonly ILeadRepository _leadRepository;
     private readonly INotificationService _notifications;
     private readonly ILeadAutomation _automation;
+    private readonly IActivityService _activities;
 
     public LeadOpsService(
         ILeadOpsRepository ops,
         ILeadService leads,
         ILeadRepository leadRepository,
         INotificationService notifications,
-        ILeadAutomation automation)
+        ILeadAutomation automation,
+        IActivityService activities)
     {
         _ops = ops;
         _leads = leads;
         _leadRepository = leadRepository;
         _notifications = notifications;
         _automation = automation;
+        _activities = activities;
     }
 
     public async Task<IReadOnlyList<ScoringRuleDto>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default)
@@ -192,21 +200,95 @@ public sealed class LeadOpsService : ILeadOpsService
         return form == null ? null : new PublicCaptureFormDto(form.Name, form.SuccessMessage);
     }
 
-    public async Task<Result<LeadDto>> CaptureAsync(string token, PublicCaptureRequest request, CancellationToken ct = default)
+    /// <summary>
+    /// A stranger's submission from a public form.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Anyone holding the form's token — which is on a public website — can call
+    /// this, so it reveals nothing. It used to answer a duplicate email with
+    /// "An open lead with this email already exists (Jane Doe)": a lookup of any
+    /// address's name for anyone who asked. And a success returned the whole lead,
+    /// with the matched company (which companies the workspace holds), the
+    /// assigned rep, the score and internal ids. Now every outcome a visitor can
+    /// cause gets the same short receipt.
+    /// </para>
+    /// <para>
+    /// A returning prospect is not an error. Their second inquiry used to be
+    /// rejected and lost; it is now recorded on the lead they already have.
+    /// </para>
+    /// </remarks>
+    public async Task<Result<PublicCaptureReceipt>> CaptureAsync(string token, PublicCaptureRequest request, CancellationToken ct = default)
     {
         var form = await _ops.GetFormByTokenAsync(token, ct);
         if (form == null) return DomainErrors.Lead.NotFound;
-        return await _leads.CreateAsync(form.CreatedByUserId, form.OrganizationId, new CreateLeadRequest
+        var receipt = new PublicCaptureReceipt(string.IsNullOrWhiteSpace(form.SuccessMessage) ? "Thanks. We'll be in touch." : form.SuccessMessage);
+
+        // The hidden honeypot field: a person never sees it, a bot fills it.
+        if (!string.IsNullOrWhiteSpace(request.Website)) return receipt;
+
+        // Leads.Source is nvarchar(64) and a form name may be up to 120. Unclipped,
+        // a form with a long name failed on every single submission.
+        var source = Clip(form.Name.Trim(), 64);
+        var summary = Summary(request);
+
+        if (await AttachInquiryAsync(form.OrganizationId, form.CreatedByUserId, request.Email, source, summary, ct) != null)
+            return receipt;
+
+        var created = await _leads.CreateAsync(form.CreatedByUserId, form.OrganizationId, new CreateLeadRequest
         {
-            Name = request.Name,
-            Email = request.Email,
-            Phone = request.Phone,
+            Name = request.Name.Trim(),
+            Email = request.Email.Trim(),
+            Phone = request.Phone?.Trim(),
             Status = "New",
-            Source = form.Name,
-            JobTitle = request.JobTitle,
-            Country = request.Country,
+            Source = source,
+            JobTitle = request.JobTitle?.Trim(),
+            Country = request.Country?.Trim(),
+            Description = string.IsNullOrWhiteSpace(request.Company) ? null : $"Company given on the form: {request.Company.Trim()}",
+            // Checked just above; a lead created between the two checks is a
+            // duplicate the lead list can merge, not a reason to lose the inquiry.
+            AllowDuplicate = true,
         }, ct);
+        return created.IsSuccess
+            ? receipt
+            : new Error("Lead.CaptureFailed", "That could not be saved. Please check the details and try again.");
     }
+
+    public async Task<Guid?> AttachInquiryAsync(Guid? organizationId, Guid actingUserId, string email, string source, string summary, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return null;
+        var existing = await _automation.FindOpenDuplicateAsync(organizationId, email, null, ct);
+        if (existing == null) return null;
+
+        // An inbound inquiry, not our response to them — so automated: it must not
+        // clear the "nobody has replied yet" deadline.
+        await _activities.CreateAsync(actingUserId, organizationId, new CreateActivityRequest
+        {
+            Type = "note",
+            Subject = $"New inquiry via {source}",
+            Body = summary,
+            LeadId = existing.Id,
+            IsAutomated = true,
+        }, ct);
+        await _notifications.CreateAsync(existing.AssignedToUserId ?? existing.UserId, existing.OrganizationId, new CreateNotificationRequest(
+            "lead_inquiry",
+            "A lead got in touch again",
+            $"{existing.Name} sent a new inquiry via {source}.",
+            $"/leads/{existing.Id}"), ct);
+        return existing.Id;
+    }
+
+    private static string Summary(PublicCaptureRequest r)
+    {
+        var lines = new List<string> { $"Name: {r.Name.Trim()}", $"Email: {r.Email.Trim()}" };
+        if (!string.IsNullOrWhiteSpace(r.Phone)) lines.Add($"Phone: {r.Phone.Trim()}");
+        if (!string.IsNullOrWhiteSpace(r.Company)) lines.Add($"Company: {r.Company.Trim()}");
+        if (!string.IsNullOrWhiteSpace(r.JobTitle)) lines.Add($"Job title: {r.JobTitle.Trim()}");
+        if (!string.IsNullOrWhiteSpace(r.Country)) lines.Add($"Country: {r.Country.Trim()}");
+        return string.Join("\n", lines);
+    }
+
+    private static string Clip(string value, int max) => value.Length <= max ? value : value[..max];
 
     public async Task<IReadOnlyList<LeadStatusEventDto>> HistoryAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {

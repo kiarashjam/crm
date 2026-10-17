@@ -21,7 +21,29 @@ public record QueueDto(Guid Id, string Name, IReadOnlyList<Guid> MemberUserIds);
 
 public record CaptureFormDto(Guid Id, string Name, string PublicToken, bool IsActive, string? SuccessMessage, string PublicPath);
 
-public record PublicCaptureRequest(string Name, string Email, string? Phone, string? JobTitle, string? Country, string? Company);
+/// <summary>
+/// What a stranger submits on a public capture form.
+/// </summary>
+/// <remarks>
+/// Limits match the Leads columns. Without them, a long country (81+ characters)
+/// failed the insert with a 500 — after the company row and the round-robin
+/// position had already been written.
+/// </remarks>
+/// <param name="Website">
+/// A honeypot. The form renders it hidden from people; a bot filling every field
+/// fills this one too, and is told "thanks" while nothing is saved.
+/// </param>
+public record PublicCaptureRequest(
+    [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(256, MinimumLength = 1)] string Name,
+    [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.EmailAddress, System.ComponentModel.DataAnnotations.StringLength(256)] string Email,
+    [System.ComponentModel.DataAnnotations.StringLength(64)] string? Phone,
+    [System.ComponentModel.DataAnnotations.StringLength(200)] string? JobTitle,
+    [System.ComponentModel.DataAnnotations.StringLength(80)] string? Country,
+    [System.ComponentModel.DataAnnotations.StringLength(200)] string? Company,
+    [System.ComponentModel.DataAnnotations.StringLength(200)] string? Website = null);
+
+/// <summary>The whole of what the public capture endpoint says back: no record, no ids.</summary>
+public record PublicCaptureReceipt(string Message);
 
 public record PublicCaptureFormDto(string Name, string? SuccessMessage);
 

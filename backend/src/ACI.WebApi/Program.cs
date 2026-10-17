@@ -74,6 +74,32 @@ try
     });
 
     builder.Services.AddControllers();
+
+    // The two anonymous endpoints a stranger can reach. Partitioned by form token
+    // and by lead, not by IP: behind Azure's front end the connection address may
+    // be the proxy's, and X-Forwarded-For is whatever the caller says it is.
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.AddPolicy("public-capture", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "capture:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                // Plenty for a club's website; a script posting the token in a loop
+                // stops after twenty a minute instead of filling the lead list.
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+        options.AddPolicy("public-track", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "track:" + (context.Request.RouteValues["leadId"]?.ToString() ?? ""),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+    });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddProblemDetails();
@@ -257,6 +283,7 @@ try
     app.UseResponseCompression();
     app.UseHttpsRedirection();
     app.UseCors();
+    app.UseRateLimiter();
     app.UseAuthentication();
     app.UseAuthorization();
     app.UseMiddleware<ACI.WebApi.Middleware.OrganizationAccessMiddleware>();

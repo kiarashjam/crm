@@ -3,9 +3,19 @@ using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ACI.WebApi.Controllers;
 
+/// <summary>
+/// The only endpoints a stranger can reach: a capture form, and the email-open pixel.
+/// </summary>
+/// <remarks>
+/// Both are rate limited (see the "public-capture" and "public-track" policies in
+/// Program.cs), by form token and by lead rather than by IP: behind Azure's front
+/// end the connection address may be the proxy's, and a forwarded-for header is
+/// whatever the caller says it is. A per-form ceiling holds either way.
+/// </remarks>
 [ApiController]
 [AllowAnonymous]
 [Route("api/public")]
@@ -25,7 +35,9 @@ public class PublicLeadController : ControllerBase
     }
 
     [HttpPost("capture/{token}")]
-    public async Task<ActionResult<LeadDto>> Capture(string token, [FromBody] PublicCaptureRequest request, CancellationToken ct)
+    [EnableRateLimiting("public-capture")]
+    [RequestSizeLimit(32 * 1024)]
+    public async Task<ActionResult<PublicCaptureReceipt>> Capture(string token, [FromBody] PublicCaptureRequest request, CancellationToken ct)
     {
         var result = await _ops.CaptureAsync(token, request, ct);
         if (result.IsSuccess)
@@ -34,6 +46,7 @@ public class PublicLeadController : ControllerBase
     }
 
     [HttpGet("track/{leadId:guid}")]
+    [EnableRateLimiting("public-track")]
     public async Task<IActionResult> Track(Guid leadId, CancellationToken ct)
     {
         await _ops.RecordEmailOpenAsync(leadId, ct);

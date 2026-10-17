@@ -3,6 +3,7 @@ using System.Text;
 using ACI.Application;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.Domain.Entities;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
@@ -22,6 +23,7 @@ public class WebhookController : ControllerBase
     private readonly ICompanyService _companyService;
     private readonly IOrganizationService _organizationService;
     private readonly ICurrentUserService _currentUser;
+    private readonly ILeadOpsService _leadOps;
 
     /// <summary>
     /// Initializes a new instance of the WebhookController.
@@ -30,12 +32,14 @@ public class WebhookController : ControllerBase
         ILeadService leadService,
         ICompanyService companyService,
         IOrganizationService organizationService,
-        ICurrentUserService currentUser)
+        ICurrentUserService currentUser,
+        ILeadOpsService leadOps)
     {
         _leadService = leadService;
         _companyService = companyService;
         _organizationService = organizationService;
         _currentUser = currentUser;
+        _leadOps = leadOps;
     }
 
     /// <summary>
@@ -131,6 +135,24 @@ public class WebhookController : ControllerBase
         if (!request.Email.Contains('@') || request.Email.Length < 3)
             return BadRequest(new { error = "Invalid email format" });
 
+        // A returning prospect. Since #57 the lead service refuses a second open lead
+        // with the same email, and this endpoint turned that refusal into a 500 —
+        // so senders like Zapier retried, the inquiry was lost, and the company
+        // created just below was orphaned on every attempt. The inquiry now goes on
+        // the lead they already have, before anything else is written.
+        var source = string.IsNullOrWhiteSpace(request.Source) ? "webhook" : request.Source.Trim();
+        if (source.Length > 64) source = source[..64];
+        var summary = string.Join("\n", new[]
+        {
+            $"Name: {request.Name.Trim()}",
+            $"Email: {request.Email.Trim()}",
+            string.IsNullOrWhiteSpace(request.Phone) ? null : $"Phone: {request.Phone.Trim()}",
+            string.IsNullOrWhiteSpace(request.CompanyName) ? null : $"Company: {request.CompanyName.Trim()}",
+        }.Where(line => line != null));
+        var existingId = await _leadOps.AttachInquiryAsync(organization.Id, organization.OwnerUserId, request.Email.Trim(), source, summary, ct);
+        if (existingId != null)
+            return Ok(new { id = existingId, duplicate = true, message = "An open lead with this email already exists; the inquiry was added to it." });
+
         Guid? companyId = null;
         if (!string.IsNullOrWhiteSpace(request.CompanyName))
         {
@@ -146,14 +168,14 @@ public class WebhookController : ControllerBase
             Email = request.Email.Trim(),
             Phone = request.Phone?.Trim(),
             CompanyId = companyId,
-            Source = request.Source ?? "webhook",
+            Source = source,
             Status = "New"
         };
 
         var leadResult = await _leadService.CreateAsync(organization.OwnerUserId, organization.Id, leadRequest, ct);
 
         if (leadResult.IsFailure)
-            return StatusCode(500, new { error = "Failed to create lead", detail = leadResult.Error.Description });
+            return leadResult.Error.ToProblemResult();
 
         return CreatedAtAction(nameof(CreateLeadViaWebhook), new { id = leadResult.Value.Id }, leadResult.Value);
     }

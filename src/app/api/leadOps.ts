@@ -152,30 +152,54 @@ export function bulkUpdateLeads(body: {
   });
 }
 
-export async function getPublicCaptureForm(token: string) {
+/** A public-form request that failed, with the HTTP status (0 when it never got an answer). */
+export class PublicCaptureError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'PublicCaptureError';
+    this.status = status;
+  }
+}
+
+async function publicFetch(path: string, init?: RequestInit): Promise<Response> {
   const base = getApiBaseUrl();
-  if (!base) throw new Error('VITE_API_URL is not set');
-  const res = await fetch(`${base}/api/public/capture/${token}`);
-  if (!res.ok) throw new Error('Form not found');
+  if (!base) throw new PublicCaptureError('VITE_API_URL is not set', 0);
+  try {
+    return await fetch(`${base}${path}`, init);
+  } catch {
+    // Offline, DNS, CORS: no answer at all — not the same as "no such form".
+    throw new PublicCaptureError('Could not reach the server', 0);
+  }
+}
+
+export async function getPublicCaptureForm(token: string) {
+  const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}`);
+  if (!res.ok) throw new PublicCaptureError('Form not available', res.status);
   return res.json() as Promise<{ name: string; successMessage?: string | null }>;
 }
 
+/** Submits the form. Resolves to the thank-you message the workspace configured. */
 export async function submitPublicCapture(token: string, body: {
   name: string;
   email: string;
   phone?: string;
   jobTitle?: string;
   country?: string;
-}) {
-  const base = getApiBaseUrl();
-  if (!base) throw new Error('VITE_API_URL is not set');
-  const res = await fetch(`${base}/api/public/capture/${token}`, {
+  company?: string;
+  /** The honeypot. Always empty when a person fills the form in. */
+  website?: string;
+}): Promise<string | null> {
+  const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || 'Could not save');
+  if (!res.ok) throw new PublicCaptureError('Could not save', res.status);
+  try {
+    const receipt = await res.json() as { message?: string | null };
+    return receipt?.message?.trim() || null;
+  } catch {
+    return null;
   }
 }
