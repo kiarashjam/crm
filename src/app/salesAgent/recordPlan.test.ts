@@ -44,6 +44,6 @@ describe('dealPlan', () => {
   it('says a won deal is finished', () => {
     const plan = dealPlan({ id: 'd1', name: 'Villa', isWon: true }, now);
     expect(plan.lines.every((line) => line.state === 'done')).toBe(true);
-    expect(plan.lines.at(-1)?.detail).toMatch(/won/);
+    expect(plan.lines[plan.lines.length - 1]?.detail).toMatch(/won/);
   });
 });

@@ -5,6 +5,7 @@
  */
 
 import { clearSession, getAuthToken, getCurrentOrganizationId } from '@/app/lib/auth';
+import { announceDataChanged, changesRecords } from './dataChanged';
 
 export function getApiBaseUrl(): string | undefined {
   const url = import.meta.env.VITE_API_URL;
@@ -42,6 +43,12 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
   // Anonymous endpoints (e.g. forgot/reset password) must not clear an existing session on 401.
   if (res.status === 401 && !skipAuth) {
     clearSession();
+  }
+  // Every write the app makes passes through here, so this is where "your copy
+  // may be stale" is said once for all of them. Anonymous calls (signing a
+  // contract, the public capture form) are not the signed-in user's records.
+  if (res.ok && !skipAuth && changesRecords(init.method, path)) {
+    announceDataChanged();
   }
   return res;
 }

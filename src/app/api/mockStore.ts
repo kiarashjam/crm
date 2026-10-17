@@ -1,3 +1,5 @@
+import { announceDataChanged } from './dataChanged';
+
 /**
  * Tiny localStorage-backed store used by the mock API path (demo mode) so that
  * create/update/delete actually persist within a browser session. Without it,
@@ -61,6 +63,7 @@ export function createMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<
       const list = readOrSeed();
       list.unshift(row);
       writeArray(storageKey, list);
+      announceDataChanged();
       return row;
     },
     update: (id: string, patch: Partial<T>) => {
@@ -70,6 +73,7 @@ export function createMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<
       const next = { ...list[idx], ...patch } as T;
       list[idx] = next;
       writeArray(storageKey, list);
+      announceDataChanged();
       return next;
     },
     remove: (id: string) => {
@@ -77,9 +81,13 @@ export function createMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<
       const next = list.filter((r) => idOf(r) !== id);
       if (next.length === list.length) return false;
       writeArray(storageKey, next);
+      announceDataChanged();
       return true;
     },
-    reset: () => writeArray(storageKey, [...seed]),
+    reset: () => {
+      writeArray(storageKey, [...seed]);
+      announceDataChanged();
+    },
   };
 }
 

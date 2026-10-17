@@ -12,7 +12,7 @@ export function calendarKey(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const trimmed = iso.trim();
   const dateOnly = DATE_ONLY.exec(trimmed);
-  if (dateOnly) return dateOnly[1];
+  if (dateOnly) return dateOnly[1] ?? null;
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) return null;
   const month = String(parsed.getMonth() + 1).padStart(2, '0');
@@ -27,10 +27,16 @@ export function todayKey(now: Date): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
+/** A YYYY-MM-DD key as numbers. A malformed key yields NaN, never undefined. */
+function ymd(key: string): [number, number, number] {
+  const [year = NaN, month = NaN, day = NaN] = key.split('-').map(Number);
+  return [year, month, day];
+}
+
 /** Whole days from `earlier` to `later`. Positive when later is after earlier. */
 export function daysBetween(earlier: string, later: string): number {
-  const [y1, m1, d1] = earlier.split('-').map(Number);
-  const [y2, m2, d2] = later.split('-').map(Number);
+  const [y1, m1, d1] = ymd(earlier);
+  const [y2, m2, d2] = ymd(later);
   const start = Date.UTC(y1, m1 - 1, d1);
   const end = Date.UTC(y2, m2 - 1, d2);
   return Math.round((end - start) / 86_400_000);
@@ -38,7 +44,7 @@ export function daysBetween(earlier: string, later: string): number {
 
 /** A calendar day shifted by whole days, still YYYY-MM-DD. */
 export function shiftKey(key: string, days: number): string {
-  const [year, month, day] = key.split('-').map(Number);
+  const [year, month, day] = ymd(key);
   const shifted = new Date(Date.UTC(year, month - 1, day + days));
   const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
   const d = String(shifted.getUTCDate()).padStart(2, '0');

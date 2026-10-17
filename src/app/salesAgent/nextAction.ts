@@ -72,7 +72,11 @@ function actionFor(p: LeadPipeline, now: Date, lastContactedAt?: string | null):
       kind: 'record_reason',
       action: `Record ${list}.`,
       because: `${failure.label} is already on the lead, and the reason is still missing.`,
-      priority: 100,
+      // Above every routine step, and just below a meeting that is happening
+      // today (96). It used to be 100 — top of the whole queue — which put
+      // "record why Luca dropped out" above "the meeting with Jean-Michel is
+      // today": bookkeeping ahead of a prospect who is about to walk in.
+      priority: 95,
     };
   }
   if (failure) return null;

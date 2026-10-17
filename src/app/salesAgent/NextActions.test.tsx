@@ -1,107 +1,183 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+// The sales agent's panel, as a salesperson meets it.
+//
+// The lists come from the shared store (agentData.ts), mocked here at the API
+// boundary so the store's real loading, freshness and scoping run underneath.
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { NextActions } from './NextActions';
 
 vi.mock('@/app/api', () => ({
-  getLeads: vi.fn(),
-  getDeals: vi.fn(),
-  getTasks: vi.fn(),
-  getContacts: vi.fn(),
-  getCompanies: vi.fn(),
+  getLeads: vi.fn(), getDeals: vi.fn(), getTasks: vi.fn(), getContacts: vi.fn(), getCompanies: vi.fn(),
 }));
-
-vi.mock('@/app/api/sequences', () => ({
-  getEnrollments: vi.fn(),
-  getSequences: vi.fn(),
-}));
-
-vi.mock('@/app/api/automations', () => ({
-  getAutomations: vi.fn(),
-}));
+vi.mock('@/app/api/sequences', () => ({ getEnrollments: vi.fn(), getSequences: vi.fn() }));
+vi.mock('@/app/api/automations', () => ({ getAutomations: vi.fn() }));
 
 import { getCompanies, getContacts, getDeals, getLeads, getTasks } from '@/app/api';
 import { getAutomations } from '@/app/api/automations';
 import { getEnrollments, getSequences } from '@/app/api/sequences';
+import { announceDataChanged } from '@/app/api/dataChanged';
+import { NextActions } from './NextActions';
+import { resetAgentDataForTests, SETTLE_MS } from './agentData';
 
-const leads = vi.mocked(getLeads);
-const deals = vi.mocked(getDeals);
-const tasks = vi.mocked(getTasks);
-const contacts = vi.mocked(getContacts);
-const companies = vi.mocked(getCompanies);
-const automations = vi.mocked(getAutomations);
-const enrollments = vi.mocked(getEnrollments);
-const sequences = vi.mocked(getSequences);
+const leads = vi.mocked(getLeads as () => Promise<unknown>);
+const deals = vi.mocked(getDeals as () => Promise<unknown>);
+const others = [getTasks, getContacts, getCompanies, getAutomations, getEnrollments, getSequences]
+  .map((fn) => vi.mocked(fn as () => Promise<unknown>));
 
-function quietLists() {
-  deals.mockResolvedValue([]);
-  tasks.mockResolvedValue([]);
-  contacts.mockResolvedValue([]);
-  companies.mockResolvedValue([]);
-  automations.mockResolvedValue([]);
-  enrollments.mockResolvedValue([]);
-  sequences.mockResolvedValue([]);
-}
+const lead = (id: string, name: string, pipeline: object) => ({
+  id, name, email: `${id}@example.com`, status: 'New', pipelineState: JSON.stringify(pipeline),
+});
+const lost = (id: string, name: string) => lead(id, name, { outreachStatus: 'contacted', contactOutcome: 'not_interested' });
 
-function renderBlock() {
+function at(path: string) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <NextActions />
     </MemoryRouter>,
   );
 }
 
-describe('NextActions', () => {
+beforeEach(() => {
+  resetAgentDataForTests();
+  localStorage.clear();
+  leads.mockReset();
+  deals.mockReset();
+  leads.mockResolvedValue([]);
+  deals.mockResolvedValue([]);
+  for (const fn of others) { fn.mockReset(); fn.mockResolvedValue([]); }
+});
+
+afterEach(() => {
+  resetAgentDataForTests();
+  vi.useRealTimers();
+});
+
+describe('the queue', () => {
   it('shows the highest step and links to that record', async () => {
-    leads.mockResolvedValue([
-      { id: 'l1', name: 'Ada', email: 'a@example.com', status: 'New', pipelineState: JSON.stringify({ outreachStatus: 'contacted', contactOutcome: 'not_interested' }) },
-    ]);
-    quietLists();
+    leads.mockResolvedValue([lost('l1', 'Ada')]);
+    at('/dashboard');
 
-    renderBlock();
-
-    expect(await screen.findByRole('link', { name: 'Ada' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Do this next' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Ada' }).getAttribute('href')).toBe('/leads/l1');
-    expect(screen.getByText(/Record why they dropped out/)).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Ada' })).toHaveAttribute('href', '/leads/l1');
+    expect(screen.getByRole('heading', { name: 'Do this next' })).toBeInTheDocument();
+    expect(screen.getByText(/Record why they dropped out/)).toBeInTheDocument();
   });
 
-  it('shows the whole lead plan on the lead page', async () => {
-    leads.mockResolvedValue([
-      { id: 'l1', name: 'Ada', email: 'a@example.com', status: 'New', pipelineState: '{}' },
-    ]);
-    quietLists();
+  it('opens with the full queue on the dashboard', async () => {
+    leads.mockResolvedValue(['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((n) => lost(n, `Lead ${n}`)));
+    at('/dashboard');
 
-    render(
-      <MemoryRouter initialEntries={['/leads/l1']}>
-        <NextActions />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByRole('heading', { name: 'Plan for Ada' })).toBeTruthy();
-    expect(screen.getByText('Meeting')).toBeTruthy();
-    expect(screen.getByText('Deposit')).toBeTruthy();
-    expect(screen.getAllByText('Later').length).toBeGreaterThan(1);
+    const list = await screen.findByRole('list');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(5);
+    expect(screen.getByText(/2 more after these/)).toBeInTheDocument();
   });
 
-  it('stays hidden when every list fails', async () => {
+  it('elsewhere shows only the top step, with the rest one click away — and remembers', async () => {
+    leads.mockResolvedValue(['A', 'B', 'C'].map((n) => lost(n, `Lead ${n}`)));
+    const user = userEvent.setup();
+    const { unmount } = at('/leads');
+
+    const list = await screen.findByRole('list');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    const toggle = screen.getByRole('button', { name: /Show all 3/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(toggle);
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.getByRole('button', { name: /Show less/ })).toHaveAttribute('aria-expanded', 'true');
+
+    // Another page: it stays the way it was left.
+    unmount();
+    at('/contacts');
+    await screen.findByRole('heading', { name: 'Do this next' });
+    expect(screen.queryByRole('button', { name: /Show all/ })).toBeNull();
+  });
+
+  it('says so when nothing is waiting', async () => {
+    at('/dashboard');
+    expect(await screen.findByText('You are all caught up.')).toBeInTheDocument();
+  });
+
+  it('offers a retry when the steps cannot be loaded', async () => {
     leads.mockRejectedValue(new Error('down'));
     deals.mockRejectedValue(new Error('down'));
-    tasks.mockRejectedValue(new Error('down'));
-    enrollments.mockRejectedValue(new Error('down'));
-    sequences.mockRejectedValue(new Error('down'));
-    contacts.mockRejectedValue(new Error('down'));
-    companies.mockRejectedValue(new Error('down'));
-    automations.mockRejectedValue(new Error('down'));
+    for (const fn of others) fn.mockRejectedValue(new Error('down'));
+    at('/dashboard');
 
-    renderBlock();
-
-    await waitFor(() => {
-      expect(leads).toHaveBeenCalled();
-    });
-    await waitFor(() => {
-      expect(screen.getByRole('status').textContent).toMatch(/could not be loaded/);
-    });
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent(/could not be loaded/);
     expect(screen.queryByRole('heading', { name: 'Do this next' })).toBeNull();
+
+    leads.mockResolvedValue([lost('l1', 'Ada')]);
+    deals.mockResolvedValue([]);
+    for (const fn of others) fn.mockResolvedValue([]);
+    await userEvent.setup().click(screen.getByRole('button', { name: /Try again/ }));
+    expect(await screen.findByRole('link', { name: 'Ada' })).toBeInTheDocument();
+  });
+});
+
+describe('where it shows', () => {
+  it('stays off the till and the member-portal preview', async () => {
+    leads.mockResolvedValue([lost('l1', 'Ada')]);
+    const { container } = at('/pos');
+    await act(async () => { await Promise.resolve(); });
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('on the lead routing page it is the leads queue, not an empty "plan"', async () => {
+    leads.mockResolvedValue([lost('l1', 'Ada')]);
+    at('/leads/routing');
+    expect(await screen.findByRole('heading', { name: 'Do this next' })).toBeInTheDocument();
+    expect(screen.queryByText(/no saved plan/i)).toBeNull();
+  });
+});
+
+describe('on a record', () => {
+  it("shows that lead's one next step — not a copy of the lifecycle the page already has", async () => {
+    leads.mockResolvedValue([lead('l1', 'Ada', {})]);
+    at('/leads/l1');
+
+    expect(await screen.findByRole('heading', { name: /Next for this lead/ })).toBeInTheDocument();
+    expect(screen.getByText('Make the first call and log whether they answered.')).toBeInTheDocument();
+    // The old panel listed all five phases here, four of them as empty "Later" rows.
+    expect(screen.queryByText('Later')).toBeNull();
+    expect(screen.queryByText('Deposit')).toBeNull();
+  });
+
+  it('shows nothing on a record with nothing owed', async () => {
+    leads.mockResolvedValue([{ ...lost('l1', 'Ada'), pipelineState: JSON.stringify({ outreachStatus: 'contacted', contactOutcome: 'not_interested', dropoutReason: 'too_soon' }) }]);
+    const { container } = at('/leads/l1');
+    // Wait for the first load to finish — the placeholder is not "nothing".
+    await waitFor(() => expect(screen.queryByLabelText('Loading next steps')).toBeNull());
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('shows a deal its stage ladder', async () => {
+    deals.mockResolvedValue([{ id: 'd1', name: 'Big deal', dealStageName: 'Proposal', expectedCloseDateUtc: '2099-01-01' }]);
+    at('/deals/d1');
+
+    const ladder = await screen.findByRole('list', { name: 'Deal stages' });
+    expect(within(ladder).getByText('Qualification')).toBeInTheDocument();
+    expect(within(ladder).getByText(/Proposal/).textContent).toMatch(/current stage/);
+  });
+
+  it('catches up with an edit made on the page beneath it', async () => {
+    // The bug, end to end: log "no answer" on the lead, and the panel above kept
+    // saying "make the first call" — telling you to do what you had just done.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    leads.mockResolvedValue([lead('l1', 'Ada', {})]);
+    at('/leads/l1');
+    await act(async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
+    expect(screen.getByText('Make the first call and log whether they answered.')).toBeInTheDocument();
+
+    // The page saves the pipeline; the save announces itself.
+    leads.mockResolvedValue([lead('l1', 'Ada', { outreachStatus: 'attempted_no_answer' })]);
+    announceDataChanged();
+    await act(async () => { vi.advanceTimersByTime(SETTLE_MS); });
+    await act(async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); });
+
+    expect(screen.queryByText('Make the first call and log whether they answered.')).toBeNull();
+    expect(screen.getByText(/Call again at a different time of day/)).toBeInTheDocument();
   });
 });

@@ -382,9 +382,8 @@ export default function AppHeader() {
     </header>
     <DemoBanner />
     <ReadOnlyBanner />
-    <div className="w-full px-[var(--page-padding)] pt-4">
-      <NextActions />
-    </div>
+    {/* Renders its own spacing, and nothing at all where sales work has no place. */}
+    <NextActions />
     </>
   );
 }
