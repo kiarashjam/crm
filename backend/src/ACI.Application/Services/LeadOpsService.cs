@@ -25,7 +25,7 @@ public interface ILeadOpsService
     Task<PublicCaptureFormDto?> GetPublicFormAsync(string token, CancellationToken ct = default);
     Task<Result<LeadDto>> CaptureAsync(string token, PublicCaptureRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<LeadStatusEventDto>> HistoryAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
-    Task<BulkLeadUpdateResult> BulkUpdateAsync(Guid userId, Guid? organizationId, BulkLeadUpdateRequest request, CancellationToken ct = default);
+    Task<Result<BulkLeadUpdateResult>> BulkUpdateAsync(Guid userId, Guid? organizationId, BulkLeadUpdateRequest request, CancellationToken ct = default);
     Task<ConversionReportDto> ConversionReportAsync(Guid? organizationId, CancellationToken ct = default);
     Task NotifyOverdueAsync(CancellationToken ct = default);
     Task<bool> RecordEmailOpenAsync(Guid leadId, CancellationToken ct = default);
@@ -56,8 +56,12 @@ public sealed class LeadOpsService : ILeadOpsService
     public async Task<IReadOnlyList<ScoringRuleDto>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default)
     {
         var rules = await _ops.GetScoringRulesAsync(organizationId, ct);
+        // With none saved, show the built-ins — which is what scoring already uses
+        // when an organisation has no active rules — WITHOUT writing them. Seeding
+        // on read meant two first loads at once each inserted a full set, and every
+        // built-in rule then counted twice.
         if (rules.Count == 0)
-            return await SaveScoringRulesAsync(organizationId, LeadScoreCalculator.BuiltinRules().Select(ToDto).ToList(), ct);
+            return LeadScoreCalculator.BuiltinRules().Select(ToDto).ToList();
         return rules.Select(ToDto).ToList();
     }
 
@@ -65,7 +69,9 @@ public sealed class LeadOpsService : ILeadOpsService
     {
         var rows = rules.Select(r => new LeadScoringRule
         {
-            Id = r.Id == Guid.Empty ? Guid.NewGuid() : r.Id,
+            // Always a new id: this is a replace-all, and reusing a client-supplied id
+            // could collide with a row belonging to another organisation.
+            Id = Guid.NewGuid(),
             OrganizationId = organizationId,
             Field = string.IsNullOrWhiteSpace(r.Field) ? "source" : r.Field.Trim(),
             MatchValue = r.MatchValue?.Trim(),
@@ -99,6 +105,9 @@ public sealed class LeadOpsService : ILeadOpsService
         };
         var existing = (await _ops.GetAssignmentRulesAsync(organizationId, ct)).FirstOrDefault(r => r.Id == row.Id);
         if (existing != null) row.LastIndex = existing.LastIndex;
+        // An id that is not one of THIS organisation's rules is a new rule, never an
+        // edit: the repository only ever updates within the organisation.
+        else row.Id = Guid.NewGuid();
         await _ops.SaveAssignmentRuleAsync(row, ct);
         return ToDto(row);
     }
@@ -207,8 +216,20 @@ public sealed class LeadOpsService : ILeadOpsService
         return events.Select(e => new LeadStatusEventDto(e.Id, e.FromStatus, e.ToStatus, e.ChangedByUserId, e.ChangedAtUtc)).ToList();
     }
 
-    public async Task<BulkLeadUpdateResult> BulkUpdateAsync(Guid userId, Guid? organizationId, BulkLeadUpdateRequest request, CancellationToken ct = default)
+    public async Task<Result<BulkLeadUpdateResult>> BulkUpdateAsync(Guid userId, Guid? organizationId, BulkLeadUpdateRequest request, CancellationToken ct = default)
     {
+        // The status is derived from the five-phase pipeline and is read-only by
+        // design; setting it here made the badge disagree with the pipeline, and the
+        // next pipeline edit silently overwrote it. Refused rather than ignored, so
+        // a caller is never told "updated" about a field that did not change.
+        if (!string.IsNullOrWhiteSpace(request.Status))
+            return new Error("Lead.StatusIsDerived", "A lead's status follows its pipeline and cannot be set in bulk.");
+        var source = request.Source?.Trim();
+        // Checked before the first lead is touched: Leads.Source is nvarchar(64), and
+        // a longer value used to fail mid-batch with some leads already saved.
+        if (source is { Length: > 64 })
+            return new Error("Lead.SourceTooLong", "A source can be at most 64 characters.");
+
         var updated = 0;
         var missing = 0;
         foreach (var id in request.Ids.Distinct())
@@ -219,9 +240,7 @@ public sealed class LeadOpsService : ILeadOpsService
                 missing++;
                 continue;
             }
-            var from = lead.Status;
-            if (!string.IsNullOrWhiteSpace(request.Status)) lead.Status = request.Status.Trim();
-            if (!string.IsNullOrWhiteSpace(request.Source)) lead.Source = request.Source.Trim();
+            if (!string.IsNullOrWhiteSpace(source)) lead.Source = source;
             if (request.AssignedToUserId != null) lead.AssignedToUserId = request.AssignedToUserId;
             if (request.ClearQueue) lead.QueueId = null;
             else if (request.QueueId != null) lead.QueueId = request.QueueId;
@@ -229,8 +248,6 @@ public sealed class LeadOpsService : ILeadOpsService
             lead.UpdatedByUserId = userId;
             await _automation.RescoreAsync(lead, ct);
             await _leadRepository.UpdateAsync(lead, userId, organizationId, ct);
-            if (!string.Equals(from, lead.Status, StringComparison.Ordinal))
-                await _automation.RecordStatusAsync(lead, from, lead.Status, userId, ct);
             updated++;
         }
         return new BulkLeadUpdateResult(updated, missing);

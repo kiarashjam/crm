@@ -63,7 +63,10 @@ public record SequenceDto(
     DateTime? UpdatedAtUtc,
     IReadOnlyList<SequenceStepDto> Steps);
 
-public record SequenceWriteRequest(string Name, string? Description, string? Status, IReadOnlyList<SequenceStepDto>? Steps);
+/// <param name="Name">Required to create; optional to update. It used to be required on every
+/// update too, so Pause / Activate — which sends only the status — was always rejected with
+/// 400 "The Name field is required".</param>
+public record SequenceWriteRequest(string? Name, string? Description, string? Status, IReadOnlyList<SequenceStepDto>? Steps);
 
 public record EnrollmentDto(
     Guid Id,

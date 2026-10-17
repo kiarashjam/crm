@@ -48,4 +48,14 @@ public record CreateActivityRequest
     /// </summary>
     [StringLength(500, ErrorMessage = "Participants cannot exceed 500 characters")]
     public string? Participants { get; init; }
+
+    /// <summary>
+    /// Logged by the system on someone's behalf — a sequence email — rather than
+    /// done by a person. Such activity is recorded, but it is not a "first
+    /// response": an automated day-0 email used to clear the response deadline, so
+    /// the alert that nobody had called a new lead never fired for enrolled leads.
+    /// Not bindable from a request body; only server code can set it.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsAutomated { get; init; }
 }

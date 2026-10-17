@@ -108,4 +108,12 @@ public interface IEmailSender
 
     /// <summary>Plain message used by outreach sequences.</summary>
     Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a message with both a plain-text and an HTML part. Anything that only
+    /// makes sense as HTML — a tracking image, say — belongs in <paramref name="htmlBody"/>
+    /// alone: a plain-text part shows markup literally, as raw tags in the email.
+    /// Returns false (never throws) when the message could not be delivered.
+    /// </summary>
+    Task<bool> SendHtmlMessageAsync(string toEmail, string recipientName, string subject, string textBody, string htmlBody, CancellationToken ct = default);
 }

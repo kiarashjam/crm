@@ -15,4 +15,7 @@
     <ProjectReference Include="..\ACI.Domain\ACI.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="ACI.Application.Tests" />
+  </ItemGroup>
 </Project>

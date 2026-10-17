@@ -48,10 +48,19 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
             .OrderBy(r => r.Priority)
             .ToListAsync(ct);
 
+    // Every save below looks the row up by id AND organisation. By id alone, a
+    // request carrying another organisation's rule id rewrote that organisation's
+    // rule — and an id is all a former member, or anyone who has seen one, needs.
+
     public async Task SaveAssignmentRuleAsync(LeadAssignmentRule rule, CancellationToken ct = default)
     {
-        var existing = await _db.LeadAssignmentRules.FirstOrDefaultAsync(r => r.Id == rule.Id, ct);
-        if (existing == null) _db.LeadAssignmentRules.Add(rule);
+        var existing = await _db.LeadAssignmentRules
+            .FirstOrDefaultAsync(r => r.Id == rule.Id && r.OrganizationId == rule.OrganizationId, ct);
+        if (existing == null)
+        {
+            if (await _db.LeadAssignmentRules.AnyAsync(r => r.Id == rule.Id, ct)) rule.Id = Guid.NewGuid();
+            _db.LeadAssignmentRules.Add(rule);
+        }
         else
         {
             existing.Name = rule.Name;
@@ -80,8 +89,13 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
 
     public async Task SaveTerritoryAsync(LeadTerritory territory, CancellationToken ct = default)
     {
-        var existing = await _db.LeadTerritories.FirstOrDefaultAsync(t => t.Id == territory.Id, ct);
-        if (existing == null) _db.LeadTerritories.Add(territory);
+        var existing = await _db.LeadTerritories
+            .FirstOrDefaultAsync(t => t.Id == territory.Id && t.OrganizationId == territory.OrganizationId, ct);
+        if (existing == null)
+        {
+            if (await _db.LeadTerritories.AnyAsync(t => t.Id == territory.Id, ct)) territory.Id = Guid.NewGuid();
+            _db.LeadTerritories.Add(territory);
+        }
         else
         {
             existing.Name = territory.Name;
@@ -104,8 +118,13 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
 
     public async Task SaveQueueAsync(LeadQueue queue, CancellationToken ct = default)
     {
-        var existing = await _db.LeadQueues.FirstOrDefaultAsync(q => q.Id == queue.Id, ct);
-        if (existing == null) _db.LeadQueues.Add(queue);
+        var existing = await _db.LeadQueues
+            .FirstOrDefaultAsync(q => q.Id == queue.Id && q.OrganizationId == queue.OrganizationId, ct);
+        if (existing == null)
+        {
+            if (await _db.LeadQueues.AnyAsync(q => q.Id == queue.Id, ct)) queue.Id = Guid.NewGuid();
+            _db.LeadQueues.Add(queue);
+        }
         else
         {
             existing.Name = queue.Name;

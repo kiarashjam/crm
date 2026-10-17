@@ -1,7 +1,10 @@
+using System.Net;
+using ACI.Application.Common;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Services;
@@ -14,32 +17,69 @@ public interface ISequenceService
     Task<SequenceDto?> UpdateAsync(Guid id, Guid? organizationId, SequenceWriteRequest request, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<EnrollmentDto>> EnrollmentsAsync(Guid? organizationId, Guid? sequenceId, CancellationToken ct = default);
-    Task<EnrollmentDto?> EnrollAsync(Guid userId, Guid? organizationId, EnrollRequest request, CancellationToken ct = default);
-    Task<bool> SetStatusAsync(Guid id, string status, CancellationToken ct = default);
-    Task<bool> UnenrollAsync(Guid id, CancellationToken ct = default);
+    Task<Result<EnrollmentDto>> EnrollAsync(Guid userId, Guid? organizationId, EnrollRequest request, CancellationToken ct = default);
+    Task<Result> SetStatusAsync(Guid id, Guid? organizationId, string status, CancellationToken ct = default);
+    Task<bool> UnenrollAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
     Task RunDueAsync(CancellationToken ct = default);
 }
 
+/// <summary>
+/// Outreach sequences: steps sent or set to someone on a schedule.
+/// </summary>
+/// <remarks>
+/// <para>
+/// This runs unattended and writes to real people, so each step re-checks the
+/// things that make sending wrong instead of trusting what was true at enrollment:
+/// the sequence still exists, the person still exists in this workspace, they are
+/// not converted, lost, signed, archived or marked do-not-contact, and the address
+/// is the one on their record today.
+/// </para>
+/// <para>
+/// A step only advances once it has actually happened. A send that fails is tried
+/// again later rather than recorded as sent, and an email is only logged against
+/// the lead when it really went.
+/// </para>
+/// </remarks>
 public sealed class SequenceService : ISequenceService
 {
+    /// <summary>How long a claimed step is held before another instance may retry it.</summary>
+    internal static readonly TimeSpan ClaimFor = TimeSpan.FromMinutes(15);
+    /// <summary>When a send fails, try again after this long.</summary>
+    internal static readonly TimeSpan RetryAfter = TimeSpan.FromHours(1);
+
+    /// <summary>The two states a person can set. The rest belong to the runner.</summary>
+    private static readonly HashSet<string> SettableStatuses = new(StringComparer.OrdinalIgnoreCase) { "active", "paused" };
+
+    /// <summary>
+    /// Lead statuses that end outreach: they said no, or they signed. Includes the
+    /// retired labels, which some leads still carry.
+    /// </summary>
+    private static readonly HashSet<string> FinishedStatuses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Lost / Not Interested", "Signed", "Lost", "Unqualified", "Open Deal",
+    };
+
     private readonly ISequenceRepository _sequences;
     private readonly IEmailSender _email;
     private readonly IActivityService _activities;
     private readonly ITaskService _tasks;
     private readonly EmailSettings _emailSettings;
+    private readonly ILogger<SequenceService> _logger;
 
     public SequenceService(
         ISequenceRepository sequences,
         IEmailSender email,
         IActivityService activities,
         ITaskService tasks,
-        IOptions<EmailSettings> emailSettings)
+        IOptions<EmailSettings> emailSettings,
+        ILogger<SequenceService> logger)
     {
         _sequences = sequences;
         _email = email;
         _activities = activities;
         _tasks = tasks;
         _emailSettings = emailSettings.Value;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<SequenceDto>> ListAsync(Guid? organizationId, CancellationToken ct = default) =>
@@ -58,7 +98,7 @@ public sealed class SequenceService : ISequenceService
             Id = Guid.NewGuid(),
             UserId = userId,
             OrganizationId = organizationId,
-            Name = request.Name.Trim(),
+            Name = (request.Name ?? "").Trim(),
             Description = request.Description?.Trim(),
             Status = string.IsNullOrWhiteSpace(request.Status) ? "draft" : request.Status.Trim(),
             CreatedAtUtc = DateTime.UtcNow,
@@ -90,6 +130,9 @@ public sealed class SequenceService : ISequenceService
     {
         var existing = await _sequences.GetAsync(id, organizationId, ct);
         if (existing == null) return false;
+        // Stop the people in it first. Left "active", they were re-polled every hour
+        // for ever against a sequence that no longer existed.
+        await _sequences.StopEnrollmentsAsync(id, ct);
         await _sequences.DeleteAsync(id, organizationId, ct);
         return true;
     }
@@ -97,10 +140,24 @@ public sealed class SequenceService : ISequenceService
     public async Task<IReadOnlyList<EnrollmentDto>> EnrollmentsAsync(Guid? organizationId, Guid? sequenceId, CancellationToken ct = default) =>
         (await _sequences.EnrollmentsAsync(organizationId, sequenceId, ct)).Select(ToDto).ToList();
 
-    public async Task<EnrollmentDto?> EnrollAsync(Guid userId, Guid? organizationId, EnrollRequest request, CancellationToken ct = default)
+    public async Task<Result<EnrollmentDto>> EnrollAsync(Guid userId, Guid? organizationId, EnrollRequest request, CancellationToken ct = default)
     {
         var sequence = await _sequences.GetAsync(request.SequenceId, organizationId, ct);
-        if (sequence == null) return null;
+        if (sequence == null) return new Error("Sequence.NotFound", "That sequence does not exist.");
+
+        var targetType = request.TargetType == "contact" ? "contact" : "lead";
+        // The target is read from THIS workspace, and its address taken from its
+        // record — never from the request, which could otherwise point a sequence at
+        // any address at all under the workspace's name.
+        var target = await _sequences.TargetStateAsync(targetType, request.TargetId, organizationId, ct);
+        if (!target.Exists) return new Error("Sequence.Target.NotFound", $"That {targetType} does not exist.");
+        if (StopReason(target) is { } reason) return new Error("Sequence.TargetStopped", $"Not enrolled: {reason}.");
+
+        // Enrolling twice sent every email twice. Enrolling again is now a no-op that
+        // returns the enrollment already running.
+        var open = await _sequences.FindOpenEnrollmentAsync(sequence.Id, request.TargetId, ct);
+        if (open != null) return ToDto(open);
+
         var first = sequence.Steps.OrderBy(s => s.SortOrder).FirstOrDefault();
         var enrollment = new OutreachEnrollment
         {
@@ -108,10 +165,10 @@ public sealed class SequenceService : ISequenceService
             SequenceId = sequence.Id,
             OrganizationId = organizationId,
             EnrolledByUserId = userId,
-            TargetType = request.TargetType == "contact" ? "contact" : "lead",
+            TargetType = targetType,
             TargetId = request.TargetId,
-            TargetName = request.TargetName.Trim(),
-            TargetEmail = request.TargetEmail?.Trim(),
+            TargetName = (target.Name ?? request.TargetName ?? "").Trim(),
+            TargetEmail = target.Email?.Trim(),
             Status = "active",
             CurrentStep = 0,
             EnrolledAtUtc = DateTime.UtcNow,
@@ -121,79 +178,141 @@ public sealed class SequenceService : ISequenceService
         return ToDto(enrollment);
     }
 
-    public async Task<bool> SetStatusAsync(Guid id, string status, CancellationToken ct = default)
+    public async Task<Result> SetStatusAsync(Guid id, Guid? organizationId, string status, CancellationToken ct = default)
     {
-        var row = await _sequences.GetEnrollmentAsync(id, ct);
-        if (row == null) return false;
-        row.Status = status.Trim();
+        var wanted = (status ?? "").Trim().ToLowerInvariant();
+        if (!SettableStatuses.Contains(wanted))
+            return new Error("Sequence.InvalidStatus", "An enrollment can be set to active or paused.");
+        var row = await _sequences.GetEnrollmentAsync(id, organizationId, ct);
+        if (row == null) return new Error("Sequence.Enrollment.NotFound", "That enrollment does not exist.");
+        if (row.Status is "completed" or "stopped")
+            return new Error("Sequence.EnrollmentFinished", "That enrollment has finished and cannot be restarted.");
+        row.Status = wanted;
         await _sequences.SaveEnrollmentAsync(row, ct);
-        return true;
+        return Result.Success();
     }
 
-    public async Task<bool> UnenrollAsync(Guid id, CancellationToken ct = default)
-    {
-        var row = await _sequences.GetEnrollmentAsync(id, ct);
-        if (row == null) return false;
-        await _sequences.DeleteEnrollmentAsync(id, ct);
-        return true;
-    }
+    public Task<bool> UnenrollAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
+        _sequences.DeleteEnrollmentAsync(id, organizationId, ct);
 
     public async Task RunDueAsync(CancellationToken ct = default)
     {
-        var due = await _sequences.DueAsync(DateTime.UtcNow, 50, ct);
+        var now = DateTime.UtcNow;
+        var due = await _sequences.DueAsync(now, 50, ct);
         foreach (var enrollment in due)
         {
-            var sequence = await _sequences.GetAsync(enrollment.SequenceId, enrollment.OrganizationId, ct);
-            if (sequence == null || !string.Equals(sequence.Status, "active", StringComparison.OrdinalIgnoreCase))
-            {
-                enrollment.NextActionAtUtc = DateTime.UtcNow.AddHours(1);
-                await _sequences.SaveEnrollmentAsync(enrollment, ct);
-                continue;
-            }
+            if (enrollment.NextActionAtUtc is not { } dueAt) continue;
+            // Exactly one runner gets each step. Another instance that read the same
+            // row moves on; so does this one, if it lost.
+            var claimedUntil = now.Add(ClaimFor);
+            if (!await _sequences.TryClaimAsync(enrollment.Id, enrollment.CurrentStep, dueAt, claimedUntil, ct)) continue;
+            enrollment.NextActionAtUtc = claimedUntil;
 
-            var steps = sequence.Steps.OrderBy(s => s.SortOrder).ToList();
-            if (enrollment.CurrentStep >= steps.Count)
+            try
             {
-                enrollment.Status = "completed";
-                enrollment.NextActionAtUtc = null;
-                await _sequences.SaveEnrollmentAsync(enrollment, ct);
-                continue;
+                await RunStepAsync(enrollment, now, ct);
             }
-
-            var step = steps[enrollment.CurrentStep];
-            await ExecuteStepAsync(sequence, enrollment, step, ct);
-            enrollment.CurrentStep += 1;
-            if (enrollment.CurrentStep >= steps.Count)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                enrollment.Status = "completed";
-                enrollment.NextActionAtUtc = null;
+                // One bad row must not stop the rest. The claim lapses and it is
+                // tried again after ClaimFor.
+                _logger.LogError(ex, "Sequence enrollment {EnrollmentId} step {Step} failed", enrollment.Id, enrollment.CurrentStep);
             }
-            else
-            {
-                var next = steps[enrollment.CurrentStep];
-                enrollment.NextActionAtUtc = DateTime.UtcNow.AddDays(Math.Max(0, next.DayOffset));
-            }
-            await _sequences.SaveEnrollmentAsync(enrollment, ct);
         }
     }
 
-    private async Task ExecuteStepAsync(OutreachSequence sequence, OutreachEnrollment enrollment, OutreachStep step, CancellationToken ct)
+    private async Task RunStepAsync(OutreachEnrollment enrollment, DateTime now, CancellationToken ct)
+    {
+        var sequence = await _sequences.GetAsync(enrollment.SequenceId, enrollment.OrganizationId, ct);
+        if (sequence == null)
+        {
+            await StopAsync(enrollment, "the sequence no longer exists", ct);
+            return;
+        }
+        if (!string.Equals(sequence.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            // Paused or draft: hold, and pick up again once it is active.
+            enrollment.NextActionAtUtc = now.AddHours(1);
+            await _sequences.SaveEnrollmentAsync(enrollment, ct);
+            return;
+        }
+
+        var steps = sequence.Steps.OrderBy(s => s.SortOrder).ToList();
+        if (enrollment.CurrentStep >= steps.Count)
+        {
+            Complete(enrollment);
+            await _sequences.SaveEnrollmentAsync(enrollment, ct);
+            return;
+        }
+
+        var target = await _sequences.TargetStateAsync(enrollment.TargetType, enrollment.TargetId, enrollment.OrganizationId, ct);
+        if (StopReason(target) is { } reason)
+        {
+            await StopAsync(enrollment, reason, ct);
+            return;
+        }
+
+        var step = steps[enrollment.CurrentStep];
+        var outcome = await ExecuteStepAsync(sequence, enrollment, step, target, ct);
+        if (outcome == StepOutcome.Retry)
+        {
+            enrollment.NextActionAtUtc = now.Add(RetryAfter);
+            await _sequences.SaveEnrollmentAsync(enrollment, ct);
+            return;
+        }
+        if (outcome == StepOutcome.Stop)
+        {
+            await StopAsync(enrollment, "there is no email address to send to", ct);
+            return;
+        }
+
+        enrollment.CurrentStep += 1;
+        if (enrollment.CurrentStep >= steps.Count) Complete(enrollment);
+        else enrollment.NextActionAtUtc = now.AddDays(Math.Max(0, steps[enrollment.CurrentStep].DayOffset));
+        await _sequences.SaveEnrollmentAsync(enrollment, ct);
+    }
+
+    /// <summary>Why outreach to this person must stop now, or null when it may continue.</summary>
+    internal static string? StopReason(SequenceTargetState target)
+    {
+        if (!target.Exists) return "they are no longer in this workspace";
+        if (target.DoNotContact) return "they are marked do not contact";
+        if (target.IsArchived) return "they are archived";
+        if (target.IsConverted) return "they have been converted";
+        if (target.Status is { } status && FinishedStatuses.Contains(status.Trim())) return $"their status is {status.Trim()}";
+        return null;
+    }
+
+    private enum StepOutcome { Done, Retry, Stop }
+
+    private async Task<StepOutcome> ExecuteStepAsync(
+        OutreachSequence sequence, OutreachEnrollment enrollment, OutreachStep step, SequenceTargetState target, CancellationToken ct)
     {
         var type = step.Type.Trim().ToLowerInvariant();
-        if (type == "wait") return;
+        if (type == "wait") return StepOutcome.Done;
 
-        if (type == "email" && !string.IsNullOrWhiteSpace(enrollment.TargetEmail))
+        if (type == "email")
         {
-            var body = (step.Body ?? "").Replace("{{firstName}}", FirstName(enrollment.TargetName), StringComparison.OrdinalIgnoreCase);
-            var api = (_emailSettings.ApiBaseUrl ?? "").Trim().TrimEnd('/');
-            if (enrollment.TargetType == "lead" && api.Length > 0)
-                body += $"\n\n<img src=\"{api}/api/public/track/{enrollment.TargetId}\" width=\"1\" height=\"1\" alt=\"\" />";
-            await _email.SendMessageAsync(enrollment.TargetEmail, enrollment.TargetName, step.Subject ?? sequence.Name, body, ct);
+            var to = target.Email?.Trim();
+            if (string.IsNullOrWhiteSpace(to)) return StepOutcome.Stop;
+
+            var name = target.Name ?? enrollment.TargetName;
+            var subject = Fill(string.IsNullOrWhiteSpace(step.Subject) ? sequence.Name : step.Subject, name, target.CompanyName);
+            var text = Fill(step.Body ?? "", name, target.CompanyName);
+            var html = HtmlFor(text, enrollment.TargetType == "lead" ? TrackingUrl(enrollment.TargetId) : null);
+
+            if (!await _email.SendHtmlMessageAsync(to, name, subject, text, html, ct))
+            {
+                _logger.LogWarning("Sequence email for enrollment {EnrollmentId} was not delivered; retrying later", enrollment.Id);
+                return StepOutcome.Retry;
+            }
+            await LogAsync(enrollment, "email", subject, text, ct);
+            return StepOutcome.Done;
         }
 
         if (type is "task" or "call")
         {
-            await _tasks.CreateAsync(enrollment.EnrolledByUserId, enrollment.OrganizationId, new CreateTaskRequest
+            var created = await _tasks.CreateAsync(enrollment.EnrolledByUserId, enrollment.OrganizationId, new CreateTaskRequest
             {
                 Title = string.IsNullOrWhiteSpace(step.TaskTitle) ? step.Type : step.TaskTitle.Trim(),
                 Description = step.Note,
@@ -201,19 +320,76 @@ public sealed class SequenceService : ISequenceService
                 LeadId = enrollment.TargetType == "lead" ? enrollment.TargetId : null,
                 ContactId = enrollment.TargetType == "contact" ? enrollment.TargetId : null,
             }, ct);
-            return;
+            return created.IsSuccess ? StepOutcome.Done : StepOutcome.Retry;
         }
 
-        if (enrollment.TargetType == "lead")
+        await LogAsync(enrollment, "note", step.Subject ?? step.TaskTitle ?? sequence.Name, step.Body, ct);
+        return StepOutcome.Done;
+    }
+
+    /// <summary>Record what the sequence did, as automated — it is not a person responding.</summary>
+    private async Task LogAsync(OutreachEnrollment enrollment, string type, string? subject, string? body, CancellationToken ct)
+    {
+        await _activities.CreateAsync(enrollment.EnrolledByUserId, enrollment.OrganizationId, new CreateActivityRequest
         {
-            await _activities.CreateAsync(enrollment.EnrolledByUserId, enrollment.OrganizationId, new CreateActivityRequest
-            {
-                Type = type == "email" ? "email" : "note",
-                Subject = step.Subject ?? step.TaskTitle ?? sequence.Name,
-                Body = step.Body,
-                LeadId = enrollment.TargetId,
-            }, ct);
-        }
+            Type = type,
+            Subject = subject,
+            Body = body,
+            LeadId = enrollment.TargetType == "lead" ? enrollment.TargetId : null,
+            ContactId = enrollment.TargetType == "contact" ? enrollment.TargetId : null,
+            IsAutomated = true,
+        }, ct);
+    }
+
+    private async Task StopAsync(OutreachEnrollment enrollment, string reason, CancellationToken ct)
+    {
+        _logger.LogInformation("Stopping sequence enrollment {EnrollmentId}: {Reason}", enrollment.Id, reason);
+        enrollment.Status = "stopped";
+        enrollment.NextActionAtUtc = null;
+        await _sequences.SaveEnrollmentAsync(enrollment, ct);
+    }
+
+    private static void Complete(OutreachEnrollment enrollment)
+    {
+        enrollment.Status = "completed";
+        enrollment.NextActionAtUtc = null;
+    }
+
+    /// <summary>
+    /// Fills {{firstName}}, {{name}} and {{company}}. Only {{firstName}} used to be
+    /// filled, and only in the body: "{{company}}" — which the editor suggests — and
+    /// any placeholder in a subject went out to the prospect literally.
+    /// </summary>
+    internal static string Fill(string template, string? name, string? company) =>
+        template
+            .Replace("{{firstName}}", FirstName(name ?? ""), StringComparison.OrdinalIgnoreCase)
+            .Replace("{{name}}", (name ?? "").Trim(), StringComparison.OrdinalIgnoreCase)
+            .Replace("{{company}}", (company ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The email-open pixel URL, or null when this API has no public address to give.</summary>
+    internal string? TrackingUrl(Guid leadId)
+    {
+        // The setting defaults to http://localhost:5160, and nothing in production
+        // sets it. A pixel pointing there can never be fetched by a recipient, so it
+        // is left out rather than shipped broken.
+        if (!Uri.TryCreate((_emailSettings.ApiBaseUrl ?? "").Trim(), UriKind.Absolute, out var api)) return null;
+        if (api.IsLoopback || api.Scheme != Uri.UriSchemeHttps) return null;
+        return $"{api.GetLeftPart(UriPartial.Authority)}{api.AbsolutePath.TrimEnd('/')}/api/public/track/{leadId}";
+    }
+
+    /// <summary>
+    /// The HTML part: the same words, escaped, with line breaks kept — and the
+    /// tracking image, which exists only here. It used to be appended to the text
+    /// body, and since the message was sent as plain text every recipient saw
+    /// &lt;img src="http://localhost:5160/api/public/track/…"&gt; at the bottom.
+    /// </summary>
+    internal static string HtmlFor(string text, string? trackingUrl)
+    {
+        var paragraphs = WebUtility.HtmlEncode(text).Replace("\r\n", "\n").Replace("\n", "<br>\n");
+        var pixel = trackingUrl == null
+            ? ""
+            : $"\n<img src=\"{WebUtility.HtmlEncode(trackingUrl)}\" width=\"1\" height=\"1\" alt=\"\" style=\"display:block;border:0\">";
+        return $"<!doctype html><html><body><div style=\"font-family:sans-serif;font-size:15px;line-height:1.5\">{paragraphs}</div>{pixel}</body></html>";
     }
 
     private static string FirstName(string name)

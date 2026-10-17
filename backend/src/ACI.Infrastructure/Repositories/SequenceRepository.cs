@@ -60,8 +60,14 @@ public sealed class SequenceRepository : ISequenceRepository
         return await query.OrderByDescending(e => e.EnrolledAtUtc).ToListAsync(ct);
     }
 
-    public Task<OutreachEnrollment?> GetEnrollmentAsync(Guid id, CancellationToken ct = default) =>
-        _db.OutreachEnrollments.FirstOrDefaultAsync(e => e.Id == id, ct);
+    public Task<OutreachEnrollment?> GetEnrollmentAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
+        // Scoped by organisation: by id alone, anyone who knew an enrollment id —
+        // a Viewer, a former member, another workspace — could pause or delete it.
+        _db.OutreachEnrollments.FirstOrDefaultAsync(e => e.Id == id && e.OrganizationId == organizationId, ct);
+
+    public Task<OutreachEnrollment?> FindOpenEnrollmentAsync(Guid sequenceId, Guid targetId, CancellationToken ct = default) =>
+        _db.OutreachEnrollments.FirstOrDefaultAsync(e =>
+            e.SequenceId == sequenceId && e.TargetId == targetId && (e.Status == "active" || e.Status == "paused"), ct);
 
     public async Task SaveEnrollmentAsync(OutreachEnrollment enrollment, CancellationToken ct = default)
     {
@@ -76,11 +82,25 @@ public sealed class SequenceRepository : ISequenceRepository
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task DeleteEnrollmentAsync(Guid id, CancellationToken ct = default)
+    public async Task<bool> DeleteEnrollmentAsync(Guid id, Guid? organizationId, CancellationToken ct = default)
     {
-        var row = await _db.OutreachEnrollments.FirstOrDefaultAsync(e => e.Id == id, ct);
-        if (row == null) return;
+        var row = await _db.OutreachEnrollments.FirstOrDefaultAsync(e => e.Id == id && e.OrganizationId == organizationId, ct);
+        if (row == null) return false;
         _db.OutreachEnrollments.Remove(row);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task StopEnrollmentsAsync(Guid sequenceId, CancellationToken ct = default)
+    {
+        var open = await _db.OutreachEnrollments
+            .Where(e => e.SequenceId == sequenceId && (e.Status == "active" || e.Status == "paused"))
+            .ToListAsync(ct);
+        foreach (var row in open)
+        {
+            row.Status = "stopped";
+            row.NextActionAtUtc = null;
+        }
         await _db.SaveChangesAsync(ct);
     }
 
@@ -90,4 +110,51 @@ public sealed class SequenceRepository : ISequenceRepository
             .OrderBy(e => e.NextActionAtUtc)
             .Take(take)
             .ToListAsync(ct);
+
+    public async Task<bool> TryClaimAsync(Guid enrollmentId, int step, DateTime dueAtUtc, DateTime claimedUntilUtc, CancellationToken ct = default)
+    {
+        // The background runner runs once per app instance. Without a claim, two
+        // instances read the same due rows and both sent the email. One conditional
+        // UPDATE is atomic on the database: the row moves only if nobody has moved it
+        // since it was read, so exactly one caller sees a row affected. Pushing
+        // NextActionAtUtc forward also takes it out of every other instance's due list.
+        if (_db.Database.IsRelational())
+        {
+            var moved = await _db.OutreachEnrollments
+                .Where(e => e.Id == enrollmentId && e.Status == "active" && e.CurrentStep == step && e.NextActionAtUtc == dueAtUtc)
+                .ExecuteUpdateAsync(set => set.SetProperty(e => e.NextActionAtUtc, claimedUntilUtc), ct);
+            return moved == 1;
+        }
+
+        // The in-memory provider used by tests has no SQL. Same rule, without the
+        // atomicity, which only the database can supply.
+        var row = await _db.OutreachEnrollments.FirstOrDefaultAsync(e => e.Id == enrollmentId, ct);
+        if (row is not { Status: "active" } || row.CurrentStep != step || row.NextActionAtUtc != dueAtUtc) return false;
+        row.NextActionAtUtc = claimedUntilUtc;
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<SequenceTargetState> TargetStateAsync(string targetType, Guid targetId, Guid? organizationId, CancellationToken ct = default)
+    {
+        if (targetType == "contact")
+        {
+            var contact = await _db.Contacts.AsNoTracking()
+                .Where(c => c.Id == targetId && c.OrganizationId == organizationId)
+                .Select(c => new { c.Name, c.Email, Company = c.Company != null ? c.Company.Name : null, c.DoNotContact, c.IsArchived })
+                .FirstOrDefaultAsync(ct);
+            return contact == null
+                ? SequenceTargetState.Missing
+                : new SequenceTargetState(true, contact.Name, contact.Email, contact.Company,
+                    DoNotContact: contact.DoNotContact, IsArchived: contact.IsArchived);
+        }
+
+        var lead = await _db.Leads.AsNoTracking()
+            .Where(l => l.Id == targetId && l.OrganizationId == organizationId)
+            .Select(l => new { l.Name, l.Email, Company = l.Company != null ? l.Company.Name : null, l.IsConverted, l.Status })
+            .FirstOrDefaultAsync(ct);
+        return lead == null
+            ? SequenceTargetState.Missing
+            : new SequenceTargetState(true, lead.Name, lead.Email, lead.Company, IsConverted: lead.IsConverted, Status: lead.Status);
+    }
 }
