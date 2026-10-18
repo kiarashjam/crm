@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800"
+     role="img" aria-labelledby="figTitle figDesc"
+     font-family="Inter, 'Helvetica Neue', Arial, sans-serif">
+  <title id="figTitle">Anatomy of a cordless electric kettle</title>
+  <desc id="figDesc">Cutaway side view of an electric kettle: steam rising through a channel in
+    the handle reaches a bimetallic strip, which bends and opens the contacts, switching the
+    kettle off by itself.</desc>
+  <style>
+    svg { --ink:#1A1A1A; --mid:#6B6B6B; --hair:#D4D4D4; --paper:#FDFCFA; --accent:#C2410C; }
+    @media (prefers-color-scheme: dark) {
+      svg { --ink:#F2F0ED; --mid:#A3A3A3; --hair:#3F3F3F; --paper:#141414; --accent:#FB923C; }
+    }
+    .ink     { stroke:var(--ink);  stroke-width:2;    fill:none; stroke-linejoin:round; stroke-linecap:round; }
+    .detail  { stroke:var(--mid);  stroke-width:1.25; fill:none; stroke-linejoin:round; stroke-linecap:round; }
+    .hair    { stroke:var(--hair); stroke-width:1;    fill:none; }
+    .leader  { stroke:var(--accent); stroke-width:1;  fill:none; }
+    .label   { fill:var(--ink); }
+    .caption { fill:var(--mid); font-size:13px; font-style:italic; }
+    .figtitle{ fill:var(--ink); font-size:20px; font-weight:600; }
+  </style>
+  <defs>
+    <pattern id="hatchA" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="var(--mid)" stroke-width="1"/>
+    </pattern>
+    <pattern id="hatchB" width="10" height="10" patternTransform="rotate(-45)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="10" stroke="var(--mid)" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="100%" height="100%" fill="var(--paper)"/>
+
+  <g id="subject" transform="translate(0,-30)">
+    <!-- water, drawn first so every outline sits on top of it -->
+    <path fill="var(--ink)" fill-opacity="0.07" stroke="none"
+          d="M 481 500 q 30 -7 60 0 t 60 0 t 60 0 t 58 0 L 714 632 L 486 632 Z"/>
+    <path class="detail" d="M 481 500 q 30 -7 60 0 t 60 0 t 60 0 t 58 0"/>
+
+    <!-- body silhouette -->
+    <path class="ink" d="M 455 300 L 470 652 L 730 652 L 745 300"/>
+    <!-- shoulder and lid rim -->
+    <path class="ink" d="M 455 300 Q 462 272 492 268 L 708 268 Q 738 272 745 300"/>
+    <!-- lid dome and knob -->
+    <path class="ink" d="M 498 268 Q 600 214 702 268"/>
+    <path class="ink" d="M 584 236 L 584 224 Q 600 214 616 224 L 616 236"/>
+    <path class="detail" d="M 498 268 L 702 268"/>
+
+    <!-- spout -->
+    <path class="ink" d="M 457 330 L 372 266 L 356 282 L 455 362"/>
+    <path class="detail" d="M 372 266 L 356 282"/>
+    <path d="M 440 317 L 423 304 L 415 330 L 435 346 Z" fill="url(#hatchA)" stroke="var(--mid)" stroke-width="1.25"/>
+
+    <!-- handle: outer strap, inner edge, and the steam channel inside its wall -->
+    <path class="ink" d="M 745 306 Q 868 316 872 452 Q 876 572 742 580"/>
+    <path class="detail" d="M 745 334 Q 842 344 846 452 Q 850 548 742 554"/>
+    <path class="hair" d="M 752 318 Q 856 330 860 452 Q 864 562 744 568"/>
+    <path class="hair" d="M 752 326 Q 850 338 854 452 Q 858 556 744 562"/>
+
+    <!-- water level window -->
+    <rect class="detail" x="694" y="330" width="20" height="126" rx="10"/>
+    <line class="hair" x1="694" y1="392" x2="714" y2="392"/>
+
+    <!-- torn cut boundary across the body, with wall thickness below it -->
+    <path class="ink" d="M 462 462 L 486 450 L 508 466 L 534 452 L 560 468 L 588 454 L 614 470 L 642 456 L 668 470 L 694 456 L 716 468 L 738 454"/>
+    <path class="detail" d="M 472 470 L 491 460 L 511 475 L 536 462 L 561 477 L 588 464 L 614 479 L 642 466 L 667 479 L 693 466 L 713 477 L 728 464"/>
+    <path fill="url(#hatchB)" stroke="none"
+          d="M 462 462 L 486 450 L 508 466 L 534 452 L 560 468 L 588 454 L 614 470 L 642 456 L 668 470 L 694 456 L 716 468 L 738 454 L 728 464 L 713 477 L 693 466 L 667 479 L 642 466 L 614 479 L 588 464 L 561 477 L 536 462 L 511 475 L 491 460 L 472 470 Z"/>
+    <!-- inner faces of the double wall, revealed by the cut -->
+    <path class="detail" d="M 482 472 L 486 640"/>
+    <path class="detail" d="M 718 472 L 714 640"/>
+    <path class="hair" d="M 464 466 L 470 646 M 736 460 L 730 646"/>
+
+    <!-- concealed element plate and the floor of the kettle -->
+    <path d="M 486 626 L 714 626 L 716 644 L 484 644 Z" fill="url(#hatchA)" stroke="var(--mid)" stroke-width="1.25"/>
+    <path class="detail" d="M 484 644 L 716 644"/>
+
+    <!-- bimetallic strip and contact set, bottom right of the cavity -->
+    <path class="detail" d="M 700 566 L 736 566 M 700 578 L 736 578"/>
+    <path class="ink" d="M 706 566 L 706 598 M 724 578 L 724 598"/>
+    <circle class="detail" cx="706" cy="602" r="3.5" fill="var(--paper)"/>
+    <circle class="detail" cx="724" cy="602" r="3.5" fill="var(--paper)"/>
+    <path class="hair" d="M 715 606 L 715 626"/>
+
+    <!-- cordless power base -->
+    <path class="ink" d="M 444 662 L 756 662 Q 766 662 766 672 L 766 686 Q 766 696 756 696 L 444 696 Q 434 696 434 686 L 434 672 Q 434 662 444 662 Z"/>
+    <circle class="detail" cx="600" cy="662" r="22" fill="var(--paper)"/>
+    <circle class="hair" cx="600" cy="662" r="13"/>
+    <path class="detail" d="M 766 680 L 820 680"/>
+    <path class="hair" d="M 820 680 q 24 0 24 -18"/>
+  </g>
+  <g id="annotations">
+    <g class="callout" data-label="Spout filter">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 428.0 294.0 L 236.0 294.0 L 208.0 294.0"/>
+      <circle cx="428.0" cy="294.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="200.0" y="299.0" text-anchor="end" font-size="14" font-weight="500">
+        <tspan x="200.0" dy="0">Spout filter</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Fill line, 1.7 L">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 556.0 468.0 L 236.0 468.0 L 208.0 468.0"/>
+      <circle cx="556.0" cy="468.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="200.0" y="473.0" text-anchor="end" font-size="14" font-weight="500">
+        <tspan x="200.0" dy="0">Fill line, 1.7 L</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Double wall, 9 mm">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 466.0 514.0 L 236.0 514.0 L 208.0 514.0"/>
+      <circle cx="466.0" cy="514.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="200.0" y="510.5" text-anchor="end" font-size="14" font-weight="500">
+        <tspan x="200.0" dy="0">Double wall, 9 mm</tspan>
+        <tspan x="200.0" dy="17">cavity</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Concealed heating">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 560.0 606.0 L 236.0 606.0 L 208.0 606.0"/>
+      <circle cx="560.0" cy="606.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="200.0" y="602.5" text-anchor="end" font-size="14" font-weight="500">
+        <tspan x="200.0" dy="0">Concealed heating</tspan>
+        <tspan x="200.0" dy="17">element</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Cordless base contacts">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 600.0 648.0 L 236.0 648.0 L 208.0 648.0"/>
+      <circle cx="600.0" cy="648.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="200.0" y="653.0" text-anchor="end" font-size="14" font-weight="500">
+        <tspan x="200.0" dy="0">Cordless base contacts</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Lid knob">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 600.0 202.0 L 964.0 202.0 L 992.0 202.0"/>
+      <circle cx="600.0" cy="202.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="1000.0" y="207.0" text-anchor="start" font-size="14" font-weight="500">
+        <tspan x="1000.0" dy="0">Lid knob</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Lid seal">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 700.0 242.0 L 964.0 242.0 L 992.0 242.0"/>
+      <circle cx="700.0" cy="242.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="1000.0" y="247.0" text-anchor="start" font-size="14" font-weight="500">
+        <tspan x="1000.0" dy="0">Lid seal</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Steam channel in the">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 800.0 300.0 L 964.0 300.0 L 992.0 300.0"/>
+      <circle cx="800.0" cy="300.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="1000.0" y="296.5" text-anchor="start" font-size="14" font-weight="500">
+        <tspan x="1000.0" dy="0">Steam channel in the</tspan>
+        <tspan x="1000.0" dy="17">handle wall</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Water level window">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 704.0 362.0 L 964.0 362.0 L 992.0 362.0"/>
+      <circle cx="704.0" cy="362.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="1000.0" y="367.0" text-anchor="start" font-size="14" font-weight="500">
+        <tspan x="1000.0" dy="0">Water level window</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Insulated handle">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 864.0 422.0 L 964.0 422.0 L 992.0 422.0"/>
+      <circle cx="864.0" cy="422.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="1000.0" y="427.0" text-anchor="start" font-size="14" font-weight="500">
+        <tspan x="1000.0" dy="0">Insulated handle</tspan>
+      </text>
+    </g>
+    <g class="callout" data-label="Bimetallic strip and">
+      <path class="leader" fill="none" stroke="var(--accent, #C2410C)" stroke-width="1" d="M 715.0 555.0 L 964.0 555.0 L 992.0 555.0"/>
+      <circle cx="715.0" cy="555.0" r="3" fill="var(--accent, #C2410C)"/>
+      <text class="label" x="1000.0" y="551.5" text-anchor="start" font-size="14" font-weight="500">
+        <tspan x="1000.0" dy="0">Bimetallic strip and</tspan>
+        <tspan x="1000.0" dy="17">contacts</tspan>
+      </text>
+    </g>
+  </g>
+
+  <g id="frame">
+    <text class="figtitle" x="240" y="52">Anatomy of a cordless electric kettle</text>
+    <text class="caption" x="240" y="764"><tspan x="240" dy="0">Steam rises through a channel in the handle to a bimetallic strip, which bends as it heats,</tspan><tspan x="240" dy="17">opens the contacts and switches the kettle off by itself.</tspan></text>
+  </g>
+</svg>
