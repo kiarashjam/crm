@@ -30,4 +30,5 @@ public interface ILeadOpsRepository
     Task SaveLeadAsync(Lead lead, CancellationToken ct = default);
     Task<Lead?> GetLeadAsync(Guid id, CancellationToken ct = default);
     Task<int> IncrementEmailOpensAsync(Guid leadId, CancellationToken ct = default);
+    Task<int> RescoreOpenLeadsAsync(DateTime utcNow, CancellationToken ct = default);
 }

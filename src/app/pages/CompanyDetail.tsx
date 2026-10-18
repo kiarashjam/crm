@@ -28,6 +28,7 @@ import {
 import { getCurrencySymbol } from './pipeline/DealCard';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 type CompanyRaw = Company & Record<string, unknown>;
 
@@ -268,6 +269,7 @@ export default function CompanyDetail() {
               {company.updatedAtUtc && <span>Updated {new Date(company.updatedAtUtc).toLocaleDateString()}</span>}
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Overview Section */}
           <Card className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6">

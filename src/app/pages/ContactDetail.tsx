@@ -41,6 +41,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>();
@@ -455,6 +456,7 @@ export default function ContactDetail() {
               {contact.updatedAtUtc && <span>Updated {new Date(contact.updatedAtUtc).toLocaleDateString()}</span>}
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Tasks Section */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6">

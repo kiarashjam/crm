@@ -42,6 +42,7 @@ import { getLoyaltyLedger, type LoyaltyEntry, REASON_LABELS } from '@/app/api/lo
 import { getCommunications, type Communication } from '@/app/api/communications';
 import { getGiftCards, type GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -315,6 +316,7 @@ export default function MemberDetail() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Key metrics */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

@@ -1,4 +1,5 @@
 import { cn } from '@/app/components/ui/utils';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 export type StatTone = 'slate' | 'indigo' | 'violet' | 'blue' | 'emerald' | 'teal' | 'amber' | 'orange' | 'rose' | 'cyan';
 
@@ -91,6 +92,9 @@ export default function PageHero({ icon: Icon, iconGradient = 'from-orange-500 t
           </div>
         </div>
       </div>
+
+      {/* The sales agent's next step sits right after the page title. */}
+      <NextActionsSlot />
 
       {stats && stats.length > 0 && (
         <div className={cn('mb-8 grid grid-cols-2 gap-4', stats.length >= 4 ? 'md:grid-cols-3 lg:grid-cols-4' : 'md:grid-cols-3')}>

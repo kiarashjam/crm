@@ -54,6 +54,7 @@ import {
   type ResourceKind,
 } from '@/app/api/reservations';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const KIND_ICON: Record<ResourceKind, React.ElementType> = {
   Dining: Coffee,
@@ -305,6 +306,7 @@ export default function Reservations() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

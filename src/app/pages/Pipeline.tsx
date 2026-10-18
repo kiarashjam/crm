@@ -90,6 +90,7 @@ import { getTasks, createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 export default function Pipeline() {
   const { isReadOnly } = useOrg();
@@ -677,6 +678,7 @@ export default function Pipeline() {
             </div>
           </div>
         </motion.div>
+          <NextActionsSlot />
 
         {/* Stats Grid - Modern Bento Box Style */}
         {!loading && deals.length > 0 && (

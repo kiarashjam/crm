@@ -49,6 +49,7 @@ import {
 } from '@/app/api/communications';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const CHANNEL_ICON: Record<CommChannel, React.ElementType> = {
   Email: Mail,
@@ -231,6 +232,7 @@ export default function Communications() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

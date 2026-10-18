@@ -46,6 +46,7 @@ import {
 } from '@/app/api/visits';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const VENUE_COLOR: Record<VisitVenue, string> = {
   Dining: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -220,6 +221,7 @@ export default function Visits() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

@@ -9,6 +9,30 @@ namespace ACI.Application.Interfaces;
 /// <param name="Content">The bytes.</param>
 public sealed record EmailAttachment(string FileName, string ContentType, byte[] Content);
 
+/// <summary>A message someone wrote in the CRM's composer, already checked.</summary>
+/// <param name="FromName">
+/// The name shown beside the sender address — the workspace's, so a lead sees
+/// "Pavillon 46", not the product's name. Null falls back to Email:FromName.
+/// </param>
+public sealed record ComposedEmail(
+    IReadOnlyList<string> To,
+    IReadOnlyList<string> Cc,
+    IReadOnlyList<string> Bcc,
+    string Subject,
+    string TextBody,
+    string HtmlBody,
+    string? FromName = null);
+
+/// <summary>What happened to a composed message.</summary>
+public enum ComposedEmailOutcome
+{
+    Sent,
+    /// <summary>No mail server is set up, so nothing was attempted.</summary>
+    NotConfigured,
+    /// <summary>The mail server was tried and did not take the message.</summary>
+    Failed,
+}
+
 public interface IEmailSender
 {
     Task<bool> SendPasswordResetEmailAsync(string toEmail, string recipientName, string resetUrl, CancellationToken ct = default);
@@ -116,4 +140,11 @@ public interface IEmailSender
     /// Returns false (never throws) when the message could not be delivered.
     /// </summary>
     Task<bool> SendHtmlMessageAsync(string toEmail, string recipientName, string subject, string textBody, string htmlBody, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a message someone wrote in the CRM, from the configured sender address.
+    /// Says whether it went, and when it did not, whether a mail server was set up
+    /// at all — never reporting a send that did not happen. Never throws.
+    /// </summary>
+    Task<ComposedEmailOutcome> SendComposedAsync(ComposedEmail email, CancellationToken ct = default);
 }

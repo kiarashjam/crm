@@ -56,6 +56,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const STATUS_OPTIONS: { value: TaskStatusType; label: string; icon: typeof Circle; color: string }[] = [
   { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-400' },
@@ -363,6 +364,7 @@ export default function TaskDetail() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Details cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">

@@ -51,6 +51,7 @@ import {
 } from '@/app/api/applications';
 import { MEMBER_TIERS, TIER_DUES, type MemberTier } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -269,6 +270,7 @@ export default function Applications() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

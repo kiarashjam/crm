@@ -34,6 +34,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 
 // Import extracted components and config
 import { DashboardHero } from './dashboard/DashboardHero';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 import { PipelineChart } from './dashboard/PipelineChart';
 import { QuickNav } from './dashboard/QuickNav';
 import { CopyStatsWidget } from './dashboard/CopyStatsWidget';
@@ -288,6 +289,7 @@ export default function Dashboard() {
             loaded={loaded.crm}
             failed={failed.crm}
           />
+          <NextActionsSlot />
 
         {/* Main Content Grid */}
         <div className="space-y-8">

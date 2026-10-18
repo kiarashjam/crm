@@ -99,6 +99,7 @@ import { parsePipeline, pipelineBadge } from './leads/leadPipeline';
 import { matchesLeadSearch, leadInitials } from './leads/leadText';
 import type { LeadForm } from './leads/types';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 /** Fallback row style when activity type is unknown (matches `note` in config). */
 const DEFAULT_ACTIVITY_TYPE = ACTIVITY_TYPES[3]!;
@@ -1528,6 +1529,7 @@ export default function Leads() {
             </div>
           </div>
         </Reveal>
+          <NextActionsSlot />
 
           {!loading && totalCount > 0 && (
             <LeadPipelineStrip

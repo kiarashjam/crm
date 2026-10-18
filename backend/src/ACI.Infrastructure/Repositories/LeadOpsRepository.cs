@@ -238,6 +238,50 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
         return lead.EmailOpenCount;
     }
 
+    /// <summary>
+    /// Recompute the automatic score of every open lead, and save the ones that
+    /// moved. Returns how many moved.
+    /// </summary>
+    /// <remarks>
+    /// A score used to be recomputed only when its lead was saved, so the
+    /// time-based rules never changed on their own: a lead called once kept its
+    /// "contacted within 7 days" points for good, and an untouched lead never lost
+    /// points for going stale. Leads whose score was set by hand, and converted
+    /// leads, are left as they are. Only the score changes — UpdatedAtUtc stays,
+    /// since nobody edited the lead.
+    /// </remarks>
+    public async Task<int> RescoreOpenLeadsAsync(DateTime utcNow, CancellationToken ct = default)
+    {
+        const int page = 500;
+        var rulesByOrganization = new Dictionary<Guid, IReadOnlyList<LeadScoringRule>>();
+        var moved = 0;
+        for (var skip = 0; ; skip += page)
+        {
+            // Neither filter column changes below, so the pages stay put.
+            var leads = await _db.Leads
+                .Where(l => !l.ScoreIsManual && !l.IsConverted)
+                .OrderBy(l => l.Id)
+                .Skip(skip)
+                .Take(page)
+                .ToListAsync(ct);
+
+            foreach (var lead in leads)
+            {
+                var key = lead.OrganizationId ?? Guid.Empty;
+                if (!rulesByOrganization.TryGetValue(key, out var rules))
+                    rulesByOrganization[key] = rules = await GetScoringRulesAsync(lead.OrganizationId, ct);
+                var score = LeadScoreCalculator.Score(lead, rules, utcNow);
+                if (lead.LeadScore == score) continue;
+                lead.LeadScore = score;
+                moved++;
+            }
+
+            await _db.SaveChangesAsync(ct);
+            _db.ChangeTracker.Clear();
+            if (leads.Count < page) return moved;
+        }
+    }
+
     private async Task<IReadOnlyList<LeadScoringRule>> ScoringOrBuiltin(Guid? organizationId, CancellationToken ct)
     {
         var rules = await GetScoringRulesAsync(organizationId, ct);

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
@@ -912,6 +913,7 @@ export default function LeadDetailPage() {
 
           {/* Lead lifecycle pipeline (full-width, under the hero) */}
           <div className="w-full px-[var(--page-padding)] pt-6">
+            <NextActionsSlot className="mb-4" />
             {/* Status ↔ pipeline relationship: how the automation is behaving,
                 or a one-click resolution when the two disagree. */}
             <StatusSyncStrip

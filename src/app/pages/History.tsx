@@ -11,6 +11,7 @@ import { getCopyHistory } from '@/app/api';
 import type { CopyHistoryItem } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const typeIcons: Record<string, typeof Mail> = {
   'Sales Email': Mail,
@@ -122,6 +123,7 @@ export default function History() {
             </div>
           </div>
         </div>
+          <NextActionsSlot />
 
         <div className="w-full">
 

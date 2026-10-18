@@ -50,6 +50,7 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const ACTIVITY_TYPES = [
   { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-600', borderColor: 'border-emerald-200' },
@@ -551,6 +552,7 @@ export default function Activities() {
             </div>
           </div>
         </div>
+          <NextActionsSlot />
 
           {/* Stats Cards */}
           {!loading && activities.length > 0 && (

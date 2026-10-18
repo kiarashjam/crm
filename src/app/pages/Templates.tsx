@@ -18,6 +18,7 @@ import {
 import type { Template, CopyTypeId } from '@/app/api/types';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const categoryIcons: Record<string, typeof Mail> = {
   Sales: Mail,
@@ -237,6 +238,7 @@ export default function Templates() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {loading ? (
             <ContentSkeleton rows={6} />

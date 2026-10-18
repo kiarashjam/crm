@@ -10,6 +10,7 @@ import { getContacts, getDeals, getLeads, sendCopyToCrm } from '@/app/api';
 import type { Contact, Deal, Lead } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 type ObjectType = 'lead' | 'contact' | 'deal';
 
@@ -183,6 +184,7 @@ export default function SendToCrm() {
                   </p>
                 </div>
               </div>
+              <NextActionsSlot />
 
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
                 <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">

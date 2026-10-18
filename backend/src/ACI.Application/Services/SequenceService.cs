@@ -1,4 +1,3 @@
-using System.Net;
 using ACI.Application.Common;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
@@ -383,14 +382,7 @@ public sealed class SequenceService : ISequenceService
     /// body, and since the message was sent as plain text every recipient saw
     /// &lt;img src="http://localhost:5160/api/public/track/…"&gt; at the bottom.
     /// </summary>
-    internal static string HtmlFor(string text, string? trackingUrl)
-    {
-        var paragraphs = WebUtility.HtmlEncode(text).Replace("\r\n", "\n").Replace("\n", "<br>\n");
-        var pixel = trackingUrl == null
-            ? ""
-            : $"\n<img src=\"{WebUtility.HtmlEncode(trackingUrl)}\" width=\"1\" height=\"1\" alt=\"\" style=\"display:block;border:0\">";
-        return $"<!doctype html><html><body><div style=\"font-family:sans-serif;font-size:15px;line-height:1.5\">{paragraphs}</div>{pixel}</body></html>";
-    }
+    internal static string HtmlFor(string text, string? trackingUrl) => PlainTextEmail.ToHtml(text, trackingUrl);
 
     private static string FirstName(string name)
     {

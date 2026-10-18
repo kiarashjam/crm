@@ -8,7 +8,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Label } from '@/app/components/ui/label';
-import { sendEmail, createActivity, generateCopy, isUsingRealApi } from '@/app/api';
+import { sendEmail, createActivity, generateCopy, isUsingRealApi, mailtoHref } from '@/app/api';
 
 export interface EmailComposerContext {
   leadId?: string;
@@ -32,9 +32,13 @@ interface EmailComposerDialogProps {
 }
 
 /**
- * Reusable composer that actually sends through the `sendEmail` API (the real
- * backend delivers via its provider; demo mode simulates) and logs an `email`
+ * Reusable composer that sends through the `sendEmail` API — the server sends it
+ * from the workspace's address; demo mode simulates — and logs an `email`
  * activity against the related record so it lands on the timeline.
+ *
+ * It says "Email sent" only when the server sent it (it used to say so with
+ * nothing sent at all). When a send fails, the toast gives the server's reason
+ * and offers to open the message in the person's own email app instead.
  */
 export default function EmailComposerDialog({
   open, onOpenChange, to, defaultSubject = '', defaultBody = '', context, aiContext, onSent,
@@ -106,11 +110,32 @@ export default function EmailComposerDialog({
       toast.success(isUsingRealApi() ? 'Email sent' : 'Email sent (simulated in demo mode)');
       onOpenChange(false);
       onSent?.();
-    } catch {
-      toast.error('Failed to send email');
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to send email', {
+        duration: 12_000,
+        action: { label: 'Open in email app', onClick: handleOpenInMailApp },
+      });
     } finally {
       setSending(false);
     }
+  };
+
+  /** Hand the message to the person's own email app, and note it on the timeline. */
+  const handleOpenInMailApp = () => {
+    if (!toAddr.trim()) { toast.error('A recipient is required'); return; }
+    if (!subject.trim()) { toast.error('A subject is required'); return; }
+    window.location.href = mailtoHref({ to: toAddr.trim(), cc: cc.trim() || undefined, subject: subject.trim(), body });
+    createActivity({
+      type: 'email',
+      subject: `Email: ${subject.trim()}`,
+      body,
+      leadId: context?.leadId,
+      contactId: context?.contactId,
+      dealId: context?.dealId,
+    }).catch(() => { /* non-fatal */ });
+    toast.success('Opened in your email app. Send it from there — it is noted on the timeline.');
+    onOpenChange(false);
+    onSent?.();
   };
 
   return (
@@ -122,7 +147,7 @@ export default function EmailComposerDialog({
           </DialogTitle>
           <DialogDescription>
             {isUsingRealApi()
-              ? 'Sends through your connected email provider and logs to the timeline.'
+              ? 'Sends from your workspace\'s email address and logs it on the timeline.'
               : 'Demo mode — sending is simulated, but it still logs to the timeline.'}
           </DialogDescription>
         </DialogHeader>

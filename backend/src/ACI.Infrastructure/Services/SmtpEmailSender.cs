@@ -176,19 +176,7 @@ public sealed class SmtpEmailSender : IEmailSender
             }
             message.Body = builder.ToMessageBody();
 
-            using var client = new SmtpClient();
-            var secure = !_options.UseSsl
-                ? SecureSocketOptions.Auto
-                : _options.SmtpPort == 465
-                    ? SecureSocketOptions.SslOnConnect
-                    : SecureSocketOptions.StartTls;
-            await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, secure, ct);
-
-            if (!string.IsNullOrEmpty(_options.SmtpUser))
-                await client.AuthenticateAsync(_options.SmtpUser, _options.SmtpPassword, ct);
-
-            await client.SendAsync(message, ct);
-            await client.DisconnectAsync(true, ct);
+            await TransmitAsync(message, ct);
             return true;
         }
         catch (Exception ex)
@@ -196,6 +184,66 @@ public sealed class SmtpEmailSender : IEmailSender
             _logger.LogError(ex, "Failed to send \"{Subject}\" to {Email}", subject, toEmail);
             return false;
         }
+    }
+
+    /// <summary>Hands one message to the configured SMTP relay. Throws on failure.</summary>
+    private async Task TransmitAsync(MimeMessage message, CancellationToken ct)
+    {
+        using var client = new SmtpClient();
+        var secure = !_options.UseSsl
+            ? SecureSocketOptions.Auto
+            : _options.SmtpPort == 465
+                ? SecureSocketOptions.SslOnConnect
+                : SecureSocketOptions.StartTls;
+        await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, secure, ct);
+
+        if (!string.IsNullOrEmpty(_options.SmtpUser))
+            await client.AuthenticateAsync(_options.SmtpUser, _options.SmtpPassword, ct);
+
+        await client.SendAsync(message, ct);
+        await client.DisconnectAsync(true, ct);
+    }
+
+    // ── Composed in the CRM ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sends a message someone wrote in the composer. Unlike the reminders above,
+    /// an unset SmtpHost is NOT treated as success — the composer would tell the
+    /// person their email went when it did not — and the answer says which way it
+    /// failed, so the composer can say whether trying again could help.
+    /// </summary>
+    public async Task<ComposedEmailOutcome> SendComposedAsync(ComposedEmail email, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SmtpHost) || string.IsNullOrWhiteSpace(_options.FromAddress))
+        {
+            _logger.LogWarning("Email:SmtpHost or Email:FromAddress is not set, so a composed email was NOT sent");
+            return ComposedEmailOutcome.NotConfigured;
+        }
+
+        try
+        {
+            var fromName = string.IsNullOrWhiteSpace(email.FromName) ? _options.FromName : email.FromName.Trim();
+            await TransmitAsync(BuildComposedMessage(email, fromName, _options.FromAddress), ct);
+            return ComposedEmailOutcome.Sent;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send composed email \"{Subject}\"", email.Subject);
+            return ComposedEmailOutcome.Failed;
+        }
+    }
+
+    /// <summary>The MIME message for a composed email: every recipient, both parts.</summary>
+    public static MimeMessage BuildComposedMessage(ComposedEmail email, string fromName, string fromAddress)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(fromName, fromAddress));
+        message.To.AddRange(email.To.Select(MailboxAddress.Parse));
+        message.Cc.AddRange(email.Cc.Select(MailboxAddress.Parse));
+        message.Bcc.AddRange(email.Bcc.Select(MailboxAddress.Parse));
+        message.Subject = email.Subject;
+        message.Body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody }.ToMessageBody();
+        return message;
     }
 
     // ── Contracts ────────────────────────────────────────────────────────────

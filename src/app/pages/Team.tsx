@@ -55,6 +55,7 @@ import {
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 // Role mapping
 const ROLES = {
@@ -655,6 +656,7 @@ export default function Team() {
             </div>
           </div>
         </div>
+          <NextActionsSlot />
 
           {/* Stats Cards */}
           {!loading && (
