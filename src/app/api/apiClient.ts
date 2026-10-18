@@ -75,12 +75,19 @@ export class ApiError extends Error {
   readonly status: number;
   /** The request path, when known, so a fallback can name the feature it hit. */
   readonly path?: string;
+  /**
+   * Whether the server said anything. The backend answers a route it doesn't have
+   * with a bare 404, and a record it can't find with a 404 that explains itself,
+   * so this is what tells "no such feature" from "no such record".
+   */
+  readonly hasBody: boolean;
 
-  constructor(message: string, status: number, path?: string) {
+  constructor(message: string, status: number, path?: string, hasBody = false) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.path = path;
+    this.hasBody = hasBody;
   }
 }
 
@@ -107,7 +114,7 @@ export async function authFetchJson<T>(path: string, options: AuthFetchOptions =
     // The status rides along as a property instead of being prefixed onto the
     // text, so callers that need to branch on it (notifications skips endpoints
     // that 404) can do so without parsing prose.
-    throw new ApiError(errorMessageFrom(text, res), res.status, path);
+    throw new ApiError(errorMessageFrom(text, res), res.status, path, text.length > 0);
   }
   if (!text) return undefined as T;
   try {
@@ -127,12 +134,17 @@ export async function ensureOk(res: Response): Promise<void> {
   } catch {
     path = undefined;
   }
-  throw new ApiError(errorMessageFrom(await res.text(), res), res.status, path);
+  const text = await res.text();
+  throw new ApiError(errorMessageFrom(text, res), res.status, path, text.length > 0);
 }
 
-/** The server answered that this route doesn't exist (or isn't implemented). */
+/**
+ * The server answered that this route doesn't exist (or isn't implemented). A 404
+ * with a body is the server explaining that a record wasn't found, which is an
+ * answer, not a missing feature, and saving locally then would hide it.
+ */
 function isEndpointMissing(err: unknown): err is ApiError {
-  return err instanceof ApiError && (err.status === 404 || err.status === 405 || err.status === 501);
+  return err instanceof ApiError && !err.hasBody && (err.status === 404 || err.status === 405 || err.status === 501);
 }
 
 /**
@@ -142,8 +154,9 @@ function isEndpointMissing(err: unknown): err is ApiError {
  * keep working, backed by this browser's storage, until the backend gains support.
  *
  * Only a missing endpoint falls back. Any other failure — a 403 for a Viewer, a
- * validation error, a 500, an unreachable server — is rethrown, because saving
- * locally then would report success for a write the server refused or never saw.
+ * validation error, a record the server can't find, a 500, an unreachable server —
+ * is rethrown, because saving locally then would report success for a write the
+ * server refused or never saw.
  */
 export async function apiWithFallback<T>(real: () => Promise<T>, local: () => Promise<T>): Promise<T> {
   if (servesDemoData()) return local();

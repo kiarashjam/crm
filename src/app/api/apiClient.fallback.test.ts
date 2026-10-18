@@ -42,13 +42,26 @@ describe('apiWithFallback against the real API', () => {
     expect(local).not.toHaveBeenCalled();
   });
 
+  // What the backend sends for a route it doesn't have: the status and nothing else.
+  function missing(status: number) {
+    server.use(http.get(`${BASE}/api/widgets`, () => new HttpResponse(null, { status })));
+  }
+
   it.each([404, 405, 501])('falls back when the endpoint is missing (%i)', async (status) => {
-    respond(status);
+    missing(status);
     await expect(apiWithFallback(real, local)).resolves.toBe('local copy');
   });
 
+  it('rethrows a 404 that explains itself: the record is missing, not the feature', async () => {
+    respond(404, { title: 'Not Found', detail: 'The record was not found' });
+    const err = await apiWithFallback(real, local).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 404, message: 'The record was not found' });
+    expect(local).not.toHaveBeenCalled();
+    expect(isLocalOnly(['widgets'])).toBe(false);
+  });
+
   it('records the feature that fell back, so the page can say so', async () => {
-    respond(404);
+    missing(404);
     await apiWithFallback(real, local);
     expect(isLocalOnly(['widgets'])).toBe(true);
     expect(isLocalOnly(['members'])).toBe(false);

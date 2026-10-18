@@ -28,20 +28,23 @@ export interface CustomFieldDef {
 export type CustomFieldValue = string | number | boolean | null;
 export type CustomFieldValues = Record<string, CustomFieldValue>;
 
-interface ValuesRow {
+export interface ValuesRow {
   id: string; // `${entityType}:${recordId}`
   entityType: CustomFieldEntity;
   recordId: string;
   values: CustomFieldValues;
 }
 
+/** The sample fields demo mode starts with. Before stores were scoped, real browsers got them too. */
+export const DEMO_FIELD_DEFS: readonly CustomFieldDef[] = [
+  { id: 'cf-seed-1', entityType: 'contact', key: 'linkedin', label: 'LinkedIn', type: 'url', order: 0 },
+  { id: 'cf-seed-2', entityType: 'lead', key: 'budget', label: 'Budget', type: 'number', order: 0 },
+  { id: 'cf-seed-3', entityType: 'deal', key: 'source_channel', label: 'Source channel', type: 'select', options: ['Inbound', 'Outbound', 'Referral', 'Event'], order: 0 },
+];
+
 const defStore = createMockStore<CustomFieldDef>({
   storageKey: 'crm.mock.customFieldDefs.v1',
-  seed: [
-    { id: 'cf-seed-1', entityType: 'contact', key: 'linkedin', label: 'LinkedIn', type: 'url', order: 0 },
-    { id: 'cf-seed-2', entityType: 'lead', key: 'budget', label: 'Budget', type: 'number', order: 0 },
-    { id: 'cf-seed-3', entityType: 'deal', key: 'source_channel', label: 'Source channel', type: 'select', options: ['Inbound', 'Outbound', 'Referral', 'Event'], order: 0 },
-  ],
+  seed: [...DEMO_FIELD_DEFS],
   idOf: (d) => d.id,
 });
 

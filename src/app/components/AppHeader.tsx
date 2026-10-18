@@ -30,6 +30,7 @@ import { Button } from '@/app/components/ui/button';
 import DemoBanner from './DemoBanner';
 import ReadOnlyBanner from './ReadOnlyBanner';
 import LocalOnlyNotice from './LocalOnlyNotice';
+import LocalDataUploadDialog from './LocalDataUploadDialog';
 import { AppSideNav } from './AppSideNav';
 import { NextActions } from '@/app/salesAgent/NextActions';
 
@@ -384,6 +385,7 @@ export default function AppHeader() {
     <DemoBanner />
     <ReadOnlyBanner />
     <LocalOnlyNotice />
+    <LocalDataUploadDialog />
     {/* Renders its own spacing, and nothing at all where sales work has no place. */}
     <NextActions />
     </>
