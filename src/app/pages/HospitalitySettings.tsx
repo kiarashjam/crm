@@ -158,7 +158,7 @@ export default function HospitalitySettings() {
                     </p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     onClick={reset}
@@ -193,7 +193,7 @@ export default function HospitalitySettings() {
           <NextActionsSlot />
 
           <Tabs defaultValue="tiers">
-            <TabsList className="mb-4">
+            <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
               <TabsTrigger value="tiers">Membership tiers</TabsTrigger>
               <TabsTrigger value="loyalty">Loyalty rules</TabsTrigger>
               <TabsTrigger value="venues">Venue points</TabsTrigger>

@@ -143,11 +143,11 @@ export default function Statements() {
             <div className="absolute inset-0">
               <div className="absolute -top-20 -right-20 w-80 h-80 bg-slate-400/20 rounded-full blur-3xl" />
             </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10 flex items-center gap-5">
+            <div className="relative px-6 lg:px-8 py-8 lg:py-10 flex flex-wrap items-center gap-5">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center shadow-2xl shadow-slate-500/30">
                 <FileText className="w-8 h-8 text-white" />
               </div>
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Statements</h1>
                 <p className="text-slate-400 mt-1">
                   Monthly billing summary — charges, payments, and ending balance.
@@ -198,17 +198,17 @@ export default function Statements() {
           ) : !member ? (
             <p className="text-slate-500">Select a member to view their statement.</p>
           ) : (
-            <article className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 print:shadow-none print:border-0">
-              <header className="border-b border-slate-200 pb-6 mb-6 flex justify-between items-start">
+            <article className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-8 print:shadow-none print:border-0">
+              <header className="border-b border-slate-200 pb-6 mb-6 flex flex-wrap justify-between items-start gap-4">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900">Account Statement</h2>
                   <p className="text-sm text-slate-500 mt-1">{monthLabel(cursor)}</p>
                 </div>
-                <div className="text-right">
+                <div className="min-w-0 sm:text-right">
                   <p className="font-semibold text-slate-900">
                     {member.firstName} {member.lastName}
                   </p>
-                  <p className="text-sm text-slate-500">{member.email}</p>
+                  <p className="text-sm text-slate-500 break-all">{member.email}</p>
                   <p className="text-sm text-slate-500 mt-1">
                     {member.tier} · Member since {formatDate(member.joinedAtUtc)}
                   </p>
@@ -295,7 +295,7 @@ export default function Statements() {
               </section>
 
               <footer className="border-t border-slate-200 pt-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-sm text-slate-500">
                     Questions about this statement? Please contact the membership office.
                   </p>

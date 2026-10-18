@@ -286,7 +286,7 @@ export default function Loyalty() {
           </div>
 
           <Tabs defaultValue="ledger" className="w-full">
-            <TabsList className="mb-4">
+            <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
               <TabsTrigger value="ledger">Ledger</TabsTrigger>
               <TabsTrigger value="balances">Balances by member</TabsTrigger>
               <TabsTrigger value="rules">How it works</TabsTrigger>
