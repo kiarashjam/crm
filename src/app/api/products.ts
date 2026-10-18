@@ -4,7 +4,7 @@
 // Line items add that breakdown; the catalog provides reusable products. Both
 // have real-backend and demo (localStorage) implementations.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -63,7 +63,7 @@ export async function createProduct(input: Omit<Product, 'id'>): Promise<Product
 
 export async function deleteProduct(id: string): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch(`/api/products/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch(`/api/products/${id}`, { method: 'DELETE' }); await ensureOk(res); return true; },
     async () => { await delay(120); return productStore.remove(id); },
   );
 }
@@ -100,7 +100,7 @@ export async function updateDealLineItem(id: string, patch: Partial<LineItemInpu
 
 export async function deleteDealLineItem(id: string): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch(`/api/deals/line-items/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch(`/api/deals/line-items/${id}`, { method: 'DELETE' }); await ensureOk(res); return true; },
     async () => { await delay(100); return lineItemStore.remove(id); },
   );
 }

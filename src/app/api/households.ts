@@ -4,7 +4,7 @@
 // dependents). All charges roll up to the primary's house account, even
 // when the sub-member is the one swiping their card at the bar.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { getMembers, type Member } from './members';
 
@@ -165,7 +165,7 @@ export async function deleteHousehold(id: string): Promise<boolean> {
   const ok = await apiWithFallback(
     async () => {
       const res = await authFetch(`/api/households/${id}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error('failed');
+      await ensureOk(res);
       return true;
     },
     async () => {
@@ -213,7 +213,7 @@ export async function removeMemberFromHousehold(id: string): Promise<boolean> {
   return apiWithFallback(
     async () => {
       const res = await authFetch(`/api/household-members/${id}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error('failed');
+      await ensureOk(res);
       return true;
     },
     async () => {

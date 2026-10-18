@@ -5,7 +5,7 @@
 // balance is derived from the ledger so the books always reconcile. Each tier
 // earns at a configurable multiplier.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import type { MemberTier } from './members';
 
@@ -209,7 +209,7 @@ export async function deleteLoyaltyEntry(id: string): Promise<boolean> {
   return apiWithFallback(
     async () => {
       const res = await authFetch(`/api/loyalty/ledger/${id}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error('failed');
+      await ensureOk(res);
       return true;
     },
     async () => {

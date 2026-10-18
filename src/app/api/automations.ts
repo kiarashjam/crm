@@ -4,7 +4,7 @@
 // engine that evaluates triggers and executes actions; demo mode persists the
 // rule definitions locally so the builder is fully usable offline.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -139,7 +139,7 @@ export async function updateAutomation(id: string, input: Partial<AutomationInpu
 
 export async function deleteAutomation(id: string): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch(`/api/automations/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch(`/api/automations/${id}`, { method: 'DELETE' }); await ensureOk(res); return true; },
     async () => { await delay(120); return ruleStore.remove(id); },
   );
 }

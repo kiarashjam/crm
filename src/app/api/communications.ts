@@ -4,7 +4,7 @@
 // whether they opened / clicked / replied. This is the audit trail the
 // hospitality team relies on when a member says "did you ever send me that?".
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -208,7 +208,7 @@ export async function deleteCommunication(id: string): Promise<boolean> {
   return apiWithFallback(
     async () => {
       const res = await authFetch(`/api/communications/${id}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error('failed');
+      await ensureOk(res);
       return true;
     },
     async () => {

@@ -13,7 +13,7 @@
 // remember which endpoints have returned 404 for this session and skip
 // them on subsequent calls until the tab reloads.
 
-import { ApiError, apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { ApiError, apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import type { TaskItem } from './types';
 
@@ -23,7 +23,10 @@ const unavailableEndpoints = new Set<string>();
 /** Wrap a real-API call so a 404 (endpoint not implemented) is remembered
  *  for this session; subsequent calls skip the real request entirely. */
 async function realOrCache404<T>(endpoint: string, real: () => Promise<T>): Promise<T> {
-  if (unavailableEndpoints.has(endpoint)) throw new Error('endpoint-unavailable');
+  // Still a 404 to apiWithFallback, which only falls back for a missing endpoint.
+  if (unavailableEndpoints.has(endpoint)) {
+    throw new ApiError('endpoint-unavailable', 404, endpoint.split(' ')[1]);
+  }
   try {
     return await real();
   } catch (err) {
@@ -125,10 +128,7 @@ export async function markNotificationRead(id: string): Promise<boolean> {
   return apiWithFallback(
     () => realOrCache404('POST /api/notifications/:id/read', async () => {
       const res = await authFetch(`/api/notifications/${id}/read`, { method: 'POST' });
-      if (!res.ok) {
-        // Preserve the status so realOrCache404 can spot 404s.
-        throw new Error(res.status === 404 ? 'HTTP 404 Not Found' : `HTTP ${res.status}`);
-      }
+      await ensureOk(res);
       return true;
     }),
     async () => { await delay(60); return notificationStore.update(id, { read: true }) != null; },
@@ -139,9 +139,7 @@ export async function markAllNotificationsRead(): Promise<boolean> {
   return apiWithFallback(
     () => realOrCache404('POST /api/notifications/read-all', async () => {
       const res = await authFetch('/api/notifications/read-all', { method: 'POST' });
-      if (!res.ok) {
-        throw new Error(res.status === 404 ? 'HTTP 404 Not Found' : `HTTP ${res.status}`);
-      }
+      await ensureOk(res);
       return true;
     }),
     async () => {

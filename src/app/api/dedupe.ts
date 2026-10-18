@@ -4,7 +4,7 @@
 // Merge uses a dedicated backend endpoint when available; in demo mode it
 // fills empty fields on the primary from the duplicates, then deletes them.
 
-import { apiWithFallback, authFetch } from './apiClient';
+import { apiWithFallback, authFetch, ensureOk } from './apiClient';
 import { getContacts, updateContact, deleteContact } from './contacts';
 import { getCompanies, updateCompany, deleteCompany } from './companies';
 import type { Contact, Company } from './types';
@@ -91,7 +91,7 @@ export async function findDuplicateCompanies(): Promise<DuplicateGroup<Company>[
 
 export async function mergeContacts(primaryId: string, duplicateIds: string[]): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch('/api/contacts/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) }); if (!res.ok) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch('/api/contacts/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) }); await ensureOk(res); return true; },
     () => mergeContactsLocal(primaryId, duplicateIds),
   );
 }
@@ -115,7 +115,7 @@ async function mergeContactsLocal(primaryId: string, duplicateIds: string[]): Pr
 
 export async function mergeCompanies(primaryId: string, duplicateIds: string[]): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch('/api/companies/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) }); if (!res.ok) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch('/api/companies/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) }); await ensureOk(res); return true; },
     () => mergeCompaniesLocal(primaryId, duplicateIds),
   );
 }

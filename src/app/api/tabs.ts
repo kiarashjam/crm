@@ -4,7 +4,7 @@
 // they go; closing the tab converts it to a Charge on the member's house
 // account and writes a loyalty ledger entry sized to the total.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge, type ChargeKind } from './charges';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from './loyalty';
@@ -190,7 +190,7 @@ export async function removeItemFromTab(tabId: string, itemId: string): Promise<
   return apiWithFallback(
     async () => {
       const res = await authFetch(`/api/tabs/${tabId}/items/${itemId}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error('failed');
+      await ensureOk(res);
       return tabStore.byId(tabId) ?? null;
     },
     async () => {

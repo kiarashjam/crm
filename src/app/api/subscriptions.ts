@@ -4,7 +4,7 @@
 // but also extras like locker rental, fitness add-ons, parking. When a cycle
 // comes due, the billing run drops a charge onto the member's house account.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge } from './charges';
 
@@ -190,7 +190,7 @@ export async function deleteSubscription(id: string): Promise<boolean> {
   return apiWithFallback(
     async () => {
       const res = await authFetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error('failed');
+      await ensureOk(res);
       return true;
     },
     async () => {

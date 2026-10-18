@@ -4,7 +4,7 @@
 // with their own fields. Definitions live per entity type; values are stored
 // per record. The backend persists both; demo mode keeps them in localStorage.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -108,7 +108,7 @@ export async function updateFieldDefinition(id: string, patch: Partial<CustomFie
 
 export async function deleteFieldDefinition(id: string): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch(`/api/custom-fields/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch(`/api/custom-fields/${id}`, { method: 'DELETE' }); await ensureOk(res); return true; },
     async () => { await delay(120); return defStore.remove(id); },
   );
 }
@@ -127,7 +127,7 @@ export async function getFieldValues(entityType: CustomFieldEntity, recordId: st
 
 export async function saveFieldValues(entityType: CustomFieldEntity, recordId: string, values: CustomFieldValues): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch('/api/custom-fields/values', { method: 'PUT', body: JSON.stringify({ entityType, recordId, values }) }); if (!res.ok) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch('/api/custom-fields/values', { method: 'PUT', body: JSON.stringify({ entityType, recordId, values }) }); await ensureOk(res); return true; },
     async () => {
       await delay(120);
       const id = `${entityType}:${recordId}`;
