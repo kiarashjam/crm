@@ -4,23 +4,21 @@
 // and, on the 404, falls back to storage in this browser (`apiWithFallback`). The
 // fallback works, but every visit still sent the request and printed a failed
 // call in the console: three on every page for the sales agent's automations
-// list alone, more on a lead (custom fields, attachments).
+// list alone.
 //
-// Known in advance, so `authFetch` answers these itself with the same 404,
-// without a request. `notOnServer.test.ts` reads the backend's controllers and
+// Known in advance, so `authFetch` answers reads of these itself with the same
+// 404, without a request. Writes still go out: the server refuses a Viewer's
+// with a 403 before routing, which the app would otherwise never see. `notOnServer.test.ts` reads the backend's controllers and
 // fails when one of these gains a controller (take it off the list, and its
 // screen starts using the server) or when a new call goes to a route nothing
 // serves (add it here, or build the route).
 
 export const NOT_ON_SERVER: readonly string[] = [
   'applications',
-  'attachments',
-  'audit',
   'automations',
   'campaigns',
   'charges',
   'communications',
-  'custom-fields',
   'donations',
   'events',
   'gift-cards',

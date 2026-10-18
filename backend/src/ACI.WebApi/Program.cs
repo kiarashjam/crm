@@ -201,6 +201,7 @@ try
     builder.Services.AddScoped<IAuditService, AuditService>();
     builder.Services.AddScoped<IAttachmentService, AttachmentService>();
     builder.Services.AddScoped<ICustomFieldService, CustomFieldService>();
+    builder.Services.AddScoped<IDealLineItemService, DealLineItemService>();
     builder.Services.AddScoped<ITemplateService, TemplateService>();
     builder.Services.AddScoped<ICopyHistoryService, CopyHistoryService>();
     builder.Services.AddScoped<ISettingsService, SettingsService>();
@@ -734,6 +735,16 @@ try
                     [ValuesJson] nvarchar(max) NOT NULL,
                     [UpdatedAtUtc] datetime2 NOT NULL
                 );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'DealLineItems')
+                CREATE TABLE [DealLineItems] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [DealId] uniqueidentifier NOT NULL,
+                    [ProductId] nvarchar(64) NULL,
+                    [Name] nvarchar(200) NOT NULL,
+                    [Quantity] decimal(18,4) NOT NULL,
+                    [UnitPrice] decimal(18,4) NOT NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadScoringRules')
                 CREATE TABLE [LeadScoringRules] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,
@@ -867,6 +878,10 @@ try
                 BEGIN TRY
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_CustomFieldValues_EntityType_RecordId')
                         CREATE UNIQUE INDEX [IX_CustomFieldValues_EntityType_RecordId] ON [CustomFieldValues] ([EntityType], [RecordId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DealLineItems_DealId')
+                        CREATE INDEX [IX_DealLineItems_DealId] ON [DealLineItems] ([DealId]);
                 END TRY BEGIN CATCH END CATCH;
                 BEGIN TRY
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LeadOpsSettings_OrganizationId')

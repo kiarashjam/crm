@@ -5,7 +5,7 @@ namespace ACI.Infrastructure.Persistence;
 
 /// <summary>
 /// When a lead, contact, company or deal is deleted, its attachments and custom
-/// field values are deleted in the same save.
+/// field values are deleted in the same save, and a deal's line items with it.
 /// </summary>
 /// <remarks>
 /// They are keyed by record type and id rather than by a foreign key, because one
@@ -41,7 +41,10 @@ internal static class RecordDependents
                 .Where(a => a.EntityType == type && ids.Contains(a.RecordId)).Select(a => a.Id).ToListAsync(ct);
             var valueSets = await db.CustomFieldValues
                 .Where(v => v.EntityType == type && ids.Contains(v.RecordId)).ToListAsync(ct);
-            Remove(db, attachmentIds, valueSets);
+            var lineItems = type == RecordTypes.Deal
+                ? await db.DealLineItems.Where(i => ids.Contains(i.DealId)).ToListAsync(ct)
+                : new List<DealLineItem>();
+            Remove(db, attachmentIds, valueSets, lineItems);
         }
     }
 
@@ -55,11 +58,14 @@ internal static class RecordDependents
                 .Where(a => a.EntityType == type && ids.Contains(a.RecordId)).Select(a => a.Id).ToList();
             var valueSets = db.CustomFieldValues
                 .Where(v => v.EntityType == type && ids.Contains(v.RecordId)).ToList();
-            Remove(db, attachmentIds, valueSets);
+            var lineItems = type == RecordTypes.Deal
+                ? db.DealLineItems.Where(i => ids.Contains(i.DealId)).ToList()
+                : new List<DealLineItem>();
+            Remove(db, attachmentIds, valueSets, lineItems);
         }
     }
 
-    private static void Remove(AppDbContext db, List<Guid> attachmentIds, List<CustomFieldValueSet> valueSets)
+    private static void Remove(AppDbContext db, List<Guid> attachmentIds, List<CustomFieldValueSet> valueSets, List<DealLineItem> lineItems)
     {
         foreach (var id in attachmentIds)
         {
@@ -68,5 +74,6 @@ internal static class RecordDependents
             else db.Entry(new Attachment { Id = id }).State = EntityState.Deleted;
         }
         db.CustomFieldValues.RemoveRange(valueSets);
+        db.DealLineItems.RemoveRange(lineItems);
     }
 }

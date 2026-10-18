@@ -49,6 +49,7 @@ public static class DependencyInjection
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
         services.AddScoped<ICustomFieldRepository, CustomFieldRepository>();
         services.AddScoped<IWorkspaceRecords, WorkspaceRecords>();
+        services.AddScoped<IDealLineItemRepository, DealLineItemRepository>();
         services.AddSingleton<IAttachmentLinks, AttachmentLinkSigner>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICopyHistoryRepository, CopyHistoryRepository>();
