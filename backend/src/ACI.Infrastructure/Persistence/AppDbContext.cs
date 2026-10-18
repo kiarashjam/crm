@@ -51,6 +51,9 @@ public class AppDbContext : DbContext
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<CopyHistoryItem> CopyHistoryItems => Set<CopyHistoryItem>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
+    public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
+    public DbSet<CustomFieldValueSet> CustomFieldValues => Set<CustomFieldValueSet>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,9 +61,13 @@ public class AppDbContext : DbContext
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
 
-    /// <summary>Saves, writing the audit trail for every record it changes in the same transaction.</summary>
+    /// <summary>
+    /// Saves, writing the audit trail for every record it changes and removing a deleted
+    /// record's attachments and custom field values, all in the same transaction.
+    /// </summary>
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        await RecordDependents.RemoveAsync(this, cancellationToken);
         var events = await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken);
         AuditEvents.AddRange(events);
         try
@@ -77,6 +84,7 @@ public class AppDbContext : DbContext
     /// <inheritdoc cref="SaveChangesAsync(bool, CancellationToken)"/>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        RecordDependents.Remove(this);
         var events = AuditTrail.Capture(this, _currentUser);
         AuditEvents.AddRange(events);
         try

@@ -51,6 +51,10 @@ public sealed class SecretPathRedactionMiddleware
         // /api/public/contracts/{token}[/sign|/decline|/pdf]
         new(@"^(?<keep>/api/public/contracts/)(?<secret>[^/?]+)(?<rest>.*)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        // /api/attachments/{id}/content/{token}: a signed download link. The id stays,
+        // so the log still says which file was fetched.
+        new(@"^(?<keep>/api/attachments/[^/?]+/content/)(?<secret>[^/?]+)(?<rest>.*)$",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase),
     };
 
     private readonly RequestDelegate _next;

@@ -42,6 +42,19 @@ public class SecretPathRedactionTests
     }
 
     [Theory]
+    // A signed attachment link is the whole permission to download the file, for two hours.
+    [InlineData("/api/attachments/3f9a21c0-0000-0000-0000-000000000000/content/SUPERSECRETTOKEN123abcXYZ",
+                "/api/attachments/3f9a21c0-0000-0000-0000-000000000000/content/[redacted]")]
+    [InlineData("/API/Attachments/3f9a21c0-0000-0000-0000-000000000000/CONTENT/SUPERSECRETTOKEN123abcXYZ",
+                "/API/Attachments/3f9a21c0-0000-0000-0000-000000000000/CONTENT/[redacted]")]
+    public void RemovesTheTokenFromAnAttachmentLinkButKeepsTheFile(string path, string expected)
+    {
+        var redacted = SecretPathRedactionMiddleware.RedactPath(path);
+        redacted.Should().Be(expected);
+        redacted.Should().NotContain(Token);
+    }
+
+    [Theory]
     // The CRM's own routes carry ids, not credentials. Redacting them would throw
     // away the only thing that makes a log line useful.
     [InlineData("/api/contracts/3f9a21c0-0000-0000-0000-000000000000")]
@@ -51,6 +64,8 @@ public class SecretPathRedactionTests
     [InlineData("/health")]
     [InlineData("/api/public/contracts")]
     [InlineData("/api/public/contracts/")]
+    [InlineData("/api/attachments")]
+    [InlineData("/api/attachments/3f9a21c0-0000-0000-0000-000000000000")]
     public void LeavesEverythingElseAlone(string path)
     {
         SecretPathRedactionMiddleware.RedactPath(path).Should().BeNull(

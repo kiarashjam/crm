@@ -65,6 +65,8 @@ export function CustomFieldsSection() {
       toast.success('Custom field added');
       setLabel(''); setOptions(''); setRequired(false); setType('text');
       load(entity);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create field');
     } finally {
       setCreating(false);
     }
@@ -73,8 +75,13 @@ export function CustomFieldsSection() {
   const remove = async (f: CustomFieldDef) => {
     if (!confirm(`Delete custom field "${f.label}"?`)) return;
     setDefs((prev) => prev.filter((d) => d.id !== f.id));
-    const ok = await deleteFieldDefinition(f.id);
-    if (ok) toast.success('Field deleted'); else { toast.error('Failed to delete'); load(entity); }
+    try {
+      const ok = await deleteFieldDefinition(f.id);
+      if (ok) toast.success('Field deleted'); else { toast.error('Failed to delete'); load(entity); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete');
+      load(entity);
+    }
   };
 
   return (
