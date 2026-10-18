@@ -30,7 +30,7 @@ interface CompanyOption {
 interface QuickAddLeadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Persist the lead. Resolve once it's saved. */
+  /** Persist the lead. Resolve once it's saved; resolve `false` to keep the dialog open. */
   onSubmit: (input: {
     name: string;
     email: string;
@@ -39,7 +39,7 @@ interface QuickAddLeadDialogProps {
     source?: string;
     status?: string;
     description?: string;
-  }) => Promise<void>;
+  }) => Promise<boolean | void>;
   /** Switch over to the full multi-step editor without losing what the user typed. */
   onOpenFullEditor: (prefill: {
     name: string;
@@ -103,7 +103,7 @@ export function QuickAddLeadDialog({
     if (!valid || saving) return;
     setSaving(true);
     try {
-      await onSubmit({
+      const saved = await onSubmit({
         name: name.trim(),
         email: email.trim(),
         phone: phone.trim() || undefined,
@@ -112,7 +112,7 @@ export function QuickAddLeadDialog({
         status: status || undefined,
         description: description.trim() || undefined,
       });
-      onOpenChange(false);
+      if (saved !== false) onOpenChange(false);
     } finally {
       setSaving(false);
     }

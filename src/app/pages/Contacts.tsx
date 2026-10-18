@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Search, Plus, Pencil, Trash2, Building2, Mail, Phone, Briefcase,
@@ -69,7 +69,11 @@ export default function Contacts() {
   const [allDeals, setAllDeals] = useState<Deal[]>([]);
   // HP-12: Task visibility on contacts
   const [allTasks, setAllTasks] = useState<TaskItem[]>([]);
+  // Only the first load blanks the list and holds the overlay; a search keystroke
+  // or page change keeps the list on screen (see Leads.tsx).
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const loadedOnceRef = useRef(false);
   usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
@@ -114,7 +118,8 @@ export default function Contacts() {
 
   // Fetch contacts with pagination
   const fetchContacts = useCallback(async () => {
-    setLoading(true);
+    if (loadedOnceRef.current) setRefreshing(true);
+    else setLoading(true);
     try {
       const [pagedResult, companiesData, dealsResult, tasksResult] = await Promise.all([
         getContactsPaged({ page: currentPage, pageSize, search: debouncedSearch || undefined }),
@@ -128,11 +133,13 @@ export default function Contacts() {
       setCompanies(companiesData);
       setAllDeals(dealsResult.items);
       setAllTasks(tasksResult);
+      loadedOnceRef.current = true;
     } catch (error) {
       console.error('Failed to fetch contacts:', error);
       toast.error('Failed to load contacts');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [currentPage, pageSize, debouncedSearch]);
 
@@ -438,7 +445,7 @@ export default function Contacts() {
                 <div>
                   <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Contacts</h1>
                   <p className="text-slate-400 mt-1">
-                    {loading ? 'Loading…' : 'Manage your business relationships'}
+                    {loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage your business relationships'}
                   </p>
                 </div>
               </div>

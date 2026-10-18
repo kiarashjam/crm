@@ -156,7 +156,8 @@ export function nextActionForDeal(deal: SuggestableDeal, now: Date = new Date())
       ...base,
       action: 'Record why this deal was lost.',
       because: 'The deal is closed lost, and the reason is still empty.',
-      priority: 99,
+      // Same rule as a lead's missing reason: bookkeeping, so below a meeting today.
+      priority: 95,
     };
   }
 

@@ -46,6 +46,11 @@ const STATUS_TONE: Record<SequenceStatus, string> = {
 
 type DraftStep = Omit<SequenceStep, 'id'>;
 
+/** The server's reason when it gave one, else a generic line. */
+function failure(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
 const emptyStep = (type: SequenceStepType = 'email'): DraftStep => ({
   order: 0, type, dayOffset: type === 'email' ? 0 : 2, subject: '', body: '', taskTitle: '', note: '',
 });
@@ -83,15 +88,33 @@ export default function Sequences() {
   const toggleStatus = async (s: Sequence) => {
     const next: SequenceStatus = s.status === 'active' ? 'paused' : 'active';
     setSequences((prev) => prev.map((x) => (x.id === s.id ? { ...x, status: next } : x)));
-    const ok = await updateSequence(s.id, { status: next });
-    if (!ok) { toast.error('Failed to update'); void load(); }
+    try {
+      if (!(await updateSequence(s.id, { status: next }))) throw new Error();
+    } catch (err) {
+      toast.error(failure(err, 'Could not change the sequence'));
+      void load();
+    }
   };
 
   const handleDelete = async (s: Sequence) => {
     if (!confirm(`Delete sequence "${s.name}"? Enrollments will be removed.`)) return;
     setSequences((prev) => prev.filter((x) => x.id !== s.id));
-    const ok = await deleteSequence(s.id);
-    if (ok) toast.success('Sequence deleted'); else { toast.error('Failed to delete'); void load(); }
+    try {
+      if (!(await deleteSequence(s.id))) throw new Error();
+      toast.success('Sequence deleted');
+    } catch (err) {
+      toast.error(failure(err, 'Could not delete the sequence'));
+      void load();
+    }
+  };
+
+  const changeEnrollment = async (run: () => Promise<boolean>, fallback: string) => {
+    try {
+      await run();
+    } catch (err) {
+      toast.error(failure(err, fallback));
+    }
+    void load();
   };
 
   const activeCount = (id: string) => (enrollmentsBySeq[id] ?? []).filter((e) => e.status === 'active').length;
@@ -182,14 +205,14 @@ export default function Sequences() {
                                   <button
                                     type="button"
                                     title={e.status === 'paused' ? 'Resume' : 'Pause'}
-                                    onClick={async () => { await setEnrollmentStatus(e.id, e.status === 'paused' ? 'active' : 'paused'); void load(); }}
+                                    onClick={() => changeEnrollment(() => setEnrollmentStatus(e.id, e.status === 'paused' ? 'active' : 'paused'), 'Could not change the enrolment')}
                                     className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                                   >
                                     {e.status === 'paused' ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
                                   </button>
                                   <button
                                     type="button" title="Remove"
-                                    onClick={async () => { await unenroll(e.id); void load(); }}
+                                    onClick={() => changeEnrollment(() => unenroll(e.id), 'Could not remove the enrolment')}
                                     className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
                                   >
                                     <X className="h-3.5 w-3.5" />
@@ -279,6 +302,8 @@ function SequenceEditorDialog({ open, onOpenChange, sequence, onSaved }: {
       if (!res) { toast.error('Failed to save'); return; }
       toast.success(sequence ? 'Sequence updated' : 'Sequence created');
       onSaved();
+    } catch (err) {
+      toast.error(failure(err, 'Could not save the sequence'));
     } finally {
       setSaving(false);
     }
@@ -404,6 +429,9 @@ function EnrollDialog({ sequence, onOpenChange, onEnrolled }: {
       });
       if (res) { toast.success(`${lead.name} enrolled in "${sequence.name}"`); onEnrolled(); }
       else toast.error('Failed to enroll');
+    } catch (err) {
+      // The server says why — e.g. the lead asked not to be contacted, or is already won or lost.
+      toast.error(failure(err, `Could not enroll ${lead.name}`));
     } finally {
       setEnrolling(null);
     }

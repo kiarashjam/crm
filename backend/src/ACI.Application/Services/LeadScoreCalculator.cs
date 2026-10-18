@@ -1,3 +1,4 @@
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 
 namespace ACI.Application.Services;
@@ -18,7 +19,10 @@ public static class LeadScoreCalculator
         new() { Field = "hasCompany", Points = 15 },
         new() { Field = "contactedWithinDays", MatchValue = "7", Points = 15 },
         new() { Field = "emailOpens", MatchValue = "20", Points = 5 },
-        new() { Field = "status", MatchValue = "qualified", Points = 20 },
+        // "Qualified" was retired when the stages were agreed (it became Contract
+        // Pending), and a status-contains-"qualified" rule has matched nobody since.
+        // stageAtLeast reads the agreed order, so it also counts the stages after.
+        new() { Field = "stageAtLeast", MatchValue = "Contract Pending", Points = 20 },
         new() { Field = "staleDays", MatchValue = "3", Points = -10 },
     ];
 
@@ -43,6 +47,7 @@ public static class LeadScoreCalculator
         {
             "source" => Contains(lead.Source, match) ? rule.Points : 0,
             "status" => Contains(lead.Status, match) ? rule.Points : 0,
+            "stageatleast" => LeadStatusVocabulary.ReachedStage(lead.Status, match) ? rule.Points : 0,
             "country" => EqualsFold(lead.Country, match) ? rule.Points : 0,
             "industry" => Contains(lead.Industry, match) ? rule.Points : 0,
             "hasphone" => string.IsNullOrWhiteSpace(lead.Phone) ? 0 : rule.Points,

@@ -329,6 +329,8 @@ export async function createLead(params: {
   lastContactedAt?: string;
   description?: string;
   lifecycleStage?: string;
+  /** Create it even though an open lead already has this email. */
+  allowDuplicate?: boolean;
 }): Promise<Lead | null> {
   if (isUsingRealApi()) {
     const lead = await authFetchJson<LeadRaw>('/api/leads', {

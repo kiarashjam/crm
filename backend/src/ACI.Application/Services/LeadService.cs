@@ -268,7 +268,11 @@ public class LeadService : ILeadService
         if (request.Status != null) existing.Status = request.Status.Trim();
         if (request.LeadSourceId.HasValue) existing.LeadSourceId = request.LeadSourceId;
         if (request.LeadStatusId.HasValue) existing.LeadStatusId = request.LeadStatusId;
-        if (request.LeadScore.HasValue)
+        // A score only becomes manual when someone actually changes it. Both edit
+        // dialogs pre-fill the current automatic score and send it back with every
+        // save, so fixing a typo in a phone number used to freeze that lead's score
+        // for good — no later rescore, no email-open points, nothing to undo it.
+        if (request.LeadScore.HasValue && request.LeadScore != existing.LeadScore)
         {
             existing.LeadScore = request.LeadScore;
             existing.ScoreIsManual = true;
@@ -281,6 +285,19 @@ public class LeadService : ILeadService
         if (request.Country != null) existing.Country = request.Country.Trim();
         if (request.Industry != null) existing.Industry = request.Industry.Trim();
         if (request.CompanySize != null) existing.CompanySize = request.CompanySize.Trim();
+
+        // Someone has worked this lead: its status left "New" (the pipeline moves it
+        // when outreach is logged), or a contact date was recorded. Either one is a
+        // first response. Only call/meeting/email activities used to count, so a
+        // lead moved along through the pipeline still raised "First response is
+        // late" hours after it was called.
+        var worked = !string.Equals(existing.Status?.Trim(), "New", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(previousStatus?.Trim(), existing.Status?.Trim(), StringComparison.OrdinalIgnoreCase);
+        if (existing.FirstResponseAtUtc == null && (worked || request.LastContactedAt.HasValue))
+        {
+            existing.FirstResponseAtUtc = DateTime.UtcNow;
+            existing.SlaBreached = false;
+        }
 
         if (!existing.ScoreIsManual)
             await _automation.RescoreAsync(existing, ct);

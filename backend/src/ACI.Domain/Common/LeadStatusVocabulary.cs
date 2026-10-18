@@ -56,6 +56,36 @@ public static class LeadStatusVocabulary
         ("Lost", "Lost / Not Interested"),
     };
 
+    /// <summary>The stage that means "they said no". Last in the list, but not "furthest along".</summary>
+    public const string Lost = "Lost / Not Interested";
+
+    /// <summary>
+    /// Where a status sits in <see cref="Default"/>, reading a retired label as the
+    /// stage it was mapped to. -1 for a status this vocabulary does not know.
+    /// </summary>
+    public static int StageIndex(string? status)
+    {
+        var name = (status ?? "").Trim();
+        foreach (var (old, @new) in Retired)
+        {
+            if (string.Equals(name, old, StringComparison.OrdinalIgnoreCase)) { name = @new; break; }
+        }
+        return Array.FindIndex(Default, stage => string.Equals(stage, name, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// True when <paramref name="status"/> is <paramref name="stage"/> or further
+    /// along — never for a lost lead, which sits last in the list without being
+    /// furthest along.
+    /// </summary>
+    public static bool ReachedStage(string? status, string stage)
+    {
+        var at = StageIndex(status);
+        var target = StageIndex(stage);
+        if (at < 0 || target < 0 || at == StageIndex(Lost)) return false;
+        return at >= target;
+    }
+
     /// <summary>
     /// Idempotent T-SQL that brings every organisation in the database onto
     /// <see cref="Default"/>. Safe to run on every boot: each statement converges,

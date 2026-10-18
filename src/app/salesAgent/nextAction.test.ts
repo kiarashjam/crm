@@ -17,10 +17,29 @@ describe('nextActionForLead', () => {
     expect(nextActionForLead(lead({ outreachStatus: 'attempted_no_answer' }), now)?.kind).toBe('try_again');
   });
 
-  it('asks for the dropout reason before any other work', () => {
+  it('asks for the dropout reason before any other work on that lead', () => {
     const action = nextActionForLead(lead({ outreachStatus: 'contacted', contactOutcome: 'not_interested' }), now);
     expect(action?.kind).toBe('record_reason');
-    expect(action?.priority).toBe(100);
+    expect(action?.priority).toBe(95);
+  });
+
+  it('a meeting happening today outranks recording a reason on another lead', () => {
+    // It used to be the other way round: "record why Luca dropped out" sat at
+    // the top of the queue, above "the meeting with Jean-Michel is today".
+    const ranked = nextActions([
+      { id: 'lost', name: 'Luca', pipelineState: JSON.stringify({ outreachStatus: 'contacted', contactOutcome: 'not_interested' }) },
+      { id: 'today', name: 'Jean-Michel', pipelineState: JSON.stringify({ outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-10-16' }) },
+    ], now);
+    expect(ranked.map((a) => a.kind)).toEqual(['hold_meeting', 'record_reason']);
+  });
+
+  it('a missing reason still outranks every routine step', () => {
+    const ranked = nextActions([
+      { id: 'lost', name: 'Luca', pipelineState: JSON.stringify({ outreachStatus: 'contacted', contactOutcome: 'not_interested' }) },
+      { id: 'sig', name: 'Anaïs', pipelineState: JSON.stringify({ outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-09-01', meetingAttended: true, stillInterested: true, contractStatus: 'yes', contractSentDate: '2026-09-10', contractSigned: 'pending' }) },
+      { id: 'dep', name: 'Marc', pipelineState: JSON.stringify({ outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-09-01', meetingAttended: true, stillInterested: true, contractStatus: 'yes', contractSentDate: '2026-09-10', contractSigned: 'yes', signatureDate: '2026-09-12' }) },
+    ], now);
+    expect(ranked[0]?.kind).toBe('record_reason');
   });
 
   it('says nothing once a lost lead has its reason', () => {

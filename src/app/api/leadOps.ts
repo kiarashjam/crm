@@ -1,4 +1,5 @@
-import { authFetch, authFetchJson, getApiBaseUrl } from './apiClient';
+import { ApiError, authFetch, authFetchJson, getApiBaseUrl, isUsingRealApi } from './apiClient';
+import { assignLead, updateLead } from './leads';
 
 export interface ScoringRule {
   id: string;
@@ -86,8 +87,22 @@ export function saveAssignmentRule(rule: Partial<AssignmentRule> & { name: strin
   });
 }
 
+/** DELETE that rejects on a refusal — `authFetch` alone resolves even on a 403. */
+async function deleteOrThrow(path: string): Promise<void> {
+  const res = await authFetch(path, { method: 'DELETE' });
+  if (!res.ok) throw new ApiError(res.status === 403 ? 'Only owners and managers can change lead routing.' : 'Could not delete', res.status);
+}
+
 export function deleteAssignmentRule(id: string) {
-  return authFetch(`/api/lead-ops/assignment/${id}`, { method: 'DELETE' });
+  return deleteOrThrow(`/api/lead-ops/assignment/${id}`);
+}
+
+export function deleteTerritory(id: string) {
+  return deleteOrThrow(`/api/lead-ops/territories/${id}`);
+}
+
+export function deleteQueue(id: string) {
+  return deleteOrThrow(`/api/lead-ops/queues/${id}`);
 }
 
 export function getTerritories() {
@@ -139,43 +154,83 @@ export function getLeadHistory(id: string) {
   return authFetchJson<LeadStatusEvent[]>(`/api/lead-ops/history/${id}`);
 }
 
-export function bulkUpdateLeads(body: {
+/**
+ * Source, owner or queue for many leads at once. Not the status: it follows each
+ * lead's pipeline and is read-only, and the server refuses it.
+ */
+export async function bulkUpdateLeads(body: {
   ids: string[];
-  status?: string;
   source?: string;
   assignedToUserId?: string;
   queueId?: string;
-}) {
+}): Promise<{ updated: number; missing: number }> {
+  if (!isUsingRealApi()) {
+    // Demo mode has no bulk endpoint; do the same thing one lead at a time, so
+    // Apply works there too instead of failing silently.
+    let updated = 0;
+    let missing = 0;
+    for (const id of body.ids) {
+      const done = body.source ? await updateLead(id, { source: body.source }) : true;
+      const owned = body.assignedToUserId ? await assignLead(id, body.assignedToUserId) : true;
+      if (done && owned) updated += 1;
+      else missing += 1;
+    }
+    return { updated, missing };
+  }
   return authFetchJson<{ updated: number; missing: number }>('/api/lead-ops/bulk', {
     method: 'POST',
     body: JSON.stringify(body),
   });
 }
 
-export async function getPublicCaptureForm(token: string) {
+/** A public-form request that failed, with the HTTP status (0 when it never got an answer). */
+export class PublicCaptureError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'PublicCaptureError';
+    this.status = status;
+  }
+}
+
+async function publicFetch(path: string, init?: RequestInit): Promise<Response> {
   const base = getApiBaseUrl();
-  if (!base) throw new Error('VITE_API_URL is not set');
-  const res = await fetch(`${base}/api/public/capture/${token}`);
-  if (!res.ok) throw new Error('Form not found');
+  if (!base) throw new PublicCaptureError('VITE_API_URL is not set', 0);
+  try {
+    return await fetch(`${base}${path}`, init);
+  } catch {
+    // Offline, DNS, CORS: no answer at all — not the same as "no such form".
+    throw new PublicCaptureError('Could not reach the server', 0);
+  }
+}
+
+export async function getPublicCaptureForm(token: string) {
+  const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}`);
+  if (!res.ok) throw new PublicCaptureError('Form not available', res.status);
   return res.json() as Promise<{ name: string; successMessage?: string | null }>;
 }
 
+/** Submits the form. Resolves to the thank-you message the workspace configured. */
 export async function submitPublicCapture(token: string, body: {
   name: string;
   email: string;
   phone?: string;
   jobTitle?: string;
   country?: string;
-}) {
-  const base = getApiBaseUrl();
-  if (!base) throw new Error('VITE_API_URL is not set');
-  const res = await fetch(`${base}/api/public/capture/${token}`, {
+  company?: string;
+  /** The honeypot. Always empty when a person fills the form in. */
+  website?: string;
+}): Promise<string | null> {
+  const res = await publicFetch(`/api/public/capture/${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || 'Could not save');
+  if (!res.ok) throw new PublicCaptureError('Could not save', res.status);
+  try {
+    const receipt = await res.json() as { message?: string | null };
+    return receipt?.message?.trim() || null;
+  } catch {
+    return null;
   }
 }

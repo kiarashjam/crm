@@ -209,7 +209,7 @@ public class ActivityService : IActivityService
             };
             
             entity = await _repository.AddAsync(entity, ct);
-            if (entity.LeadId.HasValue)
+            if (entity.LeadId.HasValue && !request.IsAutomated)
                 await _automation.MarkFirstResponseAsync(entity.LeadId.Value, userId, organizationId, entity.Type, ct);
 
             _logger.LogInformation("Successfully created activity {ActivityId} of type '{Type}'", entity.Id, entity.Type);
