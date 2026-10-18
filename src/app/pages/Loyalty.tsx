@@ -56,6 +56,7 @@ import {
 } from '@/app/api/loyalty';
 import { getMembers, MEMBER_TIERS, type Member, type MemberTier } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const KIND_BADGE: Record<LoyaltyEntryKind, string> = {
   Earned: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -242,6 +243,7 @@ export default function Loyalty() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

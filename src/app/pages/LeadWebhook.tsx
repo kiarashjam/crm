@@ -21,6 +21,7 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const CODE_EXAMPLES = {
   curl: `curl -X POST \\
@@ -211,6 +212,7 @@ export default function LeadWebhook() {
             </div>
           </div>
         </div>
+        <NextActionsSlot />
 
         {/* Webhook URL Section */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">

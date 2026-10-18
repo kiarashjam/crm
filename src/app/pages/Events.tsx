@@ -53,6 +53,7 @@ import {
   type EventVisibility,
 } from '@/app/api/events';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -295,6 +296,7 @@ export default function Events() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

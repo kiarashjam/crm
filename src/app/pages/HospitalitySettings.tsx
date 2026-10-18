@@ -33,6 +33,7 @@ import {
 import { MEMBER_TIERS, type MemberTier } from '@/app/api/members';
 import { VISIT_VENUES, type VisitVenue } from '@/app/api/visits';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const TIER_COLOR: Record<MemberTier, string> = {
   Bronze: 'from-amber-400 to-amber-600',
@@ -189,6 +190,7 @@ export default function HospitalitySettings() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           <Tabs defaultValue="tiers">
             <TabsList className="mb-4">

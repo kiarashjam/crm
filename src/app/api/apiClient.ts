@@ -6,6 +6,7 @@
 
 import { clearSession, getAuthToken, getCurrentOrganizationId } from '@/app/lib/auth';
 import { announceDataChanged, changesRecords } from './dataChanged';
+import { isNotOnServer } from './notOnServer';
 
 export function getApiBaseUrl(): string | undefined {
   const url = import.meta.env.VITE_API_URL;
@@ -39,6 +40,9 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
     headers.set('Content-Type', 'application/json');
   }
   const url = path.startsWith('http') ? path : `${base}${path.startsWith('/') ? path : `/${path}`}`;
+  // A feature the backend does not serve yet: answer its 404 here instead of
+  // sending a request that can only fail (see notOnServer.ts).
+  if (isNotOnServer(path)) return new Response(null, { status: 404, statusText: 'Not Found' });
   const res = await fetch(url, { ...init, headers });
   // Anonymous endpoints (e.g. forgot/reset password) must not clear an existing session on 401.
   if (res.status === 401 && !skipAuth) {

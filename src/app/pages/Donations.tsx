@@ -47,6 +47,7 @@ import {
 } from '@/app/api/donations';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const CAUSE_COLOR: Record<DonationCause, string> = {
   StaffSupport: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -201,6 +202,7 @@ export default function Donations() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <StatCard

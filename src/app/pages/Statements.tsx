@@ -22,6 +22,7 @@ import {
 import { getMembers, type Member } from '@/app/api/members';
 import { getCharges, getPayments, type Charge, type Payment, PAYMENT_METHOD_LABELS } from '@/app/api/charges';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -161,6 +162,7 @@ export default function Statements() {
               </Button>
             </div>
           </div>
+          <NextActionsSlot />
 
           <div className="flex flex-col md:flex-row gap-3 mb-6 print:hidden">
             <Select value={memberId} onValueChange={setMemberId}>

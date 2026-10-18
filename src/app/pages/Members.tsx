@@ -55,6 +55,7 @@ import {
   type DuesFrequency,
 } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -276,6 +277,7 @@ export default function Members() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

@@ -28,6 +28,7 @@ import {
   type MemberTier,
   type MemberStatus,
 } from '@/app/api/members';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 interface ParsedRow {
   rowIndex: number;
@@ -206,6 +207,7 @@ export default function MemberImport() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">

@@ -18,7 +18,10 @@ import { getCompanies, getContacts, getDeals, getLeads, getTasks } from '@/app/a
 import { getAutomations } from '@/app/api/automations';
 import { getEnrollments, getSequences } from '@/app/api/sequences';
 import { announceDataChanged } from '@/app/api/dataChanged';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { NextActions } from './NextActions';
+import { NextActionsSlot } from './NextActionsSlot';
 import { resetAgentDataForTests, SETTLE_MS } from './agentData';
 
 const leads = vi.mocked(getLeads as () => Promise<unknown>);
@@ -179,5 +182,55 @@ describe('on a record', () => {
 
     expect(screen.queryByText('Make the first call and log whether they answered.')).toBeNull();
     expect(screen.getByText(/Call again at a different time of day/)).toBeInTheDocument();
+  });
+
+  it('sits right after the page title when the page gives it a slot', async () => {
+    leads.mockResolvedValue([lost('l1', 'Ada')]);
+    render(
+      <MemoryRouter initialEntries={['/leads']}>
+        <NextActions />
+        <main>
+          <h1>Leads</h1>
+          <NextActionsSlot />
+          <p>The page</p>
+        </main>
+      </MemoryRouter>,
+    );
+    const heading = await screen.findByRole('heading', { name: 'Do this next' });
+    const slot = heading.closest('[data-next-actions-slot]');
+    expect(slot).not.toBeNull();
+    expect(slot!.previousElementSibling).toHaveTextContent('Leads');
+    expect(slot!.nextElementSibling).toHaveTextContent('The page');
+  });
+
+  it('leaves no gap when a record owes nothing', async () => {
+    leads.mockResolvedValue([lost('l1', 'Ada')]);
+    const { container } = render(
+      <MemoryRouter initialEntries={['/contacts/c9']}>
+        <NextActions />
+        <NextActionsSlot />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelector('[aria-label="Loading next steps"]')).toBeNull());
+    const slot = container.querySelector('[data-next-actions-slot]')!;
+    expect(slot).toBeEmptyDOMElement();
+    expect(slot.className).toContain('empty:hidden');
+  });
+});
+
+describe('every page places the panel after its title', () => {
+  it('each page with the app header has a slot, or uses PageHero (which has one)', () => {
+    // The panel stays under the header on a page without a slot, so a page that
+    // forgets one still works — but it looks out of place. The till and the
+    // member-portal preview never show the panel.
+    const pages = resolve(__dirname, '../pages');
+    const missing = readdirSync(pages)
+      .filter((file) => file.endsWith('.tsx') && !file.includes('.test.'))
+      .filter((file) => {
+        const source = readFileSync(join(pages, file), 'utf8');
+        return source.includes('<AppHeader') && !source.includes('<NextActionsSlot') && !source.includes('<PageHero');
+      });
+    expect(missing.sort()).toEqual(['MemberPortal.tsx', 'PosTerminal.tsx']);
+    expect(readFileSync(resolve(__dirname, '../components/PageHero.tsx'), 'utf8')).toContain('<NextActionsSlot');
   });
 });

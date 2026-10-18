@@ -17,6 +17,7 @@ import { Button } from '@/app/components/ui/button';
 import { getEvents, type ClubEvent } from '@/app/api/events';
 import { getReservations, type Reservation } from '@/app/api/reservations';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -150,6 +151,7 @@ export default function Calendar() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-400">

@@ -24,6 +24,7 @@ import { getVisits, type VisitVenue } from '@/app/api/visits';
 import { getLoyaltyLedger } from '@/app/api/loyalty';
 import { getEvents } from '@/app/api/events';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -246,6 +247,7 @@ export default function HospitalityReports() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">

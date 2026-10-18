@@ -53,6 +53,7 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 export default function Contacts() {
   const navigate = useNavigate();
@@ -474,6 +475,7 @@ export default function Contacts() {
             </div>
           </div>
         </div>
+          <NextActionsSlot />
 
           {/* Stats Cards */}
           {!loading && contacts.length > 0 && (

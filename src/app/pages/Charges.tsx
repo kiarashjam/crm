@@ -57,6 +57,7 @@ import {
 } from '@/app/api/charges';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const STATUS_BADGE: Record<ChargeStatus, string> = {
   Pending: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
@@ -289,6 +290,7 @@ export default function Charges() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

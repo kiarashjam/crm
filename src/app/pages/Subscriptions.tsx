@@ -51,6 +51,7 @@ import {
 } from '@/app/api/subscriptions';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const STATUS_BADGE: Record<SubscriptionStatus, string> = {
   Active: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -256,6 +257,7 @@ export default function Subscriptions() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <StatCard

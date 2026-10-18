@@ -52,6 +52,7 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 // Common industries for filtering
 const INDUSTRIES = [
@@ -452,6 +453,7 @@ export default function Companies() {
             </div>
           </div>
         </div>
+          <NextActionsSlot />
 
           {/* Stats Cards */}
           {!loading && companies.length > 0 && (

@@ -3,6 +3,7 @@ import { HelpCircle, Shield, Mail } from 'lucide-react';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 export default function Help() {
   return (
@@ -35,6 +36,7 @@ export default function Help() {
             </div>
           </div>
         </div>
+          <NextActionsSlot />
 
         <div className="w-full">
 

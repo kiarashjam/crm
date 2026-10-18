@@ -53,6 +53,7 @@ import { createMockStore, mockId } from '@/app/api/mockStore';
 import { getMembers, type Member } from '@/app/api/members';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from '@/app/api/loyalty';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 // Attendees live entirely in the demo store — there's no real-backend endpoint
 // for them yet, but the structure is server-friendly when one shows up.
@@ -524,6 +525,7 @@ export default function EventDetail() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Metrics */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

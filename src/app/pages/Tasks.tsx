@@ -89,6 +89,7 @@ import { TaskGroupSection } from './tasks/components/TaskGroupSection';
 import { TaskDetailModal } from './tasks/components/TaskDetailModal';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -829,6 +830,7 @@ export default function Tasks() {
             </div>
           </div>
         </div>
+          <NextActionsSlot />
 
         {loading ? (
           <KanbanSkeleton columns={4} />

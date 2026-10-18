@@ -33,6 +33,7 @@ import { getCharges, type Charge } from '@/app/api/charges';
 import { getSubscriptions, type Subscription } from '@/app/api/subscriptions';
 import { getTabs, VENUE_LABELS as TAB_VENUE_LABELS, type OpenTab } from '@/app/api/tabs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const day = 86_400_000;
 
@@ -219,6 +220,7 @@ export default function HospitalityDashboard() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Top KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">

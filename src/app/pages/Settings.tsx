@@ -59,6 +59,7 @@ import type { Pipeline, DealStage } from '@/app/api/types';
 import { BrandSection } from './settings/components/BrandSection';
 import { IntegrationsSection } from './settings/components/IntegrationsSection';
 import { ClaudeSection } from './McpSetup';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 type SettingsTab = 'profile' | 'brand' | 'appearance' | 'notifications' | 'integrations' | 'claude' | 'organization' | 'pipelines' | 'customFields' | 'security' | 'account';
 
@@ -701,6 +702,7 @@ export default function Settings() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           {/* Main layout */}
           <div className="flex flex-col lg:flex-row gap-8">

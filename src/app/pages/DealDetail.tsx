@@ -52,6 +52,7 @@ import { getCurrencySymbol, UrgencyBadge, getDaysUntilClose, STAGE_COLORS } from
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 export default function DealDetail() {
   const { id } = useParams<{ id: string }>();
@@ -302,6 +303,7 @@ export default function DealDetail() {
               </div>
             </div>
           </motion.div>
+          <NextActionsSlot />
 
           {/* Deal Info Grid + Activities */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -19,6 +19,7 @@ import {
 } from '@/app/components/ui/select';
 import { createLead, getLeadStatuses, getLeadSources } from '@/app/api';
 import type { LeadStatus, LeadSource } from '@/app/api/types';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 type CSVRow = Record<string, string>;
 type ColumnMapping = {
@@ -319,6 +320,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
             </div>
           </div>
         </div>
+        <NextActionsSlot />
 
         {/* Progress Steps */}
         <div className="mb-8">

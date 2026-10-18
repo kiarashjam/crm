@@ -55,6 +55,7 @@ import {
 } from '@/app/api/members';
 import { CHANNELS, CATEGORIES, type CommChannel, type CommCategory } from '@/app/api/communications';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const STATUS_BADGE: Record<Campaign['status'], string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -233,6 +234,7 @@ export default function Campaigns() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <StatCard icon={<Megaphone className="w-5 h-5 text-fuchsia-600" />} label="Drafts" value={String(stats.drafts)} />

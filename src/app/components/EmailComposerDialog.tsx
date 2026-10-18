@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, Send, Loader2, Sparkles } from 'lucide-react';
+import { ExternalLink, Mail, Send, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -8,7 +8,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Label } from '@/app/components/ui/label';
-import { sendEmail, createActivity, generateCopy, isUsingRealApi } from '@/app/api';
+import { sendEmail, createActivity, generateCopy, isUsingRealApi, canSendEmail, mailtoHref } from '@/app/api';
 
 export interface EmailComposerContext {
   leadId?: string;
@@ -32,9 +32,13 @@ interface EmailComposerDialogProps {
 }
 
 /**
- * Reusable composer that actually sends through the `sendEmail` API (the real
- * backend delivers via its provider; demo mode simulates) and logs an `email`
- * activity against the related record so it lands on the timeline.
+ * Reusable composer that sends through the `sendEmail` API (demo mode
+ * simulates) and logs an `email` activity against the related record so it lands
+ * on the timeline.
+ *
+ * When the server cannot send email (it has no endpoint for it yet), the main
+ * button opens the message in the person's own email app instead — it used to
+ * say "Email sent" and log it, with nothing sent at all.
  */
 export default function EmailComposerDialog({
   open, onOpenChange, to, defaultSubject = '', defaultBody = '', context, aiContext, onSent,
@@ -46,6 +50,7 @@ export default function EmailComposerDialog({
   const [body, setBody] = useState(defaultBody);
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const viaMailApp = !canSendEmail();
 
   const aiDraft = async () => {
     setDrafting(true);
@@ -106,11 +111,29 @@ export default function EmailComposerDialog({
       toast.success(isUsingRealApi() ? 'Email sent' : 'Email sent (simulated in demo mode)');
       onOpenChange(false);
       onSent?.();
-    } catch {
-      toast.error('Failed to send email');
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to send email');
     } finally {
       setSending(false);
     }
+  };
+
+  /** Hand the message to the person's own email app, and note it on the timeline. */
+  const handleOpenInMailApp = () => {
+    if (!toAddr.trim()) { toast.error('A recipient is required'); return; }
+    if (!subject.trim()) { toast.error('A subject is required'); return; }
+    window.location.href = mailtoHref({ to: toAddr.trim(), cc: cc.trim() || undefined, subject: subject.trim(), body });
+    createActivity({
+      type: 'email',
+      subject: `Email: ${subject.trim()}`,
+      body,
+      leadId: context?.leadId,
+      contactId: context?.contactId,
+      dealId: context?.dealId,
+    }).catch(() => { /* non-fatal */ });
+    toast.success('Opened in your email app. Send it from there — it is noted on the timeline.');
+    onOpenChange(false);
+    onSent?.();
   };
 
   return (
@@ -121,9 +144,11 @@ export default function EmailComposerDialog({
             <Mail className="h-5 w-5 text-indigo-600" /> Compose email
           </DialogTitle>
           <DialogDescription>
-            {isUsingRealApi()
-              ? 'Sends through your connected email provider and logs to the timeline.'
-              : 'Demo mode — sending is simulated, but it still logs to the timeline.'}
+            {viaMailApp
+              ? 'Sending from the CRM is not set up yet, so this opens the message in your own email app and notes it on the timeline.'
+              : isUsingRealApi()
+                ? 'Sends through your connected email provider and logs to the timeline.'
+                : 'Demo mode — sending is simulated, but it still logs to the timeline.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -168,10 +193,17 @@ export default function EmailComposerDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>Cancel</Button>
-          <Button onClick={handleSend} disabled={sending} className="gap-1.5">
-            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {sending ? 'Sending…' : 'Send'}
-          </Button>
+          {viaMailApp ? (
+            <Button onClick={handleOpenInMailApp} className="gap-1.5">
+              <ExternalLink className="h-4 w-4" aria-hidden="true" />
+              Open in email app
+            </Button>
+          ) : (
+            <Button onClick={handleSend} disabled={sending} className="gap-1.5">
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {sending ? 'Sending…' : 'Send'}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

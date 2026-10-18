@@ -47,6 +47,7 @@ import {
 } from '@/app/api/tabs';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -210,6 +211,7 @@ export default function Tabs() {
               </div>
             </div>
           </div>
+          <NextActionsSlot />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <StatCard icon={<Wine className="w-5 h-5 text-amber-600" />} label="Open tabs" value={String(stats.openCount)} />

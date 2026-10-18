@@ -32,6 +32,7 @@ import {
   saveSla,
   saveTerritory,
 } from '@/app/api/leadOps';
+import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 /**
  * Lead routing: response deadline, scoring, assignment, territories, queues, capture
@@ -137,6 +138,7 @@ export default function LeadRouting() {
           </div>
           <Button variant="outline" onClick={() => navigate('/leads')}>Back to leads</Button>
         </div>
+        <NextActionsSlot className="" />
 
         {!canManage && (
           <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" role="note">
