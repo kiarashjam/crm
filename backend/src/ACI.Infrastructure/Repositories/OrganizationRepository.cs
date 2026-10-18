@@ -92,6 +92,12 @@ public sealed class OrganizationRepository : IOrganizationRepository
         await _db.TaskItems.Where(t => t.UserId == userId && t.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.OrganizationId, organizationId), ct);
         await _db.Activities.Where(a => a.UserId == userId && a.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(a => a.OrganizationId, organizationId), ct);
         await _db.CopyHistoryItems.Where(h => h.UserId == userId && h.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(h => h.OrganizationId, organizationId), ct);
+        // What hangs off those records moves with them, or it would be left behind in
+        // the personal workspace, out of sight. Line items follow their deal on their own.
+        await _db.AuditEvents.Where(e => e.OwnerUserId == userId && e.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(e => e.OrganizationId, organizationId), ct);
+        await _db.Attachments.Where(a => a.OwnerUserId == userId && a.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(a => a.OrganizationId, organizationId), ct);
+        await _db.CustomFieldDefinitions.Where(d => d.OwnerUserId == userId && d.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(d => d.OrganizationId, organizationId), ct);
+        await _db.CustomFieldValues.Where(v => v.OwnerUserId == userId && v.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(v => v.OrganizationId, organizationId), ct);
     }
 
     public async Task<Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default) =>

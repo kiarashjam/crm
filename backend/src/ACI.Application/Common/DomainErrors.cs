@@ -6,6 +6,31 @@ namespace ACI.Application.Common;
 public static class DomainErrors
 {
     /// <summary>
+    /// Deal line item errors.
+    /// </summary>
+    public static class DealLineItem
+    {
+        public static readonly Error NameRequired = new(
+            "DealLineItem.NameRequired", "A line item needs a name");
+
+        public static readonly Error QuantityInvalid = new(
+            "DealLineItem.QuantityInvalid", "Quantity must be more than 0");
+
+        public static readonly Error PriceInvalid = new(
+            "DealLineItem.PriceInvalid", "Unit price can't be negative");
+
+        public static readonly Error TooLarge = new(
+            "DealLineItem.TooLarge", "That quantity or price is too large");
+
+        // Codes ending ".NotFound" map to 404.
+        public static readonly Error DealNotFound = new(
+            "DealLineItemDeal.NotFound", "The deal was not found");
+
+        public static readonly Error NotFound = new(
+            "DealLineItem.NotFound", "The line item was not found");
+    }
+
+    /// <summary>
     /// Attachment errors.
     /// </summary>
     public static class Attachment

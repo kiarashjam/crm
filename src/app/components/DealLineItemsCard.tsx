@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Package, Plus, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/app/components/ui/input';
@@ -44,6 +44,13 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
       .finally(() => setLoading(false));
   }, [dealId]);
 
+  // After a refused change, show what the server actually has rather than the edit.
+  const reloadItems = useCallback(() => {
+    getDealLineItems(dealId).then(setItems).catch(() => { /* keep what is shown */ });
+  }, [dealId]);
+
+  const reason = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
+
   const total = useMemo(() => lineItemsTotal(items), [items]);
 
   const pickProduct = (id: string) => {
@@ -64,6 +71,8 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
         setItems((prev) => [...prev, res]);
         setProductId(''); setName(''); setQty('1'); setPrice('');
       } else toast.error('Failed to add');
+    } catch (err) {
+      toast.error(reason(err, 'Failed to add'));
     } finally {
       setAdding(false);
     }
@@ -72,12 +81,24 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
   const patchItem = (id: string, patch: Partial<DealLineItem>) => {
     setItems((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   };
-  const persistItem = (id: string, patch: Partial<DealLineItem>) => { void updateDealLineItem(id, patch); };
+  const persistItem = async (id: string, patch: Partial<DealLineItem>) => {
+    try {
+      await updateDealLineItem(id, patch);
+    } catch (err) {
+      toast.error(reason(err, 'Failed to save'));
+      reloadItems();
+    }
+  };
 
   const remove = async (id: string) => {
     setItems((prev) => prev.filter((l) => l.id !== id));
-    const ok = await deleteDealLineItem(id);
-    if (!ok) toast.error('Failed to remove');
+    try {
+      const ok = await deleteDealLineItem(id);
+      if (!ok) { toast.error('Failed to remove'); reloadItems(); }
+    } catch (err) {
+      toast.error(reason(err, 'Failed to remove'));
+      reloadItems();
+    }
   };
 
   const syncValue = async () => {
@@ -86,6 +107,8 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
       const ok = await updateDeal(dealId, { value: String(total) });
       if (ok) { toast.success('Deal value updated to line-item total'); onValueSynced?.(total); }
       else toast.error('Failed to update deal value');
+    } catch (err) {
+      toast.error(reason(err, 'Failed to update deal value'));
     } finally {
       setSyncing(false);
     }
@@ -126,7 +149,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
                       <td className="px-3 py-1.5 text-slate-700">{l.name}</td>
                       <td className="px-2 py-1.5">
                         <Input
-                          type="number" min={0} value={l.quantity}
+                          type="number" min={0} value={l.quantity} aria-label={`Quantity of ${l.name}`}
                           onChange={(e) => patchItem(l.id, { quantity: parseFloat(e.target.value) || 0 })}
                           onBlur={(e) => persistItem(l.id, { quantity: parseFloat(e.target.value) || 0 })}
                           className="h-7 text-right"
@@ -134,7 +157,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
                       </td>
                       <td className="px-2 py-1.5">
                         <Input
-                          type="number" min={0} value={l.unitPrice}
+                          type="number" min={0} value={l.unitPrice} aria-label={`Unit price of ${l.name}`}
                           onChange={(e) => patchItem(l.id, { unitPrice: parseFloat(e.target.value) || 0 })}
                           onBlur={(e) => persistItem(l.id, { unitPrice: parseFloat(e.target.value) || 0 })}
                           className="h-7 text-right"
@@ -142,7 +165,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
                       </td>
                       <td className="px-3 py-1.5 text-right font-medium text-slate-800">{fmt(l.quantity * l.unitPrice)}</td>
                       <td className="px-1 py-1.5">
-                        <button type="button" onClick={() => remove(l.id)} className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => remove(l.id)} aria-label={`Remove ${l.name}`} className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                       </td>
                     </tr>
                   ))}

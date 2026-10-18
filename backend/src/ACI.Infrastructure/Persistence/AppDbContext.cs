@@ -54,6 +54,7 @@ public class AppDbContext : DbContext
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
     public DbSet<CustomFieldValueSet> CustomFieldValues => Set<CustomFieldValueSet>();
+    public DbSet<DealLineItem> DealLineItems => Set<DealLineItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
