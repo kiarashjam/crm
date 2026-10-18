@@ -186,6 +186,7 @@ try
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
+    builder.Services.AddScoped<IAuditService, AuditService>();
     builder.Services.AddScoped<ITemplateService, TemplateService>();
     builder.Services.AddScoped<ICopyHistoryService, CopyHistoryService>();
     builder.Services.AddScoped<ISettingsService, SettingsService>();
@@ -654,6 +655,20 @@ try
                     [ChangedByUserId] uniqueidentifier NULL,
                     [ChangedAtUtc] datetime2 NOT NULL
                 );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AuditEvents')
+                CREATE TABLE [AuditEvents] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [OwnerUserId] uniqueidentifier NOT NULL,
+                    [EntityType] nvarchar(32) NOT NULL,
+                    [EntityId] uniqueidentifier NULL,
+                    [EntityLabel] nvarchar(200) NULL,
+                    [Action] nvarchar(32) NOT NULL,
+                    [Summary] nvarchar(500) NOT NULL,
+                    [ActorUserId] uniqueidentifier NULL,
+                    [ActorName] nvarchar(200) NOT NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadScoringRules')
                 CREATE TABLE [LeadScoringRules] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,
@@ -767,6 +782,14 @@ try
                 BEGIN TRY
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LeadStatusEvents_LeadId')
                         CREATE INDEX [IX_LeadStatusEvents_LeadId] ON [LeadStatusEvents] ([LeadId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AuditEvents_OrganizationId_CreatedAtUtc')
+                        CREATE INDEX [IX_AuditEvents_OrganizationId_CreatedAtUtc] ON [AuditEvents] ([OrganizationId], [CreatedAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AuditEvents_EntityType_EntityId')
+                        CREATE INDEX [IX_AuditEvents_EntityType_EntityId] ON [AuditEvents] ([EntityType], [EntityId]);
                 END TRY BEGIN CATCH END CATCH;
                 BEGIN TRY
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LeadOpsSettings_OrganizationId')

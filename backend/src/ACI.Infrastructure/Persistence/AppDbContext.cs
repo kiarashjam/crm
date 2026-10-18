@@ -1,3 +1,4 @@
+using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -5,7 +6,15 @@ namespace ACI.Infrastructure.Persistence;
 
 public class AppDbContext : DbContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+    private readonly ICurrentUserService? _currentUser;
+
+    /// <param name="options">EF options.</param>
+    /// <param name="currentUser">Who is making the change, for the audit trail. Supplied by DI;
+    /// absent at design time, when changes are attributed to the system.</param>
+    public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserService? currentUser = null) : base(options)
+    {
+        _currentUser = currentUser;
+    }
 
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
@@ -41,10 +50,49 @@ public class AppDbContext : DbContext
     public DbSet<ContractEvent> ContractEvents => Set<ContractEvent>();
     public DbSet<Template> Templates => Set<Template>();
     public DbSet<CopyHistoryItem> CopyHistoryItems => Set<CopyHistoryItem>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+    }
+
+    /// <summary>Saves, writing the audit trail for every record it changes in the same transaction.</summary>
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        var events = await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken);
+        AuditEvents.AddRange(events);
+        try
+        {
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        catch
+        {
+            ForgetUnsaved(events);
+            throw;
+        }
+    }
+
+    /// <inheritdoc cref="SaveChangesAsync(bool, CancellationToken)"/>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        var events = AuditTrail.Capture(this, _currentUser);
+        AuditEvents.AddRange(events);
+        try
+        {
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+        catch
+        {
+            ForgetUnsaved(events);
+            throw;
+        }
+    }
+
+    // A failed save must not leave its audit lines queued, or a retry would record them twice.
+    private void ForgetUnsaved(IReadOnlyList<AuditEvent> events)
+    {
+        foreach (var e in events) Entry(e).State = EntityState.Detached;
     }
 }

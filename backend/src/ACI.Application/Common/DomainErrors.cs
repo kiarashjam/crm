@@ -6,6 +6,21 @@ namespace ACI.Application.Common;
 public static class DomainErrors
 {
     /// <summary>
+    /// Audit-trail errors.
+    /// </summary>
+    public static class Audit
+    {
+        public static readonly Error InvalidEntityType = new(
+            "Audit.InvalidEntityType", "The audit trail does not record that kind of record");
+
+        public static readonly Error InvalidAction = new(
+            "Audit.InvalidAction", "The audit trail does not record that action");
+
+        public static readonly Error SummaryRequired = new(
+            "Audit.SummaryRequired", "An audit line needs a summary");
+    }
+
+    /// <summary>
     /// Contract-related errors.
     /// </summary>
     public static class Contract
