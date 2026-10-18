@@ -124,6 +124,10 @@ public static class ResultExtensions
         var code when code.Contains("AlreadyProcessed") => StatusCodes.Status409Conflict,
         "Error.Conflict" => StatusCodes.Status409Conflict,
         
+        // A dependency that is missing or did not answer — not the caller's fault
+        var code when code.EndsWith(".NotConfigured") => StatusCodes.Status503ServiceUnavailable,
+        var code when code.EndsWith(".SendFailed") => StatusCodes.Status502BadGateway,
+
         // Bad Request errors (default for validation/business rule violations)
         _ => StatusCodes.Status400BadRequest
     };
@@ -136,6 +140,8 @@ public static class ResultExtensions
         404 => "Not Found",
         409 => "Conflict",
         500 => "Server Error",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
         _ => "Error"
     };
 

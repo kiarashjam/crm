@@ -99,6 +99,17 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // Email from the composer goes out under the club's own address, so one
+        // account cannot turn it into a mass mailer: twenty a minute per person.
+        // Per user, which is why UseRateLimiter runs after UseAuthentication.
+        options.AddPolicy("composed-email", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "email:" + (context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
     });
     builder.Services.AddResponseCompression(options => options.EnableForHttps = true);
     builder.Services.AddEndpointsApiExplorer();
@@ -181,6 +192,7 @@ try
     builder.Services.AddScoped<ILeadAutomation, LeadAutomation>();
     builder.Services.AddScoped<ILeadOpsService, LeadOpsService>();
     builder.Services.AddScoped<ISequenceService, SequenceService>();
+    builder.Services.AddScoped<IComposedEmailService, ComposedEmailService>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
@@ -283,8 +295,9 @@ try
     app.UseResponseCompression();
     app.UseHttpsRedirection();
     app.UseCors();
-    app.UseRateLimiter();
     app.UseAuthentication();
+    // After authentication, so a policy can partition by who is calling.
+    app.UseRateLimiter();
     app.UseAuthorization();
     app.UseMiddleware<ACI.WebApi.Middleware.OrganizationAccessMiddleware>();
     // Must follow OrganizationAccessMiddleware: the organization header is validated

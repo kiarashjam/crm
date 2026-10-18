@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ExternalLink, Mail, Send, Loader2, Sparkles } from 'lucide-react';
+import { Mail, Send, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -8,7 +8,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Label } from '@/app/components/ui/label';
-import { sendEmail, createActivity, generateCopy, isUsingRealApi, canSendEmail, mailtoHref } from '@/app/api';
+import { sendEmail, createActivity, generateCopy, isUsingRealApi, mailtoHref } from '@/app/api';
 
 export interface EmailComposerContext {
   leadId?: string;
@@ -32,13 +32,13 @@ interface EmailComposerDialogProps {
 }
 
 /**
- * Reusable composer that sends through the `sendEmail` API (demo mode
- * simulates) and logs an `email` activity against the related record so it lands
- * on the timeline.
+ * Reusable composer that sends through the `sendEmail` API — the server sends it
+ * from the workspace's address; demo mode simulates — and logs an `email`
+ * activity against the related record so it lands on the timeline.
  *
- * When the server cannot send email (it has no endpoint for it yet), the main
- * button opens the message in the person's own email app instead — it used to
- * say "Email sent" and log it, with nothing sent at all.
+ * It says "Email sent" only when the server sent it (it used to say so with
+ * nothing sent at all). When a send fails, the toast gives the server's reason
+ * and offers to open the message in the person's own email app instead.
  */
 export default function EmailComposerDialog({
   open, onOpenChange, to, defaultSubject = '', defaultBody = '', context, aiContext, onSent,
@@ -50,7 +50,6 @@ export default function EmailComposerDialog({
   const [body, setBody] = useState(defaultBody);
   const [sending, setSending] = useState(false);
   const [drafting, setDrafting] = useState(false);
-  const viaMailApp = !canSendEmail();
 
   const aiDraft = async () => {
     setDrafting(true);
@@ -112,7 +111,10 @@ export default function EmailComposerDialog({
       onOpenChange(false);
       onSent?.();
     } catch (err) {
-      toast.error(err instanceof Error && err.message ? err.message : 'Failed to send email');
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to send email', {
+        duration: 12_000,
+        action: { label: 'Open in email app', onClick: handleOpenInMailApp },
+      });
     } finally {
       setSending(false);
     }
@@ -144,11 +146,9 @@ export default function EmailComposerDialog({
             <Mail className="h-5 w-5 text-indigo-600" /> Compose email
           </DialogTitle>
           <DialogDescription>
-            {viaMailApp
-              ? 'Sending from the CRM is not set up yet, so this opens the message in your own email app and notes it on the timeline.'
-              : isUsingRealApi()
-                ? 'Sends through your connected email provider and logs to the timeline.'
-                : 'Demo mode — sending is simulated, but it still logs to the timeline.'}
+            {isUsingRealApi()
+              ? 'Sends from your workspace\'s email address and logs it on the timeline.'
+              : 'Demo mode — sending is simulated, but it still logs to the timeline.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -193,17 +193,10 @@ export default function EmailComposerDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>Cancel</Button>
-          {viaMailApp ? (
-            <Button onClick={handleOpenInMailApp} className="gap-1.5">
-              <ExternalLink className="h-4 w-4" aria-hidden="true" />
-              Open in email app
-            </Button>
-          ) : (
-            <Button onClick={handleSend} disabled={sending} className="gap-1.5">
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {sending ? 'Sending…' : 'Send'}
-            </Button>
-          )}
+          <Button onClick={handleSend} disabled={sending} className="gap-1.5">
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {sending ? 'Sending…' : 'Send'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

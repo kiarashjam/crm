@@ -1,27 +1,20 @@
 // Outbound email.
 //
-// `sendEmail` is the single integration point for transactional email. Against
-// the real backend it POSTs to `/api/email/send`, which is where a provider
-// (SendGrid, etc.) would deliver the message. In demo mode it simulates a
-// successful send and records it in a local "sent" store so the email history
-// on a record still works offline.
+// `sendEmail` is the single integration point for email written in the CRM.
+// Against the real backend it POSTs to `/api/email/send`, which sends it through
+// the configured relay (SendGrid in production) from the workspace's address. In
+// demo mode it simulates a successful send.
 //
-// The backend has no such endpoint yet. Sending used to fall back to the demo
-// store on the 404 even against the live API: the composer said "Email sent",
-// logged it on the timeline, and nothing left the building. Now a live send
-// that the server cannot take fails, and `canSendEmail()` lets the composer
-// offer the person's own email app instead.
+// A live send never pretends. It used to fall back to the demo store when the
+// server had no such endpoint: the composer said "Email sent", logged it on the
+// timeline, and nothing left the building. Now a send the server did not make
+// fails with the server's reason, and the composer offers the person's own
+// email app (`mailtoHref`) instead.
 
-import { ApiError, apiWithFallback, authFetchJson, isUsingRealApi } from './apiClient';
+import { ApiError, authFetchJson, isUsingRealApi } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
-import { isNotOnServer } from './notOnServer';
 
 const SEND_PATH = '/api/email/send';
-
-/** Whether "Send" can really send: in demo mode (simulated), or when the server has the endpoint. */
-export function canSendEmail(): boolean {
-  return !isUsingRealApi() || !isNotOnServer(SEND_PATH);
-}
 
 /** A mailto: link carrying the message, for the person's own email app. */
 export function mailtoHref(message: { to: string; cc?: string; subject: string; body: string }): string {
@@ -78,8 +71,13 @@ export async function sendEmail(req: SendEmailRequest): Promise<EmailMessage | n
     try {
       return await authFetchJson<EmailMessage>(SEND_PATH, { method: 'POST', body: JSON.stringify(req) });
     } catch (err) {
+      // The server's reason comes through as is ("… is not a valid email address",
+      // "Sending email is not set up on the server yet"). These two have no body.
       if (err instanceof ApiError && err.status === 404) {
         throw new ApiError('Sending email from the CRM is not set up yet.', 404);
+      }
+      if (err instanceof ApiError && err.status === 429) {
+        throw new ApiError('That is a lot of email in one minute. Wait a moment, then send again.', 429);
       }
       throw err;
     }
@@ -101,32 +99,3 @@ export async function sendEmail(req: SendEmailRequest): Promise<EmailMessage | n
     dealId: req.dealId,
   });
 }
-
-async function getEmails(params: { leadId?: string; contactId?: string; dealId?: string }): Promise<EmailMessage[]> {
-  return apiWithFallback(
-    async () => {
-      const q = new URLSearchParams();
-      if (params.leadId) q.set('leadId', params.leadId);
-      if (params.contactId) q.set('contactId', params.contactId);
-      if (params.dealId) q.set('dealId', params.dealId);
-      const res = await authFetchJson<EmailMessage[]>(`/api/email?${q.toString()}`);
-      return Array.isArray(res) ? res : [];
-    },
-    async () => {
-      await delay(120);
-      return emailStore
-        .list()
-        .filter(
-          (m) =>
-            (!params.leadId || m.leadId === params.leadId) &&
-            (!params.contactId || m.contactId === params.contactId) &&
-            (!params.dealId || m.dealId === params.dealId),
-        )
-        .sort((a, b) => Date.parse(b.sentAtUtc) - Date.parse(a.sentAtUtc));
-    },
-  );
-}
-
-export const getEmailsByLead = (leadId: string) => getEmails({ leadId });
-export const getEmailsByContact = (contactId: string) => getEmails({ contactId });
-export const getEmailsByDeal = (dealId: string) => getEmails({ dealId });

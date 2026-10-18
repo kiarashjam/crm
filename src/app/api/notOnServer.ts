@@ -22,7 +22,6 @@ export const NOT_ON_SERVER: readonly string[] = [
   'communications',
   'custom-fields',
   'donations',
-  'email',
   'events',
   'gift-cards',
   'hospitality',
