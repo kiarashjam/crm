@@ -775,7 +775,7 @@ export default function Tasks() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {/* View Toggle */}
                 <div className="flex items-center bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/10">
                   <Button
