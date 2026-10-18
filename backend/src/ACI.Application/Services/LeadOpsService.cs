@@ -35,6 +35,7 @@ public interface ILeadOpsService
     Task<ConversionReportDto> ConversionReportAsync(Guid? organizationId, CancellationToken ct = default);
     Task NotifyOverdueAsync(CancellationToken ct = default);
     Task<bool> RecordEmailOpenAsync(Guid leadId, CancellationToken ct = default);
+    Task<int> RescoreOpenLeadsAsync(CancellationToken ct = default);
 }
 
 public sealed class LeadOpsService : ILeadOpsService
@@ -343,6 +344,9 @@ public sealed class LeadOpsService : ILeadOpsService
             Slice(leads, l => string.IsNullOrWhiteSpace(l.Source) ? "Unknown" : l.Source!.Trim()),
             Slice(leads, l => l.AssignedToUserId?.ToString() ?? "Unassigned"));
     }
+
+    public Task<int> RescoreOpenLeadsAsync(CancellationToken ct = default) =>
+        _ops.RescoreOpenLeadsAsync(DateTime.UtcNow, ct);
 
     public async Task NotifyOverdueAsync(CancellationToken ct = default)
     {

@@ -643,6 +643,18 @@ try
                     ALTER TABLE [Leads] ADD [EnrichedDomain] nvarchar(200) NULL;
             ");
 
+            // One-time data fixes (see DataFixes). A failure is logged and retried on
+            // the next start; it must not stop the schema work after it.
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.CreateTableSql);
+                await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.UnfreezeLeadScoresSql);
+            }
+            catch (Exception fixEx)
+            {
+                Log.Warning(fixEx, "A one-time data fix failed; it will be retried on the next start");
+            }
+
             await db.Database.ExecuteSqlRawAsync(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadStatusEvents')
                 CREATE TABLE [LeadStatusEvents] (
