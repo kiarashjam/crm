@@ -1497,7 +1497,7 @@ export default function Leads() {
                 </div>
               </div>
               
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {!isReadOnly && (
                   <>
                     <Button onClick={() => navigate('/leads/routing')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
