@@ -31,4 +31,6 @@ public sealed class CurrentUserService : ICurrentUserService
     }
 
     public bool IsAuthenticated => UserId.HasValue;
+
+    public string? UserName => _httpContextAccessor.HttpContext?.User?.FindFirst(ClaimTypes.Name)?.Value;
 }

@@ -198,6 +198,9 @@ try
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
+    builder.Services.AddScoped<IAuditService, AuditService>();
+    builder.Services.AddScoped<IAttachmentService, AttachmentService>();
+    builder.Services.AddScoped<ICustomFieldService, CustomFieldService>();
     builder.Services.AddScoped<ITemplateService, TemplateService>();
     builder.Services.AddScoped<ICopyHistoryService, CopyHistoryService>();
     builder.Services.AddScoped<ISettingsService, SettingsService>();
@@ -679,6 +682,58 @@ try
                     [ChangedByUserId] uniqueidentifier NULL,
                     [ChangedAtUtc] datetime2 NOT NULL
                 );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AuditEvents')
+                CREATE TABLE [AuditEvents] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [OwnerUserId] uniqueidentifier NOT NULL,
+                    [EntityType] nvarchar(32) NOT NULL,
+                    [EntityId] uniqueidentifier NULL,
+                    [EntityLabel] nvarchar(200) NULL,
+                    [Action] nvarchar(32) NOT NULL,
+                    [Summary] nvarchar(500) NOT NULL,
+                    [ActorUserId] uniqueidentifier NULL,
+                    [ActorName] nvarchar(200) NOT NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Attachments')
+                CREATE TABLE [Attachments] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [OwnerUserId] uniqueidentifier NOT NULL,
+                    [EntityType] nvarchar(16) NOT NULL,
+                    [RecordId] uniqueidentifier NOT NULL,
+                    [FileName] nvarchar(255) NOT NULL,
+                    [ContentType] nvarchar(127) NOT NULL,
+                    [Size] bigint NOT NULL,
+                    [Content] varbinary(max) NOT NULL,
+                    [UploadedByName] nvarchar(200) NOT NULL,
+                    [UploadedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CustomFieldDefinitions')
+                CREATE TABLE [CustomFieldDefinitions] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [OwnerUserId] uniqueidentifier NOT NULL,
+                    [EntityType] nvarchar(16) NOT NULL,
+                    [Key] nvarchar(64) NOT NULL,
+                    [Label] nvarchar(120) NOT NULL,
+                    [Type] nvarchar(16) NOT NULL,
+                    [OptionsJson] nvarchar(max) NULL,
+                    [Required] bit NOT NULL,
+                    [Order] int NOT NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'CustomFieldValues')
+                CREATE TABLE [CustomFieldValues] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [OwnerUserId] uniqueidentifier NOT NULL,
+                    [EntityType] nvarchar(16) NOT NULL,
+                    [RecordId] uniqueidentifier NOT NULL,
+                    [ValuesJson] nvarchar(max) NOT NULL,
+                    [UpdatedAtUtc] datetime2 NOT NULL
+                );
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LeadScoringRules')
                 CREATE TABLE [LeadScoringRules] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,
@@ -792,6 +847,26 @@ try
                 BEGIN TRY
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LeadStatusEvents_LeadId')
                         CREATE INDEX [IX_LeadStatusEvents_LeadId] ON [LeadStatusEvents] ([LeadId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AuditEvents_OrganizationId_CreatedAtUtc')
+                        CREATE INDEX [IX_AuditEvents_OrganizationId_CreatedAtUtc] ON [AuditEvents] ([OrganizationId], [CreatedAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AuditEvents_EntityType_EntityId')
+                        CREATE INDEX [IX_AuditEvents_EntityType_EntityId] ON [AuditEvents] ([EntityType], [EntityId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Attachments_EntityType_RecordId')
+                        CREATE INDEX [IX_Attachments_EntityType_RecordId] ON [Attachments] ([EntityType], [RecordId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_CustomFieldDefinitions_OrganizationId_EntityType')
+                        CREATE INDEX [IX_CustomFieldDefinitions_OrganizationId_EntityType] ON [CustomFieldDefinitions] ([OrganizationId], [EntityType]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_CustomFieldValues_EntityType_RecordId')
+                        CREATE UNIQUE INDEX [IX_CustomFieldValues_EntityType_RecordId] ON [CustomFieldValues] ([EntityType], [RecordId]);
                 END TRY BEGIN CATCH END CATCH;
                 BEGIN TRY
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LeadOpsSettings_OrganizationId')

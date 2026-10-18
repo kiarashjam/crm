@@ -4,7 +4,7 @@
 // approves (promoting them into a real Member record) or rejects. Approval is
 // the canonical "join" path — it's where committee workflow lives.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createMember, type MemberTier } from './members';
 
@@ -174,7 +174,7 @@ export async function deleteApplication(id: string): Promise<boolean> {
   return apiWithFallback(
     async () => {
       const res = await authFetch(`/api/applications/${id}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error('failed');
+      await ensureOk(res);
       return true;
     },
     async () => {

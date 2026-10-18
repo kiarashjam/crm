@@ -11,4 +11,7 @@ public interface ICurrentUserService
     /// <summary>Alias for CurrentOrganizationId for convenience.</summary>
     Guid? OrganizationId => CurrentOrganizationId;
     bool IsAuthenticated { get; }
+
+    /// <summary>The signed-in user's display name, from the token; null when unknown.</summary>
+    string? UserName => null;
 }

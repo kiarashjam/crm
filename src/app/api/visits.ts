@@ -4,7 +4,7 @@
 // visit. A visit can earn loyalty points automatically — the staff check-in
 // flow records both at once.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from './loyalty';
 import { getMembers, type MemberTier } from './members';
@@ -202,7 +202,7 @@ export async function deleteVisit(id: string): Promise<boolean> {
   return apiWithFallback(
     async () => {
       const res = await authFetch(`/api/visits/${id}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error('failed');
+      await ensureOk(res);
       return true;
     },
     async () => {

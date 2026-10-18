@@ -4,7 +4,7 @@
 // event tickets, dues, spa, etc.) and payments. The member's `houseAccountBalance`
 // stays in sync with the running ledger total.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { getMembers, updateMember, type Member } from './members';
 
@@ -260,7 +260,7 @@ export async function deleteCharge(id: string): Promise<boolean> {
   const ok = await apiWithFallback(
     async () => {
       const res = await authFetch(`/api/charges/${id}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error('failed');
+      await ensureOk(res);
       return true;
     },
     async () => {

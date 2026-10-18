@@ -13,6 +13,9 @@ interface AttachmentsCardProps {
   className?: string;
 }
 
+/** The largest file the server accepts. */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -36,13 +39,20 @@ export default function AttachmentsCard({ entityType, recordId, className }: Att
   const doUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setUploading(true);
+    let uploaded = 0;
     try {
       for (const file of Array.from(files)) {
-        const res = await uploadAttachment(entityType, recordId, file);
-        if (res) setItems((prev) => [res, ...prev]);
-        else toast.error(`Failed to upload ${file.name}`);
+        // The server's limit too; saying so up front saves sending the file at all.
+        if (file.size > MAX_UPLOAD_BYTES) { toast.error(`${file.name} is over 10 MB`); continue; }
+        try {
+          const res = await uploadAttachment(entityType, recordId, file);
+          if (res) { setItems((prev) => [res, ...prev]); uploaded++; }
+          else toast.error(`Failed to upload ${file.name}`);
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : `Failed to upload ${file.name}`);
+        }
       }
-      toast.success('Uploaded');
+      if (uploaded > 0) toast.success('Uploaded');
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -51,8 +61,13 @@ export default function AttachmentsCard({ entityType, recordId, className }: Att
 
   const remove = async (a: Attachment) => {
     setItems((prev) => prev.filter((x) => x.id !== a.id));
-    const ok = await deleteAttachment(a.id);
-    if (ok) toast.success('Attachment removed'); else { toast.error('Failed to remove'); load(); }
+    try {
+      const ok = await deleteAttachment(a.id);
+      if (ok) toast.success('Attachment removed'); else { toast.error('Failed to remove'); load(); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove');
+      load();
+    }
   };
 
   const download = (a: Attachment) => {

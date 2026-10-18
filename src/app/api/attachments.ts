@@ -4,7 +4,7 @@
 // file into a data URL (small files only, to respect localStorage limits) so
 // uploads + downloads work offline.
 
-import { apiWithFallback, authFetch, authFetchJson, getApiBaseUrl } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, getApiBaseUrl } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { getCurrentUser } from '@/app/lib/auth';
 
@@ -86,7 +86,7 @@ export async function uploadAttachment(entityType: AttachmentEntity, recordId: s
 
 export async function deleteAttachment(id: string): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch(`/api/attachments/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch(`/api/attachments/${id}`, { method: 'DELETE' }); await ensureOk(res); return true; },
     async () => { await delay(120); return store.remove(id); },
   );
 }

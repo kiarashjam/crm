@@ -6,6 +6,76 @@ namespace ACI.Application.Common;
 public static class DomainErrors
 {
     /// <summary>
+    /// Attachment errors.
+    /// </summary>
+    public static class Attachment
+    {
+        public static readonly Error InvalidEntityType = new(
+            "Attachment.InvalidEntityType", "Files can be attached to leads, contacts, companies and deals");
+
+        public static readonly Error Empty = new(
+            "Attachment.Empty", "The file is empty");
+
+        public static readonly Error TooLarge = new(
+            "Attachment.TooLarge", "Files can be up to 10 MB");
+
+        public static readonly Error RecordNotFound = new(
+            "AttachmentRecord.NotFound", "The record to attach this to was not found");
+
+        public static readonly Error NotFound = new(
+            "Attachment.NotFound", "The attachment was not found");
+    }
+
+    /// <summary>
+    /// Custom field errors.
+    /// </summary>
+    public static class CustomField
+    {
+        public static readonly Error InvalidEntityType = new(
+            "CustomField.InvalidEntityType", "Custom fields can be added to leads, contacts, companies and deals");
+
+        public static readonly Error InvalidType = new(
+            "CustomField.InvalidType", "That is not a kind of custom field");
+
+        public static readonly Error LabelRequired = new(
+            "CustomField.LabelRequired", "A custom field needs a label");
+
+        public static readonly Error OptionsRequired = new(
+            "CustomField.OptionsRequired", "A dropdown field needs at least one option");
+
+        public static readonly Error CannotMove = new(
+            "CustomField.CannotMove", "A field can't move to another kind of record; add a new one instead");
+
+        public static readonly Error NotFound = new(
+            "CustomField.NotFound", "The custom field was not found");
+
+        public static readonly Error RecordNotFound = new(
+            "CustomFieldRecord.NotFound", "The record was not found");
+
+        // "NotOwner" in the code is what maps this to 403 Forbidden.
+        public static readonly Error NotOwnerOrManager = new(
+            "CustomField.NotOwnerOrManager", "Only the owner or a manager can change custom fields");
+
+        public static Error InvalidValue(string label, string expected) => new(
+            "CustomField.InvalidValue", $"{label} {expected}");
+    }
+
+    /// <summary>
+    /// Audit-trail errors.
+    /// </summary>
+    public static class Audit
+    {
+        public static readonly Error InvalidEntityType = new(
+            "Audit.InvalidEntityType", "The audit trail does not record that kind of record");
+
+        public static readonly Error InvalidAction = new(
+            "Audit.InvalidAction", "The audit trail does not record that action");
+
+        public static readonly Error SummaryRequired = new(
+            "Audit.SummaryRequired", "An audit line needs a summary");
+    }
+
+    /// <summary>
     /// Contract-related errors.
     /// </summary>
     public static class Contract

@@ -4,7 +4,7 @@
 // with their own fields. Definitions live per entity type; values are stored
 // per record. The backend persists both; demo mode keeps them in localStorage.
 
-import { apiWithFallback, authFetch, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -28,20 +28,23 @@ export interface CustomFieldDef {
 export type CustomFieldValue = string | number | boolean | null;
 export type CustomFieldValues = Record<string, CustomFieldValue>;
 
-interface ValuesRow {
+export interface ValuesRow {
   id: string; // `${entityType}:${recordId}`
   entityType: CustomFieldEntity;
   recordId: string;
   values: CustomFieldValues;
 }
 
+/** The sample fields demo mode starts with. Before stores were scoped, real browsers got them too. */
+export const DEMO_FIELD_DEFS: readonly CustomFieldDef[] = [
+  { id: 'cf-seed-1', entityType: 'contact', key: 'linkedin', label: 'LinkedIn', type: 'url', order: 0 },
+  { id: 'cf-seed-2', entityType: 'lead', key: 'budget', label: 'Budget', type: 'number', order: 0 },
+  { id: 'cf-seed-3', entityType: 'deal', key: 'source_channel', label: 'Source channel', type: 'select', options: ['Inbound', 'Outbound', 'Referral', 'Event'], order: 0 },
+];
+
 const defStore = createMockStore<CustomFieldDef>({
   storageKey: 'crm.mock.customFieldDefs.v1',
-  seed: [
-    { id: 'cf-seed-1', entityType: 'contact', key: 'linkedin', label: 'LinkedIn', type: 'url', order: 0 },
-    { id: 'cf-seed-2', entityType: 'lead', key: 'budget', label: 'Budget', type: 'number', order: 0 },
-    { id: 'cf-seed-3', entityType: 'deal', key: 'source_channel', label: 'Source channel', type: 'select', options: ['Inbound', 'Outbound', 'Referral', 'Event'], order: 0 },
-  ],
+  seed: [...DEMO_FIELD_DEFS],
   idOf: (d) => d.id,
 });
 
@@ -108,7 +111,7 @@ export async function updateFieldDefinition(id: string, patch: Partial<CustomFie
 
 export async function deleteFieldDefinition(id: string): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch(`/api/custom-fields/${id}`, { method: 'DELETE' }); if (!(res.status === 204 || res.ok)) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch(`/api/custom-fields/${id}`, { method: 'DELETE' }); await ensureOk(res); return true; },
     async () => { await delay(120); return defStore.remove(id); },
   );
 }
@@ -127,7 +130,7 @@ export async function getFieldValues(entityType: CustomFieldEntity, recordId: st
 
 export async function saveFieldValues(entityType: CustomFieldEntity, recordId: string, values: CustomFieldValues): Promise<boolean> {
   return apiWithFallback(
-    async () => { const res = await authFetch('/api/custom-fields/values', { method: 'PUT', body: JSON.stringify({ entityType, recordId, values }) }); if (!res.ok) throw new Error('failed'); return true; },
+    async () => { const res = await authFetch('/api/custom-fields/values', { method: 'PUT', body: JSON.stringify({ entityType, recordId, values }) }); await ensureOk(res); return true; },
     async () => {
       await delay(120);
       const id = `${entityType}:${recordId}`;

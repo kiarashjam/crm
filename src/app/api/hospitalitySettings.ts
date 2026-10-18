@@ -2,6 +2,7 @@
 // multipliers, and venue point values. Stored as a single document.
 
 import { apiWithFallback, authFetchJson } from './apiClient';
+import { LEGACY_BACKUP_SUFFIX, scopedStorageKey } from './mockStore';
 import type { MemberTier } from './members';
 import type { VisitVenue } from './visits';
 
@@ -77,9 +78,23 @@ const DEFAULT_SETTINGS: HospitalitySettings = {
 
 const STORAGE_KEY = 'crm.mock.hospitalitySettings.v1';
 
+/** Stored settings, scoped like every other local store (see `scopedStorageKey`).
+ *  Settings saved under the bare key before scoping move once to the first scope that reads them. */
+function readRaw(): string | null {
+  const key = scopedStorageKey(STORAGE_KEY);
+  const raw = localStorage.getItem(key);
+  if (raw || key === STORAGE_KEY) return raw;
+  const legacy = localStorage.getItem(STORAGE_KEY);
+  if (!legacy) return null;
+  localStorage.setItem(key, legacy);
+  localStorage.setItem(STORAGE_KEY + LEGACY_BACKUP_SUFFIX, legacy);
+  localStorage.removeItem(STORAGE_KEY);
+  return legacy;
+}
+
 function readSettings(): HospitalitySettings {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readRaw();
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw);
     // Merge with defaults so a stored partial object stays valid.
@@ -91,7 +106,7 @@ function readSettings(): HospitalitySettings {
 
 function writeSettings(s: HospitalitySettings): HospitalitySettings {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    localStorage.setItem(scopedStorageKey(STORAGE_KEY), JSON.stringify(s));
   } catch {
     // ignore
   }

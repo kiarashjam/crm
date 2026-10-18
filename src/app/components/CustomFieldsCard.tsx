@@ -57,6 +57,8 @@ export default function CustomFieldsCard({ entityType, recordId, className }: Cu
       const ok = await saveFieldValues(entityType, recordId, values);
       if (ok) { setInitial(values); toast.success('Custom fields saved'); }
       else toast.error('Failed to save');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
