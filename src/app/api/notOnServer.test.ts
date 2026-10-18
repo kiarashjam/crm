@@ -71,6 +71,17 @@ describe('authFetch', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     vi.unstubAllEnvs();
   });
+
+  it('still sends a write, so the server can refuse a Viewer', async () => {
+    vi.stubEnv('VITE_API_URL', 'https://api.example.test');
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 403 }));
+    vi.stubGlobal('fetch', fetch);
+    const { authFetch } = await import('./apiClient');
+    const res = await authFetch('/api/members', { method: 'POST', body: '{}' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(403);
+    vi.unstubAllEnvs();
+  });
 });
 
 describe('apiBase', () => {

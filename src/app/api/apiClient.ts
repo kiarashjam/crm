@@ -51,9 +51,14 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
     headers.set('Content-Type', 'application/json');
   }
   const url = path.startsWith('http') ? path : `${base}${path.startsWith('/') ? path : `/${path}`}`;
-  // A feature the backend does not serve yet: answer its 404 here instead of
-  // sending a request that can only fail (see notOnServer.ts).
-  if (isNotOnServer(path)) return new Response(null, { status: 404, statusText: 'Not Found' });
+  // A feature the backend does not serve yet: answer a read's 404 here instead of
+  // sending a request that can only fail (see notOnServer.ts). A write still goes
+  // out, so the read-only middleware can refuse a Viewer with 403; answering it
+  // here would save the Viewer's change in this browser instead.
+  const method = (init.method ?? 'GET').toUpperCase();
+  if ((method === 'GET' || method === 'HEAD') && isNotOnServer(path)) {
+    return new Response(null, { status: 404, statusText: 'Not Found' });
+  }
   const res = await fetch(url, { ...init, headers });
   // Anonymous endpoints (e.g. forgot/reset password) must not clear an existing session on 401.
   if (res.status === 401 && !skipAuth) {
