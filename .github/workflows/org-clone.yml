@@ -1,0 +1,151 @@
+# One-off org administration from CI: copy an organization into a new one.
+#
+# Copies every record the organization owns, everything that hangs off those records,
+# and its members with their roles, into a new organization, under new ids. People are
+# shared, not copied, so everyone in the original can use both. What is copied and what
+# is deliberately not (the webhook key and outbound address, signing links, reminders and
+# running sequences that would email someone twice) is in OrganizationCloner.cs.
+#
+# Runs against the production database through the same Azure service principal the
+# deploy uses; the connection string is read at run time and masked.
+#
+#   · dry-run (the default): the whole copy is made and checked inside a transaction,
+#     then rolled back. Proves the copy against the real data and keeps nothing.
+#   · copy: the same, committed, and only if the check passes.
+#
+# The check reads the copy back: each table must hold as many rows as the original (less
+# what is left out on purpose), and nothing in the copy may point at a row of the
+# original. Run twice, the second run refuses: the new name exists already.
+
+name: Org admin — copy organization
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Organization to copy (space-insensitive match)'
+        required: true
+        default: 'Pavillon46'
+      name:
+        description: 'Name of the new organization'
+        required: true
+        default: 'Pavillon 46 v2'
+      mode:
+        description: 'dry-run checks and rolls back; copy keeps it'
+        required: true
+        default: 'dry-run'
+        type: choice
+        options: [dry-run, copy]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: org-admin
+  cancel-in-progress: false
+
+jobs:
+  copy_organization:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build the copy tool
+        run: dotnet build backend/tools/ACI.OrgClone -c Release
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Copy the organization
+        env:
+          APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
+          SOURCE: ${{ inputs.source }}
+          COPY_NAME: ${{ inputs.name }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+
+          # ---- locate the app and its connection string (never printed) ----
+          RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::Web App '$APP_NAME' not found in this subscription."
+            exit 1
+          fi
+
+          CONN=$(az webapp config connection-string list \
+                   --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+                   --query "[?name=='DefaultConnection'].value | [0]" -o tsv)
+          if [ -z "$CONN" ] || [ "$CONN" = "None" ]; then
+            CONN=$(az webapp config appsettings list \
+                     --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" \
+                     --query "[?name=='ConnectionStrings__DefaultConnection'].value | [0]" -o tsv)
+          fi
+          if [ -z "$CONN" ] || [ "$CONN" = "None" ]; then
+            echo "::error::No DefaultConnection found on the Web App (checked connection strings and app settings)."
+            echo "Connection string names present:"
+            az webapp config connection-string list --name "$APP_NAME" --resource-group "$RESOURCE_GROUP" --query "[].name" -o tsv || true
+            exit 1
+          fi
+          echo "::add-mask::$CONN"
+
+          # ---- the server name, for the firewall pinhole below; values stay masked ----
+          eval "$(CONN="$CONN" python3 - <<'PY'
+          import os, shlex
+          parts = dict()
+          for piece in os.environ["CONN"].split(";"):
+              if "=" in piece:
+                  k, v = piece.split("=", 1)
+                  parts[k.strip().lower()] = v.strip()
+          server = parts.get("server") or parts.get("data source") or ""
+          server = server.replace("tcp:", "").split(",")[0]
+          db     = parts.get("initial catalog") or parts.get("database") or ""
+          user   = parts.get("user id") or parts.get("uid") or parts.get("user") or ""
+          pwd    = parts.get("password") or parts.get("pwd") or ""
+          print(f"SQL_SERVER={shlex.quote(server)}")
+          print(f"SQL_DB={shlex.quote(db)}")
+          print(f"SQL_USER={shlex.quote(user)}")
+          print(f"SQL_PASS={shlex.quote(pwd)}")
+          PY
+          )"
+          echo "::add-mask::$SQL_PASS"
+          echo "::add-mask::$SQL_USER"
+          if [ -z "$SQL_SERVER" ] || [ -z "$SQL_DB" ]; then
+            echo "::error::Could not parse server/database out of the connection string."
+            exit 1
+          fi
+
+          # ---- open a pinhole in the SQL firewall for this runner (best effort;
+          #      'Allow Azure services' often already covers GitHub's runners) ----
+          FW_RULE="gh-run-${GITHUB_RUN_ID}"
+          SQL_SERVER_NAME="${SQL_SERVER%%.*}"
+          SQL_RG=$(az sql server list --query "[?name=='$SQL_SERVER_NAME'].resourceGroup | [0]" -o tsv 2>/dev/null || true)
+          FW_CREATED=""
+          cleanup() {
+            if [ -n "$FW_CREATED" ]; then
+              az sql server firewall-rule delete -g "$SQL_RG" -s "$SQL_SERVER_NAME" -n "$FW_RULE" >/dev/null 2>&1 || true
+            fi
+          }
+          trap cleanup EXIT
+          if [ -n "$SQL_RG" ] && [ "$SQL_RG" != "None" ]; then
+            RUNNER_IP=$(curl -fsS https://api.ipify.org || true)
+            if [ -n "$RUNNER_IP" ]; then
+              if az sql server firewall-rule create -g "$SQL_RG" -s "$SQL_SERVER_NAME" -n "$FW_RULE" \
+                   --start-ip-address "$RUNNER_IP" --end-ip-address "$RUNNER_IP" >/dev/null 2>&1; then
+                FW_CREATED=1
+                echo "Temporary firewall rule $FW_RULE created."
+              fi
+            fi
+          fi
+
+          # ---- the copy ----
+          COMMIT=""
+          [ "$MODE" = "copy" ] && COMMIT="--commit"
+          ORG_CLONE_CONNECTION="$CONN" dotnet run --project backend/tools/ACI.OrgClone -c Release --no-build -- \
+            --source "$SOURCE" --name "$COPY_NAME" $COMMIT

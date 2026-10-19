@@ -1,6 +1,7 @@
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
 using ACI.Infrastructure.Repositories;
+using ACI.WebApi.Tests.Helpers;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -29,10 +30,7 @@ public class PersonalWorkspaceBackfillTests
     public async Task CreatingAnOrganizationBringsAlongWhatHangsOffTheRecords()
     {
         using var connection = new SqliteConnection("DataSource=:memory:");
-        connection.Open();
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
-        using var db = new SqliteAppDbContext(options);
-        db.Database.EnsureCreated();
+        using var db = SqliteDb.Open(connection);
 
         var me = Guid.NewGuid();
         var someoneElse = Guid.NewGuid();
@@ -86,18 +84,5 @@ public class PersonalWorkspaceBackfillTests
         (await db.Products.SingleAsync(p => p.OwnerUserId == someoneElse)).OrganizationId.Should().BeNull();
         (await db.AuditEvents.Where(e => e.OwnerUserId == someoneElse).Select(e => e.OrganizationId).ToListAsync())
             .Should().OnlyContain(o => o == null);
-    }
-
-    /// <summary>The app's model, with SQL Server's nvarchar(max) as SQLite's TEXT. Nothing else differs.</summary>
-    private sealed class SqliteAppDbContext : AppDbContext
-    {
-        public SqliteAppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-            foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(t => t.GetProperties()))
-                if (property.GetColumnType() == "nvarchar(max)") property.SetColumnType("TEXT");
-        }
     }
 }
