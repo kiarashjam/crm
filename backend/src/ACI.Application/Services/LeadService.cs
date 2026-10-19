@@ -16,6 +16,8 @@ public class LeadService : ILeadService
     private readonly IContactRepository _contactRepository;
     private readonly IDealRepository _dealRepository;
     private readonly ILeadAutomation _automation;
+    private readonly IAutomationEngine? _automations;
+    private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly ILogger<LeadService> _logger;
 
     public LeadService(
@@ -24,7 +26,9 @@ public class LeadService : ILeadService
         IContactRepository contactRepository, 
         IDealRepository dealRepository,
         ILeadAutomation automation,
-        ILogger<LeadService> logger)
+        ILogger<LeadService> logger,
+        IAutomationEngine? automations = null,
+        IOutboundWebhookPublisher? webhooks = null)
     {
         _repository = repository;
         _companyRepository = companyRepository;
@@ -32,6 +36,8 @@ public class LeadService : ILeadService
         _dealRepository = dealRepository;
         _automation = automation;
         _logger = logger;
+        _automations = automations;
+        _webhooks = webhooks;
     }
 
     /// <inheritdoc />
@@ -210,6 +216,14 @@ public class LeadService : ILeadService
             "Lead {LeadId} created successfully for user {UserId}",
             entity.Id, userId);
 
+        if (_automations != null)
+        {
+            await _automations.DispatchAsync("lead.created", new AutomationEvent(
+                organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId), ct);
+        }
+        if (_webhooks != null)
+            await _webhooks.PublishAsync(organizationId, "lead.created", new { entity.Id, entity.Name, entity.Email }, ct);
+
         return Map(entity);
     }
 
@@ -317,7 +331,14 @@ public class LeadService : ILeadService
 
         await _contactRepository.EnsurePersonContactAsync(updated, ct);
         if (!string.Equals(previousStatus, updated.Status, StringComparison.Ordinal))
+        {
             await _automation.RecordStatusAsync(updated, previousStatus, updated.Status, userId, ct);
+            if (_automations != null)
+            {
+                await _automations.DispatchAsync("lead.status_changed", new AutomationEvent(
+                    organizationId, userId, $"{updated.Id}:{updated.Status}", updated.Name, LeadId: updated.Id, Email: updated.Email, AssigneeId: updated.AssignedToUserId), ct);
+            }
+        }
 
         _logger.LogInformation(
             "Lead {LeadId} updated successfully",

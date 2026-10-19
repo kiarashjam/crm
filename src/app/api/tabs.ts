@@ -4,7 +4,7 @@
 // they go; closing the tab converts it to a Charge on the member's house
 // account and writes a loyalty ledger entry sized to the total.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, isUsingRealApi } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge, type ChargeKind } from './charges';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from './loyalty';
@@ -160,6 +160,12 @@ export interface AddItemInput {
 }
 
 export async function addItemToTab(input: AddItemInput): Promise<OpenTab | null> {
+  if (isUsingRealApi()) {
+    return authFetchJson<OpenTab>(`/api/tabs/${input.tabId}/items`, {
+      method: 'POST',
+      body: JSON.stringify({ name: input.name, quantity: input.quantity, unitPrice: input.unitPrice }),
+    });
+  }
   const tab = tabStore.byId(input.tabId);
   if (!tab || tab.status !== 'Open') return null;
   const newItem: TabItem = {
@@ -205,6 +211,9 @@ export async function removeItemFromTab(tabId: string, itemId: string): Promise<
  * house account and writes a loyalty entry sized by the total × multiplier.
  */
 export async function closeTab(tabId: string): Promise<OpenTab | null> {
+  if (isUsingRealApi()) {
+    return authFetchJson<OpenTab>(`/api/tabs/${tabId}/close`, { method: 'POST' });
+  }
   const tab = tabStore.byId(tabId);
   if (!tab || tab.status !== 'Open') return null;
   const total = calculateTotal(tab.items);

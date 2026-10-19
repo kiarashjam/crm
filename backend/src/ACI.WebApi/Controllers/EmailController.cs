@@ -39,6 +39,6 @@ public class EmailController : ControllerBase
         if (_currentUser.UserId == null) return Unauthorized();
         if (_currentUser.CurrentOrganizationId is not { } organizationId)
             return Problem(detail: "X-Organization-Id required", statusCode: StatusCodes.Status400BadRequest);
-        return (await _email.SendAsync(organizationId, request, ct)).ToActionResult();
+        return (await _email.SendAsync(organizationId, request, _currentUser.UserId.Value, ct)).ToActionResult();
     }
 }

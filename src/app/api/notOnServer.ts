@@ -13,28 +13,7 @@
 // screen starts using the server) or when a new call goes to a route nothing
 // serves (add it here, or build the route).
 
-export const NOT_ON_SERVER: readonly string[] = [
-  'applications',
-  'automations',
-  'campaigns',
-  'charges',
-  'communications',
-  'donations',
-  'events',
-  'gift-cards',
-  'hospitality',
-  'household-members',
-  'households',
-  'loyalty',
-  'members',
-  'payments',
-  'products',
-  'reservations',
-  'resources',
-  'subscriptions',
-  'tabs',
-  'visits',
-];
+export const NOT_ON_SERVER: readonly string[] = [];
 
 const missing = new Set(NOT_ON_SERVER);
 

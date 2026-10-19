@@ -13,16 +13,22 @@ public class DealService : IDealService
 {
     private readonly IDealRepository _repository;
     private readonly IActivityRepository _activityRepository;
+    private readonly IAutomationEngine? _automations;
+    private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly ILogger<DealService> _logger;
 
     public DealService(
         IDealRepository repository, 
         IActivityRepository activityRepository,
-        ILogger<DealService> logger)
+        ILogger<DealService> logger,
+        IAutomationEngine? automations = null,
+        IOutboundWebhookPublisher? webhooks = null)
     {
         _repository = repository;
         _activityRepository = activityRepository;
         _logger = logger;
+        _automations = automations;
+        _webhooks = webhooks;
     }
 
     /// <inheritdoc />
@@ -207,6 +213,7 @@ public class DealService : IDealService
         // Track stage change before applying update (HP-11)
         var oldStageId = existing.DealStageId;
         var oldStageName = existing.DealStage?.Name ?? existing.Stage;
+        var previousWon = existing.IsWon;
 
         // Apply partial updates
         if (request.Name != null) existing.Name = request.Name.Trim();
@@ -230,6 +237,8 @@ public class DealService : IDealService
         }
         if (request.ClosedReason != null) existing.ClosedReason = request.ClosedReason.Trim();
         if (request.ClosedReasonCategory != null) existing.ClosedReasonCategory = request.ClosedReasonCategory.Trim();
+        if (request.IsPrivate.HasValue) existing.IsPrivate = request.IsPrivate.Value;
+        if (request.TeamId.HasValue) existing.TeamId = request.TeamId;
 
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
@@ -262,7 +271,21 @@ public class DealService : IDealService
             _logger.LogInformation(
                 "Stage change recorded for deal {DealId}: {From} → {To}",
                 id, oldStageName, stageChange.ToStageName);
+            if (_automations != null)
+            {
+                await _automations.DispatchAsync("deal.stage_changed", new AutomationEvent(
+                    organizationId, userId, $"{id}:{existing.DealStageId}", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
+            }
+            if (_webhooks != null)
+                await _webhooks.PublishAsync(organizationId, "deal.stage_changed", new { id, existing.Name, stageId = existing.DealStageId }, ct);
         }
+
+        if (_automations != null && request.IsWon == true && previousWon != true)
+            await _automations.DispatchAsync("deal.won", new AutomationEvent(organizationId, userId, $"{id}:won", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
+        if (_webhooks != null && request.IsWon == true && previousWon != true)
+            await _webhooks.PublishAsync(organizationId, "deal.won", new { id, existing.Name }, ct);
+        if (_automations != null && request.IsWon == false && previousWon != false)
+            await _automations.DispatchAsync("deal.lost", new AutomationEvent(organizationId, userId, $"{id}:lost", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
 
         _logger.LogInformation(
             "Deal {DealId} updated successfully",
@@ -328,5 +351,7 @@ public class DealService : IDealService
             // Close reason — HP-8
             e.ClosedReason,
             e.ClosedReasonCategory,
-            e.ClosedAtUtc);
+            e.ClosedAtUtc,
+            e.IsPrivate,
+            e.TeamId);
 }

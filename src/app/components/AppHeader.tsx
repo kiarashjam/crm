@@ -11,6 +11,8 @@ import {
   X,
   Target,
   Building2,
+  CheckSquare,
+  Activity,
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
@@ -90,6 +92,8 @@ function GlobalSearchBar() {
           contacts: Array.isArray(res?.contacts) ? res.contacts : [],
           companies: Array.isArray(res?.companies) ? res.companies : [],
           deals: Array.isArray(res?.deals) ? res.deals : [],
+          activities: Array.isArray(res?.activities) ? res.activities : [],
+          tasks: Array.isArray(res?.tasks) ? res.tasks : [],
         });
       } catch {
         setResults(null);
@@ -109,6 +113,7 @@ function GlobalSearchBar() {
 
   const totalResults = results
     ? results.leads.length + results.contacts.length + results.companies.length + results.deals.length
+      + results.activities.length + results.tasks.length
     : 0;
 
   if (!open) {
@@ -225,6 +230,50 @@ function GlobalSearchBar() {
                         <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{d.name}</p>
                       </div>
                       {d.value && <span className="text-xs font-semibold text-emerald-600 shrink-0">${d.value}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {results.tasks.length > 0 && (
+                <div>
+                  <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    Tasks ({results.tasks.length})
+                  </div>
+                  {results.tasks.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => navigateTo(`/tasks/${t.id}`)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
+                    >
+                      <CheckSquare className="w-4 h-4 text-sky-500 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{t.title}</p>
+                        {t.detail && <p className="text-xs text-slate-400 truncate">{t.detail}</p>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {results.activities.length > 0 && (
+                <div>
+                  <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    Activities ({results.activities.length})
+                  </div>
+                  {results.activities.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => navigateTo('/activities')}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
+                    >
+                      <Activity className="w-4 h-4 text-rose-500 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{a.title}</p>
+                        {a.detail && <p className="text-xs text-slate-400 truncate">{a.detail}</p>}
+                      </div>
                     </button>
                   ))}
                 </div>

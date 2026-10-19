@@ -1,5 +1,6 @@
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
+using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,10 +12,21 @@ public sealed class DealRepository : IDealRepository
 
     public DealRepository(AppDbContext db) => _db = db;
 
-    private static IQueryable<Deal> FilterByUserAndOrg(IQueryable<Deal> q, Guid userId, Guid? organizationId) =>
-        organizationId == null
+    private IQueryable<Deal> FilterByUserAndOrg(IQueryable<Deal> q, Guid userId, Guid? organizationId)
+    {
+        var scoped = organizationId == null
             ? q.Where(d => d.UserId == userId && d.OrganizationId == null)
             : q.Where(d => d.OrganizationId == organizationId);
+        if (organizationId == null) return scoped;
+        return scoped.Where(d =>
+            !d.IsPrivate
+            || d.UserId == userId
+            || d.AssigneeId == userId
+            || _db.OrganizationMembers.Any(m =>
+                m.OrganizationId == organizationId
+                && m.UserId == userId
+                && (m.Role == OrgMemberRole.Owner || m.Role == OrgMemberRole.Manager)));
+    }
 
     private static IQueryable<Deal> IncludeRelated(IQueryable<Deal> q) =>
         q.Include(d => d.Assignee)

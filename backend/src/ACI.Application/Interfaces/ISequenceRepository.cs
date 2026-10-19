@@ -44,6 +44,12 @@ public interface ISequenceRepository
     /// <summary>Stop every open enrollment in a sequence that is being deleted.</summary>
     Task StopEnrollmentsAsync(Guid sequenceId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Stop active and paused enrollments for one person. Used when someone logs a
+    /// real reply, so the next scheduled email does not go out after they answered.
+    /// </summary>
+    Task<int> StopOpenForTargetAsync(Guid? organizationId, string targetType, Guid targetId, CancellationToken ct = default);
+
     Task<IReadOnlyList<OutreachEnrollment>> DueAsync(DateTime utcNow, int take, CancellationToken ct = default);
 
     /// <summary>

@@ -227,6 +227,21 @@ public class CompaniesController : ControllerBase
         return result.ToActionResult();
     }
 
+    /// <summary>Keeps this company and folds the other one into it.</summary>
+    [HttpPost("{id:guid}/merge")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Merge(Guid id, [FromBody] MergeCompaniesRequest request, CancellationToken ct)
+    {
+        if (request == null || request.OtherCompanyId == Guid.Empty)
+            return BadRequest();
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await _companyService.MergeAsync(id, request.OtherCompanyId, userId.Value, _currentUser.CurrentOrganizationId, ct);
+        return result.ToNoContentResult();
+    }
+
     /// <summary>
     /// Deletes a company.
     /// </summary>
@@ -244,13 +259,13 @@ public class CompaniesController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
         var result = await _companyService.DeleteAsync(
-            id, 
-            userId.Value, 
-            _currentUser.CurrentOrganizationId, 
+            id,
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
             ct);
-        
+
         return result.ToNoContentResult();
     }
 }

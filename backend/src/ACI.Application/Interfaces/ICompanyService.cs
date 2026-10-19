@@ -85,4 +85,7 @@ public interface ICompanyService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A success or failure result.</returns>
     Task<Result> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>Keeps one company and folds the other into it.</summary>
+    Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

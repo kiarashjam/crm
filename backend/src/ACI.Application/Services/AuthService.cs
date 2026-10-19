@@ -116,6 +116,9 @@ public class AuthService : IAuthService
     {
         _logger.LogInformation("Registration attempt for email {Email}", request.Email);
         
+        if (!IsStrongPassword(request.Password))
+            return DomainErrors.Auth.PasswordTooWeak;
+
         if (await _userRepository.GetByEmailAsync(request.Email, ct) != null)
         {
             _logger.LogWarning("Registration failed: email {Email} already exists", request.Email);
@@ -293,6 +296,9 @@ public class AuthService : IAuthService
         if (string.IsNullOrEmpty(rawToken))
             return DomainErrors.Auth.InvalidResetToken;
 
+        if (!IsStrongPassword(request.Password))
+            return DomainErrors.Auth.PasswordTooWeak;
+
         var tokenHash = PasswordResetCrypto.HashRawToken(rawToken);
         var user = await _userRepository.GetByPasswordResetTokenHashAsync(tokenHash, ct);
         if (user == null
@@ -313,8 +319,16 @@ public class AuthService : IAuthService
     }
 
     /// <summary>
-    /// Pending email reset links should not remain valid after the user proves password knowledge (login or 2FA step).
+    /// Eight characters with a letter and a digit, or a passphrase of at least
+    /// fifteen characters. A long phrase without a digit is still a real password.
     /// </summary>
+    internal static bool IsStrongPassword(string? password)
+    {
+        if (string.IsNullOrEmpty(password) || password.Length < 8) return false;
+        if (!password.Any(char.IsLetter)) return false;
+        return password.Any(char.IsDigit) || password.Length >= 15;
+    }
+
     private static void ClearPasswordResetFieldsIfPresent(User user)
     {
         if (user.PasswordResetTokenHash == null && user.PasswordResetTokenExpiresAtUtc == null)

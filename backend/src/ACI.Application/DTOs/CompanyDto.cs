@@ -11,3 +11,5 @@ public record CompanyDto(
     string? Location,
     DateTime CreatedAtUtc,
     DateTime? UpdatedAtUtc);
+
+public record MergeCompaniesRequest(Guid OtherCompanyId);

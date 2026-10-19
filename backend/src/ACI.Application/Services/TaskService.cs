@@ -205,6 +205,7 @@ public class TaskService : ITaskService
                 ContactId = request.ContactId,
                 AssigneeId = request.AssigneeId,
                 Notes = request.Notes,
+                Recurrence = NormalizeRecurrence(request.Recurrence),
                 CreatedAtUtc = DateTime.UtcNow,
             };
             
@@ -272,7 +273,10 @@ public class TaskService : ITaskService
                 
                 // Set completed timestamp
                 if (status == Domain.Enums.TaskStatus.Completed && !wasCompleted)
+                {
                     existing.CompletedAtUtc = DateTime.UtcNow;
+                    await OpenNextOccurrenceAsync(existing, ct);
+                }
                 else if (status != Domain.Enums.TaskStatus.Completed && wasCompleted)
                     existing.CompletedAtUtc = null;
             }
@@ -325,6 +329,7 @@ public class TaskService : ITaskService
             
             // Update notes
             if (request.Notes != null) existing.Notes = request.Notes;
+            if (request.Recurrence != null) existing.Recurrence = NormalizeRecurrence(request.Recurrence);
             
             existing.UpdatedAtUtc = DateTime.UtcNow;
             existing.UpdatedByUserId = userId;
@@ -379,7 +384,10 @@ public class TaskService : ITaskService
             
             // Set completed timestamp
             if (taskStatus == Domain.Enums.TaskStatus.Completed && !wasCompleted)
+            {
                 existing.CompletedAtUtc = DateTime.UtcNow;
+                await OpenNextOccurrenceAsync(existing, ct);
+            }
             else if (taskStatus != Domain.Enums.TaskStatus.Completed && wasCompleted)
                 existing.CompletedAtUtc = null;
             
@@ -732,5 +740,41 @@ public class TaskService : ITaskService
         }
 
         return DomainErrors.General.ValidationError;
+    }
+
+    private static string? NormalizeRecurrence(string? value)
+    {
+        var text = (value ?? "").Trim().ToLowerInvariant();
+        return text is "daily" or "weekly" or "monthly" ? text : null;
+    }
+
+    private async Task OpenNextOccurrenceAsync(TaskItem completed, CancellationToken ct)
+    {
+        var recurrence = NormalizeRecurrence(completed.Recurrence);
+        if (recurrence == null || completed.DueDateUtc == null) return;
+        var nextDue = recurrence switch
+        {
+            "daily" => completed.DueDateUtc.Value.AddDays(1),
+            "weekly" => completed.DueDateUtc.Value.AddDays(7),
+            _ => completed.DueDateUtc.Value.AddMonths(1),
+        };
+        await _repository.AddAsync(new TaskItem
+        {
+            Id = Guid.NewGuid(),
+            UserId = completed.UserId,
+            OrganizationId = completed.OrganizationId,
+            Title = completed.Title,
+            Description = completed.Description,
+            DueDateUtc = nextDue,
+            Status = Domain.Enums.TaskStatus.Todo,
+            Priority = completed.Priority,
+            AssigneeId = completed.AssigneeId,
+            LeadId = completed.LeadId,
+            DealId = completed.DealId,
+            ContactId = completed.ContactId,
+            Notes = completed.Notes,
+            Recurrence = recurrence,
+            CreatedAtUtc = DateTime.UtcNow,
+        }, ct);
     }
 }

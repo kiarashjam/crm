@@ -195,6 +195,11 @@ try
     builder.Services.AddScoped<IComposedEmailService, ComposedEmailService>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();
+    builder.Services.AddScoped<IProductService, ProductService>();
+    builder.Services.AddScoped<IAutomationService, AutomationService>();
+    builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
+    builder.Services.AddScoped<IClubService, ClubService>();
+    builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
@@ -219,6 +224,8 @@ try
 
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.ContractReminderBackgroundService>();
+    builder.Services.AddHttpClient(nameof(ACI.Infrastructure.Services.OutboundWebhookPublisher));
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
 
     // HTTP Context accessor for current user service
@@ -735,6 +742,137 @@ try
                     [ValuesJson] nvarchar(max) NOT NULL,
                     [UpdatedAtUtc] datetime2 NOT NULL
                 );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ForecastSnapshots')
+                CREATE TABLE [ForecastSnapshots] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [SavedByUserId] uniqueidentifier NOT NULL,
+                    [MonthUtc] datetime2 NOT NULL,
+                    [Currency] nvarchar(8) NOT NULL,
+                    [AssigneeId] uniqueidentifier NULL,
+                    [AssigneeName] nvarchar(200) NOT NULL,
+                    [WeightedValue] decimal(18,2) NOT NULL,
+                    [OpenValue] decimal(18,2) NOT NULL,
+                    [Covered] int NOT NULL,
+                    [Missing] int NOT NULL,
+                    [SavedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SentMessages')
+                CREATE TABLE [SentMessages] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [SentByUserId] uniqueidentifier NOT NULL,
+                    [To] nvarchar(2000) NOT NULL,
+                    [Cc] nvarchar(2000) NULL,
+                    [Bcc] nvarchar(2000) NULL,
+                    [Subject] nvarchar(300) NOT NULL,
+                    [Body] nvarchar(max) NOT NULL,
+                    [LeadId] uniqueidentifier NULL,
+                    [ContactId] uniqueidentifier NULL,
+                    [DealId] uniqueidentifier NULL,
+                    [SentAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AutomationRules')
+                CREATE TABLE [AutomationRules] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [OwnerUserId] uniqueidentifier NOT NULL,
+                    [Name] nvarchar(200) NOT NULL,
+                    [Enabled] bit NOT NULL,
+                    [Trigger] nvarchar(40) NOT NULL,
+                    [TriggerConfigJson] nvarchar(max) NULL,
+                    [ActionsJson] nvarchar(max) NOT NULL,
+                    [RunCount] int NOT NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AutomationFires')
+                CREATE TABLE [AutomationFires] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [RuleId] uniqueidentifier NOT NULL,
+                    [SourceKey] nvarchar(80) NOT NULL,
+                    [FiredAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ClubMembers')
+                CREATE TABLE [ClubMembers] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [OwnerUserId] uniqueidentifier NOT NULL,
+                    [FirstName] nvarchar(100) NOT NULL,
+                    [LastName] nvarchar(100) NOT NULL,
+                    [Email] nvarchar(256) NOT NULL,
+                    [Phone] nvarchar(64) NULL,
+                    [Tier] nvarchar(32) NOT NULL,
+                    [Status] nvarchar(32) NOT NULL,
+                    [JoinedAtUtc] datetime2 NOT NULL,
+                    [RenewsAtUtc] datetime2 NOT NULL,
+                    [DuesAmount] decimal(18,2) NOT NULL,
+                    [DuesFrequency] nvarchar(32) NOT NULL,
+                    [HouseAccountBalance] decimal(18,2) NOT NULL,
+                    [Notes] nvarchar(max) NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ClubVisits')
+                CREATE TABLE [ClubVisits] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [MemberId] uniqueidentifier NOT NULL,
+                    [MemberName] nvarchar(200) NOT NULL,
+                    [MemberTier] nvarchar(32) NOT NULL,
+                    [Venue] nvarchar(32) NOT NULL,
+                    [VisitedAtUtc] datetime2 NOT NULL,
+                    [GuestCount] int NOT NULL,
+                    [PointsAwarded] int NOT NULL,
+                    [Notes] nvarchar(max) NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'LoyaltyLedger')
+                CREATE TABLE [LoyaltyLedger] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [MemberId] uniqueidentifier NOT NULL,
+                    [MemberName] nvarchar(200) NOT NULL,
+                    [Kind] nvarchar(32) NOT NULL,
+                    [Reason] nvarchar(40) NOT NULL,
+                    [Points] int NOT NULL,
+                    [Note] nvarchar(max) NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
+                IF COL_LENGTH('Deals', 'IsPrivate') IS NULL ALTER TABLE [Deals] ADD [IsPrivate] bit NOT NULL CONSTRAINT DF_Deals_IsPrivate DEFAULT 0;
+                IF COL_LENGTH('Deals', 'TeamId') IS NULL ALTER TABLE [Deals] ADD [TeamId] uniqueidentifier NULL;
+                IF COL_LENGTH('TaskItems', 'Recurrence') IS NULL ALTER TABLE [TaskItems] ADD [Recurrence] nvarchar(16) NULL;
+                IF COL_LENGTH('Contracts', 'ReminderSentAtUtc') IS NULL ALTER TABLE [Contracts] ADD [ReminderSentAtUtc] datetime2 NULL;
+                IF COL_LENGTH('Organizations', 'OutboundWebhookUrl') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookUrl] nvarchar(500) NULL;
+                IF COL_LENGTH('Organizations', 'OutboundWebhookSecret') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookSecret] nvarchar(200) NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SalesTeams')
+                CREATE TABLE [SalesTeams] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NOT NULL,
+                    [Name] nvarchar(120) NOT NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SalesTeamMembers')
+                CREATE TABLE [SalesTeamMembers] (
+                    [TeamId] uniqueidentifier NOT NULL,
+                    [UserId] uniqueidentifier NOT NULL,
+                    CONSTRAINT PK_SalesTeamMembers PRIMARY KEY ([TeamId], [UserId])
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ClubDocuments')
+                CREATE TABLE [ClubDocuments] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [Kind] nvarchar(40) NOT NULL,
+                    [Payload] nvarchar(max) NOT NULL,
+                    [UpdatedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Products')
+                CREATE TABLE [Products] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [OwnerUserId] uniqueidentifier NOT NULL,
+                    [Name] nvarchar(200) NOT NULL,
+                    [Sku] nvarchar(64) NULL,
+                    [UnitPrice] decimal(18,4) NOT NULL,
+                    [Currency] nvarchar(8) NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'DealLineItems')
                 CREATE TABLE [DealLineItems] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,
@@ -884,6 +1022,46 @@ try
                         CREATE INDEX [IX_DealLineItems_DealId] ON [DealLineItems] ([DealId]);
                 END TRY BEGIN CATCH END CATCH;
                 BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Products_OrganizationId')
+                        CREATE INDEX [IX_Products_OrganizationId] ON [Products] ([OrganizationId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ForecastSnapshots_OrganizationId_MonthUtc')
+                        CREATE INDEX [IX_ForecastSnapshots_OrganizationId_MonthUtc] ON [ForecastSnapshots] ([OrganizationId], [MonthUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SentMessages_OrganizationId_SentAtUtc')
+                        CREATE INDEX [IX_SentMessages_OrganizationId_SentAtUtc] ON [SentMessages] ([OrganizationId], [SentAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AutomationRules_OrganizationId_Trigger')
+                        CREATE INDEX [IX_AutomationRules_OrganizationId_Trigger] ON [AutomationRules] ([OrganizationId], [Trigger]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AutomationFires_RuleId_SourceKey')
+                        CREATE UNIQUE INDEX [IX_AutomationFires_RuleId_SourceKey] ON [AutomationFires] ([RuleId], [SourceKey]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ClubMembers_OrganizationId')
+                        CREATE INDEX [IX_ClubMembers_OrganizationId] ON [ClubMembers] ([OrganizationId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ClubVisits_MemberId')
+                        CREATE INDEX [IX_ClubVisits_MemberId] ON [ClubVisits] ([MemberId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LoyaltyLedger_MemberId')
+                        CREATE INDEX [IX_LoyaltyLedger_MemberId] ON [LoyaltyLedger] ([MemberId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ClubDocuments_OrganizationId_Kind')
+                        CREATE INDEX [IX_ClubDocuments_OrganizationId_Kind] ON [ClubDocuments] ([OrganizationId], [Kind]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_SalesTeams_OrganizationId')
+                        CREATE INDEX [IX_SalesTeams_OrganizationId] ON [SalesTeams] ([OrganizationId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
                     IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LeadOpsSettings_OrganizationId')
                         CREATE INDEX [IX_LeadOpsSettings_OrganizationId] ON [LeadOpsSettings] ([OrganizationId]);
                 END TRY BEGIN CATCH END CATCH;
@@ -928,6 +1106,7 @@ try
                         [CreatedAtUtc] datetime2 NOT NULL,
                         [UpdatedAtUtc] datetime2 NOT NULL,
                         [SentAtUtc] datetime2 NULL,
+                        [ReminderSentAtUtc] datetime2 NULL,
                         [SentByUserId] uniqueidentifier NULL,
                         [SigningTokenHash] nvarchar(64) NULL,
                         [SigningTokenExpiresAtUtc] datetime2 NULL,

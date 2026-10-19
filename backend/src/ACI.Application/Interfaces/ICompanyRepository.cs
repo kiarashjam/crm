@@ -30,6 +30,12 @@ public interface ICompanyRepository
     Task<Company?> UpdateAsync(Company company, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Moves every record that pointed at <paramref name="dropId"/> onto <paramref name="keepId"/>,
+    /// fills blank fields on the company that is kept, and deletes the other company.
+    /// </summary>
+    Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
     // HP-7: Server-side stats (contact count, deal count, deal value per company)
     Task<IReadOnlyList<(Guid CompanyId, int ContactCount, int DealCount, decimal TotalDealValue)>> GetStatsAsync(
         Guid userId, Guid? organizationId, CancellationToken ct = default);

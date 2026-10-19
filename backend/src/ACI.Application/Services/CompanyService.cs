@@ -265,6 +265,16 @@ public class CompanyService : ICompanyService
         }
     }
 
+    /// <inheritdoc />
+    public async Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        if (keepId == dropId) return DomainErrors.Company.NotFound;
+        var merged = await _repository.MergeIntoAsync(keepId, dropId, userId, organizationId, ct);
+        if (!merged) return DomainErrors.Company.NotFound;
+        _logger.LogInformation("Merged company {DropId} into {KeepId}", dropId, keepId);
+        return Result.Success();
+    }
+
     private static CompanyDto Map(Company c) => new(
         c.Id, 
         c.Name, 

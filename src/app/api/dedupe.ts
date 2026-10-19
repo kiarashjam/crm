@@ -4,7 +4,7 @@
 // Merge uses a dedicated backend endpoint when available; in demo mode it
 // fills empty fields on the primary from the duplicates, then deletes them.
 
-import { apiWithFallback, authFetch, ensureOk } from './apiClient';
+import { authFetch, isUsingRealApi } from './apiClient';
 import { getContacts, updateContact, deleteContact } from './contacts';
 import { getCompanies, updateCompany, deleteCompany } from './companies';
 import type { Contact, Company } from './types';
@@ -90,10 +90,15 @@ export async function findDuplicateCompanies(): Promise<DuplicateGroup<Company>[
 }
 
 export async function mergeContacts(primaryId: string, duplicateIds: string[]): Promise<boolean> {
-  return apiWithFallback(
-    async () => { const res = await authFetch('/api/contacts/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) }); await ensureOk(res); return true; },
-    () => mergeContactsLocal(primaryId, duplicateIds),
-  );
+  if (!isUsingRealApi()) return mergeContactsLocal(primaryId, duplicateIds);
+  for (const otherId of duplicateIds) {
+    const res = await authFetch(`/api/contacts/${primaryId}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ otherContactId: otherId }),
+    });
+    if (!(res.status === 204 || res.ok)) return false;
+  }
+  return true;
 }
 
 async function mergeContactsLocal(primaryId: string, duplicateIds: string[]): Promise<boolean> {
@@ -114,10 +119,15 @@ async function mergeContactsLocal(primaryId: string, duplicateIds: string[]): Pr
 }
 
 export async function mergeCompanies(primaryId: string, duplicateIds: string[]): Promise<boolean> {
-  return apiWithFallback(
-    async () => { const res = await authFetch('/api/companies/merge', { method: 'POST', body: JSON.stringify({ primaryId, duplicateIds }) }); await ensureOk(res); return true; },
-    () => mergeCompaniesLocal(primaryId, duplicateIds),
-  );
+  if (!isUsingRealApi()) return mergeCompaniesLocal(primaryId, duplicateIds);
+  for (const otherId of duplicateIds) {
+    const res = await authFetch(`/api/companies/${primaryId}/merge`, {
+      method: 'POST',
+      body: JSON.stringify({ otherCompanyId: otherId }),
+    });
+    if (!(res.status === 204 || res.ok)) return false;
+  }
+  return true;
 }
 
 async function mergeCompaniesLocal(primaryId: string, duplicateIds: string[]): Promise<boolean> {

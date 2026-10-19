@@ -28,4 +28,6 @@ public record DealDto(
     // Close reason — HP-8
     string? ClosedReason,
     string? ClosedReasonCategory,
-    DateTime? ClosedAtUtc);
+    DateTime? ClosedAtUtc,
+    bool IsPrivate = false,
+    Guid? TeamId = null);

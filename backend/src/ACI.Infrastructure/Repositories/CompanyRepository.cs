@@ -170,4 +170,30 @@ public sealed class CompanyRepository : ICompanyRepository
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    public async Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        if (keepId == dropId) return false;
+        var keep = await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == keepId, ct);
+        var drop = await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == dropId, ct);
+        if (keep == null || drop == null) return false;
+
+        await _db.Contacts.Where(c => c.CompanyId == dropId).ExecuteUpdateAsync(s => s.SetProperty(c => c.CompanyId, keepId), ct);
+        await _db.Deals.Where(d => d.CompanyId == dropId).ExecuteUpdateAsync(s => s.SetProperty(d => d.CompanyId, keepId), ct);
+        await _db.Leads.Where(l => l.CompanyId == dropId).ExecuteUpdateAsync(s => s.SetProperty(l => l.CompanyId, keepId), ct);
+        await _db.Leads.Where(l => l.ConvertedToCompanyId == dropId).ExecuteUpdateAsync(s => s.SetProperty(l => l.ConvertedToCompanyId, keepId), ct);
+
+        if (string.IsNullOrWhiteSpace(keep.Domain)) keep.Domain = drop.Domain;
+        if (string.IsNullOrWhiteSpace(keep.Industry)) keep.Industry = drop.Industry;
+        if (string.IsNullOrWhiteSpace(keep.Size)) keep.Size = drop.Size;
+        if (string.IsNullOrWhiteSpace(keep.Description)) keep.Description = drop.Description;
+        if (string.IsNullOrWhiteSpace(keep.Website)) keep.Website = drop.Website;
+        if (string.IsNullOrWhiteSpace(keep.Location)) keep.Location = drop.Location;
+        keep.UpdatedAtUtc = DateTime.UtcNow;
+        keep.UpdatedByUserId = userId;
+
+        _db.Companies.Remove(drop);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
 }

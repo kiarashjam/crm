@@ -105,4 +105,8 @@ public record UpdateTaskRequest
     /// Set to true to unlink the contact.
     /// </summary>
     public bool? ClearContact { get; init; }
+
+    /// <summary>none, daily, weekly, or monthly.</summary>
+    [StringLength(16)]
+    public string? Recurrence { get; init; }
 }

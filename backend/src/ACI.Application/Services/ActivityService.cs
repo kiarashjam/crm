@@ -16,7 +16,13 @@ public class ActivityService : IActivityService
     private readonly IContactRepository _contactRepository;
     private readonly IDealRepository _dealRepository;
     private readonly ILeadAutomation _automation;
+    private readonly ISequenceRepository _sequences;
     private readonly ILogger<ActivityService> _logger;
+
+    private static readonly HashSet<string> ReplyTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "call", "meeting", "email", "video", "demo",
+    };
 
     // HP-1: All 9 activity types supported (matches frontend config)
     private static readonly string[] ValidActivityTypes = { "call", "meeting", "email", "note", "task", "follow_up", "deadline", "video", "demo" };
@@ -27,6 +33,7 @@ public class ActivityService : IActivityService
         IContactRepository contactRepository,
         IDealRepository dealRepository,
         ILeadAutomation automation,
+        ISequenceRepository sequences,
         ILogger<ActivityService> logger)
     {
         _repository = repository;
@@ -34,6 +41,7 @@ public class ActivityService : IActivityService
         _contactRepository = contactRepository;
         _dealRepository = dealRepository;
         _automation = automation;
+        _sequences = sequences;
         _logger = logger;
     }
 
@@ -211,6 +219,8 @@ public class ActivityService : IActivityService
             entity = await _repository.AddAsync(entity, ct);
             if (entity.LeadId.HasValue && !request.IsAutomated)
                 await _automation.MarkFirstResponseAsync(entity.LeadId.Value, userId, organizationId, entity.Type, ct);
+            if (!request.IsAutomated && ReplyTypes.Contains(entity.Type))
+                await StopSequencesAfterReplyAsync(organizationId, entity, ct);
 
             _logger.LogInformation("Successfully created activity {ActivityId} of type '{Type}'", entity.Id, entity.Type);
             // Re-fetch so the DTO can include the related entity and creator-user names.
@@ -309,6 +319,25 @@ public class ActivityService : IActivityService
     {
         _logger.LogDebug("Getting activity counts per org member for organization {OrganizationId}", organizationId);
         return await _repository.GetActivityCountsByOrgAsync(organizationId, ct);
+    }
+
+    /// <summary>
+    /// A person logged a call, meeting, or email. Scheduled outreach to that person stops.
+    /// A sequence's own send is marked automated, so it does not stop itself.
+    /// </summary>
+    private async Task StopSequencesAfterReplyAsync(Guid? organizationId, Activity entity, CancellationToken ct)
+    {
+        try
+        {
+            if (entity.LeadId is Guid leadId)
+                await _sequences.StopOpenForTargetAsync(organizationId, "lead", leadId, ct);
+            if (entity.ContactId is Guid contactId)
+                await _sequences.StopOpenForTargetAsync(organizationId, "contact", contactId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Activity {ActivityId} was saved, but its sequence could not be stopped", entity.Id);
+        }
     }
 
     private static ActivityDto Map(Activity e) =>

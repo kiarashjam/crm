@@ -110,9 +110,10 @@ public class WebhookController : ControllerBase
         if (string.IsNullOrEmpty(provided))
             return Unauthorized(new { error = "Missing X-Webhook-Password header or webhookPassword in JSON body" });
 
-        var expected = string.IsNullOrEmpty(organization.WebhookPassword)
-            ? WebhookConstants.DefaultWebhookPassword
-            : organization.WebhookPassword;
+        if (string.IsNullOrEmpty(organization.WebhookPassword))
+            return Unauthorized(new { error = "This workspace has no webhook password. Set one in Settings before using this address." });
+
+        var expected = organization.WebhookPassword;
 
         // Constant-time comparison to avoid leaking password length / prefix via timing.
         var expectedBytes = Encoding.UTF8.GetBytes(expected);
@@ -271,4 +272,21 @@ public class WebhookController : ControllerBase
 
         return result.ToNoContentResult();
     }
+
+    /// <summary>Where Cadence posts lead.created, deal.stage_changed, and deal.won. An empty URL turns it off.</summary>
+    [HttpPut("organizations/{organizationId:guid}/outbound")]
+    [Authorize]
+    public async Task<ActionResult> UpdateOutbound(
+        Guid organizationId,
+        [FromBody] OutboundWebhookRequest? body,
+        CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await _organizationService.UpdateOutboundWebhookAsync(
+            organizationId, userId.Value, body?.Url, body?.Secret, ct);
+        return result.ToNoContentResult();
+    }
 }
+
+public record OutboundWebhookRequest(string? Url, string? Secret);

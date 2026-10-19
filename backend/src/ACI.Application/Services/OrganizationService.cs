@@ -347,6 +347,32 @@ public sealed class OrganizationService : IOrganizationService
         return Result.Success();
     }
 
+    public async Task<Result> UpdateOutboundWebhookAsync(Guid organizationId, Guid userId, string? url, string? secret, CancellationToken ct = default)
+    {
+        var role = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
+        if (role != OrgMemberRole.Owner && role != OrgMemberRole.Manager)
+            return DomainErrors.Organization.NotOwnerOrManager;
+        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+        if (org == null) return DomainErrors.Organization.NotFound;
+        var trimmed = (url ?? "").Trim();
+        if (trimmed.Length == 0)
+        {
+            org.OutboundWebhookUrl = null;
+            org.OutboundWebhookSecret = null;
+        }
+        else if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            return new Error("Organization.WebhookUrl", "The outbound address must be an https URL.");
+        }
+        else
+        {
+            org.OutboundWebhookUrl = trimmed;
+            if (secret != null) org.OutboundWebhookSecret = secret.Trim();
+        }
+        await _organizationRepository.UpdateAsync(org, ct);
+        return Result.Success();
+    }
+
     public async Task<Result<string>> GenerateWebhookApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
         _logger.LogInformation("Generating webhook API key for organization {OrganizationId} by user {UserId}", organizationId, userId);

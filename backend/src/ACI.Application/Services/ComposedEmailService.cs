@@ -1,13 +1,14 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace ACI.Application.Services;
 
 public interface IComposedEmailService
 {
-    Task<Result<SentEmailDto>> SendAsync(Guid organizationId, SendEmailRequest request, CancellationToken ct = default);
+    Task<Result<SentEmailDto>> SendAsync(Guid organizationId, SendEmailRequest request, Guid sentByUserId = default, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -30,16 +31,22 @@ public sealed class ComposedEmailService : IComposedEmailService
 
     private readonly IEmailSender _sender;
     private readonly IOrganizationRepository _organizations;
+    private readonly ISentMessageRepository? _messages;
     private readonly ILogger<ComposedEmailService> _logger;
 
-    public ComposedEmailService(IEmailSender sender, IOrganizationRepository organizations, ILogger<ComposedEmailService> logger)
+    public ComposedEmailService(
+        IEmailSender sender,
+        IOrganizationRepository organizations,
+        ILogger<ComposedEmailService> logger,
+        ISentMessageRepository? messages = null)
     {
         _sender = sender;
         _organizations = organizations;
         _logger = logger;
+        _messages = messages;
     }
 
-    public async Task<Result<SentEmailDto>> SendAsync(Guid organizationId, SendEmailRequest request, CancellationToken ct = default)
+    public async Task<Result<SentEmailDto>> SendAsync(Guid organizationId, SendEmailRequest request, Guid sentByUserId = default, CancellationToken ct = default)
     {
         var to = Addresses(request.To);
         var cc = Addresses(request.Cc);
@@ -79,9 +86,30 @@ public sealed class ComposedEmailService : IComposedEmailService
                 return new Error("Email.SendFailed", "The email could not be sent. Please try again in a moment.");
         }
 
+        var id = Guid.NewGuid();
+        var sentAt = DateTime.UtcNow;
+        if (_messages != null)
+        {
+            await _messages.AddAsync(new SentMessage
+            {
+                Id = id,
+                OrganizationId = organizationId,
+                SentByUserId = sentByUserId,
+                To = string.Join(", ", to),
+                Cc = cc.Count == 0 ? null : string.Join(", ", cc),
+                Bcc = bcc.Count == 0 ? null : string.Join(", ", bcc),
+                Subject = subject,
+                Body = body,
+                LeadId = request.LeadId,
+                ContactId = request.ContactId,
+                DealId = request.DealId,
+                SentAtUtc = sentAt,
+            }, ct);
+        }
+
         _logger.LogInformation("Sent a composed email to {Count} recipient(s)", to.Count + cc.Count + bcc.Count);
         return new SentEmailDto(
-            Guid.NewGuid(),
+            id,
             string.Join(", ", to),
             cc.Count == 0 ? null : string.Join(", ", cc),
             bcc.Count == 0 ? null : string.Join(", ", bcc),
@@ -89,7 +117,10 @@ public sealed class ComposedEmailService : IComposedEmailService
             body,
             "sent",
             "outbound",
-            DateTime.UtcNow);
+            sentAt,
+            request.LeadId,
+            request.ContactId,
+            request.DealId);
     }
 
     /// <summary>"a@x.ch, b@y.ch; c@z.ch" → three addresses, each once.</summary>

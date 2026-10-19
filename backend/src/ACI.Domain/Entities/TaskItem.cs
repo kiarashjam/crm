@@ -38,6 +38,8 @@ public class TaskItem : Common.BaseEntity
     /// Optional notes or comments on the task.
     /// </summary>
     public string? Notes { get; set; }
+    /// <summary>none, daily, weekly, or monthly. Completing the task opens the next one.</summary>
+    public string? Recurrence { get; set; }
     
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }

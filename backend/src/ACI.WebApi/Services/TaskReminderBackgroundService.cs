@@ -63,6 +63,7 @@ public class TaskReminderBackgroundService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var emailSender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationService>();
+        var automations = scope.ServiceProvider.GetRequiredService<IAutomationEngine>();
         var emailSettings = scope.ServiceProvider.GetRequiredService<IOptions<EmailSettings>>().Value;
 
         var now = DateTime.UtcNow;
@@ -133,6 +134,26 @@ public class TaskReminderBackgroundService : BackgroundService
                         // rest of the batch.
                         _logger.LogWarning(ex, "Failed to raise in-app reminder for task {TaskId}", task.Id);
                     }
+                }
+            }
+
+            if (TaskReminderPolicy.IsOverdue(task, now))
+            {
+                try
+                {
+                    await automations.DispatchAsync("task.overdue", new AutomationEvent(
+                        task.OrganizationId,
+                        recipientId,
+                        task.Id.ToString(),
+                        task.Title,
+                        LeadId: task.LeadId,
+                        DealId: task.DealId,
+                        TaskId: task.Id,
+                        AssigneeId: recipientId), ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Overdue automation failed for task {TaskId}", task.Id);
                 }
             }
 

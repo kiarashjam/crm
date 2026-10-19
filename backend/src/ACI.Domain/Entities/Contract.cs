@@ -75,6 +75,8 @@ public class Contract
     public DateTime UpdatedAtUtc { get; set; }
 
     public DateTime? SentAtUtc { get; set; }
+    /// <summary>Set once, after the unopened reminder has been mailed.</summary>
+    public DateTime? ReminderSentAtUtc { get; set; }
     public Guid? SentByUserId { get; set; }
 
     /// <summary>
