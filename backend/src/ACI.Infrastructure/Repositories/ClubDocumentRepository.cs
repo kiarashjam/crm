@@ -23,11 +23,12 @@ public sealed class ClubDocumentRepository : IClubDocumentRepository
     {
         var existing = await _db.ClubDocuments.FirstOrDefaultAsync(d => d.Id == document.Id, ct);
         if (existing == null) _db.ClubDocuments.Add(document);
+        else if (existing.OrganizationId != document.OrganizationId || existing.Kind != document.Kind)
+            throw new InvalidOperationException("A club document can only be saved over one of the same kind in the same workspace.");
         else
         {
             existing.Payload = document.Payload;
             existing.UpdatedAtUtc = document.UpdatedAtUtc;
-            existing.Kind = document.Kind;
         }
         await _db.SaveChangesAsync(ct);
     }

@@ -238,26 +238,26 @@ export interface ChargeInput {
 }
 
 export async function createCharge(input: ChargeInput): Promise<Charge | null> {
-  const created = await apiWithFallback(
+  // The server moves the member's balance itself; the demo does it below.
+  return apiWithFallback(
     () => authFetchJson<Charge>('/api/charges', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
       await delay(140);
-      return chargeStore.add({
+      const charge = chargeStore.add({
         id: mockId('chg'),
         paidAmount: 0,
         status: 'Pending',
         postedAtUtc: new Date().toISOString(),
         ...input,
       });
+      await recomputeMemberBalance(input.memberId);
+      return charge;
     },
   );
-  if (created) await recomputeMemberBalance(input.memberId);
-  return created;
 }
 
 export async function deleteCharge(id: string): Promise<boolean> {
-  const existing = chargeStore.byId(id);
-  const ok = await apiWithFallback(
+  return apiWithFallback(
     async () => {
       const res = await authFetch(`/api/charges/${id}`, { method: 'DELETE' });
       await ensureOk(res);
@@ -265,11 +265,12 @@ export async function deleteCharge(id: string): Promise<boolean> {
     },
     async () => {
       await delay(100);
-      return chargeStore.remove(id);
+      const existing = chargeStore.byId(id);
+      const ok = chargeStore.remove(id);
+      if (ok && existing) await recomputeMemberBalance(existing.memberId);
+      return ok;
     },
   );
-  if (ok && existing) await recomputeMemberBalance(existing.memberId);
-  return ok;
 }
 
 export interface PaymentInput {
@@ -282,7 +283,8 @@ export interface PaymentInput {
 }
 
 export async function recordPayment(input: PaymentInput): Promise<Payment | null> {
-  const created = await apiWithFallback(
+  // The server settles the charge and moves the balance itself; the demo does it below.
+  return apiWithFallback(
     () => authFetchJson<Payment>('/api/payments', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
       await delay(160);
@@ -297,11 +299,10 @@ export async function recordPayment(input: PaymentInput): Promise<Payment | null
         appliedToChargeIds: input.chargeId ? [input.chargeId] : [],
       });
       if (input.chargeId) applyPaymentToCharge(input.chargeId, input.amount);
+      await recomputeMemberBalance(input.memberId);
       return payment;
     },
   );
-  if (created) await recomputeMemberBalance(input.memberId);
-  return created;
 }
 
 function applyPaymentToCharge(chargeId: string, amount: number): void {
@@ -315,6 +316,10 @@ function applyPaymentToCharge(chargeId: string, amount: number): void {
   chargeStore.update(chargeId, patch);
 }
 
+/**
+ * This browser's demo ledger only. On the server the server keeps the balance: this
+ * sums the browser's own charges, which are none there, and used to write back zero.
+ */
 async function recomputeMemberBalance(memberId: string): Promise<void> {
   const member = (await getMembers()).find((m: Member) => m.id === memberId);
   if (!member) return;

@@ -1,6 +1,9 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -27,7 +30,7 @@ public sealed class OutboundWebhookPublisher : IOutboundWebhookPublisher
         {
             var org = await _organizations.GetByIdAsync(organizationId.Value, ct);
             if (org == null || string.IsNullOrWhiteSpace(org.OutboundWebhookUrl)) return;
-            if (!Uri.TryCreate(org.OutboundWebhookUrl.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+            if (!Uri.TryCreate(org.OutboundWebhookUrl.Trim(), UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || !PublicAddress.LooksPublic(uri))
             {
                 _logger.LogWarning("Outbound webhook for {OrganizationId} is not an https URL", organizationId);
                 return;
@@ -54,4 +57,36 @@ public sealed class OutboundWebhookPublisher : IOutboundWebhookPublisher
             _logger.LogWarning(ex, "Outbound webhook {Event} for {OrganizationId} was not delivered", eventName, organizationId);
         }
     }
+
+    /// <summary>
+    /// The connection handler for outbound webhooks. It connects only to public
+    /// addresses, checked on the address actually dialled after DNS, so a name that
+    /// resolves to this server's own network is refused. Redirects are not followed:
+    /// one could lead anywhere.
+    /// </summary>
+    public static SocketsHttpHandler PublicOnlyHandler() => new()
+    {
+        AllowAutoRedirect = false,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        ConnectCallback = async (context, ct) =>
+        {
+            var host = context.DnsEndPoint.Host;
+            var addresses = IPAddress.TryParse(host, out var literal)
+                ? [literal]
+                : await Dns.GetHostAddressesAsync(host, ct);
+            if (addresses.Length == 0 || !addresses.All(PublicAddress.IsPublic))
+                throw new HttpRequestException($"Outbound webhooks only go to public addresses; {host} is not one.");
+            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            try
+            {
+                await socket.ConnectAsync(addresses, context.DnsEndPoint.Port, ct);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        },
+    };
 }

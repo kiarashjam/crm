@@ -139,10 +139,19 @@ export async function serverAcceptsUploads(): Promise<boolean> {
       authFetch('/api/custom-fields'),
       authFetch('/api/attachments?entityType=lead&recordId=00000000-0000-0000-0000-000000000000'),
     ]);
-    return fields.ok && files.ok;
+    return fields.ok && (await answers(files));
   } catch {
     return false;
   }
+}
+
+/**
+ * The route is there: it answered, even if only to say the made-up record isn't found.
+ * A missing route answers 404 with nothing to say.
+ */
+async function answers(res: Response): Promise<boolean> {
+  if (res.ok) return true;
+  return res.status === 404 && (await res.text()).length > 0;
 }
 
 /** The server explaining that a record isn't in this workspace. */

@@ -1,15 +1,18 @@
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
+using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace ACI.WebApi.Controllers;
 
+/// <summary>Sales teams in the workspace. Everyone can see them; the owner or a manager changes them.</summary>
 [ApiController]
 [Route("api/teams")]
 [Authorize]
+[WorkspaceRequired]
 public class TeamsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -38,11 +41,13 @@ public class TeamsController : ControllerBase
     }
 
     [HttpPost]
+    [ManagersOnly("change teams")]
     public async Task<IActionResult> Create([FromBody] TeamWrite body, CancellationToken ct)
     {
         if (_user.UserId == null || _user.CurrentOrganizationId is not { } orgId) return Unauthorized();
         var name = (body.Name ?? "").Trim();
-        if (name.Length == 0) return BadRequest(new { error = "A team needs a name." });
+        if (name.Length == 0) return Problem(detail: "A team needs a name.", statusCode: StatusCodes.Status400BadRequest);
+        if (name.Length > 120) return Problem(detail: "A team name can be at most 120 characters.", statusCode: StatusCodes.Status400BadRequest);
         var team = new SalesTeam { Id = Guid.NewGuid(), OrganizationId = orgId, Name = name, CreatedAtUtc = DateTime.UtcNow };
         _db.SalesTeams.Add(team);
         await _db.SaveChangesAsync(ct);
@@ -50,11 +55,15 @@ public class TeamsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/members")]
+    [ManagersOnly("change teams")]
     public async Task<IActionResult> AddMember(Guid id, [FromBody] TeamMemberWrite body, CancellationToken ct)
     {
         if (_user.UserId == null || _user.CurrentOrganizationId is not { } orgId) return Unauthorized();
         var team = await _db.SalesTeams.FirstOrDefaultAsync(t => t.Id == id && t.OrganizationId == orgId, ct);
         if (team == null) return NotFound();
+        // Only people in this workspace. Any user id used to be accepted.
+        if (!await _db.OrganizationMembers.AnyAsync(m => m.OrganizationId == orgId && m.UserId == body.UserId, ct))
+            return Problem(detail: "Add someone who is in this workspace.", statusCode: StatusCodes.Status400BadRequest);
         var exists = await _db.SalesTeamMembers.AnyAsync(m => m.TeamId == id && m.UserId == body.UserId, ct);
         if (!exists)
         {
@@ -65,6 +74,7 @@ public class TeamsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}/members/{userId:guid}")]
+    [ManagersOnly("change teams")]
     public async Task<IActionResult> RemoveMember(Guid id, Guid userId, CancellationToken ct)
     {
         if (_user.CurrentOrganizationId is not { } orgId) return Unauthorized();

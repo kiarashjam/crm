@@ -36,13 +36,11 @@ public class ReportingService : IReportingService
     public ReportingService(AppDbContext db) => _db = db;
 
     /// <summary>
-    /// Deals in scope, matching <c>DealRepository</c>: an organisation sees all of
-    /// its deals; a user outside one sees their own personal deals.
+    /// Deals in scope, matching <c>DealRepository</c>: an organisation sees its deals,
+    /// less private ones the caller may not see; a user outside one sees their own.
     /// </summary>
     private IQueryable<Deal> ScopedDeals(Guid userId, Guid? organizationId)
-        => organizationId == null
-            ? _db.Deals.AsNoTracking().Where(d => d.UserId == userId && d.OrganizationId == null)
-            : _db.Deals.AsNoTracking().Where(d => d.OrganizationId == organizationId);
+        => _db.Deals.AsNoTracking().VisibleTo(_db, userId, organizationId);
 
     /// <summary>Leads in scope, matching <c>LeadRepository</c>.</summary>
     private IQueryable<Lead> ScopedLeads(Guid userId, Guid? organizationId)
@@ -233,8 +231,8 @@ public class ReportingService : IReportingService
             })
             .ToList();
 
-        var previous = await _db.ForecastSnapshots
-            .Where(s => s.OrganizationId == organizationId && s.MonthUtc == month)
+        var previous = await ScopedSnapshots(userId, organizationId)
+            .Where(s => s.MonthUtc == month)
             .ToListAsync(ct);
         _db.ForecastSnapshots.RemoveRange(previous);
         _db.ForecastSnapshots.AddRange(rows);
@@ -245,12 +243,21 @@ public class ReportingService : IReportingService
     public async Task<IReadOnlyList<ForecastSnapshotDto>> ListForecastSnapshotsAsync(Guid userId, Guid? organizationId, int year, int month, CancellationToken ct = default)
     {
         var start = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var rows = await _db.ForecastSnapshots.AsNoTracking()
-            .Where(s => s.OrganizationId == organizationId && s.MonthUtc == start)
+        var rows = await ScopedSnapshots(userId, organizationId).AsNoTracking()
+            .Where(s => s.MonthUtc == start)
             .OrderBy(s => s.AssigneeName)
             .ToListAsync(ct);
         return rows.Select(ToDto).ToList();
     }
+
+    /// <summary>
+    /// An organization's saved forecast, or with none the caller's own. "OrganizationId
+    /// IS NULL" alone was every personal user's, so saving one replaced the others'.
+    /// </summary>
+    private IQueryable<ForecastSnapshot> ScopedSnapshots(Guid userId, Guid? organizationId) =>
+        organizationId == null
+            ? _db.ForecastSnapshots.Where(s => s.OrganizationId == null && s.SavedByUserId == userId)
+            : _db.ForecastSnapshots.Where(s => s.OrganizationId == organizationId);
 
     private static ForecastSnapshotDto ToDto(ForecastSnapshot row) =>
         new(row.Id, row.MonthUtc.ToString("yyyy-MM"), row.Currency, row.AssigneeName, row.WeightedValue, row.OpenValue, row.Covered, row.Missing, row.SavedAtUtc);

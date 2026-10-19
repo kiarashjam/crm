@@ -1,6 +1,7 @@
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.WebApi.Extensions;
+using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,6 +10,7 @@ namespace ACI.WebApi.Controllers;
 [ApiController]
 [Route("api/members")]
 [Authorize]
+[WorkspaceRequired]
 [Produces("application/json")]
 public class MembersController : ControllerBase
 {
@@ -52,6 +54,7 @@ public class MembersController : ControllerBase
 [ApiController]
 [Route("api/visits")]
 [Authorize]
+[WorkspaceRequired]
 [Produces("application/json")]
 public class VisitsController : ControllerBase
 {
@@ -88,6 +91,7 @@ public class VisitsController : ControllerBase
 [ApiController]
 [Route("api/loyalty")]
 [Authorize]
+[WorkspaceRequired]
 [Produces("application/json")]
 public class LoyaltyController : ControllerBase
 {

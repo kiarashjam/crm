@@ -15,6 +15,7 @@ public class DealService : IDealService
     private readonly IActivityRepository _activityRepository;
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
+    private readonly IOrganizationRepository? _organizations;
     private readonly ILogger<DealService> _logger;
 
     public DealService(
@@ -22,13 +23,15 @@ public class DealService : IDealService
         IActivityRepository activityRepository,
         ILogger<DealService> logger,
         IAutomationEngine? automations = null,
-        IOutboundWebhookPublisher? webhooks = null)
+        IOutboundWebhookPublisher? webhooks = null,
+        IOrganizationRepository? organizations = null)
     {
         _repository = repository;
         _activityRepository = activityRepository;
         _logger = logger;
         _automations = automations;
         _webhooks = webhooks;
+        _organizations = organizations;
     }
 
     /// <inheritdoc />
@@ -215,6 +218,10 @@ public class DealService : IDealService
         var oldStageName = existing.DealStage?.Name ?? existing.Stage;
         var previousWon = existing.IsWon;
 
+        if (request.IsPrivate is bool makePrivate && makePrivate != existing.IsPrivate
+            && !await MayChangePrivacyAsync(existing, userId, organizationId, ct))
+            return DomainErrors.Deal.PrivacyNotOwner;
+
         // Apply partial updates
         if (request.Name != null) existing.Name = request.Name.Trim();
         if (request.Value != null) existing.Value = request.Value.Trim();
@@ -320,6 +327,19 @@ public class DealService : IDealService
             id);
 
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Making a deal private hides it from the rest of the team, so it is for the deal's
+    /// creator, its owner, or a manager to decide, not for anyone who can open it.
+    /// </summary>
+    private async Task<bool> MayChangePrivacyAsync(Deal deal, Guid userId, Guid? organizationId, CancellationToken ct)
+    {
+        if (organizationId is not Guid org) return true;
+        if (deal.UserId == userId || deal.AssigneeId == userId) return true;
+        if (_organizations == null) return false;
+        var role = await _organizations.GetMemberRoleAsync(userId, org, ct);
+        return role is Domain.Enums.OrgMemberRole.Owner or Domain.Enums.OrgMemberRole.Manager;
     }
 
     private static DealDto Map(Deal e, DateTime? lastActivityAtUtc) =>

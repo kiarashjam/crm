@@ -26,8 +26,7 @@ public sealed class WorkspaceRecords : IWorkspaceRecords
                 && (organizationId == null ? r.OrganizationId == null && r.UserId == userId : r.OrganizationId == organizationId), ct),
             RecordTypes.Company => _db.Companies.AnyAsync(r => r.Id == recordId
                 && (organizationId == null ? r.OrganizationId == null && r.UserId == userId : r.OrganizationId == organizationId), ct),
-            RecordTypes.Deal => _db.Deals.AnyAsync(r => r.Id == recordId
-                && (organizationId == null ? r.OrganizationId == null && r.UserId == userId : r.OrganizationId == organizationId), ct),
+            RecordTypes.Deal => _db.Deals.VisibleTo(_db, userId, organizationId).AnyAsync(r => r.Id == recordId, ct),
             _ => Task.FromResult(false),
         };
 }

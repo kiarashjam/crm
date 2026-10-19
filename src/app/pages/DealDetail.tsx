@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   Briefcase,
   BarChart3,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
@@ -76,6 +78,7 @@ export default function DealDetail() {
   const [closeAsWon, setCloseAsWon] = useState(true);
   const [closeReason, setCloseReason] = useState('');
   const [savingClose, setSavingClose] = useState(false);
+  const [savingPrivacy, setSavingPrivacy] = useState(false);
 
   // Delete dialog
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -152,6 +155,26 @@ export default function DealDetail() {
       toast.error(messages.errors.generic);
     } finally {
       setSavingClose(false);
+    }
+  };
+
+  // The server decides who may: the deal's creator, its owner, or a manager. Anyone
+  // else gets its reason as the error.
+  const handleTogglePrivate = async () => {
+    if (!deal) return;
+    setSavingPrivacy(true);
+    try {
+      const updated = await updateDeal(deal.id, { isPrivate: !deal.isPrivate });
+      if (updated) {
+        setDeal(updated);
+        toast.success(updated.isPrivate
+          ? 'Private: only its creator, its owner and managers can see this deal'
+          : 'Shared with the whole team again');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
+    } finally {
+      setSavingPrivacy(false);
     }
   };
 
@@ -251,6 +274,11 @@ export default function DealDetail() {
                       </span>
                     )}
                     {daysToClose !== null && <UrgencyBadge days={daysToClose} />}
+                    {deal.isPrivate && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-semibold border border-slate-200">
+                        <Lock className="w-3.5 h-3.5" /> Private
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -264,6 +292,18 @@ export default function DealDetail() {
                       className="gap-1.5"
                     >
                       <Pencil className="w-3.5 h-3.5" /> Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleTogglePrivate}
+                      disabled={savingPrivacy}
+                      aria-pressed={!!deal.isPrivate}
+                      className="gap-1.5"
+                    >
+                      {deal.isPrivate
+                        ? <><Unlock className="w-3.5 h-3.5" /> Share with team</>
+                        : <><Lock className="w-3.5 h-3.5" /> Make private</>}
                     </Button>
                   </WriteOnly>
                   {deal.isWon == null && (

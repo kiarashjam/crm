@@ -172,3 +172,35 @@ export async function getPipelineValueByAssignee(): Promise<PipelineValueByAssig
     (a, b) => a.assigneeName.localeCompare(b.assigneeName) || a.currency.localeCompare(b.currency),
   );
 }
+
+/** One line of a saved forecast: an owner's open deals in one currency, as they stood. */
+export interface ForecastSnapshotRow {
+  id: string;
+  /** "2026-10" */
+  month: string;
+  currency: string;
+  assigneeName: string;
+  weightedValue: number;
+  openValue: number;
+  /** Deals with a probability, and so in the weighted total. */
+  covered: number;
+  missing: number;
+  savedAtUtc: string;
+}
+
+/**
+ * Save this month's forecast on the server, so later edits to deals don't rewrite it.
+ * In an organization only the owner or a manager may: a saved forecast counts private
+ * deals. The server's refusal comes through as the error's message.
+ */
+export async function saveForecastSnapshot(): Promise<ForecastSnapshotRow[]> {
+  const rows = await authFetchJson<ForecastSnapshotRow[]>('/api/reporting/forecast-snapshot', { method: 'POST' });
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** This month's saved forecast, or the given month's. Empty when none was saved. */
+export async function getForecastSnapshot(year?: number, month?: number): Promise<ForecastSnapshotRow[]> {
+  const query = year && month ? `?year=${year}&month=${month}` : '';
+  const rows = await authFetchJson<ForecastSnapshotRow[]>(`/api/reporting/forecast-snapshot${query}`);
+  return Array.isArray(rows) ? rows : [];
+}

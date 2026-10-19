@@ -125,27 +125,26 @@ export interface HouseholdInput {
 }
 
 export async function createHousehold(input: HouseholdInput): Promise<Household | null> {
-  const created = await apiWithFallback(
+  // The server links the primary member itself; the demo does it in this browser.
+  return apiWithFallback(
     () => authFetchJson<Household>('/api/households', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
       await delay(160);
-      return householdStore.add({
+      const created = householdStore.add({
         id: mockId('hh'),
         createdAtUtc: new Date().toISOString(),
         ...input,
       });
+      householdMemberStore.add({
+        id: mockId('hm'),
+        householdId: created.id,
+        memberId: input.primaryMemberId,
+        role: 'Primary',
+        rollUpBilling: true,
+      });
+      return created;
     },
   );
-  if (created) {
-    householdMemberStore.add({
-      id: mockId('hm'),
-      householdId: created.id,
-      memberId: input.primaryMemberId,
-      role: 'Primary',
-      rollUpBilling: true,
-    });
-  }
-  return created;
 }
 
 export async function updateHousehold(

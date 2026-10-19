@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
+using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,6 +26,7 @@ file static class ClubDocs
 [ApiController]
 [Route("api/campaigns")]
 [Authorize]
+[WorkspaceRequired]
 public class CampaignsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -41,6 +43,7 @@ public class CampaignsController : ControllerBase
 [ApiController]
 [Route("api/events")]
 [Authorize]
+[WorkspaceRequired]
 public class EventsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -57,6 +60,7 @@ public class EventsController : ControllerBase
 [ApiController]
 [Route("api/donations")]
 [Authorize]
+[WorkspaceRequired]
 public class DonationsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -72,6 +76,7 @@ public class DonationsController : ControllerBase
 [ApiController]
 [Route("api/communications")]
 [Authorize]
+[WorkspaceRequired]
 public class CommunicationsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -86,6 +91,7 @@ public class CommunicationsController : ControllerBase
 [ApiController]
 [Route("api/charges")]
 [Authorize]
+[WorkspaceRequired]
 public class ChargesController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -100,6 +106,7 @@ public class ChargesController : ControllerBase
 [ApiController]
 [Route("api/payments")]
 [Authorize]
+[WorkspaceRequired]
 public class PaymentsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -113,6 +120,7 @@ public class PaymentsController : ControllerBase
 [ApiController]
 [Route("api/applications")]
 [Authorize]
+[WorkspaceRequired]
 public class ApplicationsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -128,6 +136,7 @@ public class ApplicationsController : ControllerBase
 [ApiController]
 [Route("api/resources")]
 [Authorize]
+[WorkspaceRequired]
 public class ResourcesController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -139,6 +148,7 @@ public class ResourcesController : ControllerBase
 [ApiController]
 [Route("api/reservations")]
 [Authorize]
+[WorkspaceRequired]
 public class ReservationsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -154,6 +164,7 @@ public class ReservationsController : ControllerBase
 [ApiController]
 [Route("api/households")]
 [Authorize]
+[WorkspaceRequired]
 public class HouseholdsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -169,6 +180,7 @@ public class HouseholdsController : ControllerBase
 [ApiController]
 [Route("api/household-members")]
 [Authorize]
+[WorkspaceRequired]
 public class HouseholdMembersController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -183,6 +195,7 @@ public class HouseholdMembersController : ControllerBase
 [ApiController]
 [Route("api/subscriptions")]
 [Authorize]
+[WorkspaceRequired]
 public class SubscriptionsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -199,6 +212,7 @@ public class SubscriptionsController : ControllerBase
 [ApiController]
 [Route("api/gift-cards")]
 [Authorize]
+[WorkspaceRequired]
 public class GiftCardsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -215,6 +229,7 @@ public class GiftCardsController : ControllerBase
 [ApiController]
 [Route("api/tabs")]
 [Authorize]
+[WorkspaceRequired]
 public class TabsController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -232,6 +247,7 @@ public class TabsController : ControllerBase
 [ApiController]
 [Route("api/hospitality")]
 [Authorize]
+[WorkspaceRequired]
 public class HospitalityController : ControllerBase
 {
     private readonly IClubDocumentService _docs;
@@ -239,6 +255,6 @@ public class HospitalityController : ControllerBase
     public HospitalityController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet("settings")] public async Task<IActionResult> Get(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.GetSettingsAsync(org, ct)); }
-    [HttpPut("settings")] public async Task<IActionResult> Save(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.SaveSettingsAsync(org, await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPost("settings/reset")] public async Task<IActionResult> Reset(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ResetSettingsAsync(org, ct)); }
+    [HttpPut("settings")][ManagersOnly("change the hospitality settings")] public async Task<IActionResult> Save(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.SaveSettingsAsync(org, await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost("settings/reset")][ManagersOnly("reset the hospitality settings")] public async Task<IActionResult> Reset(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ResetSettingsAsync(org, ct)); }
 }

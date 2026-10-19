@@ -30,6 +30,7 @@ type DealRaw = {
   dealStageName?: string | null;
   createdAtUtc?: string | null; updatedAtUtc?: string | null;
   closedReason?: string | null; closedAtUtc?: string | null;
+  isPrivate?: boolean | null;
 };
 function mapDeal(d: DealRaw): Deal {
   return {
@@ -57,6 +58,7 @@ function mapDeal(d: DealRaw): Deal {
     updatedAtUtc: d.updatedAtUtc ?? undefined,
     closedReason: d.closedReason ?? undefined,
     closedAtUtc: d.closedAtUtc ?? undefined,
+    isPrivate: d.isPrivate ?? false,
   };
 }
 
@@ -203,7 +205,7 @@ export async function createDeal(params: { name: string; value: string; currency
 }
 
 /** Update a deal (stage, value, contact, expected close date, won/lost, pipeline, assignee, description, probability, close reason). */
-export async function updateDeal(id: string, params: Partial<{ name: string; value: string; currency: string; stage: string; pipelineId: string; dealStageId: string; companyId: string; contactId: string; assigneeId: string; expectedCloseDateUtc: string; isWon: boolean; description: string; probability: number; closedReason: string }>): Promise<Deal | null> {
+export async function updateDeal(id: string, params: Partial<{ name: string; value: string; currency: string; stage: string; pipelineId: string; dealStageId: string; companyId: string; contactId: string; assigneeId: string; expectedCloseDateUtc: string; isWon: boolean; description: string; probability: number; closedReason: string; isPrivate: boolean }>): Promise<Deal | null> {
   if (isUsingRealApi()) {
     const deal = await authFetchJson<DealRaw>(`/api/deals/${id}`, {
       method: 'PUT',

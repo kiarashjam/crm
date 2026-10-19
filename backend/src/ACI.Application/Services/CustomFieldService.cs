@@ -140,6 +140,10 @@ public sealed class CustomFieldService : ICustomFieldService
         if (type == null || !RecordTypes.All.Contains(type))
             return Result.Failure<IReadOnlyDictionary<string, JsonElement>>(DomainErrors.CustomField.InvalidEntityType);
 
+        // Only a record the caller can see, so a private deal's values stay with it.
+        if (!await _records.ExistsAsync(type, recordId, userId, organizationId, ct))
+            return Result.Failure<IReadOnlyDictionary<string, JsonElement>>(DomainErrors.CustomField.RecordNotFound);
+
         var definitions = await _repository.ListDefinitionsAsync(userId, organizationId, type, ct);
         var set = await _repository.FindValuesAsync(userId, organizationId, type, recordId, ct);
         var values = Defined(set, definitions.Select(d => d.Key).ToHashSet(StringComparer.Ordinal));

@@ -304,7 +304,9 @@ public sealed class OrganizationService : IOrganizationService
             ApiKeyCreatedAt: org.WebhookApiKeyCreatedAtUtc,
             HasApiKey: !string.IsNullOrEmpty(org.WebhookApiKey),
             UsesDefaultWebhookPassword: string.IsNullOrEmpty(org.WebhookPassword),
-            PasswordWebhookUrl: string.Empty
+            PasswordWebhookUrl: string.Empty,
+            OutboundWebhookUrl: org.OutboundWebhookUrl,
+            HasOutboundWebhookSecret: !string.IsNullOrEmpty(org.OutboundWebhookSecret)
         );
     }
 
@@ -363,6 +365,14 @@ public sealed class OrganizationService : IOrganizationService
         else if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
         {
             return new Error("Organization.WebhookUrl", "The outbound address must be an https URL.");
+        }
+        else if (trimmed.Length > 500 || (secret?.Trim().Length ?? 0) > 200)
+        {
+            return new Error("Organization.WebhookUrl", "The address can be at most 500 characters, and the secret at most 200.");
+        }
+        else if (!PublicAddress.LooksPublic(uri))
+        {
+            return new Error("Organization.WebhookUrl", "The outbound address must be on the public internet.");
         }
         else
         {

@@ -192,6 +192,17 @@ describe('uploadLocalData', () => {
     expect(findLocalUploads().records[0]?.values).toEqual({ tour_date_x7k2: '2026-11-02' });
   });
 
+  it('counts the server as ready when it says the made-up record is not found', async () => {
+    // The server now checks the record before listing its files, so the readiness
+    // probe's all-zero record gets a 404 that explains itself. A missing route says nothing.
+    server.use(http.get(`${BASE}/api/attachments`, () =>
+      HttpResponse.json({ status: 404, detail: 'The record to attach this to was not found' }, { status: 404 })));
+    expect(await serverAcceptsUploads()).toBe(true);
+
+    server.use(http.get(`${BASE}/api/attachments`, () => new HttpResponse(null, { status: 404 })));
+    expect(await serverAcceptsUploads()).toBe(false);
+  });
+
   it("changes nothing when the server doesn't serve these yet", async () => {
     server.use(http.get(`${BASE}/api/custom-fields`, () => new HttpResponse(null, { status: 404 })));
     legacy(LOCAL_KEYS.fields, [tourDate]);

@@ -147,10 +147,13 @@ export async function updateHospitalitySettings(
 
 export async function resetHospitalitySettings(): Promise<HospitalitySettings> {
   return apiWithFallback(
-    () =>
-      authFetchJson<HospitalitySettings>('/api/hospitality/settings/reset', {
+    async () => {
+      // The server forgets the saved settings and answers {}: the defaults are what is left.
+      const res = await authFetchJson<Partial<HospitalitySettings>>('/api/hospitality/settings/reset', {
         method: 'POST',
-      }),
+      });
+      return { ...DEFAULT_SETTINGS, ...res };
+    },
     async () => {
       await delay(80);
       return writeSettings(DEFAULT_SETTINGS);

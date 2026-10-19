@@ -266,6 +266,9 @@ public static class DomainErrors
     {
         public static readonly Error NotFound = new(
             "Deal.NotFound", "The deal was not found");
+
+        public static readonly Error PrivacyNotOwner = new(
+            "Deal.PrivacyNotOwner", "Only the deal's creator, its owner, or a manager can make it private or shared");
         
         public static readonly Error NameRequired = new(
             "Deal.NameRequired", "Deal name is required");

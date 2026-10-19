@@ -23,6 +23,12 @@ public sealed class AuditRepository : IAuditRepository
             : query.Where(e => e.OrganizationId == null && e.OwnerUserId == userId);
         if (entityType != null) query = query.Where(e => e.EntityType == entityType);
         if (entityId != null) query = query.Where(e => e.EntityId == entityId);
+        // A private deal's history is as private as the deal. A deal that no longer
+        // exists keeps its history, as every deleted record does.
+        var visibleDeals = _db.Deals.VisibleTo(_db, userId, organizationId);
+        query = query.Where(e => e.EntityType != RecordTypes.Deal || e.EntityId == null
+            || visibleDeals.Any(d => d.Id == e.EntityId)
+            || !_db.Deals.Any(d => d.Id == e.EntityId));
         return await query.OrderByDescending(e => e.CreatedAtUtc).Take(take).ToListAsync(ct);
     }
 

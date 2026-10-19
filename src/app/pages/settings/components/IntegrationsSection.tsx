@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link2, Copy, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { getWebhookInfo, updateWebhookPassword, type WebhookInfo } from '@/app/api/webhook';
+import { getWebhookInfo, updateOutboundWebhook, updateWebhookPassword, type WebhookInfo } from '@/app/api/webhook';
 import { isUsingRealApi } from '@/app/api/apiClient';
 import type { Organization } from '@/app/api/organizations';
 import { Button } from '@/app/components/ui/button';
@@ -24,6 +24,29 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
   usePageLoading(loading);
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
+  const [outboundUrl, setOutboundUrl] = useState('');
+  const [outboundSecret, setOutboundSecret] = useState('');
+  const [savingOutbound, setSavingOutbound] = useState(false);
+
+  useEffect(() => {
+    setOutboundUrl(info?.outboundWebhookUrl ?? '');
+    setOutboundSecret('');
+  }, [info]);
+
+  const saveOutbound = async (url: string) => {
+    if (!currentOrg?.id) return;
+    setSavingOutbound(true);
+    try {
+      await updateOutboundWebhook(currentOrg.id, url.trim(), outboundSecret.trim() || undefined);
+      setInfo(await getWebhookInfo(currentOrg.id));
+      toast.success(url.trim() ? 'Events will be posted to that address' : 'Event posting turned off');
+    } catch (e) {
+      // The server says why: not https, not a public address, or owner and managers only.
+      toast.error(e instanceof Error ? e.message : 'Could not save the address');
+    } finally {
+      setSavingOutbound(false);
+    }
+  };
 
   useEffect(() => {
     if (!isUsingRealApi() || !currentOrg?.id) {
@@ -196,6 +219,44 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
             <Button type="button" variant="outline" onClick={handleResetPassword} disabled={saving}>
               Turn off password webhook
             </Button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="font-semibold text-slate-900 mb-2">Send events to your systems</h3>
+        <p className="text-sm text-slate-600 mb-3">
+          Cadence posts each new lead, deal stage change and won deal to this address as JSON. It has
+          to be a public <code className="bg-slate-100 text-slate-800 px-1 rounded">https</code> address. With a
+          secret, each post carries <code className="bg-slate-100 text-slate-800 px-1 rounded">X-Cadence-Signature</code>,
+          the hex HMAC-SHA256 of the body, so your side can check it came from here.
+        </p>
+        <div className="space-y-3 max-w-md">
+          <Input
+            type="url"
+            inputMode="url"
+            placeholder="https://hooks.example.com/cadence"
+            aria-label="Address to post events to"
+            value={outboundUrl}
+            onChange={(e) => setOutboundUrl(e.target.value)}
+          />
+          <Input
+            type="password"
+            autoComplete="new-password"
+            aria-label="Signing secret"
+            placeholder={info?.hasOutboundWebhookSecret ? 'Signing secret saved; type a new one to change it' : 'Signing secret (optional)'}
+            value={outboundSecret}
+            onChange={(e) => setOutboundSecret(e.target.value)}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => saveOutbound(outboundUrl)} disabled={savingOutbound || !outboundUrl.trim()}>
+              {savingOutbound ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save address'}
+            </Button>
+            {info?.outboundWebhookUrl && (
+              <Button type="button" variant="outline" onClick={() => saveOutbound('')} disabled={savingOutbound}>
+                Stop posting events
+              </Button>
+            )}
           </div>
         </div>
       </div>

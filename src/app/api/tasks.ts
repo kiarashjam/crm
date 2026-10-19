@@ -1,4 +1,4 @@
-import type { TaskItem, TaskStats, TaskStatusType, TaskPriorityType, PagedResult } from './types';
+import type { TaskItem, TaskStats, TaskStatusType, TaskPriorityType, TaskRecurrence, PagedResult } from './types';
 import { mockTasks } from './mockData';
 import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
@@ -34,7 +34,10 @@ interface TaskRaw {
   createdAtUtc?: string | null;
   updatedAtUtc?: string | null;
   completedAtUtc?: string | null;
+  recurrence?: string | null;
 }
+
+const RECURRENCES: readonly string[] = ['daily', 'weekly', 'monthly'];
 
 function mapTask(d: TaskRaw): TaskItem {
   return {
@@ -58,6 +61,7 @@ function mapTask(d: TaskRaw): TaskItem {
     createdAtUtc: d.createdAtUtc ?? undefined,
     updatedAtUtc: d.updatedAtUtc ?? undefined,
     completedAtUtc: d.completedAtUtc ?? undefined,
+    recurrence: d.recurrence && RECURRENCES.includes(d.recurrence) ? (d.recurrence as TaskRecurrence) : undefined,
   };
 }
 
@@ -285,6 +289,7 @@ export interface CreateTaskParams {
   contactId?: string;
   assigneeId?: string;
   notes?: string;
+  recurrence?: TaskRecurrence;
 }
 
 /** Create a task. */
@@ -312,6 +317,7 @@ export async function createTask(params: CreateTaskParams): Promise<TaskItem | n
     contactId: params.contactId,
     assigneeId: params.assigneeId,
     notes: params.notes,
+    recurrence: params.recurrence,
     createdAtUtc: new Date().toISOString(),
   };
   return taskStore.add(newTask);
@@ -330,6 +336,8 @@ export interface UpdateTaskParams {
   contactId?: string;
   assigneeId?: string;
   notes?: string;
+  /** 'none' stops a task repeating. */
+  recurrence?: TaskRecurrence | 'none';
   clearDueDate?: boolean;
   clearReminderDate?: boolean;
   clearAssignee?: boolean;
@@ -348,7 +356,11 @@ export async function updateTask(id: string, params: UpdateTaskParams): Promise<
     return task ? mapTask(task) : null;
   }
   await delay(200);
-  return taskStore.update(id, params as Partial<TaskItem>);
+  const { recurrence, ...rest } = params;
+  return taskStore.update(id, {
+    ...(rest as Partial<TaskItem>),
+    ...(recurrence !== undefined && { recurrence: recurrence === 'none' ? undefined : recurrence }),
+  });
 }
 
 /** Update task status only. */

@@ -32,6 +32,11 @@ public sealed class AttachmentService : IAttachmentService
         if (entityType == null || !RecordTypes.All.Contains(entityType))
             return Result.Failure<IReadOnlyList<AttachmentDto>>(DomainErrors.Attachment.InvalidEntityType);
 
+        // The record has to be one the caller can see: the files of a private deal, and
+        // their download links, are as private as the deal.
+        if (!await _records.ExistsAsync(entityType, recordId, userId, organizationId, ct))
+            return Result.Failure<IReadOnlyList<AttachmentDto>>(DomainErrors.Attachment.RecordNotFound);
+
         var rows = await _repository.ListAsync(userId, organizationId, entityType, recordId, ct);
         return Result.Success<IReadOnlyList<AttachmentDto>>(rows.Select(ToDto).ToList());
     }

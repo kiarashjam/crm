@@ -60,6 +60,11 @@ public class PersonalWorkspaceBackfillTests
             Id = Guid.NewGuid(), OwnerUserId = me, EntityType = "deal", RecordId = deal.Id, ValuesJson = "{\"board_seat\":true}", UpdatedAtUtc = DateTime.UtcNow,
         });
         db.DealLineItems.Add(new DealLineItem { Id = Guid.NewGuid(), DealId = deal.Id, Name = "Membership", Quantity = 1, UnitPrice = 12000, CreatedAtUtc = DateTime.UtcNow });
+        db.Products.Add(new Product { Id = Guid.NewGuid(), OwnerUserId = me, Name = "Membership", UnitPrice = 12000, CreatedAtUtc = DateTime.UtcNow });
+        db.ForecastSnapshots.Add(new ForecastSnapshot { Id = Guid.NewGuid(), SavedByUserId = me, MonthUtc = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), SavedAtUtc = DateTime.UtcNow });
+        db.ClubMembers.Add(new ClubMember { Id = Guid.NewGuid(), OwnerUserId = me, FirstName = "Jean", LastName = "Dupont", Email = "jean@example.ch" });
+        db.AutomationRules.Add(new AutomationRule { Id = Guid.NewGuid(), OwnerUserId = me, Name = "Welcome", Trigger = "lead.created", CreatedAtUtc = DateTime.UtcNow });
+        db.Products.Add(new Product { Id = Guid.NewGuid(), OwnerUserId = someoneElse, Name = "Theirs", UnitPrice = 1, CreatedAtUtc = DateTime.UtcNow });
         await db.SaveChangesAsync();
 
         await new OrganizationRepository(db).BackfillUserDataToOrganizationAsync(me, org);
@@ -71,9 +76,14 @@ public class PersonalWorkspaceBackfillTests
         (await db.Attachments.SingleAsync()).OrganizationId.Should().Be(org);
         (await db.CustomFieldDefinitions.SingleAsync()).OrganizationId.Should().Be(org);
         (await db.CustomFieldValues.SingleAsync()).OrganizationId.Should().Be(org);
+        (await db.Products.SingleAsync(p => p.OwnerUserId == me)).OrganizationId.Should().Be(org);
+        (await db.ForecastSnapshots.SingleAsync()).OrganizationId.Should().Be(org);
+        (await db.ClubMembers.SingleAsync()).OrganizationId.Should().Be(org);
+        (await db.AutomationRules.SingleAsync()).OrganizationId.Should().Be(org);
 
         // Someone else's personal workspace is untouched.
         (await db.Deals.SingleAsync(d => d.Id == theirs.Id)).OrganizationId.Should().BeNull();
+        (await db.Products.SingleAsync(p => p.OwnerUserId == someoneElse)).OrganizationId.Should().BeNull();
         (await db.AuditEvents.Where(e => e.OwnerUserId == someoneElse).Select(e => e.OrganizationId).ToListAsync())
             .Should().OnlyContain(o => o == null);
     }
