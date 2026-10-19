@@ -5,7 +5,7 @@
 // actually fires each step; in demo mode we persist sequences + enrollments
 // locally and track progress so the UI is fully exercisable offline.
 
-import { ApiError, authFetch, authFetchJson, isUsingRealApi } from './apiClient';
+import { ApiError, authFetch, authFetchJson, servesDemoData } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -111,7 +111,7 @@ function nowIso() { return new Date().toISOString(); }
 // the toast said "enrolled", the row appeared, and nothing was ever sent.
 
 function liveOrDemo<T>(live: () => Promise<T>, demo: () => Promise<T>): Promise<T> {
-  return isUsingRealApi() ? live() : demo();
+  return servesDemoData() ? demo() : live();
 }
 
 /** A write whose response has no body: reject unless the server accepted it. */

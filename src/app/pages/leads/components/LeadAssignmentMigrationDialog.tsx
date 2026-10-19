@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/app/com
 import { Button } from '@/app/components/ui/button';
 import { getLeads, assignLead } from '@/app/api';
 import { getOrgMembers } from '@/app/api/organizations';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { loadLeadAssignments } from '../leadAssignmentStore';
 
@@ -33,7 +33,7 @@ export function LeadAssignmentMigrationDialog({ onMigrated }: { onMigrated?: () 
   useEffect(() => {
     // Only relevant with a real backend and an active org. Demo mode already
     // uses the local store as its source of truth, so there is nothing to move.
-    if (!isUsingRealApi() || !currentOrgId) return;
+    if (servesDemoData() || !currentOrgId) return;
     if (probedOrgRef.current === currentOrgId) return;
     probedOrgRef.current = currentOrgId;
 

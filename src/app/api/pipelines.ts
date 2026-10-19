@@ -1,5 +1,5 @@
 import type { Pipeline } from './types';
-import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 
 type PipelineRaw = { id: string; organizationId: string; name: string; displayOrder: number; dealStages?: { id: string; pipelineId: string; name: string; displayOrder: number; isWon: boolean; isLost: boolean }[] };
 function mapPipeline(p: PipelineRaw): Pipeline {
@@ -14,7 +14,7 @@ function mapPipeline(p: PipelineRaw): Pipeline {
 
 /** Get all pipelines for the current org (requires X-Organization-Id). */
 export async function getPipelines(): Promise<Pipeline[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<PipelineRaw[]>('/api/pipelines');
     return Array.isArray(list) ? list.map(mapPipeline) : [];
   }
@@ -23,7 +23,7 @@ export async function getPipelines(): Promise<Pipeline[]> {
 
 /** Get one pipeline by id. */
 export async function getPipeline(id: string): Promise<Pipeline | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const p = await authFetchJson<PipelineRaw>(`/api/pipelines/${id}`);
     return p ? mapPipeline(p) : null;
   }
@@ -32,7 +32,7 @@ export async function getPipeline(id: string): Promise<Pipeline | null> {
 
 /** Create a pipeline (Owner/Manager only). */
 export async function createPipeline(params: { name: string; displayOrder?: number }): Promise<Pipeline | null> {
-  if (!isUsingRealApi()) return null;
+  if (servesDemoData()) return null;
   const p = await authFetchJson<PipelineRaw>('/api/pipelines', {
     method: 'POST',
     body: JSON.stringify({ name: params.name, displayOrder: params.displayOrder ?? 0 }),
@@ -42,7 +42,7 @@ export async function createPipeline(params: { name: string; displayOrder?: numb
 
 /** Update a pipeline (Owner/Manager only). */
 export async function updatePipeline(id: string, params: { name?: string; displayOrder?: number }): Promise<Pipeline | null> {
-  if (!isUsingRealApi()) return null;
+  if (servesDemoData()) return null;
   const p = await authFetchJson<PipelineRaw>(`/api/pipelines/${id}`, {
     method: 'PUT',
     body: JSON.stringify(params),
@@ -52,7 +52,7 @@ export async function updatePipeline(id: string, params: { name?: string; displa
 
 /** Delete a pipeline (Owner/Manager only). */
 export async function deletePipeline(id: string): Promise<boolean> {
-  if (!isUsingRealApi()) return false;
+  if (servesDemoData()) return false;
   const res = await authFetch(`/api/pipelines/${id}`, { method: 'DELETE' });
   return res.ok;
 }

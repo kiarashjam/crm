@@ -134,12 +134,9 @@ describe('on the server', () => {
 describe('the demo user on a build with a server', () => {
   beforeEach(() => signIn('demo'));
 
-  it('merges duplicates in the browser, without posting the merge to a server it has no account on', async () => {
-    // Reading the contacts still goes to the server for now: contacts.ts, like the
-    // other core modules, predates the demo user's check. The merge itself must not.
-    server.use(http.get(`${BASE}/api/contacts/all`, () => HttpResponse.json([])));
+  it('merges duplicates in the browser, without asking a server it has no account on', async () => {
     await mergeContacts('c1', ['c2']);
-    expect(requests.filter((r) => r.includes('/merge'))).toEqual([]);
+    expect(requests).toEqual([]);
   });
 
   it("removes a tab item in the browser", async () => {

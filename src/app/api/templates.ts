@@ -1,6 +1,6 @@
 import type { Template, PagedResult } from './types';
 import { mockTemplates } from './mockData';
-import { isUsingRealApi, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson } from './apiClient';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -101,7 +101,7 @@ export interface GetTemplatesPagedOptions {
 
 /** Get paginated templates with optional search and category filter. */
 export async function getTemplatesPaged(options?: GetTemplatesPagedOptions): Promise<PagedResult<ExtendedTemplate>> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const params = new URLSearchParams();
     if (options?.page) params.set('page', options.page.toString());
     if (options?.pageSize) params.set('pageSize', options.pageSize.toString());
@@ -151,7 +151,7 @@ export async function getTemplatesPaged(options?: GetTemplatesPagedOptions): Pro
 
 /** Get all templates (real API or mock). */
 export async function getTemplates(): Promise<ExtendedTemplate[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<TemplateApiResponse[]>('/api/templates');
     return Array.isArray(list) ? list.map(mapTemplate) : [];
   }
@@ -161,7 +161,7 @@ export async function getTemplates(): Promise<ExtendedTemplate[]> {
 
 /** Get a single template by id (real API or mock). */
 export async function getTemplateById(id: string): Promise<ExtendedTemplate | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     try {
       const t = await authFetchJson<TemplateApiResponse>(`/api/templates/${id}`);
       return t ? mapTemplate(t) : null;
@@ -176,7 +176,7 @@ export async function getTemplateById(id: string): Promise<ExtendedTemplate | nu
 
 /** Create a new template. */
 export async function createTemplate(request: CreateTemplateRequest): Promise<ExtendedTemplate> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const created = await authFetchJson<TemplateApiResponse>('/api/templates', {
       method: 'POST',
       body: JSON.stringify(request),
@@ -205,7 +205,7 @@ export async function createTemplate(request: CreateTemplateRequest): Promise<Ex
 
 /** Update an existing template. */
 export async function updateTemplate(id: string, request: UpdateTemplateRequest): Promise<ExtendedTemplate> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const updated = await authFetchJson<TemplateApiResponse>(`/api/templates/${id}`, {
       method: 'PUT',
       body: JSON.stringify(request),
@@ -225,7 +225,7 @@ export async function updateTemplate(id: string, request: UpdateTemplateRequest)
 
 /** Delete a template. */
 export async function deleteTemplate(id: string): Promise<void> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     await authFetchJson(`/api/templates/${id}`, {
       method: 'DELETE',
     });
@@ -237,7 +237,7 @@ export async function deleteTemplate(id: string): Promise<void> {
 
 /** Increment use count for a template. */
 export async function incrementTemplateUseCount(id: string): Promise<void> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     await authFetchJson(`/api/templates/${id}/use`, {
       method: 'POST',
     });

@@ -1,4 +1,4 @@
-import { authFetchJson } from './apiClient';
+import { authFetchJson, servesDemoData } from './apiClient';
 
 export type AuthUser = { id: string; name: string; email: string };
 
@@ -39,7 +39,10 @@ export function me() {
 
 export type TwoFactorSetupResponse = { enabled: boolean; secret: string; otpauthUri: string };
 
-export function twoFactorSetup() {
+export async function twoFactorSetup(): Promise<TwoFactorSetupResponse> {
+  // The demo user has no account to protect, and the server would answer 401, which
+  // signs the session out. The Settings page asks for this every time it opens.
+  if (servesDemoData()) throw new Error('Two-factor sign-in is for accounts. The demo has none.');
   return authFetchJson<TwoFactorSetupResponse>('/api/auth/2fa/setup', { method: 'POST' });
 }
 

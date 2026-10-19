@@ -7,7 +7,7 @@
 // other page reads.
 
 import type { CurrencyTotal, DashboardStats } from './types';
-import { isUsingRealApi, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson } from './apiClient';
 import { getDeals } from './deals';
 import { getLeads } from './leads';
 import { currencyOf, tryParseAmount } from '@/app/lib/money';
@@ -63,7 +63,7 @@ function totalsByCurrency(
 
 /** Get dashboard stats (active leads, active deals, pipeline value, won/lost). */
 export async function getDashboardStats(): Promise<DashboardStats> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<DashboardStats>('/api/reporting/dashboard');
     if (!res) return EMPTY_STATS;
     // The server is the authority, but a field an older deployment does not send
@@ -103,7 +103,7 @@ export interface PipelineStageValue {
 
 /** Get pipeline value grouped by stage and currency (open deals only). */
 export async function getPipelineValueByStage(): Promise<PipelineStageValue[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<PipelineStageValue[]>('/api/reporting/pipeline-by-stage');
     return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || 'USD' })) : [];
   }
@@ -140,7 +140,7 @@ export interface PipelineValueByAssignee {
 
 /** Get pipeline value grouped by assignee and currency (open deals only). */
 export async function getPipelineValueByAssignee(): Promise<PipelineValueByAssignee[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<PipelineValueByAssignee[]>('/api/reporting/pipeline-by-assignee');
     return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || 'USD' })) : [];
   }

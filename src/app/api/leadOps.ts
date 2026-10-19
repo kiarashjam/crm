@@ -1,5 +1,5 @@
-import { ApiError, authFetch, authFetchJson, getApiBaseUrl, isUsingRealApi } from './apiClient';
-import { assignLead, updateLead } from './leads';
+import { ApiError, authFetch, authFetchJson, getApiBaseUrl, servesDemoData } from './apiClient';
+import { assignLead, getLeads, updateLead } from './leads';
 
 export interface ScoringRule {
   id: string;
@@ -146,8 +146,33 @@ export function createCaptureForm(name: string) {
   });
 }
 
-export function getConversionReport() {
+export async function getConversionReport(): Promise<ConversionReport> {
+  if (servesDemoData()) return demoConversionReport();
   return authFetchJson<ConversionReport>('/api/lead-ops/conversion');
+}
+
+/**
+ * The demo's report, worked out from its sample leads by the server's rule: created,
+ * reached qualified or beyond, became a deal. Response times aren't in the samples.
+ */
+async function demoConversionReport(): Promise<ConversionReport> {
+  const leads = await getLeads();
+  const slice = (key: (l: (typeof leads)[number]) => string): ConversionSlice[] => {
+    const groups = new Map<string, typeof leads>();
+    for (const lead of leads) {
+      const k = key(lead);
+      groups.set(k, [...(groups.get(k) ?? []), lead]);
+    }
+    return [...groups.entries()].map(([k, rows]) => {
+      const converted = rows.filter((l) => l.isConverted).length;
+      const qualified = rows.filter((l) => l.isConverted || /qualified|proposal|negotiation/i.test(l.status)).length;
+      return { key: k, created: rows.length, qualified, converted, conversionRate: rows.length ? converted / rows.length : 0 };
+    });
+  };
+  return {
+    bySource: slice((l) => l.source || 'Unknown'),
+    byOwner: slice((l) => l.assignedToName || 'Unassigned'),
+  };
 }
 
 export function getLeadHistory(id: string) {
@@ -164,7 +189,7 @@ export async function bulkUpdateLeads(body: {
   assignedToUserId?: string;
   queueId?: string;
 }): Promise<{ updated: number; missing: number }> {
-  if (!isUsingRealApi()) {
+  if (servesDemoData()) {
     // Demo mode has no bulk endpoint; do the same thing one lead at a time, so
     // Apply works there too instead of failing silently.
     let updated = 0;

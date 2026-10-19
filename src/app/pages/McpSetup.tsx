@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Copy, Eye, EyeOff, Key, RefreshCw, AlertTriangle, Bot, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
-import { getApiBaseUrl, isUsingRealApi } from '@/app/api/apiClient';
+import { getApiBaseUrl, servesDemoData } from '@/app/api/apiClient';
 import { generateWebhookApiKey, getWebhookInfo, type WebhookInfo } from '@/app/api/webhook';
 import { isOrgAdmin } from '@/app/api/organizations';
 import { useOrg } from '@/app/contexts/OrgContext';
@@ -56,7 +56,7 @@ export function ClaudeSection() {
   const [client, setClient] = useState<McpClient>('claude');
 
   useEffect(() => {
-    if (!isUsingRealApi() || !currentOrg?.id) {
+    if (servesDemoData() || !currentOrg?.id) {
       setInfo(null);
       setLoading(false);
       return;
@@ -322,7 +322,7 @@ function KeyPanel({
   onCopy: () => void;
   onRegenerate: () => void;
 }) {
-  if (!isUsingRealApi()) {
+  if (servesDemoData()) {
     return (
       <p className="text-sm text-slate-600">
         Connect the real API (<code className="text-xs bg-slate-100 px-1 rounded">VITE_API_URL</code>) to generate a key. Until then, step 2 shows a placeholder instead of a real key.

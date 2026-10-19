@@ -1,6 +1,6 @@
 import type { TaskItem, TaskStats, TaskStatusType, TaskPriorityType, TaskRecurrence, PagedResult } from './types';
 import { mockTasks } from './mockData';
-import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -86,7 +86,7 @@ export interface GetTasksPagedOptions {
 
 /** Get paginated tasks with optional search and filters. */
 export async function getTasksPaged(options?: GetTasksPagedOptions): Promise<PagedResult<TaskItem>> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const params = new URLSearchParams();
     if (options?.page) params.set('page', options.page.toString());
     if (options?.pageSize) params.set('pageSize', options.pageSize.toString());
@@ -145,7 +145,7 @@ export async function getTasksPaged(options?: GetTasksPagedOptions): Promise<Pag
 
 /** Get all tasks with optional filters (HP-1: uses /api/tasks/all to avoid 20-item truncation). */
 export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const params = new URLSearchParams();
     if (options?.overdueOnly) params.set('overdueOnly', 'true');
     if (options?.status) params.set('status', options.status);
@@ -184,7 +184,7 @@ export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
 
 /** Get a single task by ID. */
 export async function getTaskById(id: string): Promise<TaskItem | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     try {
       const raw = await authFetchJson<TaskRaw>(`/api/tasks/${id}`);
       return raw ? mapTask(raw) : null;
@@ -198,7 +198,7 @@ export async function getTaskById(id: string): Promise<TaskItem | null> {
 
 /** Get tasks by lead ID. */
 export async function getTasksByLead(leadId: string): Promise<TaskItem[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/by-lead/${leadId}`);
     if (Array.isArray(response)) {
       return response.map(mapTask);
@@ -214,7 +214,7 @@ export async function getTasksByLead(leadId: string): Promise<TaskItem[]> {
 
 /** Get tasks by deal ID. */
 export async function getTasksByDeal(dealId: string): Promise<TaskItem[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/by-deal/${dealId}`);
     if (Array.isArray(response)) {
       return response.map(mapTask);
@@ -230,7 +230,7 @@ export async function getTasksByDeal(dealId: string): Promise<TaskItem[]> {
 
 /** Get tasks by contact ID. */
 export async function getTasksByContact(contactId: string): Promise<TaskItem[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/by-contact/${contactId}`);
     if (Array.isArray(response)) {
       return response.map(mapTask);
@@ -246,7 +246,7 @@ export async function getTasksByContact(contactId: string): Promise<TaskItem[]> 
 
 /** Get task statistics. */
 export async function getTaskStats(): Promise<TaskStats> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const stats = await authFetchJson<TaskStats>('/api/tasks/stats');
     return stats ?? {
       total: 0,
@@ -294,7 +294,7 @@ export interface CreateTaskParams {
 
 /** Create a task. */
 export async function createTask(params: CreateTaskParams): Promise<TaskItem | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const task = await authFetchJson<TaskRaw>('/api/tasks', {
       method: 'POST',
       body: JSON.stringify(params),
@@ -348,7 +348,7 @@ export interface UpdateTaskParams {
 
 /** Update a task. */
 export async function updateTask(id: string, params: UpdateTaskParams): Promise<TaskItem | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const task = await authFetchJson<TaskRaw>(`/api/tasks/${id}`, {
       method: 'PUT',
       body: JSON.stringify(params),
@@ -365,7 +365,7 @@ export async function updateTask(id: string, params: UpdateTaskParams): Promise<
 
 /** Update task status only. */
 export async function updateTaskStatus(id: string, status: TaskStatusType): Promise<TaskItem | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const task = await authFetchJson<TaskRaw>(`/api/tasks/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
@@ -378,7 +378,7 @@ export async function updateTaskStatus(id: string, status: TaskStatusType): Prom
 
 /** Assign or unassign a task. */
 export async function assignTask(id: string, assigneeId: string | null): Promise<TaskItem | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const task = await authFetchJson<TaskRaw>(`/api/tasks/${id}/assign`, {
       method: 'PATCH',
       body: JSON.stringify({ assigneeId }),
@@ -391,7 +391,7 @@ export async function assignTask(id: string, assigneeId: string | null): Promise
 
 /** Link or unlink a task to a lead. */
 export async function linkTaskToLead(id: string, leadId: string | null): Promise<TaskItem | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const task = await authFetchJson<TaskRaw>(`/api/tasks/${id}/link-lead`, {
       method: 'PATCH',
       body: JSON.stringify({ leadId }),
@@ -404,7 +404,7 @@ export async function linkTaskToLead(id: string, leadId: string | null): Promise
 
 /** Link or unlink a task to a deal. */
 export async function linkTaskToDeal(id: string, dealId: string | null): Promise<TaskItem | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const task = await authFetchJson<TaskRaw>(`/api/tasks/${id}/link-deal`, {
       method: 'PATCH',
       body: JSON.stringify({ dealId }),
@@ -417,7 +417,7 @@ export async function linkTaskToDeal(id: string, dealId: string | null): Promise
 
 /** Delete a task. */
 export async function deleteTask(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/tasks/${id}`, { method: 'DELETE' });
     return res.status === 204;
   }
@@ -445,7 +445,7 @@ export interface BulkTaskResult {
 
 /** Bulk update multiple tasks at once. */
 export async function bulkUpdateTasks(request: BulkTaskRequest): Promise<BulkTaskResult | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     return authFetchJson<BulkTaskResult>('/api/tasks/bulk', {
       method: 'POST',
       body: JSON.stringify(request),
@@ -470,7 +470,7 @@ export interface TaskCommentDto {
 
 /** Get all comments for a task. */
 export async function getTaskComments(taskId: string): Promise<TaskCommentDto[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     return authFetchJson<TaskCommentDto[]>(`/api/tasks/${taskId}/comments`);
   }
   await delay(200);
@@ -479,7 +479,7 @@ export async function getTaskComments(taskId: string): Promise<TaskCommentDto[]>
 
 /** Add a comment to a task. */
 export async function addTaskComment(taskId: string, body: string): Promise<TaskCommentDto | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     return authFetchJson<TaskCommentDto>(`/api/tasks/${taskId}/comments`, {
       method: 'POST',
       body: JSON.stringify({ body }),
@@ -491,7 +491,7 @@ export async function addTaskComment(taskId: string, body: string): Promise<Task
 
 /** Delete a comment from a task. */
 export async function deleteTaskComment(taskId: string, commentId: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/tasks/${taskId}/comments/${commentId}`, { method: 'DELETE' });
     return res.status === 204;
   }

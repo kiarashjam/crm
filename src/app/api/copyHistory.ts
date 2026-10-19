@@ -1,6 +1,6 @@
 import type { CopyHistoryItem } from './types';
 import { mockCopyHistory } from './mockData';
-import { isUsingRealApi, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson } from './apiClient';
 
 const STORAGE_KEY = 'crm_copy_history';
 
@@ -40,7 +40,7 @@ function mapItem(d: { id: string; type: string; copy: string; recipientName: str
 
 /** Get copy history (newest first). */
 export async function getCopyHistory(): Promise<CopyHistoryItem[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<{ id: string; type: string; copy: string; recipientName: string; recipientType: string; recipientId: string; createdAt: string }[]>('/api/copyhistory');
     return Array.isArray(list) ? list.map(mapItem) : [];
   }
@@ -52,7 +52,7 @@ export async function getCopyHistory(): Promise<CopyHistoryItem[]> {
 
 /** Add an item to history after writing is saved on a record. */
 export async function addToCopyHistory(item: Omit<CopyHistoryItem, 'id' | 'createdAt'>): Promise<CopyHistoryItem> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     await authFetchJson<{ success: boolean; message: string }>('/api/copy/send', {
       method: 'POST',
       body: JSON.stringify({
@@ -81,7 +81,7 @@ export async function addToCopyHistory(item: Omit<CopyHistoryItem, 'id' | 'creat
 
 /** Get counts for dashboard (sent this week, total sent). */
 export async function getCopyHistoryStats(): Promise<{ sentThisWeek: number; totalSent: number }> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<{ sentThisWeek: number; totalSent: number }>('/api/copyhistory/stats');
     return res ?? { sentThisWeek: 0, totalSent: 0 };
   }

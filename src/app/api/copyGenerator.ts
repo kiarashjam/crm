@@ -1,5 +1,5 @@
 import type { GenerateCopyParams } from './types';
-import { isUsingRealApi, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson } from './apiClient';
 
 // Extended copy types including new ones
 export type ExtendedCopyTypeId = 
@@ -190,7 +190,7 @@ function delay(ms: number): Promise<void> {
 
 /** Generate copy (real API or mock). */
 export async function generateCopy(params: GenerateCopyParams): Promise<string> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<{ copy: string }>('/api/copy/generate', {
       method: 'POST',
       body: JSON.stringify({
@@ -223,7 +223,7 @@ export async function generateCopy(params: GenerateCopyParams): Promise<string> 
 
 /** Generate copy with recipient context for personalization. */
 export async function generateCopyWithRecipient(params: GenerateCopyWithRecipientParams): Promise<GenerateCopyResult> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<{ body: string; subject?: string }>('/api/copy/generate-with-recipient', {
       method: 'POST',
       body: JSON.stringify({
@@ -269,7 +269,7 @@ export async function generateCopyWithRecipient(params: GenerateCopyWithRecipien
 
 /** Rewrite copy with a different tone/style. */
 export async function rewriteCopy(originalCopy: string, adjustment: 'shorter' | 'friendlier' | 'persuasive'): Promise<string> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<{ copy: string }>('/api/copy/rewrite', {
       method: 'POST',
       body: JSON.stringify({
@@ -423,7 +423,7 @@ export interface GenerateCopyMultiLanguageParams extends GenerateCopyWithRecipie
 
 /** Generate copy in a specific language. */
 export async function generateCopyInLanguage(params: GenerateCopyMultiLanguageParams): Promise<GenerateCopyResult> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<{ body: string; subject?: string }>('/api/copy/generate-multilang', {
       method: 'POST',
       body: JSON.stringify({

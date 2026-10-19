@@ -11,7 +11,7 @@
 // backend, but a contract that pretends to have been sent — with a signing link
 // that goes nowhere — is worse than a feature that says it needs a server.
 
-import { authFetch, authFetchJson, getApiBaseUrl, isUsingRealApi } from './apiClient';
+import { authFetch, authFetchJson, getApiBaseUrl, servesDemoData } from './apiClient';
 
 export type ContractStatus =
   | 'draft' | 'sent' | 'signed_by_client' | 'countersigned' | 'declined' | 'voided';
@@ -104,7 +104,7 @@ export class ContractError extends Error {
 }
 
 function requireApi(): void {
-  if (!isUsingRealApi()) {
+  if (servesDemoData()) {
     throw new ContractError(
       'Contracts need a connected backend. In demo mode there is nowhere to send a signing link.',
     );
@@ -112,7 +112,7 @@ function requireApi(): void {
 }
 
 export async function listContractsForLead(leadId: string): Promise<Contract[]> {
-  if (!isUsingRealApi()) return [];
+  if (servesDemoData()) return [];
   const list = await authFetchJson<Contract[]>(`/api/contracts/for-lead/${leadId}`);
   return Array.isArray(list) ? list : [];
 }

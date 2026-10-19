@@ -9,7 +9,7 @@ import PageHelp from '@/app/components/PageHelp';
 import { QueryProvider } from '@/app/providers';
 import { OrgProvider, useOrgOptional } from '@/app/contexts/OrgContext';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 import { PageLoadingProvider } from '@/app/components/LoadingOverlay';
 
 // Eager-loaded pages (critical path)
@@ -90,7 +90,7 @@ function RequireOrgLayout() {
   const location = useLocation();
   const org = useOrgOptional();
   const isOrgPage = location.pathname === '/organizations';
-  if (!isUsingRealApi()) return <Outlet />;
+  if (servesDemoData()) return <Outlet />;
   if (!org) return <Outlet />;
   if (org.hasFetched && !org.currentOrgId && !isOrgPage) {
     return <Navigate to="/organizations" replace state={{ from: location.pathname }} />;

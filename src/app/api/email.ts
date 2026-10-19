@@ -11,7 +11,7 @@
 // fails with the server's reason, and the composer offers the person's own
 // email app (`mailtoHref`) instead.
 
-import { ApiError, authFetchJson, isUsingRealApi } from './apiClient';
+import { ApiError, authFetchJson, servesDemoData } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 const SEND_PATH = '/api/email/send';
@@ -67,7 +67,7 @@ const emailStore = createMockStore<EmailMessage>({
 });
 
 export async function sendEmail(req: SendEmailRequest): Promise<EmailMessage | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     try {
       return await authFetchJson<EmailMessage>(SEND_PATH, { method: 'POST', body: JSON.stringify(req) });
     } catch (err) {

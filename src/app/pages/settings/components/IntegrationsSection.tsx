@@ -3,7 +3,7 @@ import { Link2, Copy, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { getWebhookInfo, updateOutboundWebhook, updateWebhookPassword, type WebhookInfo } from '@/app/api/webhook';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 import type { Organization } from '@/app/api/organizations';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -49,7 +49,7 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
   };
 
   useEffect(() => {
-    if (!isUsingRealApi() || !currentOrg?.id) {
+    if (servesDemoData() || !currentOrg?.id) {
       setInfo(null);
       setLoading(false);
       return;
@@ -116,7 +116,7 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
     }
   };
 
-  if (!isUsingRealApi()) {
+  if (servesDemoData()) {
     return (
       <div className="p-6 space-y-4">
         <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">

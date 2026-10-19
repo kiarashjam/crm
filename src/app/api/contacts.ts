@@ -1,6 +1,6 @@
 import type { Contact, PagedResult, PaginationParams } from './types';
 import { mockContacts, mockLeads } from './mockData';
-import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 const contactStore = createMockStore<Contact>({
@@ -168,7 +168,7 @@ export async function getContactsPaged(
 ): Promise<PagedResult<Contact>> {
   const { page = 1, pageSize = 20, search, includeArchived = false, companyId } = params;
   
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const queryParams = new URLSearchParams({
       page: String(page),
       pageSize: String(pageSize),
@@ -226,7 +226,7 @@ export async function getContactsPaged(
 
 /** Get all contacts (real API or mock) - non-paginated for backward compatibility. */
 export async function getContacts(includeArchived = false): Promise<Contact[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<ApiContact[]>(`/api/contacts/all?includeArchived=${includeArchived}`);
     return Array.isArray(list) ? list.map(mapContact) : [];
   }
@@ -238,7 +238,7 @@ export async function getContacts(includeArchived = false): Promise<Contact[]> {
 
 /** Search contacts by name or email (non-paginated, for backward compatibility). */
 export async function searchContacts(query: string, includeArchived = false): Promise<Contact[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const q = query?.trim() ? encodeURIComponent(query.trim()) : '';
     const list = await authFetchJson<ApiContact[]>(`/api/contacts/search?q=${q}&includeArchived=${includeArchived}`);
     return Array.isArray(list) ? list.map(mapContact) : [];
@@ -263,7 +263,7 @@ export async function createContact(params: {
   companyId?: string;
   description?: string;
 }): Promise<{ contact: Contact | null; error: string | null }> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch('/api/contacts', {
       method: 'POST',
       body: JSON.stringify(params),
@@ -308,7 +308,7 @@ export async function updateContact(
     preferredContactMethod: string;
   }>
 ): Promise<{ contact: Contact | null; error: string | null }> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${id}`, {
       method: 'PUT',
       body: JSON.stringify(params),
@@ -333,7 +333,7 @@ export async function updateContact(
 
 /** Delete a contact (hard delete). */
 export async function deleteContact(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${id}`, { method: 'DELETE' });
     return res.status === 204;
   }
@@ -343,7 +343,7 @@ export async function deleteContact(id: string): Promise<boolean> {
 
 /** Archive a contact (soft delete). */
 export async function archiveContact(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${id}/archive`, { method: 'POST' });
     return res.status === 204;
   }
@@ -353,7 +353,7 @@ export async function archiveContact(id: string): Promise<boolean> {
 
 /** Unarchive a contact. */
 export async function unarchiveContact(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${id}/unarchive`, { method: 'POST' });
     return res.status === 204;
   }
@@ -378,7 +378,7 @@ export interface ContactLookalike {
 
 /** Load one contact. */
 export async function getContactById(id: string): Promise<Contact | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const data = await authFetchJson<ApiContact>(`/api/contacts/${id}`);
     return data ? mapContact(data) : null;
   }
@@ -387,7 +387,7 @@ export async function getContactById(id: string): Promise<Contact | null> {
 }
 
 export async function getContactLookalikes(id: string): Promise<ContactLookalike[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<ContactLookalike[]>(`/api/contacts/${id}/lookalikes`);
     return Array.isArray(list) ? list : [];
   }
@@ -412,7 +412,7 @@ export async function getContactLookalikes(id: string): Promise<ContactLookalike
 }
 
 export async function mergePersonContacts(keepId: string, otherContactId: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${keepId}/merge`, {
       method: 'POST',
       body: JSON.stringify({ otherContactId }),
@@ -437,7 +437,7 @@ export async function mergePersonContacts(keepId: string, otherContactId: string
 
 /** Check if an email already exists. */
 export async function checkEmailExists(email: string, excludeId?: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const params = new URLSearchParams({ email });
     if (excludeId) params.append('excludeId', excludeId);
     const res = await authFetchJson<{ exists: boolean }>(`/api/contacts/check-email?${params}`);

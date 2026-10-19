@@ -1,6 +1,6 @@
 import type { Activity, PagedResult } from './types';
 import { mockActivities } from './mockData';
-import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 const activityStore = createMockStore<Activity>({
@@ -63,7 +63,7 @@ export interface GetActivitiesPagedOptions {
 
 /** Get paginated activities with optional search. */
 export async function getActivitiesPaged(options?: GetActivitiesPagedOptions): Promise<PagedResult<Activity>> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const params = new URLSearchParams();
     if (options?.page) params.set('page', options.page.toString());
     if (options?.pageSize) params.set('pageSize', options.pageSize.toString());
@@ -113,7 +113,7 @@ export async function getActivitiesPaged(options?: GetActivitiesPagedOptions): P
 
 /** Get all activities (real API or mock). */
 export async function getActivities(): Promise<Activity[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     // Must use /api/activities/all for a flat array; /api/activities returns PagedResult object
     const list = await authFetchJson<ActivityRaw[]>('/api/activities/all');
     return Array.isArray(list) ? list.map(mapActivity) : [];
@@ -124,7 +124,7 @@ export async function getActivities(): Promise<Activity[]> {
 
 /** Get activities by contact. */
 export async function getActivitiesByContact(contactId: string): Promise<Activity[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<ActivityRaw[]>(`/api/activities/contact/${contactId}`);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
@@ -134,7 +134,7 @@ export async function getActivitiesByContact(contactId: string): Promise<Activit
 
 /** Get activities by deal. */
 export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<ActivityRaw[]>(`/api/activities/deal/${dealId}`);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
@@ -144,7 +144,7 @@ export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
 
 /** Get activities by lead. */
 export async function getActivitiesByLead(leadId: string): Promise<Activity[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<ActivityRaw[]>(`/api/activities/lead/${leadId}`);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
@@ -156,7 +156,7 @@ export async function getActivitiesByLead(leadId: string): Promise<Activity[]> {
 export async function getActivitiesByLeadIds(leadIds: string[]): Promise<Activity[]> {
   const ids = [...new Set(leadIds.filter(Boolean))];
   if (!ids.length) return [];
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const chunks: string[][] = [];
     for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
     const lists = await Promise.all(
@@ -183,7 +183,7 @@ export async function getActivitiesByLeadIds(leadIds: string[]): Promise<Activit
 
 /** Get activity counts per org member (HP-3). */
 export async function getOrgMemberActivityCounts(): Promise<Record<string, number>> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const result = await authFetchJson<Record<string, number>>('/api/activities/org-member-counts');
     return result ?? {};
   }
@@ -192,7 +192,7 @@ export async function getOrgMemberActivityCounts(): Promise<Record<string, numbe
 
 /** Create an activity. */
 export async function createActivity(params: { type: string; subject?: string; body?: string; contactId?: string; dealId?: string; leadId?: string; participants?: string }): Promise<Activity | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const activity = await authFetchJson<ActivityRaw>('/api/activities', {
       method: 'POST',
       body: JSON.stringify(params),
@@ -220,7 +220,7 @@ export async function createActivity(params: { type: string; subject?: string; b
 
 /** Update an activity. */
 export async function updateActivity(id: string, params: { type?: string; subject?: string; body?: string; participants?: string }): Promise<Activity | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const activity = await authFetchJson<ActivityRaw>(`/api/activities/${id}`, {
       method: 'PUT',
       body: JSON.stringify(params),
@@ -239,7 +239,7 @@ export async function updateActivity(id: string, params: { type?: string; subjec
 
 /** Delete an activity. */
 export async function deleteActivity(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/activities/${id}`, { method: 'DELETE' });
     return res.status === 204;
   }

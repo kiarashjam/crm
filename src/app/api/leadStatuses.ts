@@ -1,5 +1,5 @@
 import type { LeadStatus } from './types';
-import { isUsingRealApi, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson } from './apiClient';
 
 /**
  * Get all lead statuses for the current org (requires X-Organization-Id).
@@ -17,7 +17,7 @@ import { isUsingRealApi, authFetchJson } from './apiClient';
  * of a fortnight of "the status doesn't update".
  */
 export async function getLeadStatuses(): Promise<LeadStatus[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<LeadStatus[]>('/api/leadstatuses');
     if (Array.isArray(list)) return list;
     console.error(

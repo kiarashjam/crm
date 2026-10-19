@@ -23,7 +23,7 @@ import {
   resendExecutedCopy, sendContract, updateContract, voidContract, ContractError,
   type Contract,
 } from '@/app/api/contracts';
-import { ApiError, isUsingRealApi } from '@/app/api/apiClient';
+import { ApiError, servesDemoData } from '@/app/api/apiClient';
 import {
   MAX_SIGNATURE_NAME_LENGTH, STATUS_LABELS, checkSignature, type ContractStatus,
 } from './contractLifecycle';
@@ -250,7 +250,7 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
     }
   });
 
-  if (!isUsingRealApi()) {
+  if (servesDemoData()) {
     return (
       <Card>
         <Header />

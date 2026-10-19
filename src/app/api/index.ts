@@ -2,7 +2,7 @@
 
 export * from './types';
 export { messages } from './messages';
-export { getApiBaseUrl, isUsingRealApi } from './apiClient';
+export { getApiBaseUrl, isUsingRealApi, servesDemoData } from './apiClient';
 export {
   login,
   loginWithTwoFactor,

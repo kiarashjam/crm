@@ -20,7 +20,7 @@ import {
   getAuthToken,
   AUTH_SESSION_CHANGED,
 } from '@/app/lib/auth';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 
 const DEMO_ORGANIZATIONS: Organization[] = [
   { id: 'demo-org', name: 'Demo Organization', ownerUserId: 'demo', isOwner: true, role: 0 },
@@ -49,16 +49,23 @@ type OrgContextValue = {
 const OrgContext = createContext<OrgContextValue | null>(null);
 
 export function OrgProvider({ children }: { children: ReactNode }) {
+  // The demo user gets the demo organizations on every build. On a build with a
+  // server they used to get none, and the app sent them to /organizations, where
+  // creating one asked a server they have no account on and signed them out.
   const [organizations, setOrganizations] = useState<Organization[]>(() =>
-    isUsingRealApi() ? [] : [...DEMO_ORGANIZATIONS]
+    servesDemoData() ? [...DEMO_ORGANIZATIONS] : []
   );
   const [pendingInvites, setPendingInvites] = useState<InviteDto[]>([]);
   const [currentOrgId, setCurrentOrgIdState] = useState<string | null>(() => getCurrentOrganizationId());
   const [loading, setLoading] = useState(false);
-  const [hasFetched, setHasFetched] = useState(() => !isUsingRealApi());
+  const [hasFetched, setHasFetched] = useState(() => servesDemoData());
 
   const refreshOrgs = useCallback(async () => {
-    if (!isUsingRealApi()) {
+    if (servesDemoData()) {
+      // Keep demo organizations added this session; replace a real account's list.
+      setOrganizations((prev) => (prev.length > 0 && prev.every((o) => o.ownerUserId === 'demo') ? prev : [...DEMO_ORGANIZATIONS]));
+      setPendingInvites([]);
+      setLoading(false);
       setHasFetched(true);
       return;
     }
@@ -152,7 +159,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       refreshOrgs,
       loading,
       hasFetched,
-      addDemoOrg: isUsingRealApi() ? undefined : addDemoOrg,
+      addDemoOrg: servesDemoData() ? addDemoOrg : undefined,
     }),
     [organizations, pendingInvites, currentOrgId, currentOrg, isReadOnly, setCurrentOrg, refreshOrgs, loading, hasFetched, addDemoOrg]
   );

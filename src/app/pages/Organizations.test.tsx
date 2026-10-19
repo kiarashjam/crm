@@ -60,6 +60,7 @@ vi.mock('@/app/api/organizations', async (importOriginal) => ({
 vi.mock('@/app/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/apiClient')>()),
   isUsingRealApi: () => true,
+  servesDemoData: () => false,
 }));
 
 // Real prefetching would dynamically import every page module into the test run.
