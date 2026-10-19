@@ -67,6 +67,13 @@ public class AppDbContext : DbContext
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
 
+    /// <summary>
+    /// Whether saving writes audit lines. Off only while an organization is copied: its
+    /// history is copied with it, and each copied record would otherwise get a new
+    /// "created" line of its own.
+    /// </summary>
+    public bool RecordsAuditTrail { get; set; } = true;
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -80,7 +87,7 @@ public class AppDbContext : DbContext
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         await RecordDependents.RemoveAsync(this, cancellationToken);
-        var events = await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken);
+        var events = RecordsAuditTrail ? await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
         try
         {
@@ -97,7 +104,7 @@ public class AppDbContext : DbContext
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         RecordDependents.Remove(this);
-        var events = AuditTrail.Capture(this, _currentUser);
+        var events = RecordsAuditTrail ? AuditTrail.Capture(this, _currentUser) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
         try
         {
