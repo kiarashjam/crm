@@ -98,6 +98,13 @@ public sealed class OrganizationRepository : IOrganizationRepository
         await _db.Attachments.Where(a => a.OwnerUserId == userId && a.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(a => a.OrganizationId, organizationId), ct);
         await _db.CustomFieldDefinitions.Where(d => d.OwnerUserId == userId && d.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(d => d.OrganizationId, organizationId), ct);
         await _db.CustomFieldValues.Where(v => v.OwnerUserId == userId && v.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(v => v.OrganizationId, organizationId), ct);
+        // The price list and saved forecasts are kept per person outside an organization.
+        // Members and rules can't be made there any more, but the ones made before that
+        // rule went in are their creator's, and arrive with them.
+        await _db.Products.Where(p => p.OwnerUserId == userId && p.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(p => p.OrganizationId, organizationId), ct);
+        await _db.ForecastSnapshots.Where(f => f.SavedByUserId == userId && f.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(f => f.OrganizationId, organizationId), ct);
+        await _db.ClubMembers.Where(m => m.OwnerUserId == userId && m.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(m => m.OrganizationId, organizationId), ct);
+        await _db.AutomationRules.Where(r => r.OwnerUserId == userId && r.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(r => r.OrganizationId, organizationId), ct);
     }
 
     public async Task<Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default) =>

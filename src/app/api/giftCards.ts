@@ -4,7 +4,7 @@
 // recipient can redeem against any in-house charge until the balance hits
 // zero. Each card has an immutable code.
 
-import { apiWithFallback, authFetchJson, isUsingRealApi } from './apiClient';
+import { ApiError, apiWithFallback, authFetchJson, servesDemoData } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -213,11 +213,18 @@ export interface RedeemInput {
 }
 
 export async function redeemGiftCard(input: RedeemInput): Promise<GiftCardRedemption | null> {
-  if (isUsingRealApi()) {
-    return authFetchJson<GiftCardRedemption>(`/api/gift-cards/${input.giftCardId}/redeem`, {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
+  if (!servesDemoData()) {
+    try {
+      return await authFetchJson<GiftCardRedemption>(`/api/gift-cards/${input.giftCardId}/redeem`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    } catch (err) {
+      // The server refuses a card that isn't active or has no balance left with a 404,
+      // which the screens show as "could not redeem", as they do the browser's null.
+      if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
+    }
   }
   const card = cardStore.byId(input.giftCardId);
   if (!card) return null;
@@ -225,25 +232,16 @@ export async function redeemGiftCard(input: RedeemInput): Promise<GiftCardRedemp
   const amount = Math.min(input.amount, card.remainingValue);
   if (amount <= 0) return null;
 
-  const redemption = await apiWithFallback(
-    () =>
-      authFetchJson<GiftCardRedemption>(`/api/gift-cards/${input.giftCardId}/redeem`, {
-        method: 'POST',
-        body: JSON.stringify(input),
-      }),
-    async () => {
-      await delay(160);
-      return redemptionStore.add({
-        id: mockId('gcr'),
-        giftCardId: input.giftCardId,
-        giftCardCode: card.code,
-        amount,
-        redeemedByName: input.redeemedByName,
-        redeemedAtUtc: new Date().toISOString(),
-        appliedTo: input.appliedTo,
-      });
-    },
-  );
+  await delay(160);
+  const redemption = redemptionStore.add({
+    id: mockId('gcr'),
+    giftCardId: input.giftCardId,
+    giftCardCode: card.code,
+    amount,
+    redeemedByName: input.redeemedByName,
+    redeemedAtUtc: new Date().toISOString(),
+    appliedTo: input.appliedTo,
+  });
   if (redemption) {
     const newRemaining = card.remainingValue - amount;
     cardStore.update(card.id, {

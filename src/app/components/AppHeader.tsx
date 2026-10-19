@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { getCurrentUser, clearSession } from '@/app/lib/auth';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
-import { isUsingRealApi } from '@/app/api';
+import { servesDemoData } from '@/app/api';
 import { authFetchJson } from '@/app/api/apiClient';
 import type { GlobalSearchResult } from '@/app/api/search';
 import NotificationBell from '@/app/components/NotificationBell';
@@ -358,7 +358,7 @@ export default function AppHeader() {
           <div className="min-w-0 flex-1" />
 
           {/* HP-9: Global search bar */}
-          {isUsingRealApi() && <GlobalSearchBar />}
+          {!servesDemoData() && <GlobalSearchBar />}
 
           {/* Right: notifications, org, account */}
           <div className="flex items-center gap-2">
@@ -403,7 +403,7 @@ export default function AppHeader() {
                   <p className="truncate text-xs text-slate-500 dark:text-slate-400">{user?.email ?? ''}</p>
                 </div>
                 <DropdownMenuSeparator className="bg-slate-100 dark:bg-slate-700" />
-                {isUsingRealApi() && org?.currentOrg && (
+                {!servesDemoData() && org?.currentOrg && (
                   <DropdownMenuItem asChild>
                     <Link to="/organizations" className="flex cursor-pointer items-center gap-2 rounded-lg dark:text-slate-200 dark:hover:bg-slate-700">
                       <Building2 className="h-4 w-4" />

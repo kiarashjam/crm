@@ -1,6 +1,6 @@
 import { Kanban, Plus, Pencil, Trash2, ChevronRight } from 'lucide-react';
 import type { Pipeline, DealStage } from '@/app/api/types';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 import { isOrgAdmin } from '@/app/api/organizations';
 
 export interface PipelinesSectionProps {
@@ -66,7 +66,7 @@ export function PipelinesSection({
   deletingStageId,
   currentOrg,
 }: PipelinesSectionProps) {
-  if (!isUsingRealApi() || !isOrgAdmin(currentOrg)) {
+  if (servesDemoData() || !isOrgAdmin(currentOrg)) {
     return (
       <div className="p-6">
         <div>

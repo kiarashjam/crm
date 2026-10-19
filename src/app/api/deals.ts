@@ -1,6 +1,6 @@
 import type { Deal, PagedResult, PaginationParams } from './types';
 import { mockDeals } from './mockData';
-import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 const dealStore = createMockStore<Deal>({
@@ -30,6 +30,7 @@ type DealRaw = {
   dealStageName?: string | null;
   createdAtUtc?: string | null; updatedAtUtc?: string | null;
   closedReason?: string | null; closedAtUtc?: string | null;
+  isPrivate?: boolean | null;
 };
 function mapDeal(d: DealRaw): Deal {
   return {
@@ -57,6 +58,7 @@ function mapDeal(d: DealRaw): Deal {
     updatedAtUtc: d.updatedAtUtc ?? undefined,
     closedReason: d.closedReason ?? undefined,
     closedAtUtc: d.closedAtUtc ?? undefined,
+    isPrivate: d.isPrivate ?? false,
   };
 }
 
@@ -76,7 +78,7 @@ export async function getDealsPaged(
 ): Promise<PagedResult<Deal>> {
   const { page = 1, pageSize = 20, search, companyId, contactId } = params;
   
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const queryParams = new URLSearchParams({
       page: String(page),
       pageSize: String(pageSize),
@@ -135,7 +137,7 @@ export async function getDealsPaged(
 
 /** Get all deals (real API or mock) - non-paginated for backward compatibility. */
 export async function getDeals(): Promise<Deal[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<DealRaw[]>('/api/deals/all');
     return Array.isArray(list) ? list.map(mapDeal) : [];
   }
@@ -146,7 +148,7 @@ export async function getDeals(): Promise<Deal[]> {
 
 /** Search deals by name or value (non-paginated, for backward compatibility). */
 export async function searchDeals(query: string): Promise<Deal[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const q = query?.trim() ? encodeURIComponent(query.trim()) : '';
     const list = await authFetchJson<DealRaw[]>(`/api/deals/search?q=${q}`);
     return Array.isArray(list) ? list.map(mapDeal) : [];
@@ -164,7 +166,7 @@ export async function searchDeals(query: string): Promise<Deal[]> {
 
 /** Get a single deal by ID. */
 export async function getDealById(id: string): Promise<Deal | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const deal = await authFetchJson<DealRaw>(`/api/deals/${id}`);
     return deal ? mapDeal(deal) : null;
   }
@@ -175,7 +177,7 @@ export async function getDealById(id: string): Promise<Deal | null> {
 
 /** Create a deal. */
 export async function createDeal(params: { name: string; value: string; currency?: string; stage?: string; pipelineId?: string; dealStageId?: string; companyId?: string; contactId?: string; assigneeId?: string; expectedCloseDateUtc?: string; description?: string; probability?: number }): Promise<Deal | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const deal = await authFetchJson<DealRaw>('/api/deals', {
       method: 'POST',
       body: JSON.stringify(params),
@@ -203,8 +205,8 @@ export async function createDeal(params: { name: string; value: string; currency
 }
 
 /** Update a deal (stage, value, contact, expected close date, won/lost, pipeline, assignee, description, probability, close reason). */
-export async function updateDeal(id: string, params: Partial<{ name: string; value: string; currency: string; stage: string; pipelineId: string; dealStageId: string; companyId: string; contactId: string; assigneeId: string; expectedCloseDateUtc: string; isWon: boolean; description: string; probability: number; closedReason: string }>): Promise<Deal | null> {
-  if (isUsingRealApi()) {
+export async function updateDeal(id: string, params: Partial<{ name: string; value: string; currency: string; stage: string; pipelineId: string; dealStageId: string; companyId: string; contactId: string; assigneeId: string; expectedCloseDateUtc: string; isWon: boolean; description: string; probability: number; closedReason: string; isPrivate: boolean }>): Promise<Deal | null> {
+  if (!servesDemoData()) {
     const deal = await authFetchJson<DealRaw>(`/api/deals/${id}`, {
       method: 'PUT',
       body: JSON.stringify(params),
@@ -217,7 +219,7 @@ export async function updateDeal(id: string, params: Partial<{ name: string; val
 
 /** Delete a deal. */
 export async function deleteDeal(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/deals/${id}`, { method: 'DELETE' });
     return res.status === 204;
   }

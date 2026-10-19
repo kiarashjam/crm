@@ -1,5 +1,5 @@
 import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption, CurrencyOption, LanguageOption } from './types';
-import { isUsingRealApi, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson } from './apiClient';
 
 const STORAGE_KEY = 'crm_user_settings';
 
@@ -61,7 +61,7 @@ function delay(ms: number): Promise<void> {
 
 /** Get user settings. */
 export async function getUserSettings(): Promise<UserSettings> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<UserSettings>('/api/settings');
     return res ? { ...defaults, ...res } : { ...defaults };
   }
@@ -72,7 +72,7 @@ export async function getUserSettings(): Promise<UserSettings> {
 
 /** Save user settings (partial update). */
 export async function saveUserSettings(settings: UpdateUserSettingsRequest): Promise<UserSettings> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<UserSettings>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(settings),
@@ -91,7 +91,7 @@ export async function saveSettingsSection(
   section: 'profile' | 'brand' | 'appearance' | 'notifications' | 'defaults' | 'privacy',
   settings: UpdateUserSettingsRequest
 ): Promise<UserSettings> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<UserSettings>(`/api/settings/${section}`, {
       method: 'PATCH',
       body: JSON.stringify(settings),
@@ -104,7 +104,7 @@ export async function saveSettingsSection(
 
 /** Reset all settings to defaults. */
 export async function resetUserSettings(): Promise<UserSettings> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<UserSettings>('/api/settings/reset', {
       method: 'POST',
     });
@@ -117,7 +117,7 @@ export async function resetUserSettings(): Promise<UserSettings> {
 
 /** Get available timezones. */
 export async function getTimezones(): Promise<TimezoneOption[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<TimezoneOption[]>('/api/settings/timezones');
     return res ?? getDefaultTimezones();
   }
@@ -127,7 +127,7 @@ export async function getTimezones(): Promise<TimezoneOption[]> {
 
 /** Get available currencies. */
 export async function getCurrencies(): Promise<CurrencyOption[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<CurrencyOption[]>('/api/settings/currencies');
     return res ?? getDefaultCurrencies();
   }
@@ -137,7 +137,7 @@ export async function getCurrencies(): Promise<CurrencyOption[]> {
 
 /** Get available languages. */
 export async function getLanguages(): Promise<LanguageOption[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<LanguageOption[]>('/api/settings/languages');
     return res ?? getDefaultLanguages();
   }

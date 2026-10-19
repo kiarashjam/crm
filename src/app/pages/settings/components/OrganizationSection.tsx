@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Building2, UserPlus, Mail, Check, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 import { isOrgAdmin, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
 
 export interface OrganizationSectionProps {
@@ -62,7 +62,7 @@ export function OrganizationSection({
         <p className="text-sm text-emerald-700 mt-1">All data stays in Cadence — no external CRM required</p>
       </div>
 
-      {isUsingRealApi() && organizations.length > 0 && (
+      {!servesDemoData() && organizations.length > 0 && (
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">Current Organization</label>
           <select
@@ -88,7 +88,7 @@ export function OrganizationSection({
         </div>
       )}
 
-      {isUsingRealApi() && isOrgAdmin(currentOrg) && (
+      {!servesDemoData() && isOrgAdmin(currentOrg) && (
         <>
           <div className="pt-6 border-t border-slate-200">
             <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">

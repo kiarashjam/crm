@@ -4,7 +4,7 @@
 // (immediate or future). The "send" flow expands the segment to the member
 // list and writes one Communication per recipient.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk, isUsingRealApi } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { sendCommunication, type CommChannel, type CommCategory } from './communications';
 import { getMembers, type Member, type MemberStatus, type MemberTier } from './members';
@@ -180,7 +180,8 @@ export async function previewSegment(segment: SegmentFilter): Promise<Member[]> 
 }
 
 export async function sendCampaign(id: string): Promise<Campaign | null> {
-  if (isUsingRealApi()) {
+  // The server expands the segment and writes each member's message itself.
+  if (!servesDemoData()) {
     return authFetchJson<Campaign>(`/api/campaigns/${id}/send`, { method: 'POST' });
   }
   const campaign = campaignStore.byId(id);

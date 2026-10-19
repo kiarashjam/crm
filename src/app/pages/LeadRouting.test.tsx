@@ -22,7 +22,7 @@ vi.mock('@/app/api/organizations', async () => {
 let live = true;
 vi.mock('@/app/api/apiClient', async () => {
   const actual = await vi.importActual<typeof import('@/app/api/apiClient')>('@/app/api/apiClient');
-  return { ...actual, isUsingRealApi: () => live };
+  return { ...actual, isUsingRealApi: () => live, servesDemoData: () => !live };
 });
 
 let role = 0;

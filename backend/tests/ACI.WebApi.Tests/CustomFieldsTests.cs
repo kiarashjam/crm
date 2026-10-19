@@ -190,7 +190,8 @@ public class CustomFieldsTests
         other.In(await CreateAsync(factory, otherId, "Another club"));
 
         (await ReadJson(await other.GetAsync("/api/custom-fields"), "B's definitions")).GetArrayLength().Should().Be(0);
-        (await ValuesAsync(other, lead)).EnumerateObject().Should().BeEmpty("A's values are not B's to read");
+        (await other.GetAsync($"/api/custom-fields/values?entityType=lead&recordId={lead}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound, "A's lead, and so its values, are not B's to read");
         (await SaveAsync(other, lead, new { budget = 1 })).StatusCode.Should().Be(HttpStatusCode.NotFound,
             "A's lead is not in B's workspace");
         (await ValuesAsync(owner, lead)).GetProperty("budget").GetDecimal().Should().Be(100);

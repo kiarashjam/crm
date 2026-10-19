@@ -26,6 +26,10 @@ import {
 } from '@/app/api';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { servesDemoData } from '@/app/api/apiClient';
+import { getOrgMembers, isOrgAdmin, type OrgMemberDto } from '@/app/api/organizations';
+import { getSequences, type Sequence } from '@/app/api/sequences';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
 
 const ACTION_ICON: Record<ActionType, React.ElementType> = {
   create_task: CheckSquare, send_email: Mail, notify: Bell, assign: UserPlus, add_to_sequence: Workflow,
@@ -35,12 +39,18 @@ type DraftAction = Omit<AutomationAction, 'id'>;
 
 const newAction = (type: ActionType = 'create_task'): DraftAction => ({ type, config: {} });
 
+const reason = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
+
 export default function Automations() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<AutomationRule | null>(null);
+  const org = useOrgOptional()?.currentOrg ?? null;
+  // A rule acts for the whole workspace, so the server lets the owner or a manager
+  // change one. Everyone else sees the rules but isn't offered what would be refused.
+  const canChange = servesDemoData() || isOrgAdmin(org);
 
   const load = () => {
     setLoading(true);
@@ -50,15 +60,24 @@ export default function Automations() {
 
   const toggle = async (r: AutomationRule) => {
     setRules((prev) => prev.map((x) => (x.id === r.id ? { ...x, enabled: !x.enabled } : x)));
-    const ok = await updateAutomation(r.id, { enabled: !r.enabled });
-    if (!ok) { toast.error('Failed to update'); load(); }
+    const ok = await updateAutomation(r.id, { enabled: !r.enabled }).catch((err: unknown) => {
+      toast.error(reason(err, 'Failed to update'));
+      return 'shown' as const;
+    });
+    if (ok === 'shown') load();
+    else if (!ok) { toast.error('Failed to update'); load(); }
   };
 
   const remove = async (r: AutomationRule) => {
     if (!confirm(`Delete automation "${r.name}"?`)) return;
     setRules((prev) => prev.filter((x) => x.id !== r.id));
-    const ok = await deleteAutomation(r.id);
-    if (ok) toast.success('Automation deleted'); else { toast.error('Failed to delete'); load(); }
+    try {
+      if (await deleteAutomation(r.id)) toast.success('Automation deleted');
+      else { toast.error('Failed to delete'); load(); }
+    } catch (err) {
+      toast.error(reason(err, 'Failed to delete'));
+      load();
+    }
   };
 
   return (
@@ -71,13 +90,13 @@ export default function Automations() {
             iconGradient="from-amber-500 to-orange-500"
             title="Automations"
             subtitle="Run actions automatically when something happens in your CRM."
-            actions={
+            actions={canChange && (
               <WriteOnly>
                 <Button onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
                   <Plus className="h-4 w-4" /> New automation
                 </Button>
               </WriteOnly>
-            }
+            )}
             stats={[
               { label: 'Automations', value: rules.length, icon: Zap, tone: 'amber' },
               { label: 'Active', value: rules.filter((r) => r.enabled).length, icon: CheckSquare, tone: 'emerald' },
@@ -118,13 +137,13 @@ export default function Automations() {
                         })}
                       </div>
                     </div>
-                    <WriteOnly>
+                    {canChange && <WriteOnly>
                       <div className="flex shrink-0 items-center gap-2">
                         <Switch checked={r.enabled} onCheckedChange={() => toggle(r)} aria-label="Enabled" />
-                        <button type="button" onClick={() => { setEditing(r); setEditorOpen(true); }} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
-                        <button type="button" onClick={() => remove(r)} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => { setEditing(r); setEditorOpen(true); }} aria-label={`Edit ${r.name}`} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
+                        <button type="button" onClick={() => remove(r)} aria-label={`Delete ${r.name}`} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                       </div>
-                    </WriteOnly>
+                    </WriteOnly>}
                   </div>
                 </div>
               ))}
@@ -138,6 +157,7 @@ export default function Automations() {
           open={editorOpen}
           onOpenChange={setEditorOpen}
           rule={editing}
+          organizationId={org?.id ?? null}
           onSaved={() => { setEditorOpen(false); load(); }}
         />
       )}
@@ -145,8 +165,8 @@ export default function Automations() {
   );
 }
 
-function AutomationEditor({ open, onOpenChange, rule, onSaved }: {
-  open: boolean; onOpenChange: (o: boolean) => void; rule: AutomationRule | null; onSaved: () => void;
+function AutomationEditor({ open, onOpenChange, rule, organizationId, onSaved }: {
+  open: boolean; onOpenChange: (o: boolean) => void; rule: AutomationRule | null; organizationId: string | null; onSaved: () => void;
 }) {
   const [name, setName] = useState(rule?.name ?? '');
   const [trigger, setTrigger] = useState<TriggerType>(rule?.trigger ?? 'lead.created');
@@ -155,14 +175,28 @@ function AutomationEditor({ open, onOpenChange, rule, onSaved }: {
     rule?.actions.map(({ id: _id, ...rest }) => rest) ?? [newAction('send_email')],
   );
   const [saving, setSaving] = useState(false);
+  // Assign and add-to-sequence save ids, which is what the server runs on. They used
+  // to save the name typed into a text box, and the actions did nothing.
+  const [people, setPeople] = useState<OrgMemberDto[]>([]);
+  const [sequences, setSequences] = useState<Sequence[]>([]);
+  useEffect(() => {
+    if (organizationId || servesDemoData()) {
+      getOrgMembers(organizationId ?? '').then(setPeople).catch(() => setPeople([]));
+    }
+    getSequences().then(setSequences).catch(() => setSequences([]));
+  }, [organizationId]);
 
   const setActionType = (i: number, type: ActionType) => setActions((p) => p.map((a, idx) => (idx === i ? { type, config: {} } : a)));
   const setConfig = (i: number, key: string, value: string) =>
     setActions((p) => p.map((a, idx) => (idx === i ? { ...a, config: { ...a.config, [key]: value } } : a)));
+  const setConfigs = (i: number, values: Record<string, string>) =>
+    setActions((p) => p.map((a, idx) => (idx === i ? { ...a, config: { ...a.config, ...values } } : a)));
 
   const save = async () => {
     if (!name.trim()) { toast.error('Name is required'); return; }
     if (actions.length === 0) { toast.error('Add at least one action'); return; }
+    if (actions.some((a) => a.type === 'assign' && !a.config.userId)) { toast.error('Pick who to assign to'); return; }
+    if (actions.some((a) => a.type === 'add_to_sequence' && !a.config.sequenceId)) { toast.error('Pick a sequence'); return; }
     setSaving(true);
     try {
       const payload = { name: name.trim(), trigger, enabled, actions };
@@ -170,6 +204,9 @@ function AutomationEditor({ open, onOpenChange, rule, onSaved }: {
       if (!res) { toast.error('Failed to save'); return; }
       toast.success(rule ? 'Automation updated' : 'Automation created');
       onSaved();
+    } catch (err) {
+      // The server says why: a manager-only change, or an action pointing outside the workspace.
+      toast.error(reason(err, 'Failed to save'));
     } finally {
       setSaving(false);
     }
@@ -237,10 +274,26 @@ function AutomationEditor({ open, onOpenChange, rule, onSaved }: {
                       <Input value={a.config.message ?? ''} onChange={(e) => setConfig(i, 'message', e.target.value)} placeholder="Notification message" className="h-8 bg-white" />
                     )}
                     {a.type === 'assign' && (
-                      <Input value={a.config.assigneeName ?? ''} onChange={(e) => setConfig(i, 'assigneeName', e.target.value)} placeholder="Assignee name" className="h-8 bg-white" />
+                      <Select
+                        value={a.config.userId ?? ''}
+                        onValueChange={(v) => setConfigs(i, { userId: v, assigneeName: people.find((p) => p.userId === v)?.name ?? '' })}
+                      >
+                        <SelectTrigger className="h-8 bg-white" aria-label="Assign to"><SelectValue placeholder="Assign to…" /></SelectTrigger>
+                        <SelectContent>
+                          {people.map((p) => <SelectItem key={p.userId} value={p.userId}>{p.name || p.email}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     )}
                     {a.type === 'add_to_sequence' && (
-                      <Input value={a.config.sequence ?? ''} onChange={(e) => setConfig(i, 'sequence', e.target.value)} placeholder="Sequence name" className="h-8 bg-white" />
+                      <Select
+                        value={a.config.sequenceId ?? ''}
+                        onValueChange={(v) => setConfigs(i, { sequenceId: v, sequence: sequences.find((s) => s.id === v)?.name ?? '' })}
+                      >
+                        <SelectTrigger className="h-8 bg-white" aria-label="Sequence"><SelectValue placeholder={sequences.length ? 'Pick a sequence…' : 'No sequences yet'} /></SelectTrigger>
+                        <SelectContent>
+                          {sequences.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     )}
                   </div>
                 </div>

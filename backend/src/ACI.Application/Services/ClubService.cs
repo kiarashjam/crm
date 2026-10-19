@@ -97,6 +97,9 @@ public sealed class ClubService : IClubService
         var email = (request.Email ?? "").Trim();
         if (first.Length == 0 || last.Length == 0 || email.Length == 0)
             return new Error("Member.NameRequired", "A member needs a first name, a last name, and an email.");
+        if (MemberTooLong(request) is { } tooLong) return tooLong;
+        if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
+            return MoneyInvalid;
         var row = new ClubMember
         {
             Id = Guid.NewGuid(),
@@ -123,6 +126,9 @@ public sealed class ClubService : IClubService
     {
         var row = await _club.MemberAsync(id, organizationId, ct);
         if (row == null) return new Error("Member.NotFound", "That member was not found.");
+        if (MemberTooLong(request) is { } tooLong) return tooLong;
+        if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
+            return MoneyInvalid;
         if (!string.IsNullOrWhiteSpace(request.FirstName)) row.FirstName = request.FirstName.Trim();
         if (!string.IsNullOrWhiteSpace(request.LastName)) row.LastName = request.LastName.Trim();
         if (!string.IsNullOrWhiteSpace(request.Email)) row.Email = request.Email.Trim();
@@ -154,6 +160,7 @@ public sealed class ClubService : IClubService
     {
         var member = await _club.MemberAsync(request.MemberId, organizationId, ct);
         if (member == null) return new Error("Member.NotFound", "That member was not found.");
+        if (Longer(request.Venue, 32)) return TooLong("A venue", 32);
         var visit = new ClubVisit
         {
             Id = Guid.NewGuid(),
@@ -182,9 +189,13 @@ public sealed class ClubService : IClubService
 
     public async Task<Result<LoyaltyEntryDto>> AddLedgerAsync(Guid? organizationId, LoyaltyWriteRequest request, CancellationToken ct = default)
     {
+        // Points go to a member of this workspace. A name alone used to be enough, which
+        // let an entry point at any id at all.
         var member = await _club.MemberAsync(request.MemberId, organizationId, ct);
-        var name = member == null ? (request.MemberName ?? "").Trim() : $"{member.FirstName} {member.LastName}".Trim();
-        if (name.Length == 0) return new Error("Member.NotFound", "That member was not found.");
+        if (member == null) return new Error("Member.NotFound", "That member was not found.");
+        var name = $"{member.FirstName} {member.LastName}".Trim();
+        if (Longer(request.Kind, 32)) return TooLong("A kind", 32);
+        if (Longer(request.Reason, 40)) return TooLong("A reason", 40);
         var entry = new LoyaltyLedgerEntry
         {
             Id = Guid.NewGuid(),
@@ -203,6 +214,24 @@ public sealed class ClubService : IClubService
 
     public async Task<Result> DeleteLedgerAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
         await _club.DeleteLedgerAsync(id, organizationId, ct) ? Result.Success() : new Error("Loyalty.NotFound", "That entry was not found.");
+
+    private const decimal MaxMoney = 1_000_000_000m;
+    private static readonly Error MoneyInvalid = new("Member.MoneyInvalid", "Dues can't be negative, and amounts must be under 1,000,000,000.");
+
+    private static bool Longer(string? value, int max) => (value?.Trim().Length ?? 0) > max;
+
+    private static Error TooLong(string what, int max) => new("Club.TooLong", $"{what} can be at most {max} characters.");
+
+    /// <summary>The column widths, checked here so a long value is a sentence, not a 500.</summary>
+    private static Error? MemberTooLong(MemberWriteRequest r) =>
+        Longer(r.FirstName, 100) ? TooLong("A first name", 100)
+        : Longer(r.LastName, 100) ? TooLong("A last name", 100)
+        : Longer(r.Email, 256) ? TooLong("An email", 256)
+        : Longer(r.Phone, 64) ? TooLong("A phone number", 64)
+        : Longer(r.Tier, 32) ? TooLong("A tier", 32)
+        : Longer(r.Status, 32) ? TooLong("A status", 32)
+        : Longer(r.DuesFrequency, 32) ? TooLong("A dues frequency", 32)
+        : null;
 
     private static MemberDto ToDto(ClubMember m) => new(
         m.Id, m.FirstName, m.LastName, m.Email, m.Phone, m.Tier, m.Status,

@@ -7,7 +7,7 @@
 // other page reads.
 
 import type { CurrencyTotal, DashboardStats } from './types';
-import { isUsingRealApi, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson } from './apiClient';
 import { getDeals } from './deals';
 import { getLeads } from './leads';
 import { currencyOf, tryParseAmount } from '@/app/lib/money';
@@ -63,7 +63,7 @@ function totalsByCurrency(
 
 /** Get dashboard stats (active leads, active deals, pipeline value, won/lost). */
 export async function getDashboardStats(): Promise<DashboardStats> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetchJson<DashboardStats>('/api/reporting/dashboard');
     if (!res) return EMPTY_STATS;
     // The server is the authority, but a field an older deployment does not send
@@ -103,7 +103,7 @@ export interface PipelineStageValue {
 
 /** Get pipeline value grouped by stage and currency (open deals only). */
 export async function getPipelineValueByStage(): Promise<PipelineStageValue[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<PipelineStageValue[]>('/api/reporting/pipeline-by-stage');
     return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || 'USD' })) : [];
   }
@@ -140,7 +140,7 @@ export interface PipelineValueByAssignee {
 
 /** Get pipeline value grouped by assignee and currency (open deals only). */
 export async function getPipelineValueByAssignee(): Promise<PipelineValueByAssignee[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<PipelineValueByAssignee[]>('/api/reporting/pipeline-by-assignee');
     return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || 'USD' })) : [];
   }
@@ -171,4 +171,36 @@ export async function getPipelineValueByAssignee(): Promise<PipelineValueByAssig
   return [...groups.values()].sort(
     (a, b) => a.assigneeName.localeCompare(b.assigneeName) || a.currency.localeCompare(b.currency),
   );
+}
+
+/** One line of a saved forecast: an owner's open deals in one currency, as they stood. */
+export interface ForecastSnapshotRow {
+  id: string;
+  /** "2026-10" */
+  month: string;
+  currency: string;
+  assigneeName: string;
+  weightedValue: number;
+  openValue: number;
+  /** Deals with a probability, and so in the weighted total. */
+  covered: number;
+  missing: number;
+  savedAtUtc: string;
+}
+
+/**
+ * Save this month's forecast on the server, so later edits to deals don't rewrite it.
+ * In an organization only the owner or a manager may: a saved forecast counts private
+ * deals. The server's refusal comes through as the error's message.
+ */
+export async function saveForecastSnapshot(): Promise<ForecastSnapshotRow[]> {
+  const rows = await authFetchJson<ForecastSnapshotRow[]>('/api/reporting/forecast-snapshot', { method: 'POST' });
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** This month's saved forecast, or the given month's. Empty when none was saved. */
+export async function getForecastSnapshot(year?: number, month?: number): Promise<ForecastSnapshotRow[]> {
+  const query = year && month ? `?year=${year}&month=${month}` : '';
+  const rows = await authFetchJson<ForecastSnapshotRow[]>(`/api/reporting/forecast-snapshot${query}`);
+  return Array.isArray(rows) ? rows : [];
 }

@@ -4,7 +4,7 @@
 // but also extras like locker rental, fitness add-ons, parking. When a cycle
 // comes due, the billing run drops a charge onto the member's house account.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk, isUsingRealApi } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge } from './charges';
 
@@ -206,7 +206,8 @@ export async function deleteSubscription(id: string): Promise<boolean> {
  * happen as a scheduled job; this is the staff-triggered version.
  */
 export async function runBillingCycle(id: string): Promise<Subscription | null> {
-  if (isUsingRealApi()) {
+  // The server posts the charge, moves the balance and the next date itself.
+  if (!servesDemoData()) {
     return authFetchJson<Subscription>(`/api/subscriptions/${id}/bill`, { method: 'POST' });
   }
   const sub = subStore.byId(id);
@@ -238,8 +239,9 @@ export async function runBillingCycle(id: string): Promise<Subscription | null> 
  */
 export async function runDueBillingCycles(): Promise<number> {
   const now = Date.now();
-  const due = subStore
-    .list()
+  // Through the API: the browser's own list is empty when they live on the server, so
+  // this used to bill nothing and report "Ran 0 due cycles".
+  const due = (await getSubscriptions())
     .filter(
       (s) =>
         (s.status === 'Active' || s.status === 'PastDue') &&

@@ -55,10 +55,14 @@ public sealed class ClubDocumentService : IClubDocumentService
     public async Task<JsonObject> CreateAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct = default)
     {
         var obj = Clone(body);
-        var id = ReadId(obj) ?? Guid.NewGuid();
+        // The server picks the id. Saving looks a row up by id alone, so an id taken from
+        // the request was a way to overwrite any record whose id someone had seen,
+        // including another organization's.
+        var id = Guid.NewGuid();
         obj["id"] = id.ToString();
         await StampAsync(organizationId, kind, obj, ct);
         await Save(organizationId, kind, id, obj, ct);
+        await AfterCreateAsync(organizationId, kind, obj, ct);
         return obj;
     }
 
@@ -69,12 +73,30 @@ public sealed class ClubDocumentService : IClubDocumentService
         foreach (var pair in patch)
             current[pair.Key] = pair.Value?.DeepClone();
         current["id"] = id.ToString();
+        if (kind == "reservations" && patch.ContainsKey("resourceId"))
+            await NameResourceAsync(organizationId, current, ct);
         await Save(organizationId, kind, id, current, ct);
         return current;
     }
 
-    public Task<bool> DeleteAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct = default) =>
-        _docs.DeleteAsync(id, organizationId, kind, ct);
+    public async Task<bool> DeleteAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct = default)
+    {
+        var row = await Load(organizationId, kind, id, ct);
+        if (row == null || !await _docs.DeleteAsync(id, organizationId, kind, ct)) return false;
+        switch (kind)
+        {
+            case "charges":
+                await RecomputeBalanceAsync(organizationId, Text(row, "memberId"), ct);
+                break;
+            case "households":
+                // A household's member links go with it, as they did in the browser.
+                foreach (var link in await _docs.ListAsync(organizationId, "household-members", ct))
+                    if (Parse(link.Payload) is { } obj && Text(obj, "householdId") == id.ToString())
+                        await _docs.DeleteAsync(link.Id, organizationId, "household-members", ct);
+                break;
+        }
+        return true;
+    }
 
     public async Task<JsonObject?> RsvpAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
     {
@@ -178,14 +200,17 @@ public sealed class ClubDocumentService : IClubDocumentService
         var items = tab["items"] as JsonArray ?? new JsonArray();
         var total = Total(items);
         tab["total"] = total;
+        var venue = Text(tab, "venue");
+        var label = VenueLabel(venue);
+        var itemCount = (tab["items"] as JsonArray)?.Count ?? 0;
         if (total > 0)
         {
             await CreateAsync(organizationId, "charges", new JsonObject
             {
                 ["memberId"] = tab["memberId"]?.DeepClone(),
                 ["memberName"] = tab["memberName"]?.DeepClone(),
-                ["kind"] = "Dining",
-                ["description"] = $"{Text(tab, "venue")} tab",
+                ["kind"] = venue switch { "Bar" => "Bar", "Spa" => "Spa", _ => "Dining" },
+                ["description"] = $"{label} tab ({itemCount} items)",
                 ["amount"] = total,
             }, ct);
         }
@@ -207,7 +232,7 @@ public sealed class ClubDocumentService : IClubDocumentService
                 Kind = "Earned",
                 Reason = Text(tab, "venue") == "Bar" ? "BarPurchase" : "DiningPurchase",
                 Points = points,
-                Note = "Tab closed",
+                Note = $"{label} tab — {itemCount} items",
                 CreatedAtUtc = DateTime.UtcNow,
             }, ct);
         }
@@ -236,14 +261,9 @@ public sealed class ClubDocumentService : IClubDocumentService
             ["kind"] = "Dues",
             ["description"] = Text(sub, "name"),
             ["amount"] = Dec(sub, "amount"),
+            ["dueAtUtc"] = DateTime.UtcNow.AddDays(14).ToString("o"),
         }, ct);
-        var days = Text(sub, "cadence") switch
-        {
-            "Quarterly" => 90,
-            "SemiAnnual" => 182,
-            "Annual" => 365,
-            _ => 30,
-        };
+        var days = CadenceDays(Text(sub, "cadence"));
         var next = DateTime.UtcNow;
         if (DateTime.TryParse(Text(sub, "nextChargeAtUtc"), out var parsed)) next = parsed.ToUniversalTime();
         sub["lastChargedAtUtc"] = DateTime.UtcNow.ToString("o");
@@ -270,7 +290,7 @@ public sealed class ClubDocumentService : IClubDocumentService
                 ["channel"] = Text(campaign, "channel"),
                 ["category"] = Text(campaign, "category"),
                 ["subject"] = Text(campaign, "subject"),
-                ["preview"] = Text(campaign, "body"),
+                ["preview"] = Preview(Text(campaign, "body")),
                 ["campaignName"] = Text(campaign, "name"),
             }, ct);
         }
@@ -348,6 +368,9 @@ public sealed class ClubDocumentService : IClubDocumentService
                 break;
             case "payments":
                 Set(obj, "receivedAtUtc", now);
+                Set(obj, "appliedToChargeIds", Guid.TryParse(Text(obj, "chargeId"), out var paidCharge)
+                    ? new JsonArray(paidCharge.ToString())
+                    : new JsonArray());
                 break;
             case "applications":
                 Set(obj, "submittedAtUtc", now);
@@ -360,18 +383,23 @@ public sealed class ClubDocumentService : IClubDocumentService
                 break;
             case "reservations":
                 Set(obj, "status", "Pending");
+                await NameResourceAsync(organizationId, obj, ct);
                 break;
             case "subscriptions":
                 Set(obj, "status", "Active");
                 Set(obj, "startedAtUtc", now);
+                Set(obj, "nextChargeAtUtc", DateTime.UtcNow.AddDays(CadenceDays(Text(obj, "cadence"))).ToString("o"));
                 break;
             case "communications":
                 Set(obj, "sentAtUtc", now);
+                Set(obj, "status", "Sent");
                 break;
             case "campaigns":
-                Set(obj, "status", "Draft");
+                Set(obj, "createdAtUtc", now);
+                Set(obj, "status", string.IsNullOrWhiteSpace(Text(obj, "scheduledAtUtc")) ? "Draft" : "Scheduled");
                 Set(obj, "recipientCount", 0);
                 break;
+
             case "gift-cards":
                 Set(obj, "code", GiftCode());
                 Set(obj, "remainingValue", Dec(obj, "faceValue"));
@@ -398,6 +426,98 @@ public sealed class ClubDocumentService : IClubDocumentService
                 break;
         }
     }
+
+    /// <summary>What the browser did after these writes, done here so every device sees it.</summary>
+    private async Task AfterCreateAsync(Guid? organizationId, string kind, JsonObject obj, CancellationToken ct)
+    {
+        switch (kind)
+        {
+            case "charges":
+                await RecomputeBalanceAsync(organizationId, Text(obj, "memberId"), ct);
+                break;
+            case "payments":
+                if (Guid.TryParse(Text(obj, "chargeId"), out var chargeId))
+                    await ApplyPaymentAsync(organizationId, chargeId, Dec(obj, "amount"), ct);
+                await RecomputeBalanceAsync(organizationId, Text(obj, "memberId"), ct);
+                break;
+            case "households":
+                // The primary member is the household's first link.
+                if (Guid.TryParse(Text(obj, "primaryMemberId"), out var primary))
+                {
+                    await CreateAsync(organizationId, "household-members", new JsonObject
+                    {
+                        ["householdId"] = Text(obj, "id"),
+                        ["memberId"] = primary.ToString(),
+                        ["role"] = "Primary",
+                        ["rollUpBilling"] = true,
+                    }, ct);
+                }
+                break;
+        }
+    }
+
+    /// <summary>A payment against a charge pays it down, up to what is owed.</summary>
+    private async Task ApplyPaymentAsync(Guid? organizationId, Guid chargeId, decimal amount, CancellationToken ct)
+    {
+        var charge = await Load(organizationId, "charges", chargeId, ct);
+        if (charge == null || amount <= 0) return;
+        var paid = Math.Min(Dec(charge, "amount"), Dec(charge, "paidAmount") + amount);
+        charge["paidAmount"] = paid;
+        if (paid >= Dec(charge, "amount"))
+        {
+            charge["status"] = "Paid";
+            charge["paidAtUtc"] = DateTime.UtcNow.ToString("o");
+        }
+        else if (paid > 0) charge["status"] = "PartiallyPaid";
+        await Save(organizationId, "charges", chargeId, charge, ct);
+    }
+
+    /// <summary>
+    /// The member's house balance is what their open charges leave owing, negative when
+    /// they owe. The browser used to work this out from its own copy of the charges,
+    /// which is empty once they live here, and wrote back a balance of zero.
+    /// </summary>
+    private async Task RecomputeBalanceAsync(Guid? organizationId, string memberIdText, CancellationToken ct)
+    {
+        if (!Guid.TryParse(memberIdText, out var memberId)) return;
+        var member = await _club.MemberAsync(memberId, organizationId, ct);
+        if (member == null) return;
+        decimal outstanding = 0;
+        foreach (var row in await _docs.ListAsync(organizationId, "charges", ct))
+        {
+            if (Parse(row.Payload) is not { } charge || Text(charge, "memberId") != memberIdText) continue;
+            if (Text(charge, "status") == "Voided") continue;
+            outstanding += Dec(charge, "amount") - Dec(charge, "paidAmount");
+        }
+        member.HouseAccountBalance = -Math.Round(outstanding, 2);
+        await _club.SaveMemberAsync(member, ct);
+    }
+
+    /// <summary>A reservation shows its resource's name, looked up rather than taken on trust.</summary>
+    private async Task NameResourceAsync(Guid? organizationId, JsonObject reservation, CancellationToken ct)
+    {
+        if (!Guid.TryParse(Text(reservation, "resourceId"), out var resourceId)) return;
+        var resource = await Load(organizationId, "resources", resourceId, ct);
+        reservation["resourceName"] = resource == null ? "Unknown resource" : Text(resource, "name");
+    }
+
+    private static int CadenceDays(string cadence) => cadence switch
+    {
+        "Quarterly" => 91,
+        "SemiAnnual" => 182,
+        "Annual" => 365,
+        _ => 30,
+    };
+
+    private static string VenueLabel(string venue) => venue switch
+    {
+        "Bar" => "Library Bar",
+        "Dining" => "Main Dining",
+        "PoolDeck" => "Pool Deck",
+        _ => venue,
+    };
+
+    private static string Preview(string body) => body.Length <= 140 ? body : body[..140];
 
     private static bool Matches(JsonObject? segment, ClubMember member)
     {

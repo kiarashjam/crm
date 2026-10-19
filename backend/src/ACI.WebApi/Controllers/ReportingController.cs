@@ -1,5 +1,6 @@
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -97,7 +98,13 @@ public class ReportingController : ControllerBase
     }
 
     /// <summary>Stores this month's weighted forecast so later edits do not rewrite it.</summary>
+    /// <remarks>
+    /// A manager's forecast counts private deals, so saved forecasts are for managers to
+    /// save and to read; a salesperson would otherwise see a private deal's amount and
+    /// owner in the totals.
+    /// </remarks>
     [HttpPost("forecast-snapshot")]
+    [ManagersOnly("save the forecast")]
     public async Task<ActionResult<IReadOnlyList<ForecastSnapshotDto>>> SaveForecast(CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();
@@ -106,6 +113,7 @@ public class ReportingController : ControllerBase
     }
 
     [HttpGet("forecast-snapshot")]
+    [ManagersOnly("see saved forecasts")]
     public async Task<ActionResult<IReadOnlyList<ForecastSnapshotDto>>> ListForecast([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();

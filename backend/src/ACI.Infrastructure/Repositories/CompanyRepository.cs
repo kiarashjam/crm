@@ -134,7 +134,7 @@ public sealed class CompanyRepository : ICompanyRepository
             .ToDictionaryAsync(x => x.CompanyId, x => x.Count, ct);
 
         // Deal counts and values — Deal.Value is a string, so we fetch and parse in C#
-        var dealRows = await _db.Deals
+        var dealRows = await _db.Deals.VisibleTo(_db, userId, organizationId)
             .Where(d => d.CompanyId != null && companyIds.Contains(d.CompanyId.Value))
             .Select(d => new { d.CompanyId, d.Value })
             .ToListAsync(ct);

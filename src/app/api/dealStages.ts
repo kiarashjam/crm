@@ -1,5 +1,5 @@
 import type { DealStage } from './types';
-import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 
 type DealStageRaw = { id: string; pipelineId: string; name: string; displayOrder: number; isWon: boolean; isLost: boolean };
 
@@ -16,7 +16,7 @@ function mapStage(s: DealStageRaw): DealStage {
 
 /** Get deal stages for a pipeline (GET /api/dealstages?pipelineId=...). */
 export async function getDealStagesByPipeline(pipelineId: string): Promise<DealStage[]> {
-  if (!isUsingRealApi()) return [];
+  if (servesDemoData()) return [];
   const list = await authFetchJson<DealStageRaw[]>(`/api/dealstages?pipelineId=${encodeURIComponent(pipelineId)}`);
   return Array.isArray(list) ? list.map(mapStage) : [];
 }
@@ -29,7 +29,7 @@ export async function createDealStage(params: {
   isWon?: boolean;
   isLost?: boolean;
 }): Promise<DealStage | null> {
-  if (!isUsingRealApi()) return null;
+  if (servesDemoData()) return null;
   const s = await authFetchJson<DealStageRaw>('/api/dealstages', {
     method: 'POST',
     body: JSON.stringify({
@@ -48,7 +48,7 @@ export async function updateDealStage(
   id: string,
   params: { name?: string; displayOrder?: number; isWon?: boolean; isLost?: boolean }
 ): Promise<DealStage | null> {
-  if (!isUsingRealApi()) return null;
+  if (servesDemoData()) return null;
   const s = await authFetchJson<DealStageRaw>(`/api/dealstages/${id}`, {
     method: 'PUT',
     body: JSON.stringify(params),
@@ -58,7 +58,7 @@ export async function updateDealStage(
 
 /** Delete a deal stage (Owner/Manager only). */
 export async function deleteDealStage(id: string): Promise<boolean> {
-  if (!isUsingRealApi()) return false;
+  if (servesDemoData()) return false;
   const res = await authFetch(`/api/dealstages/${id}`, { method: 'DELETE' });
   return res.ok;
 }

@@ -11,6 +11,7 @@ vi.mock('@/app/api', async () => {
     createActivity: (...a: unknown[]) => api.createActivity(...a),
     generateCopy: (...a: unknown[]) => api.generateCopy(...a),
     isUsingRealApi: () => true,
+    servesDemoData: () => false,
     mailtoHref,
   };
 });

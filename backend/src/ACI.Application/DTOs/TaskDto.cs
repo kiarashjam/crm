@@ -23,5 +23,7 @@ public record TaskDto(
     string? Notes,
     DateTime CreatedAtUtc,
     DateTime? UpdatedAtUtc,
-    DateTime? CompletedAtUtc
+    DateTime? CompletedAtUtc,
+    // daily, weekly or monthly; null when the task doesn't repeat.
+    string? Recurrence = null
 );

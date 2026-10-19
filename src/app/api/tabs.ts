@@ -4,7 +4,7 @@
 // they go; closing the tab converts it to a Charge on the member's house
 // account and writes a loyalty ledger entry sized to the total.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk, isUsingRealApi } from './apiClient';
+import { apiWithFallback, authFetchJson, servesDemoData } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge, type ChargeKind } from './charges';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from './loyalty';
@@ -159,8 +159,10 @@ export interface AddItemInput {
   unitPrice: number;
 }
 
+// Adding, removing and closing go to the server, which owns the tab and its total.
+// Only the demo works on this browser's copy.
 export async function addItemToTab(input: AddItemInput): Promise<OpenTab | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     return authFetchJson<OpenTab>(`/api/tabs/${input.tabId}/items`, {
       method: 'POST',
       body: JSON.stringify({ name: input.name, quantity: input.quantity, unitPrice: input.unitPrice }),
@@ -176,34 +178,21 @@ export async function addItemToTab(input: AddItemInput): Promise<OpenTab | null>
     addedAtUtc: new Date().toISOString(),
   };
   const items = [...tab.items, newItem];
-  return apiWithFallback(
-    () =>
-      authFetchJson<OpenTab>(`/api/tabs/${input.tabId}/items`, {
-        method: 'POST',
-        body: JSON.stringify(newItem),
-      }),
-    async () => {
-      await delay(100);
-      return tabStore.update(input.tabId, { items, total: calculateTotal(items) });
-    },
-  );
+  await delay(100);
+  return tabStore.update(input.tabId, { items, total: calculateTotal(items) });
 }
 
 export async function removeItemFromTab(tabId: string, itemId: string): Promise<OpenTab | null> {
+  // The server's answer is the tab as it now stands. This used to look the tab up in
+  // the browser first, find nothing, and never send the request.
+  if (!servesDemoData()) {
+    return authFetchJson<OpenTab>(`/api/tabs/${tabId}/items/${itemId}`, { method: 'DELETE' });
+  }
   const tab = tabStore.byId(tabId);
   if (!tab || tab.status !== 'Open') return null;
   const items = tab.items.filter((i) => i.id !== itemId);
-  return apiWithFallback(
-    async () => {
-      const res = await authFetch(`/api/tabs/${tabId}/items/${itemId}`, { method: 'DELETE' });
-      await ensureOk(res);
-      return tabStore.byId(tabId) ?? null;
-    },
-    async () => {
-      await delay(100);
-      return tabStore.update(tabId, { items, total: calculateTotal(items) });
-    },
-  );
+  await delay(100);
+  return tabStore.update(tabId, { items, total: calculateTotal(items) });
 }
 
 /**
@@ -211,7 +200,8 @@ export async function removeItemFromTab(tabId: string, itemId: string): Promise<
  * house account and writes a loyalty entry sized by the total × multiplier.
  */
 export async function closeTab(tabId: string): Promise<OpenTab | null> {
-  if (isUsingRealApi()) {
+  // The server posts the charge and the points itself.
+  if (!servesDemoData()) {
     return authFetchJson<OpenTab>(`/api/tabs/${tabId}/close`, { method: 'POST' });
   }
   const tab = tabStore.byId(tabId);
@@ -238,17 +228,12 @@ export async function closeTab(tabId: string): Promise<OpenTab | null> {
       note: `${VENUE_LABELS[tab.venue]} tab — ${tab.items.length} items`,
     });
   }
-  return apiWithFallback(
-    () => authFetchJson<OpenTab>(`/api/tabs/${tabId}/close`, { method: 'POST' }),
-    async () => {
-      await delay(140);
-      return tabStore.update(tabId, {
-        status: 'Closed',
-        closedAtUtc: new Date().toISOString(),
-        pointsAwarded: points,
-      });
-    },
-  );
+  await delay(140);
+  return tabStore.update(tabId, {
+    status: 'Closed',
+    closedAtUtc: new Date().toISOString(),
+    pointsAwarded: points,
+  });
 }
 
 export async function voidTab(tabId: string): Promise<OpenTab | null> {

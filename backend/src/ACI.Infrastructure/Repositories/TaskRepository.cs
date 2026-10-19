@@ -190,6 +190,7 @@ public sealed class TaskRepository : ITaskRepository
         existing.ContactId = taskItem.ContactId;
         existing.AssigneeId = taskItem.AssigneeId;
         existing.Notes = taskItem.Notes;
+        existing.Recurrence = taskItem.Recurrence;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
         existing.CompletedAtUtc = taskItem.CompletedAtUtc;

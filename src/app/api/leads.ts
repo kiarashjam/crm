@@ -1,6 +1,6 @@
 import type { Lead, PagedResult, PaginationParams } from './types';
 import { mockLeads } from './mockData';
-import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { ensureDemoPersonContacts } from './contacts';
 import { QUALIFIED_OR_BEYOND, statusIn } from '@/app/pages/leads/leadStatusSync';
@@ -183,7 +183,7 @@ export async function getLeadsPaged(params: LeadListParams = {}): Promise<PagedR
     sortDir = 'desc',
   } = params;
 
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const queryParams = new URLSearchParams({
       page: String(page),
       pageSize: String(pageSize),
@@ -228,7 +228,7 @@ export async function getLeadsPaged(params: LeadListParams = {}): Promise<PagedR
 
 /** Aggregate lead statistics for the current organization. */
 export async function getLeadStats(): Promise<LeadStats> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const s = await authFetchJson<{
       total: number;
       converted: number;
@@ -282,7 +282,7 @@ export async function getLeadStats(): Promise<LeadStats> {
 
 /** Get a single lead by id. */
 export async function getLeadById(id: string): Promise<Lead | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const lead = await authFetchJson<LeadRaw>(`/api/leads/${id}`);
     return lead ? mapLead(lead) : null;
   }
@@ -292,7 +292,7 @@ export async function getLeadById(id: string): Promise<Lead | null> {
 
 /** Get all leads (real API or mock) - non-paginated for export and legacy callers. */
 export async function getLeads(): Promise<Lead[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<LeadRaw[]>('/api/leads/all');
     return Array.isArray(list) ? list.map(mapLead) : [];
   }
@@ -303,7 +303,7 @@ export async function getLeads(): Promise<Lead[]> {
 
 /** Search leads by name or email (non-paginated, for backward compatibility). */
 export async function searchLeads(query: string): Promise<Lead[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const q = query?.trim() ? encodeURIComponent(query.trim()) : '';
     const list = await authFetchJson<LeadRaw[]>(`/api/leads/search?q=${q}`);
     return Array.isArray(list) ? list.map(mapLead) : [];
@@ -332,7 +332,7 @@ export async function createLead(params: {
   /** Create it even though an open lead already has this email. */
   allowDuplicate?: boolean;
 }): Promise<Lead | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const lead = await authFetchJson<LeadRaw>('/api/leads', {
       method: 'POST',
       body: JSON.stringify(params),
@@ -382,7 +382,7 @@ export async function updateLead(
     pipelineState: string;
   }>,
 ): Promise<Lead | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const lead = await authFetchJson<LeadRaw>(`/api/leads/${id}`, {
       method: 'PUT',
       body: JSON.stringify(params),
@@ -401,7 +401,7 @@ export async function updateLead(
  * to the local mock store in demo mode (no backend configured).
  */
 export async function assignLead(id: string, assignedToUserId: string | null): Promise<Lead | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const lead = await authFetchJson<LeadRaw>(`/api/leads/${id}/assign`, {
       method: 'PUT',
       body: JSON.stringify({ assignedToUserId }),
@@ -414,7 +414,7 @@ export async function assignLead(id: string, assignedToUserId: string | null): P
 
 /** Delete a lead. */
 export async function deleteLead(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/leads/${id}`, { method: 'DELETE' });
     return res.status === 204;
   }
@@ -445,7 +445,7 @@ export interface ConvertLeadResult {
 }
 
 export async function convertLead(leadId: string, request: ConvertLeadRequest): Promise<ConvertLeadResult | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const result = await authFetchJson<{
       companyId?: string | null;
       contactId?: string | null;

@@ -4,7 +4,7 @@
 // Merge uses a dedicated backend endpoint when available; in demo mode it
 // fills empty fields on the primary from the duplicates, then deletes them.
 
-import { authFetch, isUsingRealApi } from './apiClient';
+import { authFetch, servesDemoData } from './apiClient';
 import { getContacts, updateContact, deleteContact } from './contacts';
 import { getCompanies, updateCompany, deleteCompany } from './companies';
 import type { Contact, Company } from './types';
@@ -90,7 +90,7 @@ export async function findDuplicateCompanies(): Promise<DuplicateGroup<Company>[
 }
 
 export async function mergeContacts(primaryId: string, duplicateIds: string[]): Promise<boolean> {
-  if (!isUsingRealApi()) return mergeContactsLocal(primaryId, duplicateIds);
+  if (servesDemoData()) return mergeContactsLocal(primaryId, duplicateIds);
   for (const otherId of duplicateIds) {
     const res = await authFetch(`/api/contacts/${primaryId}/merge`, {
       method: 'POST',
@@ -119,7 +119,7 @@ async function mergeContactsLocal(primaryId: string, duplicateIds: string[]): Pr
 }
 
 export async function mergeCompanies(primaryId: string, duplicateIds: string[]): Promise<boolean> {
-  if (!isUsingRealApi()) return mergeCompaniesLocal(primaryId, duplicateIds);
+  if (servesDemoData()) return mergeCompaniesLocal(primaryId, duplicateIds);
   for (const otherId of duplicateIds) {
     const res = await authFetch(`/api/companies/${primaryId}/merge`, {
       method: 'POST',

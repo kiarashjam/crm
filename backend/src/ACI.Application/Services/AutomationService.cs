@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ACI.Application.Common;
 using ACI.Application.DTOs;
+using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 
 namespace ACI.Application.Services;
@@ -52,9 +53,19 @@ public sealed class AutomationService : IAutomationService
         "create_task", "send_email", "notify", "assign", "add_to_sequence",
     };
 
-    private readonly IAutomationRepository _rules;
+    private const int MaxName = 200;
+    private const int MaxActions = 20;
 
-    public AutomationService(IAutomationRepository rules) => _rules = rules;
+    private readonly IAutomationRepository _rules;
+    private readonly IOrganizationRepository? _organizations;
+    private readonly ISequenceRepository? _sequences;
+
+    public AutomationService(IAutomationRepository rules, IOrganizationRepository? organizations = null, ISequenceRepository? sequences = null)
+    {
+        _rules = rules;
+        _organizations = organizations;
+        _sequences = sequences;
+    }
 
     public async Task<IReadOnlyList<AutomationRuleDto>> ListAsync(Guid? organizationId, CancellationToken ct = default)
     {
@@ -66,10 +77,12 @@ public sealed class AutomationService : IAutomationService
     {
         var name = (request.Name ?? "").Trim();
         if (name.Length == 0) return new Error("Automation.NameRequired", "A rule needs a name.");
+        if (name.Length > MaxName) return NameTooLong;
         var trigger = (request.Trigger ?? "").Trim();
         if (!Triggers.Contains(trigger)) return new Error("Automation.TriggerInvalid", "That trigger is not supported.");
         var actions = Normalize(request.Actions);
         if (actions.Count == 0) return new Error("Automation.ActionRequired", "A rule needs at least one action.");
+        if (await CheckActionsAsync(actions, organizationId, ct) is { } invalid) return invalid;
 
         var row = new AutomationRule
         {
@@ -91,7 +104,11 @@ public sealed class AutomationService : IAutomationService
     {
         var row = await _rules.GetAsync(id, organizationId, ct);
         if (row == null) return new Error("Automation.NotFound", "That rule was not found.");
-        if (!string.IsNullOrWhiteSpace(request.Name)) row.Name = request.Name.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Name))
+        {
+            if (request.Name.Trim().Length > MaxName) return NameTooLong;
+            row.Name = request.Name.Trim();
+        }
         if (request.Enabled.HasValue) row.Enabled = request.Enabled.Value;
         if (!string.IsNullOrWhiteSpace(request.Trigger))
         {
@@ -103,6 +120,7 @@ public sealed class AutomationService : IAutomationService
         {
             var actions = Normalize(request.Actions);
             if (actions.Count == 0) return new Error("Automation.ActionRequired", "A rule needs at least one action.");
+            if (await CheckActionsAsync(actions, organizationId, ct) is { } invalid) return invalid;
             row.ActionsJson = JsonSerializer.Serialize(actions, Json);
         }
         await _rules.SaveAsync(row, ct);
@@ -113,6 +131,40 @@ public sealed class AutomationService : IAutomationService
     {
         var deleted = await _rules.DeleteAsync(id, organizationId, ct);
         return deleted ? Result.Success() : new Error("Automation.NotFound", "That rule was not found.");
+    }
+
+    private static readonly Error NameTooLong = new("Automation.NameTooLong", $"A rule name can be at most {MaxName} characters.");
+
+    /// <summary>
+    /// What an action points at has to be in this workspace: a rule that assigns leads to
+    /// someone outside it, or enrolls them in another workspace's sequence, is refused
+    /// when it is saved rather than failing quietly every time it runs.
+    /// </summary>
+    private async Task<Error?> CheckActionsAsync(List<AutomationActionDto> actions, Guid? organizationId, CancellationToken ct)
+    {
+        if (actions.Count > MaxActions) return new Error("Automation.TooManyActions", $"A rule can have at most {MaxActions} actions.");
+        foreach (var action in actions)
+        {
+            var config = action.Config;
+            switch (action.Type)
+            {
+                case "assign" when _organizations != null && organizationId is Guid org:
+                    if (!Guid.TryParse(config.GetValueOrDefault("userId"), out var userId)
+                        || await _organizations.GetMemberRoleAsync(userId, org, ct) == null)
+                        return new Error("Automation.AssigneeInvalid", "Assign to someone in this workspace.");
+                    break;
+                case "add_to_sequence" when _sequences != null:
+                    if (!Guid.TryParse(config.GetValueOrDefault("sequenceId"), out var sequenceId)
+                        || await _sequences.GetAsync(sequenceId, organizationId, ct) == null)
+                        return new Error("Automation.SequenceInvalid", "Pick a sequence from this workspace.");
+                    break;
+                case "send_email":
+                    if (string.IsNullOrWhiteSpace(config.GetValueOrDefault("subject")) || string.IsNullOrWhiteSpace(config.GetValueOrDefault("body")))
+                        return new Error("Automation.EmailIncomplete", "An email action needs a subject and a body.");
+                    break;
+            }
+        }
+        return null;
     }
 
     private static List<AutomationActionDto> Normalize(List<AutomationActionWrite>? actions)

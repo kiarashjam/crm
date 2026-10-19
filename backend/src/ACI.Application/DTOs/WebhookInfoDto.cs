@@ -6,5 +6,8 @@ public record WebhookInfoDto(
     DateTime? ApiKeyCreatedAt,
     bool HasApiKey,
     bool UsesDefaultWebhookPassword,
-    string PasswordWebhookUrl
+    string PasswordWebhookUrl,
+    // Where Cadence posts lead and deal events. The secret itself is never sent back.
+    string? OutboundWebhookUrl = null,
+    bool HasOutboundWebhookSecret = false
 );

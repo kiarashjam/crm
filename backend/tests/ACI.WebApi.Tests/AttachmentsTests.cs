@@ -164,8 +164,8 @@ public class AttachmentsTests
 
         (await other.PostAsync("/api/attachments", Form("lead", lead, "b.txt", "text/plain", "B"u8.ToArray())))
             .StatusCode.Should().Be(HttpStatusCode.NotFound, "A's lead is not in B's workspace");
-        (await ReadJson(await other.GetAsync($"/api/attachments?entityType=lead&recordId={lead}"), "list"))
-            .GetArrayLength().Should().Be(0);
+        (await other.GetAsync($"/api/attachments?entityType=lead&recordId={lead}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound, "nor can B list its files");
         (await other.DeleteAsync($"/api/attachments/{file.GetProperty("id").GetGuid()}"))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

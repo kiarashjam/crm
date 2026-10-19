@@ -21,10 +21,10 @@ public sealed class DealLineItemRepository : IDealLineItemRepository
             .ToListAsync(ct);
 
     // Through the deal, by the same rule as the deal repository, so a line item is
-    // exactly as reachable as the deal it belongs to.
+    // exactly as reachable as the deal it belongs to — private deals included.
     public Task<DealLineItem?> FindAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        _db.DealLineItems.FirstOrDefaultAsync(i => i.Id == id && _db.Deals.Any(d => d.Id == i.DealId
-            && (organizationId == null ? d.OrganizationId == null && d.UserId == userId : d.OrganizationId == organizationId)), ct);
+        _db.DealLineItems.FirstOrDefaultAsync(i => i.Id == id
+            && _db.Deals.VisibleTo(_db, userId, organizationId).Any(d => d.Id == i.DealId), ct);
 
     public async Task AddAsync(DealLineItem item, CancellationToken ct = default)
     {

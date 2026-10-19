@@ -34,7 +34,7 @@ import {
   listPendingJoinRequestsForOrg, rejectJoinRequest,
   type InviteDto, type JoinRequestDto, type Organization,
 } from '@/app/api/organizations';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
@@ -165,7 +165,7 @@ export default function Organizations() {
    * sequentially, and every failure fell into an empty `catch {}` — so a broken
    * endpoint rendered as "0 members" with no hint anything had gone wrong. */
   useEffect(() => {
-    if (!isUsingRealApi() || !hasFetched) return;
+    if (servesDemoData() || !hasFetched) return;
     let alive = true;
     const ids = organizations.map((o) => o.id);
     const owned = organizations.filter((o) => o.isOwner).map((o) => o.id);

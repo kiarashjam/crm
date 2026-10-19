@@ -4,7 +4,7 @@
 // approves (promoting them into a real Member record) or rejects. Approval is
 // the canonical "join" path — it's where committee workflow lives.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk, isUsingRealApi } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createMember, type MemberTier } from './members';
 
@@ -193,32 +193,11 @@ export async function approveApplication(
   id: string,
   reviewerNotes?: string,
 ): Promise<Application | null> {
-  if (isUsingRealApi()) {
-    const application = (await getApplications()).find((row) => row.id === id);
-    if (!application) return null;
-    const monthlyByTier: Record<MemberTier, number> = { Bronze: 49, Silver: 129, Gold: 299, Platinum: 599 };
-    const yearFromNow = new Date(Date.now() + 365 * day).toISOString();
-    await createMember({
-      firstName: application.firstName,
-      lastName: application.lastName,
-      email: application.email,
-      phone: application.phone,
-      tier: application.requestedTier,
-      status: 'Pending',
-      duesAmount: monthlyByTier[application.requestedTier],
-      duesFrequency: 'Monthly',
-      joinedAtUtc: new Date().toISOString(),
-      renewsAtUtc: yearFromNow,
-      notes: application.reasonForJoining,
-    });
-    return updateApplication(id, {
-      status: 'Approved',
-      reviewedAtUtc: new Date().toISOString(),
-      reviewerNotes: reviewerNotes ?? application.reviewerNotes,
-    });
-  }
-  const application = applicationStore.byId(id);
+  // Read through the API, not the browser store: on the server the store is empty.
+  const application = (await getApplications()).find((row) => row.id === id);
   if (!application) return null;
+  // Approving twice (a retry after a failed update) must not add the member twice.
+  if (application.status === 'Approved') return application;
   const monthlyByTier: Record<MemberTier, number> = {
     Bronze: 49,
     Silver: 129,
@@ -239,7 +218,7 @@ export async function approveApplication(
     renewsAtUtc: yearFromNow,
     notes: application.reasonForJoining,
   });
-  return applicationStore.update(id, {
+  return updateApplication(id, {
     status: 'Approved',
     reviewedAtUtc: new Date().toISOString(),
     reviewerNotes: reviewerNotes ?? application.reviewerNotes,

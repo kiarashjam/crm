@@ -7,6 +7,7 @@ vi.mock('./apiClient', async () => {
   return {
     ...actual,
     isUsingRealApi: () => client.live,
+    servesDemoData: () => !client.live,
     authFetchJson: (...a: unknown[]) => client.json(...a),
     authFetch: (...a: unknown[]) => client.fetch(...a),
   };

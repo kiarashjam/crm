@@ -88,23 +88,32 @@ public sealed class ComposedEmailService : IComposedEmailService
 
         var id = Guid.NewGuid();
         var sentAt = DateTime.UtcNow;
+        // The mail has already gone. A failure to keep a copy is logged, not reported:
+        // an error here read as "not sent", and sending again mailed everyone twice.
         if (_messages != null)
         {
-            await _messages.AddAsync(new SentMessage
+            try
             {
-                Id = id,
-                OrganizationId = organizationId,
-                SentByUserId = sentByUserId,
-                To = string.Join(", ", to),
-                Cc = cc.Count == 0 ? null : string.Join(", ", cc),
-                Bcc = bcc.Count == 0 ? null : string.Join(", ", bcc),
-                Subject = subject,
-                Body = body,
-                LeadId = request.LeadId,
-                ContactId = request.ContactId,
-                DealId = request.DealId,
-                SentAtUtc = sentAt,
-            }, ct);
+                await _messages.AddAsync(new SentMessage
+                {
+                    Id = id,
+                    OrganizationId = organizationId,
+                    SentByUserId = sentByUserId,
+                    To = string.Join(", ", to),
+                    Cc = cc.Count == 0 ? null : string.Join(", ", cc),
+                    Bcc = bcc.Count == 0 ? null : string.Join(", ", bcc),
+                    Subject = subject,
+                    Body = body,
+                    LeadId = request.LeadId,
+                    ContactId = request.ContactId,
+                    DealId = request.DealId,
+                    SentAtUtc = sentAt,
+                }, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "A composed email was sent, but its copy could not be saved");
+            }
         }
 
         _logger.LogInformation("Sent a composed email to {Count} recipient(s)", to.Count + cc.Count + bcc.Count);

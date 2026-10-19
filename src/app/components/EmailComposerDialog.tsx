@@ -8,7 +8,7 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Label } from '@/app/components/ui/label';
-import { sendEmail, createActivity, generateCopy, isUsingRealApi, mailtoHref } from '@/app/api';
+import { sendEmail, createActivity, generateCopy, servesDemoData, mailtoHref } from '@/app/api';
 
 export interface EmailComposerContext {
   leadId?: string;
@@ -107,7 +107,7 @@ export default function EmailComposerDialog({
         contactId: context?.contactId,
         dealId: context?.dealId,
       }).catch(() => { /* non-fatal */ });
-      toast.success(isUsingRealApi() ? 'Email sent' : 'Email sent (simulated in demo mode)');
+      toast.success(!servesDemoData() ? 'Email sent' : 'Email sent (simulated in demo mode)');
       onOpenChange(false);
       onSent?.();
     } catch (err) {
@@ -146,7 +146,7 @@ export default function EmailComposerDialog({
             <Mail className="h-5 w-5 text-indigo-600" /> Compose email
           </DialogTitle>
           <DialogDescription>
-            {isUsingRealApi()
+            {!servesDemoData()
               ? 'Sends from your workspace\'s email address and logs it on the timeline.'
               : 'Demo mode — sending is simulated, but it still logs to the timeline.'}
           </DialogDescription>

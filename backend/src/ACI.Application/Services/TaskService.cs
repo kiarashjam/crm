@@ -619,7 +619,8 @@ public class TaskService : ITaskService
             Notes: e.Notes,
             CreatedAtUtc: e.CreatedAtUtc,
             UpdatedAtUtc: e.UpdatedAtUtc,
-            CompletedAtUtc: e.CompletedAtUtc
+            CompletedAtUtc: e.CompletedAtUtc,
+            Recurrence: e.Recurrence
         );
 
     private static string StatusToString(Domain.Enums.TaskStatus status) => status switch
@@ -752,6 +753,9 @@ public class TaskService : ITaskService
     {
         var recurrence = NormalizeRecurrence(completed.Recurrence);
         if (recurrence == null || completed.DueDateUtc == null) return;
+        // The series carries on in the next task. Left on this one, reopening it and
+        // completing it again opened a second copy of the next.
+        completed.Recurrence = null;
         var nextDue = recurrence switch
         {
             "daily" => completed.DueDateUtc.Value.AddDays(1),

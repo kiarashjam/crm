@@ -46,6 +46,8 @@ public sealed class AutomationEngine : IAutomationEngine
     private readonly IDealRepository _deals;
     private readonly IEmailSender _email;
     private readonly ISequenceService _sequences;
+    private readonly ISequenceRepository _targets;
+    private readonly IOrganizationRepository _organizations;
     private readonly ILogger<AutomationEngine> _logger;
 
     public AutomationEngine(
@@ -56,6 +58,8 @@ public sealed class AutomationEngine : IAutomationEngine
         IDealRepository deals,
         IEmailSender email,
         ISequenceService sequences,
+        ISequenceRepository targets,
+        IOrganizationRepository organizations,
         ILogger<AutomationEngine> logger)
     {
         _rules = rules;
@@ -65,11 +69,16 @@ public sealed class AutomationEngine : IAutomationEngine
         _deals = deals;
         _email = email;
         _sequences = sequences;
+        _targets = targets;
+        _organizations = organizations;
         _logger = logger;
     }
 
     public async Task DispatchAsync(string trigger, AutomationEvent evt, CancellationToken ct = default)
     {
+        // Rules belong to an organization. A personal workspace has none of its own, and
+        // the rows left with no organization are not any one person's to run.
+        if (evt.OrganizationId == null) return;
         IReadOnlyList<AutomationRule> rules;
         try
         {
@@ -152,13 +161,14 @@ public sealed class AutomationEngine : IAutomationEngine
     private async Task AssignAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
         if (!Guid.TryParse(Value(config, "userId"), out var userId)) return;
+        // Checked when the rule runs, not only when it was saved: the person may have left since.
+        if (evt.OrganizationId is not Guid organizationId
+            || await _organizations.GetMemberRoleAsync(userId, organizationId, ct) == null) return;
         if (evt.LeadId is Guid leadId)
         {
-            var lead = await _leads.GetByIdAsync(leadId, evt.ActorUserId, evt.OrganizationId, ct);
-            if (lead == null) return;
-            lead.AssignedToUserId = userId;
-            lead.UpdatedAtUtc = DateTime.UtcNow;
-            await _leads.UpdateAsync(lead, evt.ActorUserId, evt.OrganizationId, ct);
+            // AssignAsync, not UpdateAsync: the general update does not copy the assignee,
+            // so this action used to save the lead unchanged.
+            await _leads.AssignAsync(leadId, evt.ActorUserId, evt.OrganizationId, userId, ct);
         }
         else if (evt.DealId is Guid dealId)
         {
@@ -172,12 +182,17 @@ public sealed class AutomationEngine : IAutomationEngine
 
     private async Task SendAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(evt.Email)) return;
+        if (evt.LeadId is not Guid leadId) return;
         var subject = Value(config, "subject");
         var body = Value(config, "body");
         if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body)) return;
-        body = body.Replace("{{firstName}}", FirstName(evt.RecordName), StringComparison.OrdinalIgnoreCase);
-        await _email.SendMessageAsync(evt.Email, evt.RecordName ?? "", subject, body, ct);
+        // The lead as it is now, read the way sequences read their targets: one that is
+        // gone gets nothing, and the address is the record's own, so the same do-not-contact
+        // rules apply here as there.
+        var target = await _targets.TargetStateAsync("lead", leadId, evt.OrganizationId, ct);
+        if (!target.Exists || target.DoNotContact || string.IsNullOrWhiteSpace(target.Email)) return;
+        body = body.Replace("{{firstName}}", FirstName(target.Name ?? evt.RecordName), StringComparison.OrdinalIgnoreCase);
+        await _email.SendMessageAsync(target.Email, target.Name ?? evt.RecordName ?? "", subject, body, ct);
     }
 
     private async Task EnrollAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)

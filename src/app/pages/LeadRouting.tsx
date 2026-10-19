@@ -6,7 +6,7 @@ import AppHeader from '@/app/components/AppHeader';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 import { getOrgMembers, isOrgAdmin, type OrgMemberDto } from '@/app/api/organizations';
 import {
   type AssignmentRule,
@@ -86,7 +86,7 @@ function errorText(err: unknown, fallback: string): string {
 export default function LeadRouting() {
   const navigate = useNavigate();
   const org = useOrgOptional();
-  const live = isUsingRealApi();
+  const live = !servesDemoData();
   // Writes need an owner or a manager; the server refuses anyone else.
   const canManage = isOrgAdmin(org?.currentOrg);
   const orgId = org?.currentOrgId ?? null;

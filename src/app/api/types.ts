@@ -143,6 +143,8 @@ export interface Deal {
   closedReason?: string;
   closedReasonCategory?: string;
   closedAtUtc?: string;
+  /** Seen only by its creator, its owner and managers. */
+  isPrivate?: boolean;
 }
 
 export type TaskStatusType = 'todo' | 'in_progress' | 'completed' | 'cancelled';
@@ -169,7 +171,11 @@ export interface TaskItem {
   createdAtUtc?: string;
   updatedAtUtc?: string;
   completedAtUtc?: string;
+  /** Completing a repeating task opens the next one, this far after its due date. */
+  recurrence?: TaskRecurrence;
 }
+
+export type TaskRecurrence = 'daily' | 'weekly' | 'monthly';
 
 export interface TaskStats {
   total: number;

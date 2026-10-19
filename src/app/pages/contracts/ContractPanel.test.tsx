@@ -28,7 +28,7 @@ const api = {
 
 vi.mock('@/app/api/apiClient', async () => {
   const actual = await vi.importActual<typeof import('@/app/api/apiClient')>('@/app/api/apiClient');
-  return { ...actual, isUsingRealApi: () => true };
+  return { ...actual, isUsingRealApi: () => true, servesDemoData: () => false };
 });
 
 vi.mock('@/app/api/contracts', async () => {

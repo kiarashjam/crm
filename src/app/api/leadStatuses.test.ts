@@ -13,6 +13,7 @@ const api = { response: null as unknown };
 
 vi.mock('./apiClient', () => ({
   isUsingRealApi: () => true,
+  servesDemoData: () => false,
   authFetchJson: () => Promise.resolve(api.response),
 }));
 

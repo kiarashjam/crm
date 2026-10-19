@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, CheckSquare, Briefcase, AtSign, Sparkles, UserPlus } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/app/components/ui/popover';
 import { cn } from '@/app/components/ui/utils';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 import {
   getNotifications,
   getUnreadNotificationCount,
@@ -65,7 +65,7 @@ export default function NotificationBell() {
       // reminders itself when listing notifications, so against a real API this
       // would just fetch every task on each mount to write into a store nothing
       // reads.
-      if (!synced.current && !isUsingRealApi()) {
+      if (!synced.current && servesDemoData()) {
         synced.current = true;
         try {
           syncTaskReminders(await getTasks());

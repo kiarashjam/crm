@@ -225,7 +225,11 @@ try
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ContractReminderBackgroundService>();
-    builder.Services.AddHttpClient(nameof(ACI.Infrastructure.Services.OutboundWebhookPublisher));
+    // Posted while a lead or deal is saved, so a slow receiver may hold that save up
+    // for this long at most, and the handler dials public addresses only.
+    builder.Services.AddHttpClient(nameof(ACI.Infrastructure.Services.OutboundWebhookPublisher),
+            client => client.Timeout = TimeSpan.FromSeconds(5))
+        .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.OutboundWebhookPublisher.PublicOnlyHandler);
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
 
     // HTTP Context accessor for current user service
@@ -838,7 +842,6 @@ try
                 IF COL_LENGTH('Deals', 'IsPrivate') IS NULL ALTER TABLE [Deals] ADD [IsPrivate] bit NOT NULL CONSTRAINT DF_Deals_IsPrivate DEFAULT 0;
                 IF COL_LENGTH('Deals', 'TeamId') IS NULL ALTER TABLE [Deals] ADD [TeamId] uniqueidentifier NULL;
                 IF COL_LENGTH('TaskItems', 'Recurrence') IS NULL ALTER TABLE [TaskItems] ADD [Recurrence] nvarchar(16) NULL;
-                IF COL_LENGTH('Contracts', 'ReminderSentAtUtc') IS NULL ALTER TABLE [Contracts] ADD [ReminderSentAtUtc] datetime2 NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookUrl') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookUrl] nvarchar(500) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookSecret') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookSecret] nvarchar(200) NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SalesTeams')
@@ -1132,6 +1135,11 @@ try
                         ON [Contracts] ([SigningTokenHash])
                         WHERE [SigningTokenHash] IS NOT NULL;
                 END;
+                -- Added after the table first shipped. It lives here, after the CREATE, because
+                -- on a new database the block above runs first; altering Contracts any earlier
+                -- failed there and, sharing one catch, stopped the rest of the schema work.
+                IF COL_LENGTH('Contracts', 'ReminderSentAtUtc') IS NULL
+                    ALTER TABLE [Contracts] ADD [ReminderSentAtUtc] datetime2 NULL;
 
                 -- The model declares these non-nullable and the service always writes
                 -- at least "", but the original DDL allowed NULL — so EF would

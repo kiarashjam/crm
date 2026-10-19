@@ -43,7 +43,7 @@ import {
   type JoinRequestDto,
   type OrgMemberDto,
 } from '@/app/api/organizations';
-import { isUsingRealApi } from '@/app/api/apiClient';
+import { servesDemoData } from '@/app/api/apiClient';
 import { getCurrentUser } from '@/app/lib/auth';
 import {
   getPipelines,
@@ -202,7 +202,7 @@ export default function Settings() {
 
   // Load org data
   useEffect(() => {
-    if (!isUsingRealApi() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
+    if (servesDemoData() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
     listPendingInvitesForOrg(currentOrg.id).then(setOwnerInvites).catch(() => setOwnerInvites([]));
     listPendingJoinRequestsForOrg(currentOrg.id).then(setOwnerJoinRequests).catch(() => setOwnerJoinRequests([]));
     getOrgMembers(currentOrg.id).then(setOrgMembers).catch(() => setOrgMembers([]));
@@ -211,7 +211,7 @@ export default function Settings() {
 
   // Load pipelines
   useEffect(() => {
-    if (!isUsingRealApi() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
+    if (servesDemoData() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
     getPipelines().then(setPipelines).catch(() => setPipelines([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- isOrgAdmin only reads isOwner and role
   }, [currentOrg?.id, currentOrg?.isOwner, currentOrg?.role]);

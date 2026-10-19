@@ -48,7 +48,7 @@ import {
   createActivity,
 } from '@/app/api';
 import { bulkUpdateTasks } from '@/app/api/tasks';
-import type { TaskItem, Lead, Deal, Contact, TaskStatusType, TaskPriorityType, TaskStats } from '@/app/api/types';
+import type { TaskItem, Lead, Deal, Contact, TaskStatusType, TaskPriorityType, TaskRecurrence, TaskStats } from '@/app/api/types';
 import { getCurrentOrganizationId } from '@/app/lib/auth';
 import { 
   statusConfig, 
@@ -111,6 +111,7 @@ export default function Tasks() {
     contactId: '',
     assigneeId: '',
     notes: '',
+    recurrence: '' as TaskRecurrence | '',
   });
   const [leads, setLeads] = useState<Lead[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -319,6 +320,7 @@ export default function Tasks() {
       contactId: '',
       assigneeId: '',
       notes: '',
+      recurrence: '',
     });
     setDialogOpen(true);
   };
@@ -337,6 +339,7 @@ export default function Tasks() {
       contactId: task.contactId ?? '',
       assigneeId: task.assigneeId ?? '',
       notes: task.notes ?? '',
+      recurrence: task.recurrence ?? '',
     });
     setDialogOpen(true);
   };
@@ -345,6 +348,11 @@ export default function Tasks() {
     e.preventDefault();
     if (!form.title.trim()) {
       toast.error(messages.validation.titleRequired);
+      return;
+    }
+    // The next one is due a day, week or month after this one, so this one needs a date.
+    if (form.recurrence && !form.dueDate) {
+      toast.error('A repeating task needs a due date');
       return;
     }
     setSaving(true);
@@ -365,6 +373,7 @@ export default function Tasks() {
           contactId: form.contactId || undefined,
           assigneeId: form.assigneeId || undefined,
           notes: form.notes.trim() || undefined,
+          recurrence: form.recurrence || (editingTask.recurrence ? 'none' : undefined),
           clearDueDate: !form.dueDate && !!editingTask.dueDateUtc,
           clearReminderDate: !form.reminderDate && !!editingTask.reminderDateUtc,
           clearAssignee: !form.assigneeId && !!editingTask.assigneeId,
@@ -405,6 +414,7 @@ export default function Tasks() {
           contactId: form.contactId || undefined,
           assigneeId: form.assigneeId || undefined,
           notes: form.notes.trim() || undefined,
+          recurrence: form.recurrence || undefined,
         });
         if (created) {
           setTasks((prev) => [created, ...prev]);
@@ -1337,6 +1347,24 @@ export default function Tasks() {
                       className="mt-1.5 h-10 rounded-lg border-slate-200 bg-white"
                     />
                   </div>
+                </div>
+                <div className="mt-4">
+                  <Label htmlFor="task-repeat" className="text-sm font-medium text-slate-600">Repeats</Label>
+                  <Select
+                    value={form.recurrence || 'none'}
+                    onValueChange={(v) => setForm((f) => ({ ...f, recurrence: v === 'none' ? '' : (v as TaskRecurrence) }))}
+                  >
+                    <SelectTrigger id="task-repeat" className="mt-1.5 h-10 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Does not repeat</SelectItem>
+                      <SelectItem value="daily">Every day</SelectItem>
+                      <SelectItem value="weekly">Every week</SelectItem>
+                      <SelectItem value="monthly">Every month</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.recurrence && (
+                    <p className="mt-1.5 text-xs text-slate-500">Completing it opens the next one, due a {form.recurrence === 'daily' ? 'day' : form.recurrence === 'weekly' ? 'week' : 'month'} after this one.</p>
+                  )}
                 </div>
               </div>
 

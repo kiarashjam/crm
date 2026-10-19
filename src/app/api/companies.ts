@@ -1,5 +1,5 @@
 import type { Company, PagedResult, PaginationParams } from './types';
-import { isUsingRealApi, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { mockCompanies } from './mockData';
 
 function delay(ms: number): Promise<void> {
@@ -49,7 +49,7 @@ export async function getCompaniesPaged(
 ): Promise<PagedResult<Company>> {
   const { page = 1, pageSize = 20, search } = params;
   
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const queryParams = new URLSearchParams({
       page: String(page),
       pageSize: String(pageSize),
@@ -103,7 +103,7 @@ export async function getCompaniesPaged(
 
 /** Get all companies (real API or mock) - non-paginated for backward compatibility. */
 export async function getCompanies(): Promise<Company[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const list = await authFetchJson<CompanyRaw[]>('/api/companies/all');
     return Array.isArray(list) ? list.map(mapCompany) : [];
   }
@@ -113,7 +113,7 @@ export async function getCompanies(): Promise<Company[]> {
 
 /** Create a company. */
 export async function createCompany(params: { name: string; domain?: string; industry?: string; size?: string; description?: string; website?: string; location?: string }): Promise<Company | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const company = await authFetchJson<CompanyRaw>('/api/companies', {
       method: 'POST',
       body: JSON.stringify(params),
@@ -126,7 +126,7 @@ export async function createCompany(params: { name: string; domain?: string; ind
 
 /** Update a company. */
 export async function updateCompany(id: string, params: { name?: string; domain?: string; industry?: string; size?: string; description?: string; website?: string; location?: string }): Promise<Company | null> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const company = await authFetchJson<CompanyRaw>(`/api/companies/${id}`, {
       method: 'PUT',
       body: JSON.stringify(params),
@@ -147,7 +147,7 @@ export interface CompanyStatsItem {
 
 /** Fetch per-company stats (contact count, deal count, deal value). */
 export async function getCompanyStats(): Promise<CompanyStatsItem[]> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const result = await authFetchJson<CompanyStatsItem[]>('/api/companies/stats');
     return Array.isArray(result) ? result : [];
   }
@@ -158,7 +158,7 @@ export async function getCompanyStats(): Promise<CompanyStatsItem[]> {
 
 /** Delete a company. */
 export async function deleteCompany(id: string): Promise<boolean> {
-  if (isUsingRealApi()) {
+  if (!servesDemoData()) {
     const res = await authFetch(`/api/companies/${id}`, { method: 'DELETE' });
     return res.status === 204;
   }

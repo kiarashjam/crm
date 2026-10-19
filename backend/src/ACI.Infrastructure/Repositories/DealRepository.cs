@@ -12,21 +12,8 @@ public sealed class DealRepository : IDealRepository
 
     public DealRepository(AppDbContext db) => _db = db;
 
-    private IQueryable<Deal> FilterByUserAndOrg(IQueryable<Deal> q, Guid userId, Guid? organizationId)
-    {
-        var scoped = organizationId == null
-            ? q.Where(d => d.UserId == userId && d.OrganizationId == null)
-            : q.Where(d => d.OrganizationId == organizationId);
-        if (organizationId == null) return scoped;
-        return scoped.Where(d =>
-            !d.IsPrivate
-            || d.UserId == userId
-            || d.AssigneeId == userId
-            || _db.OrganizationMembers.Any(m =>
-                m.OrganizationId == organizationId
-                && m.UserId == userId
-                && (m.Role == OrgMemberRole.Owner || m.Role == OrgMemberRole.Manager)));
-    }
+    private IQueryable<Deal> FilterByUserAndOrg(IQueryable<Deal> q, Guid userId, Guid? organizationId) =>
+        q.VisibleTo(_db, userId, organizationId);
 
     private static IQueryable<Deal> IncludeRelated(IQueryable<Deal> q) =>
         q.Include(d => d.Assignee)
