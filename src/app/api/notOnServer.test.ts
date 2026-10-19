@@ -56,19 +56,17 @@ describe('features the backend does not serve', () => {
 describe('authFetch', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('answers a frontend-only feature itself, without a request', async () => {
+  it('sends requests for features the server now serves', async () => {
     vi.stubEnv('VITE_API_URL', 'https://api.example.test');
-    const fetch = vi.fn();
+    const fetch = vi.fn().mockResolvedValue(new Response('[]', { status: 200 }));
     vi.stubGlobal('fetch', fetch);
     const { authFetch } = await import('./apiClient');
 
-    const res = await authFetch('/api/automations');
-    expect(res.status).toBe(404);
-    expect(fetch).not.toHaveBeenCalled();
-
-    fetch.mockResolvedValue(new Response('[]', { status: 200 }));
-    await authFetch('/api/leads/all');
+    expect(isNotOnServer('/api/members')).toBe(false);
+    expect(isNotOnServer('/api/events')).toBe(false);
+    const res = await authFetch('/api/members');
     expect(fetch).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(200);
     vi.unstubAllEnvs();
   });
 

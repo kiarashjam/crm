@@ -55,6 +55,17 @@ public class AppDbContext : DbContext
     public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
     public DbSet<CustomFieldValueSet> CustomFieldValues => Set<CustomFieldValueSet>();
     public DbSet<DealLineItem> DealLineItems => Set<DealLineItem>();
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<ForecastSnapshot> ForecastSnapshots => Set<ForecastSnapshot>();
+    public DbSet<SentMessage> SentMessages => Set<SentMessage>();
+    public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
+    public DbSet<AutomationFire> AutomationFires => Set<AutomationFire>();
+    public DbSet<ClubMember> ClubMembers => Set<ClubMember>();
+    public DbSet<ClubVisit> ClubVisits => Set<ClubVisit>();
+    public DbSet<LoyaltyLedgerEntry> LoyaltyLedger => Set<LoyaltyLedgerEntry>();
+    public DbSet<ClubDocument> ClubDocuments => Set<ClubDocument>();
+    public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
+    public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

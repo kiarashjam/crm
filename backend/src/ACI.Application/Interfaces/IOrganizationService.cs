@@ -91,6 +91,7 @@ public interface IOrganizationService
     /// Sets or clears the JSON webhook password (owner/manager only). Empty clears to the app default.
     /// </summary>
     Task<Result> UpdateWebhookPasswordAsync(Guid organizationId, Guid userId, string? newPassword, CancellationToken ct = default);
+    Task<Result> UpdateOutboundWebhookAsync(Guid organizationId, Guid userId, string? url, string? secret, CancellationToken ct = default);
     
     /// <summary>
     /// Generates a new webhook API key (owner/manager only).

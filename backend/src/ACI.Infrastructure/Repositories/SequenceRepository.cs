@@ -104,6 +104,25 @@ public sealed class SequenceRepository : ISequenceRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task<int> StopOpenForTargetAsync(Guid? organizationId, string targetType, Guid targetId, CancellationToken ct = default)
+    {
+        var kind = (targetType ?? "").Trim().ToLowerInvariant();
+        var open = await _db.OutreachEnrollments
+            .Where(e => e.OrganizationId == organizationId
+                && e.TargetId == targetId
+                && e.TargetType.ToLower() == kind
+                && (e.Status == "active" || e.Status == "paused"))
+            .ToListAsync(ct);
+        if (open.Count == 0) return 0;
+        foreach (var row in open)
+        {
+            row.Status = "stopped";
+            row.NextActionAtUtc = null;
+        }
+        await _db.SaveChangesAsync(ct);
+        return open.Count;
+    }
+
     public async Task<IReadOnlyList<OutreachEnrollment>> DueAsync(DateTime utcNow, int take, CancellationToken ct = default) =>
         await _db.OutreachEnrollments
             .Where(e => e.Status == "active" && e.NextActionAtUtc != null && e.NextActionAtUtc <= utcNow)

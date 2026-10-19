@@ -15,6 +15,9 @@ public class Organization : Common.BaseEntity
     public DateTime? WebhookApiKeyCreatedAtUtc { get; set; }
     /// <summary>Optional shared password for JSON webhooks. When null or empty, the app default password applies.</summary>
     public string? WebhookPassword { get; set; }
+    /// <summary>Where Cadence posts lead and deal events. Empty means it posts nowhere.</summary>
+    public string? OutboundWebhookUrl { get; set; }
+    public string? OutboundWebhookSecret { get; set; }
 
     public User OwnerUser { get; set; } = null!;
     public ICollection<OrganizationMember> Members { get; set; } = new List<OrganizationMember>();

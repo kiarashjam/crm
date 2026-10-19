@@ -71,4 +71,8 @@ public record CreateTaskRequest
     /// </summary>
     [StringLength(2000, ErrorMessage = "Notes cannot exceed 2000 characters")]
     public string? Notes { get; init; }
+
+    /// <summary>none, daily, weekly, or monthly.</summary>
+    [StringLength(16)]
+    public string? Recurrence { get; init; }
 }

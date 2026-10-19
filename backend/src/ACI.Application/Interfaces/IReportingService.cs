@@ -7,4 +7,6 @@ public interface IReportingService
     Task<DashboardStatsDto> GetDashboardStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<PipelineStageValueDto>> GetPipelineValueByStageAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<PipelineValueByAssigneeDto>> GetPipelineValueByAssigneeAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    Task<IReadOnlyList<ForecastSnapshotDto>> SaveForecastSnapshotAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    Task<IReadOnlyList<ForecastSnapshotDto>> ListForecastSnapshotsAsync(Guid userId, Guid? organizationId, int year, int month, CancellationToken ct = default);
 }

@@ -15,7 +15,7 @@ const EXAMPLE_JSON = `{
   "phone": "+15555550100",
   "companyName": "Acme Inc",
   "source": "website",
-  "webhookPassword": "1234"
+  "webhookPassword": "the password you saved below"
 }`;
 
 export function IntegrationsSection({ currentOrg }: { currentOrg: Organization | null }) {
@@ -64,11 +64,12 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
     if (!currentOrg?.id) return;
     setSaving(true);
     try {
-      await updateWebhookPassword(currentOrg.id, newPassword.trim() || '');
+      const password = newPassword.trim();
+      await updateWebhookPassword(currentOrg.id, password);
       setNewPassword('');
       const fresh = await getWebhookInfo(currentOrg.id);
       setInfo(fresh);
-      toast.success(newPassword.trim() ? 'Webhook password updated' : 'Reset to default password');
+      toast.success(password ? 'Webhook password updated' : 'Password webhook turned off');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not update password');
     } finally {
@@ -84,7 +85,7 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
       setNewPassword('');
       const fresh = await getWebhookInfo(currentOrg.id);
       setInfo(fresh);
-      toast.success('Using default webhook password again');
+      toast.success('Password webhook turned off until you save a new password');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not reset password');
     } finally {
@@ -177,14 +178,14 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
         <h3 className="font-semibold text-slate-900 mb-2">Webhook password</h3>
         <p className="text-sm text-slate-600 mb-3">
           {info?.usesDefaultWebhookPassword
-            ? 'No custom password is saved. External calls should use the default password 1234 until you set one below.'
-            : 'A custom password is saved. Use it instead of the default.'}
+            ? 'No password is saved, so this address will refuse leads until you set one. The API-key address above still works.'
+            : 'A password is saved. Send it with each lead, in the header or in the JSON.'}
         </p>
         <div className="space-y-3 max-w-md">
           <Input
             type="password"
             autoComplete="new-password"
-            placeholder="New password (leave empty to reset to default)"
+            placeholder="New password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
           />
@@ -193,7 +194,7 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save password'}
             </Button>
             <Button type="button" variant="outline" onClick={handleResetPassword} disabled={saving}>
-              Reset to default (1234)
+              Turn off password webhook
             </Button>
           </div>
         </div>

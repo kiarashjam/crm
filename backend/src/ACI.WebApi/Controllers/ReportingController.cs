@@ -95,4 +95,23 @@ public class ReportingController : ControllerBase
         var list = await _reportingService.GetPipelineValueByAssigneeAsync(userId.Value, _currentUser.CurrentOrganizationId, ct);
         return Ok(list);
     }
+
+    /// <summary>Stores this month's weighted forecast so later edits do not rewrite it.</summary>
+    [HttpPost("forecast-snapshot")]
+    public async Task<ActionResult<IReadOnlyList<ForecastSnapshotDto>>> SaveForecast(CancellationToken ct)
+    {
+        if (_currentUser.UserId is not { } userId) return Unauthorized();
+        var saved = await _reportingService.SaveForecastSnapshotAsync(userId, _currentUser.CurrentOrganizationId, ct);
+        return Ok(saved);
+    }
+
+    [HttpGet("forecast-snapshot")]
+    public async Task<ActionResult<IReadOnlyList<ForecastSnapshotDto>>> ListForecast([FromQuery] int? year, [FromQuery] int? month, CancellationToken ct)
+    {
+        if (_currentUser.UserId is not { } userId) return Unauthorized();
+        var now = DateTime.UtcNow;
+        var list = await _reportingService.ListForecastSnapshotsAsync(
+            userId, _currentUser.CurrentOrganizationId, year ?? now.Year, month ?? now.Month, ct);
+        return Ok(list);
+    }
 }

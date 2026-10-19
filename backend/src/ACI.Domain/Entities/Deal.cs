@@ -27,6 +27,9 @@ public class Deal : Common.BaseEntity
     /// <summary>Category: Price, Timing, Competitor, NoDecision, FeatureGap, ChampionLeft, Other.</summary>
     public string? ClosedReasonCategory { get; set; }
     public DateTime? ClosedAtUtc { get; set; }
+    /// <summary>Hidden from other salespeople. Managers and the owner still see it.</summary>
+    public bool IsPrivate { get; set; }
+    public Guid? TeamId { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }

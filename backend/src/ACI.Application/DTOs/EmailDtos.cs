@@ -5,7 +5,9 @@ namespace ACI.Application.DTOs;
 /// or semicolons. Checked in <c>ComposedEmailService</c>, which says which address
 /// is wrong rather than "one or more validation errors occurred".
 /// </summary>
-public record SendEmailRequest(string? To, string? Cc, string? Bcc, string? Subject, string? Body);
+public record SendEmailRequest(
+    string? To, string? Cc, string? Bcc, string? Subject, string? Body,
+    Guid? LeadId = null, Guid? ContactId = null, Guid? DealId = null);
 
 /// <summary>A message that went out — the shape the composer shows and logs.</summary>
 public record SentEmailDto(
@@ -17,4 +19,7 @@ public record SentEmailDto(
     string Body,
     string Status,
     string Direction,
-    DateTime SentAtUtc);
+    DateTime SentAtUtc,
+    Guid? LeadId = null,
+    Guid? ContactId = null,
+    Guid? DealId = null);

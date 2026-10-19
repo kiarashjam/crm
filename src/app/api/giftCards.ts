@@ -4,7 +4,7 @@
 // recipient can redeem against any in-house charge until the balance hits
 // zero. Each card has an immutable code.
 
-import { apiWithFallback, authFetchJson } from './apiClient';
+import { apiWithFallback, authFetchJson, isUsingRealApi } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -213,6 +213,12 @@ export interface RedeemInput {
 }
 
 export async function redeemGiftCard(input: RedeemInput): Promise<GiftCardRedemption | null> {
+  if (isUsingRealApi()) {
+    return authFetchJson<GiftCardRedemption>(`/api/gift-cards/${input.giftCardId}/redeem`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
   const card = cardStore.byId(input.giftCardId);
   if (!card) return null;
   if (card.status !== 'Active') return null;

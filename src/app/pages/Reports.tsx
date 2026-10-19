@@ -23,6 +23,8 @@ import {
   activityByDay, newLeadsByWeek, dealState, parseMoney,
 } from './reports/reportMetrics';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { authFetchJson, isUsingRealApi } from '@/app/api/apiClient';
+import { toast } from 'sonner';
 
 /**
  * Money in a specific currency. The old page hardcoded USD, so an organisation
@@ -61,6 +63,7 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
   const [failed, setFailed] = useState(false);
+  const [savingForecast, setSavingForecast] = useState(false);
 
   useEffect(() => {
     Promise.all([getDeals(), getLeads(), getActivities()])
@@ -244,6 +247,26 @@ export default function Reports() {
               <Kpi index={6} label="Lead conversion" value={pct(l.conversionRate)}
                 sub={`${l.converted} became deals`} icon={UserCheck} accent="violet" />
             </div>
+
+            {isUsingRealApi() && (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={savingForecast}
+                  onClick={() => {
+                    setSavingForecast(true);
+                    authFetchJson<unknown>('/api/reporting/forecast-snapshot', { method: 'POST' })
+                      .then(() => toast.success('Saved this month’s forecast. Later edits will not change it.'))
+                      .catch(() => toast.error('The forecast could not be saved.'))
+                      .finally(() => setSavingForecast(false));
+                  }}
+                  className="h-9 rounded-xl bg-slate-900 px-3 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {savingForecast ? 'Saving…' : 'Save this month’s forecast'}
+                </button>
+                <p className="text-[11px] text-slate-400">Stores the weighted total by owner, in each currency, for this month.</p>
+              </div>
+            )}
 
             {d.mixedCurrency && (
               <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">

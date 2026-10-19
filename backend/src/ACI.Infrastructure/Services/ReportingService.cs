@@ -176,4 +176,82 @@ public class ReportingService : IReportingService
             .ToList();
         return rows;
     }
+
+    public async Task<IReadOnlyList<ForecastSnapshotDto>> SaveForecastSnapshotAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var month = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var deals = await ScopedDeals(userId, organizationId)
+            .Where(d => d.IsWon == null)
+            .Select(d => new
+            {
+                d.AssigneeId,
+                AssigneeName = d.Assignee != null ? d.Assignee.Name : null,
+                d.Value,
+                d.Currency,
+                d.Probability,
+            })
+            .ToListAsync(ct);
+
+        var rows = deals
+            .GroupBy(d => new
+            {
+                AssigneeKey = d.AssigneeId?.ToString() ?? string.Empty,
+                Currency = MoneyText.NormaliseCurrency(d.Currency),
+            })
+            .Select(g =>
+            {
+                decimal open = 0, weighted = 0;
+                var covered = 0;
+                var missing = 0;
+                foreach (var deal in g)
+                {
+                    if (!MoneyText.TryParseAmount(deal.Value, out var amount)) continue;
+                    open += amount;
+                    if (deal.Probability is int probability)
+                    {
+                        weighted += amount * probability / 100m;
+                        covered++;
+                    }
+                    else missing++;
+                }
+                return new ForecastSnapshot
+                {
+                    Id = Guid.NewGuid(),
+                    OrganizationId = organizationId,
+                    SavedByUserId = userId,
+                    MonthUtc = month,
+                    Currency = g.Key.Currency,
+                    AssigneeId = string.IsNullOrEmpty(g.Key.AssigneeKey) ? null : Guid.Parse(g.Key.AssigneeKey),
+                    AssigneeName = string.IsNullOrEmpty(g.Key.AssigneeKey) ? "Unassigned" : (g.First().AssigneeName ?? "Unknown"),
+                    WeightedValue = weighted,
+                    OpenValue = open,
+                    Covered = covered,
+                    Missing = missing,
+                    SavedAtUtc = now,
+                };
+            })
+            .ToList();
+
+        var previous = await _db.ForecastSnapshots
+            .Where(s => s.OrganizationId == organizationId && s.MonthUtc == month)
+            .ToListAsync(ct);
+        _db.ForecastSnapshots.RemoveRange(previous);
+        _db.ForecastSnapshots.AddRange(rows);
+        await _db.SaveChangesAsync(ct);
+        return rows.Select(ToDto).ToList();
+    }
+
+    public async Task<IReadOnlyList<ForecastSnapshotDto>> ListForecastSnapshotsAsync(Guid userId, Guid? organizationId, int year, int month, CancellationToken ct = default)
+    {
+        var start = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var rows = await _db.ForecastSnapshots.AsNoTracking()
+            .Where(s => s.OrganizationId == organizationId && s.MonthUtc == start)
+            .OrderBy(s => s.AssigneeName)
+            .ToListAsync(ct);
+        return rows.Select(ToDto).ToList();
+    }
+
+    private static ForecastSnapshotDto ToDto(ForecastSnapshot row) =>
+        new(row.Id, row.MonthUtc.ToString("yyyy-MM"), row.Currency, row.AssigneeName, row.WeightedValue, row.OpenValue, row.Covered, row.Missing, row.SavedAtUtc);
 }

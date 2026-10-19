@@ -90,4 +90,10 @@ public record UpdateDealRequest
     /// </summary>
     [StringLength(50, ErrorMessage = "Category cannot exceed 50 characters")]
     public string? ClosedReasonCategory { get; init; }
+
+    /// <summary>When true, only the assignee, the creator, and managers can see the deal.</summary>
+    public bool? IsPrivate { get; init; }
+
+    /// <summary>The sales team this deal belongs to.</summary>
+    public Guid? TeamId { get; init; }
 }

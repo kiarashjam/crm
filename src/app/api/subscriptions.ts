@@ -4,7 +4,7 @@
 // but also extras like locker rental, fitness add-ons, parking. When a cycle
 // comes due, the billing run drops a charge onto the member's house account.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, isUsingRealApi } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge } from './charges';
 
@@ -206,6 +206,9 @@ export async function deleteSubscription(id: string): Promise<boolean> {
  * happen as a scheduled job; this is the staff-triggered version.
  */
 export async function runBillingCycle(id: string): Promise<Subscription | null> {
+  if (isUsingRealApi()) {
+    return authFetchJson<Subscription>(`/api/subscriptions/${id}/bill`, { method: 'POST' });
+  }
   const sub = subStore.byId(id);
   if (!sub) return null;
   if (sub.status === 'Cancelled' || sub.status === 'Paused') return sub;
