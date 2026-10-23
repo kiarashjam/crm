@@ -13,6 +13,10 @@ vi.mock('@/app/api', () => ({
 }));
 vi.mock('@/app/api/sequences', () => ({ getEnrollments: vi.fn(), getSequences: vi.fn() }));
 vi.mock('@/app/api/automations', () => ({ getAutomations: vi.fn() }));
+vi.mock('@/app/api/settings', () => ({
+  getUserSettings: vi.fn(async () => ({})),
+  saveUserSettings: vi.fn(async (value: unknown) => value),
+}));
 
 import { getCompanies, getContacts, getDeals, getLeads, getTasks } from '@/app/api';
 import { getAutomations } from '@/app/api/automations';

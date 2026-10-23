@@ -24,7 +24,8 @@ public sealed class ContactRepository : IContactRepository
             c.Name.ToLower().Contains(q) ||
             c.Email.ToLower().Contains(q) ||
             (c.Phone != null && c.Phone.Contains(q)) ||
-            (c.JobTitle != null && c.JobTitle.ToLower().Contains(q)));
+            (c.JobTitle != null && c.JobTitle.ToLower().Contains(q)) ||
+            (c.Company != null && c.Company.Name.ToLower().Contains(q)));
     }
 
     public async Task<(IReadOnlyList<Contact> Items, int TotalCount)> GetPagedAsync(
@@ -86,7 +87,8 @@ public sealed class ContactRepository : IContactRepository
                 c.Name.ToLower().Contains(q) ||
                 c.Email.ToLower().Contains(q) ||
                 (c.Phone != null && c.Phone.Contains(q)) ||
-                (c.JobTitle != null && c.JobTitle.ToLower().Contains(q)))
+                (c.JobTitle != null && c.JobTitle.ToLower().Contains(q)) ||
+                (c.Company != null && c.Company.Name.ToLower().Contains(q)))
             .Include(c => c.Company)
             .OrderBy(c => c.Name);
         if (take is > 0)
@@ -293,6 +295,10 @@ public sealed class ContactRepository : IContactRepository
             keep.CompanyId = drop.CompanyId;
         if (string.IsNullOrWhiteSpace(keep.JobTitle) && !string.IsNullOrWhiteSpace(drop.JobTitle))
             keep.JobTitle = drop.JobTitle;
+        // Either record saying "do not contact" is the person saying it. Merging must not
+        // quietly make them reachable again.
+        if (drop.DoNotContact)
+            keep.DoNotContact = true;
 
         drop.IsArchived = true;
         drop.ArchivedAtUtc = DateTime.UtcNow;

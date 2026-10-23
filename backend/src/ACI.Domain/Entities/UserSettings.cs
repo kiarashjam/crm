@@ -50,6 +50,9 @@ public class UserSettings
     public bool ShowActivityStatus { get; set; } = true;
     public bool AllowAnalytics { get; set; } = true;
 
+    /// <summary>Last agent turns and the record they were about. Not a sales preference.</summary>
+    public string? AgentMemoryJson { get; set; }
+
     // =========== METADATA ===========
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }

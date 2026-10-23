@@ -1,6 +1,33 @@
 # Cadence sales agent
 
-The agent tells a salesperson the single next step for each open record. It reads what is already saved across the workspace and applies fixed rules. It does not call a language model, and it does not change records.
+The agent tells a salesperson the single next step for each open record. It reads what is already saved across the workspace and applies fixed rules. It does not call a language model. A task, a note, a comment, an assignment, a conversion, an enrollment, or a send happens only after the person presses the button. A draft opens the sales writer and is not sent.
+
+## What the last pass closed
+
+The five rows are ordered by rule priority plus lead score, deal amount, probability, silence, a missing owner, and a date that is already late. Lead score of 70 or more adds weight. A deal of 40,000 or more can move ahead of a higher rule priority, and the row moves with it. A saved probability under 40 percent trims that amount. A row that already says nothing was recorded for 14 days gets a further silence weight. A second call, after a no-answer earlier today, sits lower before 15:00 and a little higher from 15:00 on. The first row quotes those weights. The spoken answer still names the rule-priority row when the two disagree.
+
+The panel reads eight lists: leads, deals, tasks, sequence enrollments, sequences, contacts, companies, and automations. It does not read activities, contracts, invitations, or the club lists, so an answer that needs one of those says it is not loaded instead of reporting none. A list that fails is named in the answer: "could not be loaded" when there is no copy, "could not be refreshed, so an earlier copy is used" when an older copy is shown.
+
+"That one" and the last twelve turns are saved on the signed-in user's settings, so they come back on another computer when the API is available. This browser keeps a copy as well, and signing out clears it. A conversation that comes back keeps its open and draft buttons only: whether a save button was already pressed is not stored, so it is not offered twice.
+
+A confirmed button can send a message you typed when an email is saved, assign an unowned lead to the signed-in person, convert a lead into a contact and a deal, or enroll a lead in one of up to five sequences. Each duplicate group is its own step. Merge keeps the record that has an email, or the first company, and runs only after the button. A merge keeps "do not contact" when either record had it.
+
+Asking to enroll offers a button for each saved sequence, up to five. Asking to merge offers one button per duplicate group, up to five. Asking to move the stage opens the deal: the panel does not load pipeline stages. Asking to book saves a meeting task due on the day you name, or after the default follow-up days. A club reservation still needs a room chosen on Reservations. Asking who should I call lists the loaded call steps and includes a saved phone. Asking for the overdue one opens the late row. On a list page, the next-step answer uses that page. On an open record, it uses that record when the record has a step. A saved email in the question selects that record. "Their other opportunities" reads the current company on the focused record and lists the other loaded deals. A tied name asks which record. A sentence that is not one of the set questions names the first loaded step, then the queue. Asking where the money is includes a saved probability. Counts and closed-deal patterns are labeled as calculated. Recorded deals and search hits are labeled as recorded. The conversation is stored per signed-in user and organization.
+
+The reason on a lead can quote source, referrer, tags, lead score, and that a description is saved. A contact step quotes job title and preferred contact method when those are the reason the person cannot be reached.
+
+A reminder date that is today or earlier puts the task on the list when the due date is missing or still in the future. Asking to comment on a task saves the comment only after the button. Asking about invitations points to the Team page, which lists them and can resend one.
+
+## What stays outside this CRM
+
+These are boundaries of the product, not unfinished steps inside Cadence.
+
+| Boundary | What that means |
+|----------|-----------------|
+| No language model | Answers are the set questions, plus the loaded queue when a sentence does not match. Nothing is sent to a model. |
+| Learning is this workspace | Won deals, lost deals, and drop-out reasons are counted from the records loaded here. Other companies are not part of that count. |
+| Mail and meetings outside Cadence | Outside inboxes, outside calendars, and call recordings are not connected. A failed email already saved here is a step. A meeting the agent books is a dated task. |
+| Other systems | Accounting, support, and marketing tools outside this CRM are not read. |
 
 The rules follow the process stored in the app, plus the practice used for a next-best-action list: one step per record, chosen by the first rule that matches, with the evidence written beside it. A date that is merely soon raises that step. It does not replace it. A no-answer is not a loss. A missing reason on a lost record is finished before anything else. Nothing is owed when the evidence is too thin to name a step.
 
@@ -30,17 +57,17 @@ A close date inside the next seven days, or a week with no activity, lifts the s
 | Activities | History. A deal with no activity for seven days is told to log a touch. An activity row is not its own task. |
 | Contacts | Add an email or phone when both are missing. Archived and do-not-contact stay quiet. |
 | Companies | Add a contact when the company has no people |
-| Sequences | The due step, unless that person already has a stronger lead or contact step |
+| Sequences | The due step, unless that person already has a stronger lead or contact step. Enroll offers one button per sequence, up to five. |
 | Automations | Add an action when the rule is on and empty. A rule that is off is a choice. |
-| Duplicates | Merge contact groups that share an email or a name, and company groups that share a domain or a name. Same scan as the Duplicates page. |
+| Duplicates | Same scan as the Duplicates page. Each group is a step, up to five. Merge keeps the record with an email, or the first company, after a button. |
 | Contracts | Read through the lead's contract, signature, and deposit phases. There is no second contract list. |
 | Templates, copy writer, copy history, attach copy | Drafting tools. They do not owe a next step. |
 | Reports, audit log | The reports page shows this list. The audit log is a record of what already happened. |
-| Team, workspaces, settings, Claude, help | Workspace setup, not a sales step |
+| Team, workspaces, settings, Claude, help | Workspace setup, not a sales step. The workspace launcher shows the agent when a workspace is already selected. |
 
 A first call that already has an email or a phone stays a call. Nobody is assigned does not replace the step.
 
-Draft message fills the sales writer already on the dashboard: the copy type, the goal, the reason, and the person. The writer drafts the words. It does not send them. A step that is only data entry, such as recording a reason or adding a phone number, has no draft.
+Draft message fills the sales writer already on the dashboard. Asking to send offers a button only for words you typed, after a colon or in quotes, to a saved email that is not marked do not contact. The saved step is an instruction to you, so it is never sent as the message. The message goes out only after that button.
 
 ## Leads
 
@@ -110,7 +137,8 @@ Grouping matches `src/app/pages/tasks/utils.ts`: completed and cancelled are fin
 | Open and overdue | Complete it | 93 |
 | Due today | Do it today | 73 |
 | High priority or in progress, no due date | Set a due date | 58 |
-| Due later, or a low-priority task with no date | No suggestion | — |
+| Reminder date today or earlier, due date missing or still ahead | The reminder is due | 60 |
+| Due later, or a low-priority task with no date and no reminder | No suggestion | — |
 | Completed or cancelled | No suggestion | — |
 
 A later task stays off the list so it does not crowd out work that is actually due.
@@ -125,6 +153,67 @@ A sequence is an ordered set of email, call, task, and wait steps. The scheduler
 - Lead rules: `src/app/salesAgent/nextAction.ts`
 - Deals, tasks, sequences, and the merged ranking: `src/app/salesAgent/workspace.ts`
 - Tests: `src/app/salesAgent/nextAction.test.ts`, `src/app/salesAgent/workspace.test.ts`
-- On screen: `src/app/salesAgent/NextActions.tsx`, mounted under the hero on the dashboard and the reports page
+- Questions, playbooks, memory, and the amount-and-silence judgment: `src/app/salesAgent/brain/`
+- Briefings, activity, neglected records, pipeline math, and proposed creates: `src/app/salesAgent/brain/workflows.ts`
+- Shared list cache, one copy per workspace, refreshed after a save: `src/app/salesAgent/agentData.ts`
+- The ask box: `src/app/salesAgent/AgentDesk.tsx`. The last record and the last turns are saved on the user settings (`AgentMemoryJson`) and in this browser, under a key that includes the user and the organization. Send, assign, convert, enroll, merge, a task, a note, a comment, a contact, and a deal change run only from a button. A button saves nothing when another tab has switched the workspace or the account since the answer was given.
+- On screen: `src/app/salesAgent/NextActions.tsx`, in the slot after the page title, and on the workspace launcher when a workspace is already selected. The ask box sits on that same panel.
+- Reusable checks: `src/app/salesAgent/agentEvaluation.test.tsx`. Organization isolation for the external tools: `backend/tests/ACI.WebApi.Tests/McpEndpointTests.cs`.
 
 If one list cannot be loaded, the others still produce suggestions. The block stays hidden when every list fails, or when nothing is owed.
+
+## What a question can do
+
+Answers use the records already loaded for this user and organization. A follow-up such as "their email" or "their other opportunities" uses the last record, then reads the current loaded rows. It does not reuse an old sentence as if it were a new fact. A change that names nobody goes to the record on screen, or to the last record (asked for first with "that one"), read again by its id. When neither is loaded the agent asks. It never puts the change on the top row of the queue instead.
+
+A full name selects that person, as whole words: "Ann" is not found in "planning", and "the" or "call" is never the start of a name. Two loaded people who share a first name stay a question. A lead and the contact made from it share an email and count as one person. A name that is not loaded stays unanswered. Names are read from the part of the question before a colon or a quote, so the words of a note or a message do not change which record it is for. A company briefing lists the open deals, tasks, and activity already loaded for that company. Closed won and closed lost stay out of the open total. A blank last-contact date is not treated as neglect. Neglect means 14 days since a saved contact or activity date, a close date before today, or a task due before today.
+
+Search, counts, and the pipeline total say when the list failed or when more loaded rows were not printed. Totals are kept per currency and never added across currencies. Amounts are read the way the rest of the app reads them, so "1.234,56" is one thousand two hundred and thirty-four. A value that is not a number, or a negative amount, is left out of the total and named.
+
+Create contact needs a name and an email, and it will not propose a second contact for an email already loaded. Create deal needs a name and an amount after "worth", "amount", "value", "for", or next to a currency, such as "worth CHF 12'500" or "for 15k". A year or a date is not read as the amount. It will not propose a second open deal with the same name. A task takes the words you typed as its title and the day you name (tomorrow, Friday, in 3 days, 2026-11-02) as its due date. A note or a comment needs the words you typed: the agent does not write the saved step into the record as if it happened. Changing an amount or a close date shows the recorded value and the proposed value, and it needs a deal already in view. The button is the only save. A second click while that save is running does not send it again. After the API returns the saved record, the button is removed. If the API returns an error, the button stays and the error is shown. A read-only workspace shows no save button and does not call the API.
+
+Text inside a note, an activity, or any other record is data. It does not change the draft's saved step, the pipeline total, or which buttons appear. Delete, wipe, and erase are refused. Duplicate review opens the review page and does not merge until the person asks to merge and then presses the button.
+
+## Cache
+
+The lists live in `agentData.ts`, outside the panel, so navigating does not load them again. The key is the organization plus the signed-in session. A copy younger than 60 seconds is kept. A save, or returning to the tab, refreshes behind the rows already on screen. Switching organization drops the previous lists. One failed list does not wipe the others. A write is not retried by the loader.
+
+## Example requests
+
+- "What do we have on Ada Lovelace?"
+- "Brief Pavilion."
+- "What about their other opportunities?"
+- "What is their email?"
+- "Who went quiet?"
+- "Pipeline value."
+- "How many open deals?"
+- "Search for Pavilion."
+- "Create a contact named Rita Book rita@example.com."
+- "Create a deal called Harbor for 15000."
+- "Set the amount to 15000."
+- "Draft Pavilion renewal."
+- "Any duplicates?"
+
+A draft opens the sales writer. Nothing is sent, created, or changed until the button for that action is pressed.
+
+## Checking these answers
+
+The evaluation file states the expected text and buttons for each scenario. The checks do not ask the agent to grade itself.
+
+```text
+npx vitest run src/app/salesAgent
+```
+
+`agentLoads.test.tsx` checks that a second page reads none of the lists again.
+
+Organization isolation for the external read-only tools:
+
+```text
+dotnet test backend/tests/ACI.WebApi.Tests/ACI.WebApi.Tests.csproj --filter McpEndpointTests
+```
+
+## Limits that are still true
+
+The `AgentMemoryJson` column is added by the API startup script when it is missing. There is no separate migration to run. The list cache lives in the browser tab. Production deployment is a separate step.
+
+The in-app agent does not call a model. The sales writer does, when an API key is configured, and an empty key keeps the template replies. Record text is placed between marker lines that change on every request, so a record cannot close the block early. A model can still ignore the label. This CRM does not read mail or calendars outside Cadence, and it does not open attachments. Global search still reads its four lists one after another. A question that is not one of the set questions falls back to the loaded queue and says so. Answers use the loaded lists, which can be up to 60 seconds old, rather than a new query for every question. The ask box does not yet read activities, contracts, invitations, pipeline stages, or the club lists, so those questions say so and point to the page that has them. The external tools are read-only and were not given a write path.

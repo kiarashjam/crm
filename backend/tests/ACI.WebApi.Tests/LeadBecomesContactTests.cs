@@ -91,6 +91,50 @@ public class LeadBecomesContactTests
         remaining.Should().NotContain(second.GetProperty("email").GetString());
     }
 
+    [Fact]
+    public async Task MergingKeepsDoNotContact_WhenOnlyTheDroppedRecordHadIt()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var registered = await ReadJson(await client.PostAsync("/api/auth/register", Body(new
+        {
+            email = $"grace-{Guid.NewGuid():N}@example.com",
+            password = "correct horse battery staple",
+            name = "Grace Hopper",
+        })), "register");
+        var userId = registered.GetProperty("user").GetProperty("id").GetGuid();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", registered.GetProperty("token").GetString());
+        var orgId = await SeedWorkspaceAsync(factory, userId);
+        client.DefaultRequestHeaders.Add("X-Organization-Id", orgId.ToString());
+
+        var keepId = Guid.NewGuid();
+        var dropId = Guid.NewGuid();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Contacts.Add(new Contact
+            {
+                Id = keepId, UserId = userId, OrganizationId = orgId,
+                Name = "Pat Example", Email = $"pat-{Guid.NewGuid():N}@example.com", CreatedAtUtc = DateTime.UtcNow,
+            });
+            db.Contacts.Add(new Contact
+            {
+                Id = dropId, UserId = userId, OrganizationId = orgId,
+                Name = "Pat Example", Email = $"pat-old-{Guid.NewGuid():N}@example.com", CreatedAtUtc = DateTime.UtcNow,
+                DoNotContact = true,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var merge = await client.PostAsync($"/api/contacts/{keepId}/merge", Body(new { otherContactId = dropId }));
+        merge.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var kept = await ReadJson(await client.GetAsync($"/api/contacts/{keepId}"), "kept contact");
+        kept.GetProperty("doNotContact").GetBoolean().Should().BeTrue();
+    }
+
     private static async Task<Guid> SeedWorkspaceAsync(CustomWebApplicationFactory factory, Guid ownerUserId)
     {
         using var scope = factory.Services.CreateScope();

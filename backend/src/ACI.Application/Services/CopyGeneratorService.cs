@@ -140,9 +140,9 @@ public class CopyGeneratorService : ICopyGeneratorApplicationService
         var result = await _generator.GenerateInLanguageAsync(
             request.CopyTypeId,
             request.Goal,
-            null, // context from CrmObject could be used here
+            request.Context,
             request.Length ?? "medium",
-            null, // brandName
+            request.BrandName,
             request.BrandTone,
             recipientContext,
             request.TargetLanguage,

@@ -26,7 +26,10 @@ public sealed class DealRepository : IDealRepository
     {
         if (string.IsNullOrWhiteSpace(search)) return query;
         var q = search.Trim().ToLowerInvariant();
-        return query.Where(d => d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q));
+        return query.Where(d => d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q)
+            || (d.Company != null && d.Company.Name.ToLower().Contains(q))
+            || (d.Contact != null && d.Contact.Name.ToLower().Contains(q))
+            || (d.Stage != null && d.Stage.ToLower().Contains(q)));
     }
 
     public async Task<(IReadOnlyList<Deal> Items, int TotalCount)> GetPagedAsync(
@@ -77,7 +80,10 @@ public sealed class DealRepository : IDealRepository
         }
         var q = query.Trim().ToLowerInvariant();
         var matches = IncludeRelated(FilterByUserAndOrg(_db.Deals.AsNoTracking(), userId, organizationId)
-            .Where(d => d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q)))
+            .Where(d => d.Name.ToLower().Contains(q) || d.Value.ToLower().Contains(q)
+                || (d.Company != null && d.Company.Name.ToLower().Contains(q))
+                || (d.Contact != null && d.Contact.Name.ToLower().Contains(q))
+                || (d.Stage != null && d.Stage.ToLower().Contains(q))))
             .OrderBy(d => d.Name);
         if (take is > 0)
             return await matches.Take(take.Value).ToListAsync(ct);

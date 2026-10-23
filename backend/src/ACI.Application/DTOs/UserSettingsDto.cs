@@ -48,6 +48,9 @@ public record UserSettingsDto
     public bool ShowActivityStatus { get; init; } = true;
     public bool AllowAnalytics { get; init; } = true;
 
+    /// <summary>Last agent turns for this user. Capped so a settings save stays small.</summary>
+    public string? AgentMemoryJson { get; init; }
+
     // Metadata (read-only)
     public DateTime? CreatedAtUtc { get; init; }
     public DateTime? UpdatedAtUtc { get; init; }
@@ -134,4 +137,7 @@ public record UpdateUserSettingsRequest
     // Privacy
     public bool? ShowActivityStatus { get; init; }
     public bool? AllowAnalytics { get; init; }
+
+    [StringLength(4000)]
+    public string? AgentMemoryJson { get; init; }
 }

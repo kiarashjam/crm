@@ -192,6 +192,11 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
 
         var deals = await CallText(client, key, "list_deals", "{}");
         deals.Should().Contain(records.DealName);
+        deals.Should().Contain("1 of 1");
+
+        var deal = await CallText(client, key, "get_deal", $$"""{"id":"{{records.DealId}}"}""");
+        deal.Should().Contain(records.DealName);
+        deal.Should().Contain("Recorded CRM data");
 
         var tasks = await CallText(client, key, "list_tasks", "{}");
         tasks.Should().Contain(records.TaskTitle);
@@ -203,6 +208,24 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
         snapshot.Should().Contain("Northwind");
         snapshot.Should().Contain("Leads:");
         snapshot.Should().Contain("Tasks:");
+    }
+
+    [Fact]
+    public async Task GetDeal_RejectsADealFromAnotherOrganization()
+    {
+        var keyA = "aci_" + Guid.NewGuid().ToString("N");
+        var keyB = "aci_" + Guid.NewGuid().ToString("N");
+        await SeedFullOrganizationAsync(keyA, "Org A");
+        var other = await SeedFullOrganizationAsync(keyB, "Org B");
+
+        var client = _factory.CreateClient();
+        var payload = "{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"get_deal\",\"arguments\":{\"id\":\"" + other.DealId + "\"}}}";
+        var response = await client.SendAsync(ClaudeRequest(keyA, payload));
+        var body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("not found");
+        body.Should().Contain("\"isError\":true");
+        body.Should().NotContain(other.DealName);
     }
 
     [Fact]
@@ -252,7 +275,8 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
         string LeadEmail,
         string ContactName,
         string DealName,
-        string TaskTitle);
+        string TaskTitle,
+        Guid DealId);
 
     private Task SeedOrganizationAsync(string apiKey, string? name = null, string? leadName = null) =>
         SeedFullOrganizationAsync(apiKey, name ?? "Test Org", leadName);
@@ -284,6 +308,7 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
         var resolvedLeadName = leadName ?? $"Lead {Guid.NewGuid():N}"[..16];
         var leadEmail = $"{leadId:N}@example.com";
         var contactName = $"Contact {Guid.NewGuid():N}"[..18];
+        var dealId = Guid.NewGuid();
         var dealName = $"Deal {Guid.NewGuid():N}"[..16];
         var taskTitle = $"Task {Guid.NewGuid():N}"[..16];
 
@@ -308,7 +333,7 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
         });
         db.Deals.Add(new Deal
         {
-            Id = Guid.NewGuid(),
+            Id = dealId,
             UserId = userId,
             OrganizationId = orgId,
             Name = dealName,
@@ -328,7 +353,7 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
             CreatedAtUtc = DateTime.UtcNow,
         });
         await db.SaveChangesAsync();
-        return new SeededRecords(leadId, resolvedLeadName, leadEmail, contactName, dealName, taskTitle);
+        return new SeededRecords(leadId, resolvedLeadName, leadEmail, contactName, dealName, taskTitle, dealId);
     }
 
     private static StringContent Json(string body) =>

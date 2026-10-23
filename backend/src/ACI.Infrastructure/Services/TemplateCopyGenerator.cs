@@ -14,14 +14,9 @@ public sealed class TemplateCopyGenerator : ICopyGenerator
         ["sales-email"] = """
             Hi [First Name],
 
-            I hope this email finds you well. I wanted to reach out to see if you'd be interested in scheduling a brief call to discuss how our solutions can help [Company Name] achieve your goals.
+            I hope this email finds you well. I wanted to reach out about a short call with [Company Name].
 
-            We've helped companies similar to yours:
-            • Increase productivity by 40%
-            • Reduce operational costs by 25%
-            • Streamline workflows and save time
-
-            Would you be available for a 15-minute call next week? I'd love to learn more about your current challenges and share how we can help.
+            Would you be available for a 15-minute call next week? I would like to hear what you are working on.
 
             Looking forward to connecting.
 
@@ -67,7 +62,7 @@ public sealed class TemplateCopyGenerator : ICopyGenerator
     private const string DefaultTemplate = """
         Hi [First Name],
 
-        I hope this email finds you well. I wanted to reach out to see if you'd be interested in scheduling a brief call to discuss how our solutions can help [Company Name] achieve your goals.
+        I hope this email finds you well. I wanted to reach out about a short call with [Company Name].
 
         Would you be available for a 15-minute call next week?
 
@@ -75,7 +70,8 @@ public sealed class TemplateCopyGenerator : ICopyGenerator
         [Your Name]
         """;
 
-    private const string AINote = "\n\n[Note: Configure OpenAI API key for AI-powered personalization and advanced copy generation.]";
+    public const string NotConfiguredNote = "\n\n[This is a template. No model is configured, so this text was not generated. It does not state results, savings, or customer facts.]";
+    public const string CallFailedNote = "\n\n[This is a template. The model call failed, so this text was not generated. It does not state results, savings, or customer facts.]";
 
     public Task<string> GenerateAsync(
         string copyTypeId,
@@ -91,14 +87,10 @@ public sealed class TemplateCopyGenerator : ICopyGenerator
         var template = BasicTemplates.TryGetValue(copyTypeId, out var t) ? t : DefaultTemplate;
         var result = ReplacePlaceholders(template, brandName, null);
         
-        if (!string.IsNullOrWhiteSpace(context))
-        {
-            var ctx = context.Trim();
-            if (ctx.Length > 300) ctx = ctx[..300] + "...";
-            result = result.TrimEnd() + $"\n\n---\nContext: {ctx}\n---";
-        }
+        // The context is not pasted into the message. It is record data, internal notes
+        // included, and a template is sent as it reads; the person writes it in themselves.
 
-        return Task.FromResult(result.Trim() + AINote);
+        return Task.FromResult(result.Trim() + NotConfiguredNote);
     }
 
     public Task<string> RewriteAsync(
@@ -108,7 +100,7 @@ public sealed class TemplateCopyGenerator : ICopyGenerator
     {
         ct.ThrowIfCancellationRequested();
         // Simple fallback - return original with note
-        return Task.FromResult(originalCopy + AINote);
+        return Task.FromResult(originalCopy + NotConfiguredNote);
     }
 
     public Task<GenerateCopyResult> GenerateWithRecipientAsync(
@@ -126,14 +118,10 @@ public sealed class TemplateCopyGenerator : ICopyGenerator
         var template = BasicTemplates.TryGetValue(copyTypeId, out var t) ? t : DefaultTemplate;
         var body = ReplacePlaceholders(template, brandName, recipient);
         
-        if (!string.IsNullOrWhiteSpace(context))
-        {
-            var ctx = context.Trim();
-            if (ctx.Length > 300) ctx = ctx[..300] + "...";
-            body = body.TrimEnd() + $"\n\n---\nContext: {ctx}\n---";
-        }
+        // The context is not pasted into the message. It is record data, internal notes
+        // included, and a template is sent as it reads; the person writes it in themselves.
 
-        body = body.Trim() + AINote;
+        body = body.Trim() + NotConfiguredNote;
 
         string? subject = null;
         if (copyTypeId.Contains("email", StringComparison.OrdinalIgnoreCase))

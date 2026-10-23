@@ -111,8 +111,9 @@ export async function resetUserSettings(): Promise<UserSettings> {
     return res ? { ...defaults, ...res } : { ...defaults };
   }
   await delay(100);
-  setStored(defaults);
-  return defaults;
+  const next = { ...defaults, agentMemoryJson: getStored()?.agentMemoryJson };
+  setStored(next);
+  return next;
 }
 
 /** Get available timezones. */

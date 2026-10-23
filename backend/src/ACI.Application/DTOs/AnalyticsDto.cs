@@ -17,6 +17,12 @@ public record GenerateCopyMultiLanguageRequest
     [StringLength(500, ErrorMessage = "Goal cannot exceed 500 characters")]
     public required string Goal { get; init; }
 
+    [StringLength(2000, ErrorMessage = "Context cannot exceed 2000 characters")]
+    public string? Context { get; init; }
+
+    [StringLength(200, ErrorMessage = "Brand name cannot exceed 200 characters")]
+    public string? BrandName { get; init; }
+
     [StringLength(50, ErrorMessage = "BrandTone cannot exceed 50 characters")]
     public string? BrandTone { get; init; }
 

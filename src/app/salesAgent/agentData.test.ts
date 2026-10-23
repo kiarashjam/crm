@@ -245,6 +245,21 @@ describe('failure', () => {
     reloadAgentData();
     await flush();
     expect(result.current.lists?.deals).toHaveLength(1);
+    // ...and says the copy is old, so the agent does not present it as current.
+    expect(result.current.gaps).toEqual(['Deals could not be refreshed, so an earlier copy is used.']);
+
+    quiet();
+    reloadAgentData();
+    await flush();
+    expect(result.current.gaps).toEqual([]);
+  });
+
+  it('a list that never loaded is named, not read as empty', async () => {
+    deals.mockRejectedValue(new Error('deals offline'));
+    const { result } = renderHook(() => useAgentData('org-1'));
+    await flush();
+    expect(result.current.lists?.deals).toEqual([]);
+    expect(result.current.gaps).toEqual(['Deals could not be loaded.']);
   });
 
   it('retry after a failure loads', async () => {

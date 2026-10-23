@@ -523,8 +523,8 @@ public class OrganizationServiceTests
         };
 
         _organizationRepositoryMock
-            .Setup(r => r.IsMemberAsync(userId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OrgMemberRole.Owner);
 
         _organizationRepositoryMock
             .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
@@ -541,6 +541,29 @@ public class OrganizationServiceTests
         result.Value.PasswordWebhookUrl.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(OrgMemberRole.Owner, true)]
+    [InlineData(OrgMemberRole.Manager, true)]
+    [InlineData(OrgMemberRole.Member, false)]
+    public async Task GetWebhookInfoAsync_ShowsTheKeyOnlyToOwnersAndManagers(OrgMemberRole role, bool seesKey)
+    {
+        // The key reads the whole workspace as the owner, private deals included.
+        var userId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        _organizationRepositoryMock
+            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(role);
+        _organizationRepositoryMock
+            .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = orgId, Name = "Test Org", WebhookApiKey = "aci_testkey123" });
+
+        var result = await _sut.GetWebhookInfoAsync(orgId, userId);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.HasApiKey.Should().BeTrue();
+        result.Value.ApiKey.Should().Be(seesKey ? "aci_testkey123" : null);
+    }
+
     [Fact]
     public async Task GetWebhookInfoAsync_ReturnsNotMemberError_WhenUserIsNotMember()
     {
@@ -549,8 +572,8 @@ public class OrganizationServiceTests
         var orgId = Guid.NewGuid();
 
         _organizationRepositoryMock
-            .Setup(r => r.IsMemberAsync(userId, orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+            .Setup(r => r.GetMemberRoleAsync(userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OrgMemberRole?)null);
 
         // Act
         var result = await _sut.GetWebhookInfoAsync(orgId, userId);

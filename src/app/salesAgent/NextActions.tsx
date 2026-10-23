@@ -6,9 +6,13 @@ import { ArrowRight, Check, ChevronDown, Compass, Loader2, PenLine, RotateCw, Sp
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
+import { getCurrentUser } from '@/app/lib/auth';
 import { reloadAgentData, useAgentData, type AgentLists } from './agentData';
+import { AgentDesk } from './AgentDesk';
+import type { AgentWorld } from './brain/answer';
+import { learnFrom, type LearnedPatterns } from './brain/patterns';
 import { useNextActionsSlot } from './NextActionsSlot';
-import { pageScope } from './pageScope';
+import { itemOnList, pageScope, type PageScope } from './pageScope';
 import { dealPlan, type PlanLine } from './recordPlan';
 import { collectWork, type WorkSuggestion } from './workspace';
 import type { WriterBrief } from './writerBrief';
@@ -29,6 +33,8 @@ import type { WriterBrief } from './writerBrief';
  * anyone who asked for less motion, in the OS or in Settings.
  *
  * "Draft message" only fills the sales writer. Nothing is ever sent from here.
+ * The ask box answers from these same lists. A task, note, or other change runs
+ * only after its button, and a read-only workspace saves nothing.
  */
 
 const MAX_SHOWN = 5;
@@ -41,10 +47,41 @@ function recipientFor(item: WorkSuggestion): { type: 'lead' | 'contact' | 'deal'
   return { type, id: decodeURIComponent(match[2]), name: item.name };
 }
 
-function inList(item: WorkSuggestion, list: string): boolean {
-  if (list === 'Leads') return item.href.startsWith('/leads/');
-  if (list === 'Deals') return item.href.startsWith('/deals/');
-  return item.list === list;
+function inList(item: WorkSuggestion, list: Extract<PageScope, { mode: 'list' }>['list']): boolean {
+  return itemOnList(item, list);
+}
+
+function askWorld(lists: AgentLists, items: WorkSuggestion[], scope: Exclude<PageScope, { mode: 'hidden' }>, patterns: LearnedPatterns, gaps: string[]): AgentWorld {
+  return {
+    items,
+    leads: lists.leads,
+    deals: lists.deals,
+    contacts: lists.contacts,
+    companies: lists.companies,
+    tasks: lists.tasks,
+    // A sequence the person can pick by name. One saved without a name still needs a label.
+    sequences: lists.sequences.map((sequence) => ({ id: sequence.id, name: sequence.name?.trim() || 'Untitled sequence' })),
+    page: scope,
+    patterns,
+    gaps,
+  };
+}
+
+function AskBox({ lists, gaps, items, scope }: { lists: AgentLists; gaps: string[]; items: WorkSuggestion[]; scope: Exclude<PageScope, { mode: 'hidden' }> }) {
+  const org = useOrgOptional();
+  const userId = getCurrentUser()?.id ?? 'session';
+  const accountKey = `${userId}:${org?.currentOrgId ?? 'no-org'}`;
+  // Read once per load of the lists, not on every render of the page underneath.
+  const patterns = useMemo(() => learnFrom(lists.leads, lists.deals), [lists]);
+  return (
+    <AgentDesk
+      // A new workspace starts a new conversation: nothing typed in the last one carries over.
+      key={accountKey}
+      world={askWorld(lists, items, scope, patterns, gaps)}
+      readOnly={org?.isReadOnly ?? false}
+      accountKey={accountKey}
+    />
+  );
 }
 
 /** What a record is called, for "Next for this …". */
@@ -321,10 +358,12 @@ function Ladder({ lines }: { lines: PlanLine[] }) {
   );
 }
 
-function RecordStrip({ href, step, lists, refreshing }: {
+function RecordStrip({ href, step, items, lists, gaps, refreshing }: {
   href: string;
   step: WorkSuggestion;
+  items: WorkSuggestion[];
   lists: AgentLists;
+  gaps: string[];
   refreshing: boolean;
 }) {
   const reduce = useMotionPreference();
@@ -351,6 +390,7 @@ function RecordStrip({ href, step, lists, refreshing }: {
         <DraftLink item={step} />
       </div>
       {ladder && <Ladder lines={ladder} />}
+      <AskBox lists={lists} gaps={gaps} items={items} scope={{ mode: 'record', href }} />
     </Card>
   );
 }
@@ -417,7 +457,7 @@ export function NextActions() {
     // The page already shows its state, and a card (or a gap) on every finished
     // record is noise.
     if (!step) return null;
-    return place(<RecordStrip href={scope.href} step={step} lists={data.lists} refreshing={data.refreshing} />);
+    return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} gaps={data.gaps} refreshing={data.refreshing} />);
   }
 
   const scoped = scope.mode === 'list' ? allItems.filter((item) => inList(item, scope.list)) : allItems;
@@ -507,6 +547,7 @@ export function NextActions() {
           </AnimatePresence>
         </>
       )}
+      <AskBox lists={data.lists} gaps={data.gaps} items={scoped} scope={scope} />
     </Card>,
   );
 }
