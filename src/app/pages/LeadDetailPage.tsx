@@ -125,6 +125,10 @@ export default function LeadDetailPage() {
   const rise = (delay = 0) => (reduce
     ? { initial: false as const }
     : { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.45, ease: EASE, delay } });
+  // Sidebar cards arrive one after another, from the right.
+  const card = (index: number) => (reduce
+    ? { initial: false as const }
+    : { initial: { opacity: 0, x: 18 }, animate: { opacity: 1, x: 0 }, transition: { duration: 0.4, ease: EASE, delay: 0.16 + index * 0.06 } });
 
   // When the user arrives from the leads list, Leads.tsx stashes the source
   // URL (including filters/sort) here so Back / breadcrumb can return there
@@ -791,31 +795,43 @@ export default function LeadDetailPage() {
             onDelete={() => setDeleteOpen(true)}
           />
 
-          {/* Hero — status-tinted gradient backdrop with decorative blurs gives the page depth */}
-          <section className="relative isolate overflow-hidden border-b border-slate-200/70 bg-gradient-to-br from-white via-slate-50/60 to-white">
-            {/* status-tinted radial accent */}
-            <div
+          {/* Hero: the one full-width band. Who the person is, how to reach them, and the
+              numbers that matter, in one compact strip. Everything below sits in two columns. */}
+          <section className="relative isolate overflow-hidden border-b border-slate-200/70 bg-gradient-to-br from-white via-slate-50/70 to-white">
+            <motion.div
               aria-hidden
-              className={cn(
-                'pointer-events-none absolute -top-24 -right-12 h-72 w-72 rounded-full blur-3xl opacity-25',
-                'bg-gradient-to-br', gradient,
-              )}
+              className={cn('pointer-events-none absolute -top-28 right-[8%] h-72 w-72 rounded-full bg-gradient-to-br opacity-30 blur-3xl', gradient)}
+              animate={reduce ? undefined : { x: [0, -40, 0], y: [0, 18, 0], scale: [1, 1.08, 1] }}
+              transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut' }}
             />
-            <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-12 h-64 w-64 rounded-full bg-indigo-200/30 blur-3xl" />
-            <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-200/80 to-transparent" />
+            <motion.div
+              aria-hidden
+              className="pointer-events-none absolute -bottom-32 left-[12%] h-72 w-72 rounded-full bg-gradient-to-br from-fuchsia-300/30 via-violet-300/25 to-sky-300/20 blur-3xl"
+              animate={reduce ? undefined : { x: [0, 36, 0], y: [0, -14, 0] }}
+              transition={{ duration: 19, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/60 to-transparent" />
 
-            <div className="relative w-full px-[var(--page-padding)] py-7 sm:py-8">
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                <div className="flex min-w-0 items-start gap-4 sm:gap-5">
+            <div className="relative w-full px-[var(--page-padding)] py-5">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-8">
+                <div className="flex min-w-0 items-center gap-4">
                   <motion.div
                     className="relative shrink-0"
                     initial={reduce ? false : { opacity: 0, scale: 0.8, rotate: -6 }}
                     animate={{ opacity: 1, scale: 1, rotate: 0 }}
                     transition={{ type: 'spring', stiffness: 320, damping: 20 }}
                   >
+                    {/* A turning ring of colour around the initials. */}
+                    <span aria-hidden className="absolute -inset-1 overflow-hidden rounded-[20px]">
+                      <motion.span
+                        className="absolute left-1/2 top-1/2 aspect-square w-[220%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(from_0deg,#f97316,#ec4899,#8b5cf6,#0ea5e9,#10b981,#f97316)]"
+                        animate={reduce ? undefined : { rotate: 360 }}
+                        transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
+                      />
+                    </span>
                     <div
                       className={cn(
-                        'flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-2xl bg-gradient-to-br text-white text-xl sm:text-2xl font-bold shadow-lg ring-4 ring-white',
+                        'relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br text-xl font-bold text-white shadow-lg ring-2 ring-white',
                         gradient,
                       )}
                     >
@@ -824,15 +840,15 @@ export default function LeadDetailPage() {
                     {lead.isConverted && (
                       <span
                         aria-hidden
-                        className="absolute -right-1 -bottom-1 flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow ring-4 ring-white"
+                        className="absolute -right-1.5 -bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow ring-2 ring-white"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
+                        <CheckCircle2 className="w-3.5 h-3.5" />
                       </span>
                     )}
                   </motion.div>
                   <motion.div className="min-w-0 flex-1" {...rise(0.06)}>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
+                      <h1 className="truncate text-2xl font-bold leading-tight tracking-tight text-slate-900 sm:text-[28px]">
                         {lead.name}
                       </h1>
                       {/* Read-only: the status is derived from the pipeline below,
@@ -855,82 +871,86 @@ export default function LeadDetailPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-slate-500">
+                    {/* How to reach them, and who they belong to, as coloured chips. */}
+                    <motion.div
+                      className="mt-2 flex flex-wrap items-center gap-1.5"
+                      initial={reduce ? false : 'hidden'}
+                      animate="shown"
+                      variants={{ hidden: {}, shown: { transition: { staggerChildren: 0.05, delayChildren: 0.12 } } }}
+                    >
                       {company && (
-                        <Link to={`/companies/${company.id}`} className="inline-flex items-center gap-1.5 hover:text-slate-800">
-                          <Building2 className="w-3.5 h-3.5" />
-                          {company.name}
-                        </Link>
+                        <InfoChip tone="indigo" icon={<Building2 className="w-3 h-3" />} to={`/companies/${company.id}`}>{company.name}</InfoChip>
                       )}
                       {lead.email && (
-                        <span className="group/copy inline-flex items-center gap-1">
-                          <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-1.5 hover:text-blue-700">
-                            <Mail className="w-3.5 h-3.5" />
-                            {lead.email}
-                          </a>
-                          <CopyButton label="Copy email" copied={copiedField === 'Email'} onClick={() => copyToClipboard(lead.email!, 'Email')} />
-                        </span>
+                        <InfoChip
+                          tone="sky"
+                          icon={<Mail className="w-3 h-3" />}
+                          href={`mailto:${lead.email}`}
+                          trailing={<CopyButton label="Copy email" copied={copiedField === 'Email'} onClick={() => copyToClipboard(lead.email!, 'Email')} />}
+                        >
+                          {lead.email}
+                        </InfoChip>
                       )}
                       {lead.phone && (
-                        <span className="group/copy inline-flex items-center gap-1">
-                          <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1.5 hover:text-teal-700">
-                            <Phone className="w-3.5 h-3.5" />
-                            {lead.phone}
-                          </a>
-                          <CopyButton label="Copy phone" copied={copiedField === 'Phone'} onClick={() => copyToClipboard(lead.phone!, 'Phone')} />
-                        </span>
+                        <InfoChip
+                          tone="teal"
+                          icon={<Phone className="w-3 h-3" />}
+                          href={`tel:${lead.phone}`}
+                          trailing={<CopyButton label="Copy phone" copied={copiedField === 'Phone'} onClick={() => copyToClipboard(lead.phone!, 'Phone')} />}
+                        >
+                          {lead.phone}
+                        </InfoChip>
                       )}
                       {assignee && (
-                        <span className="inline-flex items-center gap-1.5">
-                          <UserIcon className="w-3.5 h-3.5" />
-                          {assignee.name}
-                        </span>
+                        <InfoChip tone="purple" icon={<UserIcon className="w-3 h-3" />}>{assignee.name}</InfoChip>
                       )}
                       {referredByName && (
-                        lead.referredByContactId ? (
-                          <Link to={`/contacts/${lead.referredByContactId}`} className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700 ring-1 ring-violet-100 transition-colors hover:bg-violet-100">
-                            <UserPlus className="w-3.5 h-3.5" />
-                            Referred by {referredByName}
-                          </Link>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5">
-                            <UserPlus className="w-3.5 h-3.5" />
-                            Referred by {referredByName}
-                          </span>
-                        )
+                        <InfoChip
+                          tone="violet"
+                          icon={<UserPlus className="w-3 h-3" />}
+                          to={lead.referredByContactId ? `/contacts/${lead.referredByContactId}` : undefined}
+                        >
+                          Referred by {referredByName}
+                        </InfoChip>
                       )}
-                    </div>
-                    {/* Compact meta strip: timestamps live inline rather than as separate cards */}
-                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                      <span className="inline-flex items-center gap-1.5" title={formatFull(lead.lastContactedAt) ?? ''}>
-                        <Clock className="w-3 h-3" />
-                        Last contacted {formatRelative(lead.lastContactedAt) ?? '—'}
-                      </span>
-                      <span className="text-slate-200">·</span>
-                      <span className="inline-flex items-center gap-1.5" title={formatFull(lead.createdAtUtc) ?? ''}>
-                        <Calendar className="w-3 h-3" />
-                        Created {formatRelative(lead.createdAtUtc) ?? '—'}
-                      </span>
-                    </div>
+                    </motion.div>
                   </motion.div>
                 </div>
 
-                {/* Right side: score gauge + action buttons (stack on mobile, side-by-side on lg) */}
+                {/* The numbers, then the quick actions. A tile that names a tab opens it. */}
                 <motion.div
-                  className="flex shrink-0 flex-row items-center gap-5 lg:flex-col lg:items-end lg:gap-4"
+                  className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:flex-nowrap xl:justify-end"
                   initial={reduce ? false : { opacity: 0, x: 16 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.45, ease: EASE, delay: 0.12 }}
                 >
-                  <ScoreEditor score={lead.leadScore ?? 0} onSave={saveScore} readOnly={isReadOnly} />
-                  <div className="flex flex-wrap items-center justify-end gap-2">
+                  {/* One swipeable row on a phone, wrapping from small screens up. */}
+                  <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:items-stretch sm:overflow-visible sm:px-0 sm:pb-0">
+                    <div className="flex shrink-0 items-center gap-2.5 rounded-xl border border-slate-200/80 bg-white/80 px-2.5 py-1.5 shadow-sm backdrop-blur">
+                      <ScoreEditor score={lead.leadScore ?? 0} onSave={saveScore} readOnly={isReadOnly} size={44} />
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Score</span>
+                    </div>
+                    <StatTile tone="amber" icon={<Clock className="w-3.5 h-3.5" />} label="Last contact" title={formatFull(lead.lastContactedAt) ?? undefined}>
+                      {formatRelative(lead.lastContactedAt) ?? 'Never'}
+                    </StatTile>
+                    <StatTile tone="orange" icon={<CheckCircle2 className="w-3.5 h-3.5" />} label="Open tasks" onClick={() => setTab('tasks')}>
+                      {openTaskCount}
+                    </StatTile>
+                    <StatTile tone="indigo" icon={<MessageSquarePlus className="w-3.5 h-3.5" />} label="Activity" onClick={() => setTab('activity')}>
+                      {activities.length}
+                    </StatTile>
+                    <StatTile tone="slate" icon={<Calendar className="w-3.5 h-3.5" />} label="Added" title={formatFull(lead.createdAtUtc) ?? undefined}>
+                      {formatRelative(lead.createdAtUtc) ?? '—'}
+                    </StatTile>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
                     {lead.email && (
-                      <Button asChild size="sm" variant="outline" className="gap-1.5">
+                      <Button asChild size="sm" variant="outline" className="gap-1.5 rounded-xl">
                         <a href={`mailto:${lead.email}`}><Mail className="w-4 h-4" /> Email</a>
                       </Button>
                     )}
                     {lead.phone && (
-                      <Button asChild size="sm" variant="outline" className="gap-1.5">
+                      <Button asChild size="sm" variant="outline" className="gap-1.5 rounded-xl">
                         <a href={`tel:${lead.phone}`}><Phone className="w-4 h-4" /> Call</a>
                       </Button>
                     )}
@@ -938,7 +958,7 @@ export default function LeadDetailPage() {
                       <QuickLogPopover
                         onSubmit={(p) => logActivity(p)}
                         trigger={
-                          <Button size="sm" className="gap-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white hover:from-orange-600 hover:to-amber-600 shadow shadow-orange-500/20">
+                          <Button size="sm" className="gap-1.5 rounded-xl bg-gradient-to-r from-orange-500 via-pink-500 to-fuchsia-500 text-white shadow shadow-fuchsia-500/25 hover:opacity-95">
                             <MessageSquarePlus className="w-4 h-4" />
                             Log activity
                           </Button>
@@ -951,54 +971,51 @@ export default function LeadDetailPage() {
             </div>
           </section>
 
-          {/* Lead lifecycle pipeline (full-width, under the hero) */}
-          <motion.div className="w-full px-[var(--page-padding)] pt-6" {...rise(0.16)}>
-            <NextActionsSlot className="mb-4" />
-            {/* Status ↔ pipeline relationship: how the automation is behaving,
-                or a one-click resolution when the two disagree. */}
-            <StatusSyncStrip
-              className="mb-3"
-              drift={statusSyncView.drift}
-              reasons={statusSyncView.reasons}
-              enabled={statusSync.enabled}
-              onToggleEnabled={statusSync.setEnabled}
-              disabled={lead.isConverted || isReadOnly}
-              onApply={(name) => applyDerivedStatus(name)}
-            />
-            {/* `previewStatus` is withheld from a viewer: the chips are disabled,
-                so a "→ Qualified" hint would advertise something they cannot do. */}
-            <LeadPipelineTracker
-              value={pipeline}
-              disabled={lead.isConverted || isReadOnly}
-              onChange={savePipeline}
-              previewStatus={isReadOnly ? undefined : (patch) => statusSync.preview(lead, pipeline, patch)}
-              onConvert={isReadOnly ? undefined : () => navigate(`/leads?convertLeadId=${lead.id}`)}
-            />
-          </motion.div>
-
-          {/* Sits directly under the tracker because it drives it: sending
-              satisfies the Contract phase and full execution satisfies the
-              Signature phase, which the status auto-sync then carries through. */}
-          <div className="w-full px-[var(--page-padding)] pb-2">
-            <ContractPanel leadId={lead.id} leadName={lead.name} readOnly={isReadOnly} />
-          </div>
-
-          {/* Body: tabs + sidebar */}
-          <div className="grid w-full gap-6 px-[var(--page-padding)] py-6 lg:grid-cols-[1fr_320px]">
+          {/* Body: everything else in two columns, so the page uses its width. */}
+          <div className="grid w-full gap-5 px-[var(--page-padding)] py-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
             {/* Main column */}
-            <div className="min-w-0">
-              {/* Tab bar */}
-              <div className="sticky top-[52px] z-20 -mx-1 mb-4 flex items-center gap-1 border-b border-slate-200 bg-slate-50/40 px-1 backdrop-blur-sm">
-                <TabButton active={tab === 'activity'} onClick={() => setTab('activity')} icon={<MessageSquarePlus className="w-4 h-4" />}>
-                  Activity <span className="ml-1.5 text-xs text-slate-400">({activities.length})</span>
+            <div className="min-w-0 space-y-4">
+              <motion.div {...rise(0.14)}>
+                <NextActionsSlot className="mb-4" />
+                {/* Status ↔ pipeline relationship: how the automation is behaving,
+                    or a one-click resolution when the two disagree. */}
+                <StatusSyncStrip
+                  className="mb-3"
+                  drift={statusSyncView.drift}
+                  reasons={statusSyncView.reasons}
+                  enabled={statusSync.enabled}
+                  onToggleEnabled={statusSync.setEnabled}
+                  disabled={lead.isConverted || isReadOnly}
+                  onApply={(name) => applyDerivedStatus(name)}
+                />
+                {/* `previewStatus` is withheld from a viewer: the chips are disabled,
+                    so a "→ Qualified" hint would advertise something they cannot do. */}
+                <LeadPipelineTracker
+                  value={pipeline}
+                  disabled={lead.isConverted || isReadOnly}
+                  onChange={savePipeline}
+                  previewStatus={isReadOnly ? undefined : (patch) => statusSync.preview(lead, pipeline, patch)}
+                  onConvert={isReadOnly ? undefined : () => navigate(`/leads?convertLeadId=${lead.id}`)}
+                />
+              </motion.div>
+
+              {/* Sits directly under the tracker because it drives it: sending
+                  satisfies the Contract phase and full execution satisfies the
+                  Signature phase, which the status auto-sync then carries through. */}
+              <motion.div {...rise(0.2)}>
+                <ContractPanel leadId={lead.id} leadName={lead.name} readOnly={isReadOnly} />
+              </motion.div>
+
+              {/* Tab bar: a pill that slides to the tab you pick. */}
+              <div className="sticky top-[52px] z-20 flex items-center gap-1 rounded-2xl border border-slate-200/80 bg-white/85 p-1 shadow-sm backdrop-blur-md">
+                <TabButton active={tab === 'activity'} tone="indigo" onClick={() => setTab('activity')} icon={<MessageSquarePlus className="w-4 h-4" />} count={activities.length}>
+                  Activity
                 </TabButton>
-                <TabButton active={tab === 'tasks'} onClick={() => setTab('tasks')} icon={<CheckCircle2 className="w-4 h-4" />}>
-                  Tasks {openTaskCount > 0 && (
-                    <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-orange-100 px-1.5 text-[10px] font-bold text-orange-700">{openTaskCount}</span>
-                  )}
+                <TabButton active={tab === 'tasks'} tone="orange" onClick={() => setTab('tasks')} icon={<CheckCircle2 className="w-4 h-4" />} count={openTaskCount}>
+                  Tasks
                 </TabButton>
-                <TabButton active={tab === 'notes'} onClick={() => setTab('notes')} icon={<FileText className="w-4 h-4" />}>
-                  Notes <span className="ml-1.5 text-xs text-slate-400">({noteActivities.length})</span>
+                <TabButton active={tab === 'notes'} tone="emerald" onClick={() => setTab('notes')} icon={<FileText className="w-4 h-4" />} count={noteActivities.length}>
+                  Notes
                 </TabButton>
               </div>
 
@@ -1204,51 +1221,47 @@ export default function LeadDetailPage() {
               </AnimatePresence>
             </div>
 
-            {/* Sidebar — single card with section dividers, sticky on lg+ so it
-                stays in view as the user scrolls the activity timeline. */}
-            <motion.aside
-              className="lg:sticky lg:top-[64px] lg:self-start lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto"
-              initial={reduce ? false : { opacity: 0, x: 16 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.45, ease: EASE, delay: 0.2 }}
-            >
+            {/* Sidebar: compact, colour-coded cards beside the pipeline from the top, so the
+                whole page scrolls as one. They arrive one after another. */}
+            <aside className="min-w-0 space-y-3">
               {/* AI assist — derived engagement score + recommended next action. */}
-              <AiNextActionCard
-                lead={lead}
-                activities={activities}
-                tasks={tasks}
-                className="mb-4 overflow-hidden rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/80 to-white shadow-sm"
-                onAct={(kind) => {
-                  if (kind === 'convert') navigate(`/leads?convertLeadId=${lead.id}`);
-                  else if (kind === 'task') setTab('tasks');
-                  else setTab('activity');
-                }}
-              />
+              <motion.div {...card(0)}>
+                <AiNextActionCard
+                  lead={lead}
+                  activities={activities}
+                  tasks={tasks}
+                  className="overflow-hidden rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50/80 via-white to-fuchsia-50/40 shadow-sm"
+                  onAct={(kind) => {
+                    if (kind === 'convert') navigate(`/leads?convertLeadId=${lead.id}`);
+                    else if (kind === 'task') setTab('tasks');
+                    else setTab('activity');
+                  }}
+                />
+              </motion.div>
 
-              {/* Next step — the most urgent open task, surfaced so the next
-                  follow-up is always one glance (and one click) away. */}
-              <div className={cn(
-                'mb-4 overflow-hidden rounded-2xl border bg-white shadow-sm',
-                nextTask && isOverdue(nextTask.dueDateUtc) ? 'border-red-200' : 'border-slate-200',
-              )}>
-                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Next step</h3>
-                  <button
-                    type="button"
-                    onClick={() => setTab('tasks')}
-                    className="text-[11px] font-medium text-indigo-600 hover:text-indigo-800"
-                  >
-                    {nextTask ? 'All tasks' : 'Add task'}
-                  </button>
-                </div>
-                <div className="p-4">
+              {/* Next step — the most urgent open task, one glance and one click away. */}
+              <motion.div {...card(1)}>
+                <SideCard
+                  title="Next step"
+                  tone={nextTask && isOverdue(nextTask.dueDateUtc) ? 'rose' : 'orange'}
+                  icon={nextTask && isOverdue(nextTask.dueDateUtc) ? <AlertCircle className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                  action={(
+                    <button
+                      type="button"
+                      onClick={() => setTab('tasks')}
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                    >
+                      {nextTask ? 'All tasks' : 'Add task'}
+                    </button>
+                  )}
+                >
                   {nextTask ? (
                     <div className="flex items-start gap-3">
                       <button
                         type="button"
                         onClick={() => toggleTask(nextTask)}
                         aria-label="Mark next step done"
-                        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 border-slate-300 bg-white transition-colors hover:border-emerald-400"
+                        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 border-slate-300 bg-white transition-colors hover:border-emerald-400 hover:bg-emerald-50"
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-slate-800">{nextTask.title}</p>
@@ -1257,7 +1270,6 @@ export default function LeadDetailPage() {
                             'mt-0.5 inline-flex items-center gap-1 text-xs',
                             isOverdue(nextTask.dueDateUtc) ? 'font-semibold text-red-600' : 'text-slate-500',
                           )}>
-                            {isOverdue(nextTask.dueDateUtc) ? <AlertCircle className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
                             {isOverdue(nextTask.dueDateUtc) ? 'Overdue · ' : 'Due '}{formatFull(nextTask.dueDateUtc)}
                           </p>
                         ) : (
@@ -1269,28 +1281,24 @@ export default function LeadDetailPage() {
                     <button
                       type="button"
                       onClick={() => setTab('tasks')}
-                      className="flex w-full items-center gap-2 rounded-lg border border-dashed border-slate-200 px-3 py-2.5 text-left text-sm text-slate-500 transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 hover:text-indigo-700"
+                      className="flex w-full items-center gap-2 rounded-lg border border-dashed border-orange-200 px-3 py-2 text-left text-sm text-slate-500 transition-colors hover:border-orange-300 hover:bg-orange-50/50 hover:text-orange-700"
                     >
                       <Plus className="w-4 h-4" />
                       Add a follow-up task
                     </button>
                   )}
-                </div>
-              </div>
+                </SideCard>
+              </motion.div>
 
               {/* Who referred this lead: visible to the whole team, and editable here. */}
-              <ReferralCard
-                lead={lead}
-                contacts={contacts}
-                readOnly={isReadOnly}
-                onChange={saveReferral}
-                className="mb-4"
-              />
+              <motion.div {...card(2)}>
+                <ReferralCard lead={lead} contacts={contacts} readOnly={isReadOnly} onChange={saveReferral} />
+              </motion.div>
 
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                {/* Contact section */}
-                <SidebarSection title="Contact">
-                  <div className="space-y-3">
+              {/* Contact: the fields edit in place. */}
+              <motion.div {...card(3)}>
+                <SideCard title="Contact" tone="sky" icon={<UserIcon className="w-3.5 h-3.5" />}>
+                  <div className="space-y-2.5">
                     <InlineField label="Name" value={lead.name} onSave={saveName} readOnly={isReadOnly} icon={<UserIcon className="w-3.5 h-3.5" />} />
                     <InlineField label="Email" type="email" value={lead.email ?? ''} onSave={saveEmail} readOnly={isReadOnly} icon={<Mail className="w-3.5 h-3.5" />} />
                     <InlineField label="Phone" type="tel" value={lead.phone ?? ''} onSave={savePhone} readOnly={isReadOnly} icon={<Phone className="w-3.5 h-3.5" />} />
@@ -1302,7 +1310,15 @@ export default function LeadDetailPage() {
                       </p>
                     )}
                     <LeadStatusTimeline leadId={lead.id} status={lead.status} />
-                    <SidebarSelectField label="Company" icon={<Building2 className="w-3.5 h-3.5 text-slate-400" />}>
+                  </div>
+                </SideCard>
+              </motion.div>
+
+              {/* Details: company, source, stage and owner side by side, two to a row. */}
+              <motion.div {...card(4)}>
+                <SideCard title="Details" tone="violet" icon={<Sparkles className="w-3.5 h-3.5" />}>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
+                    <SidebarSelectField label="Company" icon={<Building2 className="w-3 h-3 text-indigo-400" />}>
                       <Select value={lead.companyId ?? ''} disabled={isReadOnly} onValueChange={(v) => setCompanyId(v === '__none__' ? '' : v)}>
                         <SelectTrigger className="h-9 text-sm">
                           <SelectValue placeholder="No company" />
@@ -1315,13 +1331,20 @@ export default function LeadDetailPage() {
                         </SelectContent>
                       </Select>
                     </SidebarSelectField>
-                  </div>
-                </SidebarSection>
-
-                {/* Details section */}
-                <SidebarSection title="Details">
-                  <div className="space-y-3">
-                    <SidebarSelectField label="Source" icon={<Sparkles className="w-3.5 h-3.5 text-orange-400" />}>
+                    <SidebarSelectField label="Owner" icon={<UserIcon className="w-3 h-3 text-purple-400" />}>
+                      <Select value={lead.assignedToId ?? '__none__'} disabled={isReadOnly} onValueChange={(v) => setAssignment(v === '__none__' ? '' : v)}>
+                        <SelectTrigger className="h-9 text-sm">
+                          <SelectValue placeholder="Unassigned" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Unassigned</SelectItem>
+                          {orgMembers.map((m) => (
+                            <SelectItem key={m.userId} value={m.userId}>{m.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </SidebarSelectField>
+                    <SidebarSelectField label="Source" icon={<Sparkles className="w-3 h-3 text-orange-400" />}>
                       <Select value={lead.source ?? ''} disabled={isReadOnly} onValueChange={setSource}>
                         <SelectTrigger className="h-9 text-sm">
                           <SelectValue placeholder="Not set" />
@@ -1333,7 +1356,7 @@ export default function LeadDetailPage() {
                         </SelectContent>
                       </Select>
                     </SidebarSelectField>
-                    <SidebarSelectField label="Lifecycle stage">
+                    <SidebarSelectField label="Stage" icon={<CheckCircle2 className="w-3 h-3 text-emerald-400" />}>
                       <Select value={lead.lifecycleStage ?? ''} disabled={isReadOnly} onValueChange={setLifecycle}>
                         <SelectTrigger className="h-9 text-sm">
                           <SelectValue placeholder="Not set" />
@@ -1346,34 +1369,8 @@ export default function LeadDetailPage() {
                       </Select>
                     </SidebarSelectField>
                   </div>
-                </SidebarSection>
-
-                {/* Owner section */}
-                <SidebarSection title="Owner" last>
-                  <Select value={lead.assignedToId ?? '__none__'} disabled={isReadOnly} onValueChange={(v) => setAssignment(v === '__none__' ? '' : v)}>
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Unassigned" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Unassigned</SelectItem>
-                      {orgMembers.map((m) => (
-                        <SelectItem key={m.userId} value={m.userId}>{m.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {assignee && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white text-[11px] font-semibold ring-2 ring-white shadow-sm">
-                        {(assignee.name?.[0] ?? '?').toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-medium text-slate-700">{assignee.name}</p>
-                        <p className="truncate text-[11px] text-slate-400">{assignee.email}</p>
-                      </div>
-                    </div>
-                  )}
-                </SidebarSection>
-              </div>
+                </SideCard>
+              </motion.div>
 
               {/* Tags intentionally not surfaced here yet: the backend's
                   UpdateLeadRequest has no Tags field, so any add/remove would
@@ -1381,20 +1378,25 @@ export default function LeadDetailPage() {
                   Lead.Tags support. */}
 
               {/* Sales Tracker (Excel-parity fields for pre-sales pipeline) */}
-              <SalesTrackerCard
-                lead={lead}
-                className="mt-4"
-                statusSync={statusSync}
-                readOnly={isReadOnly}
-                onSaved={(updated) => setLead((prev) => (prev ? { ...prev, ...updated } : prev))}
-              />
+              <motion.div {...card(5)}>
+                <SalesTrackerCard
+                  lead={lead}
+                  statusSync={statusSync}
+                  readOnly={isReadOnly}
+                  onSaved={(updated) => setLead((prev) => (prev ? { ...prev, ...updated } : prev))}
+                />
+              </motion.div>
 
               {/* Custom fields (renders only when defined for leads) */}
-              <CustomFieldsCard entityType="lead" recordId={lead.id} className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" />
+              <motion.div {...card(6)}>
+                <CustomFieldsCard entityType="lead" recordId={lead.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" />
+              </motion.div>
 
               {/* Attachments */}
-              <AttachmentsCard entityType="lead" recordId={lead.id} className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" />
-            </motion.aside>
+              <motion.div {...card(7)}>
+                <AttachmentsCard entityType="lead" recordId={lead.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" />
+              </motion.div>
+            </aside>
           </div>
         </main>
       </PageTransition>
@@ -1461,52 +1463,179 @@ export default function LeadDetailPage() {
 
 // ---- Small inline components ----
 
+type Tone = 'indigo' | 'orange' | 'emerald' | 'sky' | 'teal' | 'purple' | 'violet' | 'amber' | 'rose' | 'slate';
+
+const TAB_PILL: Partial<Record<Tone, string>> = {
+  indigo: 'from-indigo-500 to-violet-500 shadow-indigo-500/25',
+  orange: 'from-orange-500 to-pink-500 shadow-orange-500/25',
+  emerald: 'from-emerald-500 to-teal-500 shadow-emerald-500/25',
+};
+
+/** One tab of the segmented bar. A coloured pill slides to the tab picked. */
 function TabButton({
-  active, onClick, icon, children,
-}: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
+  active, onClick, icon, children, tone, count,
+}: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode; tone: Tone; count: number }) {
   const reduce = useMotionPreference();
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        'relative flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-sm font-medium transition-colors',
-        active
-          ? 'text-indigo-700'
-          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/60',
+        'relative flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition-colors sm:flex-none',
+        active ? 'text-white' : 'text-slate-500 hover:bg-slate-100/70 hover:text-slate-800',
       )}
       aria-current={active ? 'page' : undefined}
     >
-      {icon}
-      {children}
-      {/* One underline that slides to the tab you picked, instead of two fading in and out. */}
       {active && (
         <motion.span
           aria-hidden
-          layoutId="lead-detail-tab-underline"
+          layoutId="lead-detail-tab-pill"
           transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 480, damping: 36 }}
-          className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"
+          className={cn('absolute inset-0 rounded-xl bg-gradient-to-r shadow-md', TAB_PILL[tone])}
         />
       )}
+      <span className="relative z-10 inline-flex items-center gap-1.5">
+        {icon}
+        {children}
+        <span
+          className={cn(
+            'inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums',
+            active ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-500',
+          )}
+        >
+          {count}
+        </span>
+      </span>
     </button>
   );
 }
 
-/**
- * Sidebar section with a small uppercase header, separated from the next
- * section by a thin divider rather than living in its own white card. Keeps
- * the right rail visually calm while still grouping fields.
- */
-function SidebarSection({
-  title, children, last,
-}: { title: string; children: React.ReactNode; last?: boolean }) {
+const CHIP_TONE: Record<Tone, string> = {
+  indigo: 'bg-indigo-50 text-indigo-700 ring-indigo-100 hover:bg-indigo-100',
+  sky: 'bg-sky-50 text-sky-700 ring-sky-100 hover:bg-sky-100',
+  teal: 'bg-teal-50 text-teal-700 ring-teal-100 hover:bg-teal-100',
+  purple: 'bg-purple-50 text-purple-700 ring-purple-100 hover:bg-purple-100',
+  violet: 'bg-violet-50 text-violet-700 ring-violet-100 hover:bg-violet-100',
+  orange: 'bg-orange-50 text-orange-700 ring-orange-100 hover:bg-orange-100',
+  emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-100 hover:bg-emerald-100',
+  amber: 'bg-amber-50 text-amber-700 ring-amber-100 hover:bg-amber-100',
+  rose: 'bg-rose-50 text-rose-700 ring-rose-100 hover:bg-rose-100',
+  slate: 'bg-slate-50 text-slate-600 ring-slate-200 hover:bg-slate-100',
+};
+
+/** A coloured chip in the header: a way to reach the person, or something about them. */
+function InfoChip({ tone, icon, to, href, trailing, children }: {
+  tone: Tone;
+  icon: React.ReactNode;
+  to?: string;
+  href?: string;
+  trailing?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const className = cn(
+    'inline-flex max-w-[16rem] items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-xs font-medium ring-1 transition-all hover:-translate-y-px hover:shadow-sm',
+    CHIP_TONE[tone],
+  );
+  const inner = (
+    <>
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/90 shadow-sm">{icon}</span>
+      <span className="truncate">{children}</span>
+    </>
+  );
+  const chip = to
+    ? <Link to={to} className={className}>{inner}</Link>
+    : href
+      ? <a href={href} className={className}>{inner}</a>
+      : <span className={className}>{inner}</span>;
   return (
-    <div className={cn('p-4', !last && 'border-b border-slate-100')}>
-      <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-        {title}
-      </h3>
-      {children}
-    </div>
+    <motion.span
+      className="group/copy inline-flex items-center gap-0.5"
+      variants={{ hidden: { opacity: 0, y: 6, scale: 0.95 }, shown: { opacity: 1, y: 0, scale: 1 } }}
+      transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+    >
+      {chip}
+      {trailing}
+    </motion.span>
+  );
+}
+
+const TILE_ICON: Record<Tone, string> = {
+  amber: 'from-amber-400 to-orange-500 shadow-amber-500/30',
+  orange: 'from-orange-500 to-pink-500 shadow-orange-500/30',
+  indigo: 'from-indigo-500 to-violet-500 shadow-indigo-500/30',
+  slate: 'from-slate-400 to-slate-500 shadow-slate-500/20',
+  emerald: 'from-emerald-500 to-teal-500 shadow-emerald-500/30',
+  sky: 'from-sky-400 to-blue-500 shadow-sky-500/30',
+  teal: 'from-teal-400 to-cyan-500 shadow-teal-500/30',
+  purple: 'from-purple-500 to-fuchsia-500 shadow-purple-500/30',
+  violet: 'from-violet-500 to-fuchsia-500 shadow-violet-500/30',
+  rose: 'from-rose-500 to-pink-500 shadow-rose-500/30',
+};
+
+/** One number in the header strip. With a tab to open, it is a button. */
+function StatTile({ tone, icon, label, title, onClick, children }: {
+  tone: Tone;
+  icon: React.ReactNode;
+  label: string;
+  title?: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  const reduce = useMotionPreference();
+  const body = (
+    <>
+      <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-md', TILE_ICON[tone])}>{icon}</span>
+      <span className="min-w-0 text-left">
+        <span className="block truncate text-sm font-bold tabular-nums leading-tight text-slate-900">{children}</span>
+        <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</span>
+      </span>
+    </>
+  );
+  const className = 'flex shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-2.5 py-1.5 shadow-sm backdrop-blur';
+  if (!onClick) return <div className={className} title={title}>{body}</div>;
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      title={title}
+      whileHover={reduce ? undefined : { y: -2 }}
+      whileTap={reduce ? undefined : { scale: 0.97 }}
+      className={cn(className, 'transition-shadow hover:border-slate-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400')}
+    >
+      {body}
+    </motion.button>
+  );
+}
+
+const CARD_ICON: Partial<Record<Tone, string>> = {
+  orange: 'from-orange-500 to-amber-500',
+  rose: 'from-rose-500 to-red-500',
+  sky: 'from-sky-500 to-blue-500',
+  violet: 'from-violet-500 to-fuchsia-500',
+};
+
+/** A sidebar card: a coloured icon and a small caps title, then its content. */
+function SideCard({ title, tone, icon, action, children }: {
+  title: string;
+  tone: Tone;
+  icon: React.ReactNode;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={cn(
+      'overflow-hidden rounded-2xl border bg-white shadow-sm transition-shadow hover:shadow-md',
+      tone === 'rose' ? 'border-rose-200' : 'border-slate-200/80',
+    )}>
+      <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-3">
+        <h3 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          <span className={cn('flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm', CARD_ICON[tone])}>{icon}</span>
+          {title}
+        </h3>
+        {action}
+      </div>
+      <div className="px-4 pb-4 pt-2">{children}</div>
+    </section>
   );
 }
 
@@ -1517,7 +1646,7 @@ function SidebarSelectField({
 }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+      <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
         {icon}
         {label}
       </div>
@@ -1546,7 +1675,7 @@ function CopyButton({ onClick, copied, label }: { onClick: () => void; copied: b
  * Lead score editor — a circular gauge that flips into an inline number input
  * when clicked. The gauge IS the affordance; no separate "Edit" link.
  */
-function ScoreEditor({ score, onSave, readOnly = false }: { score: number; onSave: (v: string) => Promise<boolean>; readOnly?: boolean }) {
+function ScoreEditor({ score, onSave, readOnly = false, size }: { score: number; onSave: (v: string) => Promise<boolean>; readOnly?: boolean; size?: number }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(score));
   const [saving, setSaving] = useState(false);
@@ -1598,7 +1727,7 @@ function ScoreEditor({ score, onSave, readOnly = false }: { score: number; onSav
       aria-label="Edit lead score"
       className="group relative transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40 rounded-full"
     >
-      <ScoreGauge score={score} />
+      <ScoreGauge score={score} size={size} strokeWidth={size && size < 72 ? 5 : undefined} hideCaption={!!size && size < 72} />
       <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-400 opacity-0 shadow ring-1 ring-slate-200 transition-opacity group-hover:opacity-100">
         <Pencil className="w-3 h-3" />
       </span>

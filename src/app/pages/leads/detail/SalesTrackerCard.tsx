@@ -304,7 +304,7 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
         />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-2">
         <div className="rounded-lg bg-white/70 border border-slate-200 px-3 py-2">
           <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Decline stage</p>
           <p className="text-sm font-semibold text-slate-800 mt-0.5">{computed.stage || '—'}</p>

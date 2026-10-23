@@ -7,6 +7,8 @@ interface ScoreGaugeProps {
   size?: number;
   /** stroke width of the arc. Default 8. */
   strokeWidth?: number;
+  /** Hide the "Score" caption, for a small gauge whose label sits beside it. */
+  hideCaption?: boolean;
   className?: string;
 }
 
@@ -15,7 +17,7 @@ interface ScoreGaugeProps {
  * at "7 o'clock" and 100 ends at "5 o'clock") with a gradient stroke that
  * tracks the score band — cold (slate), warm (amber), hot (emerald).
  */
-export function ScoreGauge({ score, size = 96, strokeWidth = 8, className }: ScoreGaugeProps) {
+export function ScoreGauge({ score, size = 96, strokeWidth = 8, hideCaption = false, className }: ScoreGaugeProps) {
   const clamped = Math.max(0, Math.min(100, score));
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -87,8 +89,8 @@ export function ScoreGauge({ score, size = 96, strokeWidth = 8, className }: Sco
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <span className={cn('text-xl font-bold tabular-nums leading-none', valueTone)}>{clamped}</span>
-        <span className="mt-0.5 text-[9px] uppercase tracking-widest text-slate-400">Score</span>
+        <span className={cn('font-bold tabular-nums leading-none', size < 72 ? 'text-sm' : 'text-xl', valueTone)}>{clamped}</span>
+        {!hideCaption && <span className="mt-0.5 text-[9px] uppercase tracking-widest text-slate-400">Score</span>}
       </div>
     </div>
   );
