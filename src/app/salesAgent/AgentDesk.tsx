@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
+import { ArrowUp, Maximize2, Minimize2, RotateCcw, ShieldCheck } from 'lucide-react';
 import { createActivity } from '@/app/api/activities';
 import { createContact } from '@/app/api/contacts';
 import { mergeCompanies, mergeContacts } from '@/app/api/dedupe';
@@ -12,6 +14,10 @@ import { getUserSettings, saveUserSettings } from '@/app/api/settings';
 import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
 import { askAgent, type AgentAction, type AgentReply, type AgentWorld } from './brain/answer';
 import { emptyMemory, remember, rowFor, type AgentMemory } from './brain/reason';
+import { useMotionPreference } from '@/app/hooks/useMotionPreference';
+import { cn } from '@/app/components/ui/utils';
+import { ActionChip, AgentBubble, AiOrb, EASE, SuggestionChips, ThinkingBubble, UserBubble } from './AgentChatParts';
+import { followUpSuggestions, starterSuggestions } from './chatSuggestions';
 
 const FOCUS_BASE = 'cadence.agent.focus';
 const TURNS_BASE = 'cadence.agent.turns';
@@ -41,6 +47,10 @@ interface Turn {
   role: 'you' | 'agent';
   text: string;
   actions: AgentAction[];
+  /** Said in this page view, so it animates in. A turn read back from storage does not. */
+  fresh?: boolean;
+  /** A confirmation that a change was saved. */
+  saved?: boolean;
 }
 
 let turnCount = 0;
@@ -151,16 +161,33 @@ function reason(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? `${fallback} ${error.message.trim()}` : fallback;
 }
 
+/** How long the agent "thinks" before answering. Long enough to read as work, short enough not to wait on. */
+const THINKING_MS = 650;
+
 /**
- * The conversation on top of the rules. A task or a note is written only from a button.
- * A draft only opens the sales writer.
+ * The conversation on top of the rules, as a chat. A task or a note is written only from
+ * a button, and only once. A draft only opens the sales writer.
  */
-export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; readOnly: boolean; accountKey: string }) {
+export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_MS }: {
+  world: AgentWorld;
+  readOnly: boolean;
+  accountKey: string;
+  /** Pause before an answer appears. Zero answers at once (tests, and reduced motion). */
+  thinkingMs?: number;
+}) {
   const navigate = useNavigate();
+  const reduce = useMotionPreference();
   const [question, setQuestion] = useState('');
   const [turns, setTurns] = useState<Turn[]>(() => readTurns(accountKey));
   const [busy, setBusy] = useState(false);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [thinking, setThinking] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+  const thinkTimer = useRef<number | null>(null);
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const field = useRef<HTMLTextAreaElement | null>(null);
   const [initialMemory] = useState(() => readFocus(accountKey));
   const memory = useRef<AgentMemory>(initialMemory);
   const accountReady = useRef(false);
@@ -202,8 +229,28 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
     return () => window.clearTimeout(handle);
   }, [turns, accountKey]);
 
+  useEffect(() => () => {
+    if (thinkTimer.current) window.clearTimeout(thinkTimer.current);
+  }, []);
+
+  // Keep the newest message in view as the conversation grows.
+  useEffect(() => {
+    const box = scroller.current;
+    if (!box) return;
+    if (typeof box.scrollTo === 'function') box.scrollTo({ top: box.scrollHeight, behavior: reduce ? 'auto' : 'smooth' });
+    else box.scrollTop = box.scrollHeight;
+  }, [turns.length, thinking, reduce]);
+
+  // The box grows with what is typed, up to a few lines.
+  useLayoutEffect(() => {
+    const box = field.current;
+    if (!box) return;
+    box.style.height = 'auto';
+    box.style.height = `${Math.min(box.scrollHeight, 132)}px`;
+  }, [question]);
+
   function push(role: Turn['role'], text: string, actions: AgentAction[] = []) {
-    setTurns((current) => [...current, { id: turnId(), role, text, actions }].slice(-12));
+    setTurns((current) => [...current, { id: turnId(), role, text, actions, fresh: true }].slice(-12));
   }
 
   function ask(text: string) {
@@ -218,14 +265,50 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
     push('agent', reply.text, actions);
   }
 
-  function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    const text = question.trim();
-    if (!text || busy) return;
+  /** Ask one question: it shows at once, and the answer follows after a short think. */
+  function send(raw: string) {
+    const text = raw.trim();
+    if (!text || busy || thinking) return;
     setQuestion('');
     setNotice(null);
+    setLastQuestion(text);
     push('you', text);
-    ask(text);
+    const wait = reduce ? 0 : thinkingMs;
+    if (wait <= 0) {
+      ask(text);
+      return;
+    }
+    setThinking(true);
+    thinkTimer.current = window.setTimeout(() => {
+      thinkTimer.current = null;
+      setThinking(false);
+      ask(text);
+    }, wait);
+  }
+
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    send(question);
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter sends, Shift+Enter starts a new line, and a composing IME keeps its Enter.
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      send(question);
+    }
+  }
+
+  function clearConversation() {
+    if (thinkTimer.current) window.clearTimeout(thinkTimer.current);
+    thinkTimer.current = null;
+    setThinking(false);
+    setTurns([]);
+    setNotice(null);
+    setLastQuestion(null);
+    memory.current = emptyMemory();
+    writeRaw(scopedKey(accountKey, FOCUS_BASE), JSON.stringify(memory.current));
+    field.current?.focus();
   }
 
   function confirmSaved(action: AgentAction, text: string) {
@@ -233,7 +316,7 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
     setTurns((current) => [...current.map((turn) => ({
       ...turn,
       actions: turn.actions.filter((item) => item.id !== action.id),
-    })), { id: turnId(), role: 'agent' as const, text, actions: [] }].slice(-12));
+    })), { id: turnId(), role: 'agent' as const, text, actions: [], fresh: true, saved: true }].slice(-12));
   }
 
   /** The workspace and account the requests will go to, which another tab can change. */
@@ -379,6 +462,7 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
     }
     inflight.current.add(action.id);
     setBusy(true);
+    setPendingId(action.id);
     try {
       const result = await save(action);
       if (!result) push('agent', 'That button is missing what the change needs, so nothing was saved. Ask again.', []);
@@ -389,63 +473,203 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
     } finally {
       inflight.current.delete(action.id);
       setBusy(false);
+      setPendingId(null);
     }
   }
 
+  const empty = turns.length === 0 && !thinking;
+  const lastTurn = turns[turns.length - 1];
+  const suggestions = empty
+    ? starterSuggestions(world)
+    : !thinking && !busy && lastTurn?.role === 'agent'
+      ? followUpSuggestions(world, memory.current, lastQuestion)
+      : [];
+  const status = thinking ? 'Thinking…' : busy ? 'Saving…' : 'Ready';
+
   return (
-    <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700">
-      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Ask</h3>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        Answers stay on this account when settings can be saved, and in this browser as well. A task, note, contact, deal, send, or other change runs only when you press its button, and only once.
-      </p>
-      {/* The live region is always in the page, so a screen reader is already listening when the first answer arrives. */}
-      <div aria-live="polite">
+    <section
+      aria-labelledby="agent-chat-heading"
+      className="relative mt-5 overflow-hidden rounded-2xl border border-fuchsia-200/70 bg-gradient-to-b from-white via-white to-fuchsia-50/40 shadow-sm dark:border-fuchsia-900/50 dark:from-slate-900 dark:via-slate-900 dark:to-fuchsia-950/20"
+    >
+      {/* A soft aurora behind the header, drifting slowly. */}
+      {!reduce && (
+        <>
+          <motion.span
+            aria-hidden="true"
+            className="pointer-events-none absolute -left-10 -top-16 h-40 w-40 rounded-full bg-orange-300/25 blur-3xl"
+            animate={{ x: [0, 30, 0], y: [0, 10, 0] }}
+            transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.span
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-12 -top-10 h-44 w-44 rounded-full bg-fuchsia-300/25 blur-3xl"
+            animate={{ x: [0, -24, 0], y: [0, 16, 0] }}
+            transition={{ duration: 17, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        </>
+      )}
+
+      <header className="relative flex items-center gap-3 border-b border-fuchsia-100/80 px-4 py-3 dark:border-fuchsia-900/40">
+        <AiOrb size={36} thinking={thinking} reduce={reduce} />
+        <div className="min-w-0 flex-1">
+          <h3 id="agent-chat-heading" className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-slate-900 dark:text-white">
+            Ask Cadence AI
+            <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>
+          </h3>
+          <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <span className="relative flex h-2 w-2" aria-hidden="true">
+              {(thinking || busy) && !reduce && <span className="absolute inline-flex h-full w-full rounded-full bg-fuchsia-400 opacity-75 motion-safe:animate-ping" />}
+              <span className={cn('relative inline-flex h-2 w-2 rounded-full', thinking || busy ? 'bg-fuchsia-500' : 'bg-emerald-500')} />
+            </span>
+            <span>{status}</span>
+            <span className="hidden sm:inline">· answers from this workspace&apos;s records</span>
+          </p>
+        </div>
         {turns.length > 0 && (
-          <ol className="mt-3 space-y-3" aria-label="Conversation with the agent">
+          <button
+            type="button"
+            onClick={clearConversation}
+            disabled={busy}
+            aria-label="New chat"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+            <span className="hidden sm:inline">New chat</span>
+          </button>
+        )}
+        {turns.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setExpanded((open) => !open)}
+            aria-label={expanded ? 'Show a shorter conversation' : 'Show a taller conversation'}
+            aria-pressed={expanded}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 dark:hover:bg-slate-800"
+          >
+            {expanded ? <Minimize2 className="h-4 w-4" aria-hidden="true" /> : <Maximize2 className="h-4 w-4" aria-hidden="true" />}
+          </button>
+        )}
+      </header>
+
+      {/* The live region is always in the page, so a screen reader is already listening when the first answer arrives. */}
+      <div
+        ref={scroller}
+        aria-live="polite"
+        className={cn(
+          'relative overflow-y-auto overscroll-contain px-4 transition-[max-height] duration-300',
+          expanded ? 'max-h-[34rem]' : 'max-h-[22rem]',
+          'py-4',
+        )}
+      >
+        {empty ? (
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: EASE }}
+            className="flex items-start gap-2.5"
+          >
+            <AiOrb size={28} reduce={reduce} className="mt-0.5" />
+            <div className="rounded-2xl rounded-tl-md border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+              <p className="font-medium text-slate-900 dark:text-white">Hi, I know this workspace&apos;s leads, deals, contacts, and tasks.</p>
+              <p className="mt-1">Ask what to do next, who went quiet, or about a record by name. Nothing changes until you press a button.</p>
+            </div>
+          </motion.div>
+        ) : (
+          <ol className="space-y-4" aria-label="Conversation with the agent">
             {turns.map((turn) => {
               const actions = readOnly ? turn.actions.filter((action) => action.kind === 'open' || action.kind === 'draft') : turn.actions;
               return (
-                <li key={turn.id} className="text-sm">
-                  <p className="font-medium text-slate-500">{turn.role === 'you' ? 'You' : 'Agent'}</p>
-                  <p className="mt-1 whitespace-pre-wrap text-slate-800 dark:text-slate-200">{turn.text}</p>
-                  {actions.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {actions.map((action) => (
-                        <button
+                <li key={turn.id}>
+                  {turn.role === 'you' ? (
+                    <UserBubble text={turn.text} fresh={!!turn.fresh} reduce={reduce} />
+                  ) : (
+                    <AgentBubble text={turn.text} saved={turn.saved} fresh={!!turn.fresh} reduce={reduce}>
+                      {actions.length > 0 && actions.map((action, index) => (
+                        <ActionChip
                           key={action.id}
-                          type="button"
-                          disabled={busy}
-                          onClick={() => run(action)}
-                          className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 hover:border-[var(--brand-primary)] disabled:opacity-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
-                        >
-                          {action.label}
-                        </button>
+                          action={action}
+                          busy={busy}
+                          pending={pendingId === action.id}
+                          index={index}
+                          reduce={reduce}
+                          onRun={(chosen) => void run(chosen)}
+                        />
                       ))}
-                    </div>
+                    </AgentBubble>
                   )}
                 </li>
               );
             })}
           </ol>
         )}
+        <AnimatePresence>
+          {thinking && (
+            <div className="mt-4">
+              <ThinkingBubble reduce={reduce} />
+            </div>
+          )}
+        </AnimatePresence>
       </div>
-      {notice && <p className="mt-2 text-sm text-red-700" role="status">{notice}</p>}
-      <form onSubmit={onSubmit} className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <label className="sr-only" htmlFor="agent-question">Ask the agent</label>
-        <input
-          id="agent-question"
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="What should I do next?"
-          className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
-        />
-        <button
-          type="submit"
-          className="h-11 rounded-xl bg-[var(--brand-primary)] px-4 text-sm font-semibold text-white hover:bg-[var(--brand-primary-dark)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] focus-visible:ring-offset-2"
-        >
-          Ask
-        </button>
-      </form>
-    </div>
+
+      <div className="relative border-t border-fuchsia-100/80 bg-white/70 px-4 pb-4 pt-3 backdrop-blur-sm dark:border-fuchsia-900/40 dark:bg-slate-900/70">
+        <AnimatePresence initial={false}>
+          {notice && (
+            <motion.p
+              key={notice}
+              role="status"
+              initial={reduce ? false : { opacity: 0, y: 6, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: EASE }}
+              className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+            >
+              {notice}
+            </motion.p>
+          )}
+        </AnimatePresence>
+        <div className="mb-3">
+          <SuggestionChips
+            suggestions={suggestions}
+            disabled={busy || thinking}
+            reduce={reduce}
+            onPick={send}
+            label={empty ? 'Questions to start with' : 'Questions to ask next'}
+          />
+        </div>
+        <form onSubmit={onSubmit} className="group/composer relative">
+          <label className="sr-only" htmlFor="agent-question">Ask the agent</label>
+          {/* A gradient ring that lights up while typing. */}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-r from-orange-400 via-fuchsia-500 to-violet-500 opacity-0 blur-[1px] transition-opacity duration-300 group-focus-within/composer:opacity-100"
+          />
+          <div className="relative flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 pl-3.5 shadow-sm dark:border-slate-600 dark:bg-slate-950">
+            <textarea
+              id="agent-question"
+              ref={field}
+              rows={1}
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Ask Cadence AI anything…"
+              className="max-h-[132px] min-h-[40px] flex-1 resize-none bg-transparent py-2.5 text-sm leading-5 text-slate-900 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none dark:text-slate-100"
+            />
+            <motion.button
+              type="submit"
+              aria-label="Send"
+              disabled={!question.trim() || busy || thinking}
+              whileHover={reduce ? undefined : { scale: 1.06 }}
+              whileTap={reduce ? undefined : { scale: 0.92 }}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-fuchsia-500 text-white shadow-md shadow-fuchsia-500/25 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 focus-visible:ring-offset-2 disabled:opacity-40"
+            >
+              <ArrowUp className="h-5 w-5" aria-hidden="true" />
+            </motion.button>
+          </div>
+        </form>
+        <p className="mt-2 hidden items-center gap-1.5 text-[11px] text-slate-400 sm:flex">
+          <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+          Enter to send, Shift+Enter for a new line. A change runs only when you press its button, and only once.
+        </p>
+      </div>
+    </section>
   );
 }

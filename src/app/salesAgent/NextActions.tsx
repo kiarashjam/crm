@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, Check, ChevronDown, Compass, Loader2, PenLine, RotateCw, Sparkles } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Loader2, PenLine, RotateCw, Sparkles } from 'lucide-react';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
@@ -146,39 +146,73 @@ function Accent() {
   );
 }
 
-/** The card arriving: a short rise and fade. */
+/**
+ * The card arriving: a short rise and fade, inside a gradient border that slowly turns,
+ * so the panel reads as the AI at work. With less motion asked for, the border is still.
+ */
 function Card({ className, labelledBy, children }: { className?: string; labelledBy: string; children: ReactNode }) {
   const reduce = useMotionPreference();
   return (
     <motion.section
-      className={cn(shell, className)}
+      className="relative overflow-hidden rounded-2xl p-[1.5px] shadow-[0_10px_40px_-18px_rgba(217,70,239,0.45)]"
       aria-labelledby={labelledBy}
       initial={reduce ? false : { opacity: 0, y: 14, scale: 0.99 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.45, ease: EASE }}
     >
-      <Accent />
-      {children}
+      <motion.span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[160%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(from_0deg,#f97316,#f59e0b,#ec4899,#8b5cf6,#6366f1,#f97316)] opacity-70"
+        animate={reduce ? undefined : { rotate: 360 }}
+        transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+      />
+      <div className={cn('relative overflow-hidden rounded-[15px] bg-white dark:bg-slate-900', className)}>
+        <Accent />
+        {children}
+      </div>
     </motion.section>
   );
 }
 
+/** The agent's tile: a gradient with a turning sheen and sparkles that twinkle around it. */
 function IconTile({ busy }: { busy: boolean }) {
   const reduce = useMotionPreference();
   return (
     <motion.span
-      className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/30"
-      whileHover={reduce ? undefined : { rotate: -12, scale: 1.06 }}
+      className="relative flex h-10 w-10 shrink-0 items-center justify-center"
+      whileHover={reduce ? undefined : { rotate: -10, scale: 1.08 }}
       transition={{ type: 'spring', stiffness: 300, damping: 15 }}
       aria-hidden="true"
     >
-      <Compass className="h-5 w-5" />
-      {busy && (
-        <span className="absolute -right-1 -top-1 flex h-3 w-3">
-          <span className="absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-75 motion-safe:animate-ping" />
-          <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-400 ring-2 ring-white dark:ring-slate-900" />
-        </span>
+      {!reduce && (
+        <motion.span
+          className="absolute inset-0 rounded-xl bg-gradient-to-br from-orange-400 via-fuchsia-500 to-violet-500 blur-md"
+          animate={{ opacity: busy ? [0.5, 0.95, 0.5] : [0.3, 0.6, 0.3], scale: busy ? [1, 1.2, 1] : [1, 1.08, 1] }}
+          transition={{ duration: busy ? 1.2 : 3, repeat: Infinity, ease: 'easeInOut' }}
+        />
       )}
+      <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 via-fuchsia-500 to-violet-600 text-white shadow-md shadow-fuchsia-500/30">
+        {!reduce && (
+          <motion.span
+            className="absolute inset-[-50%] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.5)_50deg,transparent_110deg)]"
+            animate={{ rotate: 360 }}
+            transition={{ duration: busy ? 1.5 : 6, repeat: Infinity, ease: 'linear' }}
+          />
+        )}
+        <Sparkles className="relative h-5 w-5" />
+      </span>
+      {!reduce && [
+        { className: '-right-1 -top-1 h-1.5 w-1.5', delay: 0 },
+        { className: '-left-1 top-1 h-1 w-1', delay: 0.8 },
+        { className: '-bottom-1 right-2 h-1 w-1', delay: 1.6 },
+      ].map((spark) => (
+        <motion.span
+          key={spark.delay}
+          className={cn('absolute rounded-full bg-amber-300 shadow-[0_0_6px_rgba(251,191,36,0.9)]', spark.className)}
+          animate={{ scale: [0, 1.2, 0], opacity: [0, 1, 0] }}
+          transition={{ duration: 2.4, repeat: Infinity, delay: spark.delay, ease: 'easeInOut' }}
+        />
+      ))}
     </motion.span>
   );
 }
@@ -276,6 +310,15 @@ function Row({ item, index }: { item: WorkSuggestion; index: number }) {
           )}
         >
           <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1', URGENCY_BAR[urgency])} />
+          {first && !reduce && (
+            // A light sweep across the step to do now, every few seconds.
+            <motion.span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/70 to-transparent dark:via-white/10"
+              animate={{ x: ['0%', '420%'] }}
+              transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 4.5, ease: 'easeInOut' }}
+            />
+          )}
           <span
             className={cn(
               'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
@@ -476,7 +519,8 @@ export function NextActions() {
         <IconTile busy={data.refreshing} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 id="next-actions-heading" className="text-base font-semibold text-slate-900 dark:text-white">Do this next</h2>
+            <h2 id="next-actions-heading" className="bg-gradient-to-r from-slate-900 via-fuchsia-600 to-slate-900 bg-[length:200%_100%] bg-clip-text text-base font-semibold text-transparent motion-safe:animate-[shimmer_6s_linear_infinite] dark:from-white dark:via-fuchsia-300 dark:to-white">Do this next</h2>
+            <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>
             <Refreshing on={data.refreshing} />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">

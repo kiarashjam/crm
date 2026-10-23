@@ -332,7 +332,7 @@ describe('agent evaluation', () => {
     const book = world();
     const readOnlyView = render(
       <MemoryRouter>
-        <AgentDesk world={book} readOnly accountKey="user-1:org-a" />
+        <AgentDesk thinkingMs={0} world={book} readOnly accountKey="user-1:org-a" />
       </MemoryRouter>,
     );
     fireEvent.change(screen.getByLabelText('Ask the agent'), { target: { value: 'create a contact named Rita Book rita@example.com' } });
@@ -350,7 +350,7 @@ describe('agent evaluation', () => {
     }));
     const saving = render(
       <MemoryRouter>
-        <AgentDesk world={book} readOnly={false} accountKey="user-1:org-a" />
+        <AgentDesk thinkingMs={0} world={book} readOnly={false} accountKey="user-1:org-a" />
       </MemoryRouter>,
     );
     const input = screen.getByLabelText('Ask the agent');
@@ -375,7 +375,7 @@ describe('agent evaluation', () => {
     create.mockResolvedValueOnce({ contact: { id: 'rita', name: 'Rita Book', email: 'rita@example.com' }, error: null });
     render(
       <MemoryRouter>
-        <AgentDesk world={book} readOnly={false} accountKey="user-1:org-b" />
+        <AgentDesk thinkingMs={0} world={book} readOnly={false} accountKey="user-1:org-b" />
       </MemoryRouter>,
     );
     const retryInput = screen.getByLabelText('Ask the agent');
@@ -398,7 +398,7 @@ describe('agent evaluation', () => {
     ]));
     render(
       <MemoryRouter>
-        <AgentDesk world={world()} readOnly={false} accountKey="user-1:org-a" />
+        <AgentDesk thinkingMs={0} world={world()} readOnly={false} accountKey="user-1:org-a" />
       </MemoryRouter>,
     );
     expect(screen.getByText('I can send this to ada@northwind.test.')).toBeTruthy();
@@ -412,7 +412,7 @@ describe('agent evaluation', () => {
     const create = vi.mocked(createContact);
     render(
       <MemoryRouter>
-        <AgentDesk world={world()} readOnly={false} accountKey="user-1:org-a" />
+        <AgentDesk thinkingMs={0} world={world()} readOnly={false} accountKey="user-1:org-a" />
       </MemoryRouter>,
     );
     const input = screen.getByLabelText('Ask the agent');
@@ -427,7 +427,7 @@ describe('agent evaluation', () => {
     vi.mocked(createTask).mockRejectedValueOnce(new Error('The due date is not a real date.'));
     render(
       <MemoryRouter>
-        <AgentDesk world={world()} readOnly={false} accountKey="user-1:org-a" />
+        <AgentDesk thinkingMs={0} world={world()} readOnly={false} accountKey="user-1:org-a" />
       </MemoryRouter>,
     );
     const input = screen.getByLabelText('Ask the agent');
@@ -441,14 +441,14 @@ describe('agent evaluation', () => {
   it('listens for answers before the first one, and reads saved turns from the server once', () => {
     const first = render(
       <MemoryRouter>
-        <AgentDesk world={world()} readOnly={false} accountKey="user-1:org-a" />
+        <AgentDesk thinkingMs={0} world={world()} readOnly={false} accountKey="user-1:org-a" />
       </MemoryRouter>,
     );
     expect(first.container.querySelector('[aria-live="polite"]')).not.toBeNull();
     first.unmount();
     render(
       <MemoryRouter>
-        <AgentDesk world={world()} readOnly={false} accountKey="user-1:org-a" />
+        <AgentDesk thinkingMs={0} world={world()} readOnly={false} accountKey="user-1:org-a" />
       </MemoryRouter>,
     );
     expect(vi.mocked(getUserSettings)).toHaveBeenCalledTimes(1);

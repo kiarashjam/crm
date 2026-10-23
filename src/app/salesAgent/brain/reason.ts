@@ -167,7 +167,8 @@ export function pointsBack(question: string): boolean {
   const q = question.trim().toLowerCase().replace(/[?.!]+$/g, '');
   return /^(why|explain|and why|what about that|that one|this one|them|do that)$/.test(q)
     || /\b(that one|this one|the same one|their|theirs|that company|that deal|that contact|that lead|that record)\b/.test(q)
-    || /\b(draft|send|write|email|book|schedule|assign|convert|enroll|brief|move|update|call) (that|this|it|them|him|her)\b/.test(q);
+    // "this" is left out: on a record page it means the record on screen.
+    || /\b(draft|send|write|email|book|schedule|assign|convert|enroll|brief|move|update|call) (that|it|them|him|her)\b/.test(q);
 }
 
 export type PersonMatch =
