@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Plus, Building2, User, ArrowRightCircle, Link2,
   Mail, Phone, Sparkles, Check, Tag, UserPlus, Info, CircleDot,
@@ -35,6 +35,7 @@ import {
   getActivitiesByLead,
   getActivitiesByLeadIds,
   createActivity,
+  setLeadReferral,
   messages,
   type ConvertLeadRequest,
   type LeadStats,
@@ -87,13 +88,13 @@ import {
   daysContractOutstanding,
 } from './salesTracker/computed';
 import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignmentMigrationDialog';
+import { LeadReferralMigrationDialog } from './leads/components/LeadReferralMigrationDialog';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
 import { QUALIFIED_OR_BEYOND, statusIn } from './leads/leadStatusSync';
 import { findStatusFixes } from './leads/bulkStatusReconcile';
 import StatusReconcileDialog from './leads/components/StatusReconcileDialog';
 import { isValidGuid } from './leads/utils';
-import { loadLeadReferrals, saveLeadReferrals } from './leads/leadReferralStore';
 import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignmentStore';
 import { parsePipeline, pipelineBadge } from './leads/leadPipeline';
 import { matchesLeadSearch, leadInitials } from './leads/leadText';
@@ -323,7 +324,6 @@ export default function Leads() {
   );
   const activeSalesFilterCount = activeSalesTrackerFilterCount(salesFilters);
   const [leadAssignments, setLeadAssignments] = useState<Record<string, string>>(() => loadLeadAssignments());
-  const [leadReferrals, setLeadReferrals] = useState<Record<string, string>>(() => loadLeadReferrals());
   const [leadCreatedAtMap, setLeadCreatedAtMap] = useState<Record<string, string>>(() => loadLeadCreatedAtMap());
   const [pageActivities, setPageActivities] = useState<Map<string, Activity[]>>(new Map());
 
@@ -463,11 +463,9 @@ export default function Leads() {
   const mergeLeadsWithLocalData = useCallback(
     (rawLeads: Lead[], contactsById: Map<string, Contact>): Lead[] => {
       const assignments = loadLeadAssignments();
-      const referrals = loadLeadReferrals();
       const createdAtByLeadId = loadLeadCreatedAtMap();
       let createdAtChanged = false;
       setLeadAssignments(assignments);
-      setLeadReferrals(referrals);
 
       const merged = rawLeads.map((lead) => {
         const resolvedCreatedAt = lead.createdAtUtc || createdAtByLeadId[lead.id];
@@ -482,11 +480,10 @@ export default function Leads() {
           // whole org). The local map is only a fallback for demo mode / older
           // assignments made before the backend persisted them.
           assignedToId: lead.assignedToId ?? assignments[lead.id],
-          referredByContactId: referrals[lead.id] || lead.referredByContactId,
-          referredByContactName:
-            (referrals[lead.id] || lead.referredByContactId
-              ? contactsById.get(referrals[lead.id] || lead.referredByContactId || '')?.name
-              : undefined) || lead.referredByContactName,
+          // The referrer is saved on the lead. The name comes with it; the loaded
+          // contacts fill it in when an older response left it out.
+          referredByContactName: lead.referredByContactName
+            ?? (lead.referredByContactId ? contactsById.get(lead.referredByContactId)?.name : undefined),
         };
       });
 
@@ -1301,17 +1298,14 @@ export default function Leads() {
 
   const handleLeadUpdate = (updatedLead: Lead) => {
     const existingLead = leads.find((l) => l.id === updatedLead.id);
-    const resolvedReferredByContactId = updatedLead.referredByContactId ?? existingLead?.referredByContactId;
-    const resolvedReferredByContactName = resolvedReferredByContactId
-      ? (contacts.find((c) => c.id === resolvedReferredByContactId)?.name ?? existingLead?.referredByContactName)
-      : undefined;
     const mergedLead: Lead = {
       ...(existingLead ?? updatedLead),
       ...updatedLead,
       createdAtUtc: updatedLead.createdAtUtc ?? existingLead?.createdAtUtc ?? leadCreatedAtMap[updatedLead.id] ?? new Date().toISOString(),
       assignedToId: updatedLead.assignedToId ?? existingLead?.assignedToId,
-      referredByContactId: resolvedReferredByContactId,
-      referredByContactName: resolvedReferredByContactName,
+      // The server's answer, including a referrer that was just cleared.
+      referredByContactId: updatedLead.referredByContactId,
+      referredByContactName: updatedLead.referredByContactName,
     };
 
     const updatedAssignments = { ...leadAssignments };
@@ -1322,14 +1316,6 @@ export default function Leads() {
     }
     setLeadAssignments(updatedAssignments);
     saveLeadAssignments(updatedAssignments);
-    const updatedReferrals = { ...leadReferrals };
-    if (mergedLead.referredByContactId) {
-      updatedReferrals[mergedLead.id] = mergedLead.referredByContactId;
-    } else {
-      delete updatedReferrals[mergedLead.id];
-    }
-    setLeadReferrals(updatedReferrals);
-    saveLeadReferrals(updatedReferrals);
     const updatedCreatedAtMap = {
       ...leadCreatedAtMap,
       [mergedLead.id]: mergedLead.createdAtUtc ?? new Date().toISOString(),
@@ -1372,12 +1358,12 @@ export default function Leads() {
           lifecycleStage: form.lifecycleStage || undefined,
         });
         if (updated) {
-          const mergedUpdatedLead: Lead = {
-            ...updated,
-            referredByContactId: form.referredByContactId || undefined,
-            referredByContactName: form.referredByContactId ? contacts.find((c) => c.id === form.referredByContactId)?.name : undefined,
-          };
-          handleLeadUpdate(mergedUpdatedLead);
+          // The referrer has its own endpoint, saved for the whole team.
+          const referredByContactId = form.referredByContactId || null;
+          const saved = referredByContactId !== (editingLead.referredByContactId ?? null)
+            ? await setLeadReferral(editingLead.id, referredByContactId) ?? updated
+            : updated;
+          handleLeadUpdate({ ...updated, referredByContactId: saved.referredByContactId, referredByContactName: saved.referredByContactName });
           toast.success(messages.success.leadUpdated);
           setDialogOpen(false);
         } else {
@@ -1401,6 +1387,8 @@ export default function Leads() {
           leadScore: validLeadScore,
           description: form.description.trim() || undefined,
           lifecycleStage: form.lifecycleStage || undefined,
+          // Chosen in the dialog's "Referred By" field. It was dropped on create before.
+          referredByContactId: form.referredByContactId || undefined,
         }, onCreated);
         if (created === 'offered') return;
         if (created) await onCreated();
@@ -1433,6 +1421,7 @@ export default function Leads() {
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <LeadAssignmentMigrationDialog onMigrated={fetchLeads} />
+      <LeadReferralMigrationDialog onMigrated={fetchLeads} />
       <StatusReconcileDialog
         open={reconcileOpen}
         onOpenChange={setReconcileOpen}
@@ -2264,13 +2253,17 @@ export default function Leads() {
                             <span>{lead.phone}</span>
                           </a>
                         )}
-                        {lead.referredByContactName && (
-                          <span className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-fuchsia-50 to-pink-50 text-fuchsia-900 border border-fuchsia-200/60 shadow-sm font-medium">
+                        {lead.referredByContactName && lead.referredByContactId && (
+                          <Link
+                            to={`/contacts/${lead.referredByContactId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-fuchsia-50 to-pink-50 hover:from-fuchsia-100 hover:to-pink-100 text-fuchsia-900 border border-fuchsia-200/60 hover:border-fuchsia-300 shadow-sm hover:shadow-md transition-all font-medium"
+                          >
                             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-fuchsia-600 shadow-sm ring-1 ring-fuchsia-100">
                               <UserPlus className="w-4 h-4" />
                             </span>
                             <span>Referred by {lead.referredByContactName}</span>
-                          </span>
+                          </Link>
                         )}
                       </div>
 

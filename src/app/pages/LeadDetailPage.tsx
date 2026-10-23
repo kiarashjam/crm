@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
@@ -17,6 +18,7 @@ import {
   getCompanies, getContacts, getLeadStatuses, getLeadSources,
   getActivitiesByLead, createActivity,
   getTasksByLead, createTask, updateTask, deleteTask,
+  setLeadReferral,
   messages,
 } from '@/app/api';
 import type { Lead, Company, Contact, LeadStatus, LeadSource, Activity, TaskItem } from '@/app/api/types';
@@ -24,6 +26,7 @@ import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
 import { LeadStatusTimeline } from './leads/components/LeadStatusTimeline';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
+import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { Button } from '@/app/components/ui/button';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -45,13 +48,13 @@ import { StatusSyncStrip } from './leads/components/StatusSyncStrip';
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES, EMPTY_LEAD_FORM } from './leads/config';
 import { isValidGuid } from './leads/utils';
-import { loadLeadReferrals, setLeadReferral } from './leads/leadReferralStore';
 import { loadLeadAssignments, setLeadAssignment } from './leads/leadAssignmentStore';
 import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
 import { SalesTrackerCard } from './leads/detail/SalesTrackerCard';
+import { ReferralCard } from './leads/detail/ReferralCard';
 import AiNextActionCard from '@/app/components/AiNextActionCard';
 import SaveLeadAsContactDialog from '@/app/components/SaveLeadAsContactDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
@@ -60,6 +63,9 @@ import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 type Tab = 'activity' | 'tasks' | 'notes';
+
+/** One easing for the page: a quick start that settles, so motion reads as arrival, not travel. */
+const EASE = [0.16, 1, 0.3, 1] as const;
 
 const STATUS_GRADIENTS: Record<string, string> = {
   New: 'from-blue-500 via-indigo-500 to-cyan-400',
@@ -104,11 +110,21 @@ function isOverdue(iso?: string): boolean {
 
 const OUTREACH_ACTIVITY_TYPES = new Set(['call', 'email', 'meeting']);
 
+/** The referrer fields of a saved lead, so a merge can take them even when they were cleared. */
+function pickReferral(lead: Lead): Pick<Lead, 'referredByContactId' | 'referredByContactName'> {
+  return { referredByContactId: lead.referredByContactId, referredByContactName: lead.referredByContactName };
+}
+
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { currentOrgId, isReadOnly } = useOrg();
+  // Less motion when the OS or Settings asks for it: things appear instead of moving.
+  const reduce = useMotionPreference();
+  const rise = (delay = 0) => (reduce
+    ? { initial: false as const }
+    : { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.45, ease: EASE, delay } });
 
   // When the user arrives from the leads list, Leads.tsx stashes the source
   // URL (including filters/sort) here so Back / breadcrumb can return there
@@ -183,11 +199,9 @@ export default function LeadDetailPage() {
         if (!found) {
           setNotFound(true);
         } else {
-          // referredByContactId and assignedToId aren't persisted by the backend —
-          // recover them from the local stores (kept in sync with the leads list).
-          const referredId = found.referredByContactId || loadLeadReferrals()[found.id];
+          // An owner saved only in this browser, from before owners were shared.
           const ownerId = found.assignedToId || loadLeadAssignments()[found.id];
-          setLead({ ...found, referredByContactId: referredId || undefined, assignedToId: ownerId || undefined });
+          setLead({ ...found, assignedToId: ownerId || undefined });
         }
       } catch {
         if (!cancelled) setNotFound(true);
@@ -296,13 +310,9 @@ export default function LeadDetailPage() {
         toast.error('Failed to save');
         return false;
       }
-      // The backend response omits referredByContactId (not part of its update
-      // contract), so keep the locally-tracked referral rather than dropping it.
       setLead((prev) => (prev ? {
         ...prev,
         ...updated,
-        referredByContactId: updated.referredByContactId ?? prev.referredByContactId,
-        referredByContactName: updated.referredByContactName ?? prev.referredByContactName,
         assignedToId: updated.assignedToId ?? prev.assignedToId,
       } : prev));
       if (log) {
@@ -370,8 +380,6 @@ export default function LeadDetailPage() {
             setLead((prev) => (prev ? {
               ...prev,
               ...updated,
-              referredByContactId: updated.referredByContactId ?? prev.referredByContactId,
-              referredByContactName: updated.referredByContactName ?? prev.referredByContactName,
               assignedToId: updated.assignedToId ?? prev.assignedToId,
             } : prev));
           },
@@ -611,6 +619,30 @@ export default function LeadDetailPage() {
     }
   };
 
+  /** Records who referred this lead for the whole team, and notes the change on its timeline. */
+  const saveReferral = useCallback(async (contactId: string | null): Promise<boolean> => {
+    if (!lead) return false;
+    const before = lead.referredByContactName ?? contacts.find((c) => c.id === lead.referredByContactId)?.name;
+    try {
+      const updated = await setLeadReferral(lead.id, contactId);
+      if (!updated) {
+        toast.error('The referrer was not saved.');
+        return false;
+      }
+      setLead((prev) => (prev ? { ...prev, ...pickReferral(updated) } : prev));
+      const name = updated.referredByContactName ?? contacts.find((c) => c.id === contactId)?.name ?? 'the contact';
+      const subject = contactId ? `Referred by ${name}` : 'Referrer removed';
+      toast.success(contactId ? `${name} is saved as the referrer.` : 'Referrer removed.');
+      createActivity({ type: 'system', subject, body: before ? `Was ${before}` : undefined, leadId: lead.id })
+        .then((a) => a && setActivities((prev) => [a, ...prev]))
+        .catch(() => { /* non-fatal */ });
+      return true;
+    } catch (err) {
+      toast.error(err instanceof ApiError && err.message ? err.message : 'The referrer was not saved.');
+      return false;
+    }
+  }, [lead, contacts]);
+
   // Open the full multi-step editor, prefilled from the current lead. Mirrors
   // the leads list's openEdit so the two stay behaviourally identical.
   const openEdit = useCallback(() => {
@@ -667,14 +699,12 @@ export default function LeadDetailPage() {
         toast.error(messages.errors.generic);
         return;
       }
-      // referredByContactId isn't part of the backend update contract — mirror
-      // it to the shared local store (and local state) like the leads list does.
-      const referredByContactId = editForm.referredByContactId || undefined;
-      setLeadReferral(lead.id, referredByContactId);
-      const referredByContactName = referredByContactId
-        ? contacts.find((c) => c.id === referredByContactId)?.name
-        : undefined;
-      setLead((prev) => (prev ? { ...prev, ...updated, referredByContactId, referredByContactName, assignedToId: prev.assignedToId } : prev));
+      // The referrer has its own endpoint: it can change on a converted lead too.
+      const referredByContactId = editForm.referredByContactId || null;
+      const withReferral = referredByContactId !== (lead.referredByContactId ?? null)
+        ? await setLeadReferral(lead.id, referredByContactId) ?? updated
+        : updated;
+      setLead((prev) => (prev ? { ...prev, ...updated, ...pickReferral(withReferral), assignedToId: prev.assignedToId } : prev));
       createActivity({ type: 'system', subject: 'Lead details updated', leadId: lead.id })
         .then((a) => a && setActivities((prev) => [a, ...prev]))
         .catch(() => { /* non-fatal */ });
@@ -777,7 +807,12 @@ export default function LeadDetailPage() {
             <div className="relative w-full px-[var(--page-padding)] py-7 sm:py-8">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex min-w-0 items-start gap-4 sm:gap-5">
-                  <div className="relative shrink-0">
+                  <motion.div
+                    className="relative shrink-0"
+                    initial={reduce ? false : { opacity: 0, scale: 0.8, rotate: -6 }}
+                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 20 }}
+                  >
                     <div
                       className={cn(
                         'flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-2xl bg-gradient-to-br text-white text-xl sm:text-2xl font-bold shadow-lg ring-4 ring-white',
@@ -794,8 +829,8 @@ export default function LeadDetailPage() {
                         <CheckCircle2 className="w-4 h-4" />
                       </span>
                     )}
-                  </div>
-                  <div className="min-w-0 flex-1">
+                  </motion.div>
+                  <motion.div className="min-w-0 flex-1" {...rise(0.06)}>
                     <div className="flex flex-wrap items-center gap-2">
                       <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 leading-tight">
                         {lead.name}
@@ -852,8 +887,8 @@ export default function LeadDetailPage() {
                         </span>
                       )}
                       {referredByName && (
-                        referredContact ? (
-                          <Link to={`/contacts/${referredContact.id}`} className="inline-flex items-center gap-1.5 hover:text-violet-700">
+                        lead.referredByContactId ? (
+                          <Link to={`/contacts/${lead.referredByContactId}`} className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2 py-0.5 font-medium text-violet-700 ring-1 ring-violet-100 transition-colors hover:bg-violet-100">
                             <UserPlus className="w-3.5 h-3.5" />
                             Referred by {referredByName}
                           </Link>
@@ -877,11 +912,16 @@ export default function LeadDetailPage() {
                         Created {formatRelative(lead.createdAtUtc) ?? '—'}
                       </span>
                     </div>
-                  </div>
+                  </motion.div>
                 </div>
 
                 {/* Right side: score gauge + action buttons (stack on mobile, side-by-side on lg) */}
-                <div className="flex shrink-0 flex-row items-center gap-5 lg:flex-col lg:items-end lg:gap-4">
+                <motion.div
+                  className="flex shrink-0 flex-row items-center gap-5 lg:flex-col lg:items-end lg:gap-4"
+                  initial={reduce ? false : { opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.45, ease: EASE, delay: 0.12 }}
+                >
                   <ScoreEditor score={lead.leadScore ?? 0} onSave={saveScore} readOnly={isReadOnly} />
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     {lead.email && (
@@ -906,13 +946,13 @@ export default function LeadDetailPage() {
                       />
                     )}
                   </div>
-                </div>
+                </motion.div>
               </div>
             </div>
           </section>
 
           {/* Lead lifecycle pipeline (full-width, under the hero) */}
-          <div className="w-full px-[var(--page-padding)] pt-6">
+          <motion.div className="w-full px-[var(--page-padding)] pt-6" {...rise(0.16)}>
             <NextActionsSlot className="mb-4" />
             {/* Status ↔ pipeline relationship: how the automation is behaving,
                 or a one-click resolution when the two disagree. */}
@@ -934,7 +974,7 @@ export default function LeadDetailPage() {
               previewStatus={isReadOnly ? undefined : (patch) => statusSync.preview(lead, pipeline, patch)}
               onConvert={isReadOnly ? undefined : () => navigate(`/leads?convertLeadId=${lead.id}`)}
             />
-          </div>
+          </motion.div>
 
           {/* Sits directly under the tracker because it drives it: sending
               satisfies the Contract phase and full execution satisfies the
@@ -962,6 +1002,14 @@ export default function LeadDetailPage() {
                 </TabButton>
               </div>
 
+              <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={tab}
+                initial={reduce ? false : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: -6, transition: { duration: 0.14 } }}
+                transition={{ duration: 0.24, ease: EASE }}
+              >
               {tab === 'activity' && (
                 <div className="space-y-5">
                   {/* Quick note composer — writers only */}
@@ -1058,13 +1106,20 @@ export default function LeadDetailPage() {
                     </div>
                   ) : (
                     <ul className="space-y-2">
+                      <AnimatePresence mode="popLayout" initial={false}>
                       {sortedTasks.map((t) => {
                         const overdue = t.status !== 'completed' && isOverdue(t.dueDateUtc);
                         return (
-                          <li key={t.id} className={cn(
-                            'group flex items-start gap-3 rounded-2xl border bg-white px-4 py-3 transition-colors',
+                          <motion.li
+                            key={t.id}
+                            layout={reduce ? false : 'position'}
+                            initial={reduce ? false : { opacity: 0, y: -8, scale: 0.98 }}
+                            animate={{ opacity: t.status === 'completed' ? 0.6 : 1, y: 0, scale: 1 }}
+                            exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, x: 32, transition: { duration: 0.2 } }}
+                            transition={{ duration: 0.3, ease: EASE }}
+                            className={cn(
+                            'group flex items-start gap-3 rounded-2xl border bg-white px-4 py-3 transition-[border-color,box-shadow] hover:shadow-sm',
                             overdue ? 'border-red-200' : 'border-slate-200',
-                            t.status === 'completed' && 'opacity-60',
                           )}>
                             <button
                               type="button"
@@ -1077,7 +1132,19 @@ export default function LeadDetailPage() {
                                   : 'border-slate-300 bg-white hover:border-emerald-400',
                               )}
                             >
-                              {t.status === 'completed' && <CheckCircle2 className="w-3 h-3" />}
+                              <AnimatePresence initial={false}>
+                                {t.status === 'completed' && (
+                                  <motion.span
+                                    initial={reduce ? false : { scale: 0, rotate: -45 }}
+                                    animate={{ scale: 1, rotate: 0 }}
+                                    exit={reduce ? { opacity: 0 } : { scale: 0 }}
+                                    transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+                                    className="inline-flex"
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" />
+                                  </motion.span>
+                                )}
+                              </AnimatePresence>
                             </button>
                             <div className="min-w-0 flex-1">
                               <p className={cn('text-sm font-medium text-slate-800', t.status === 'completed' && 'line-through text-slate-500')}>
@@ -1107,9 +1174,10 @@ export default function LeadDetailPage() {
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
-                          </li>
+                          </motion.li>
                         );
                       })}
+                      </AnimatePresence>
                     </ul>
                   )}
                 </div>
@@ -1132,11 +1200,18 @@ export default function LeadDetailPage() {
                   />
                 </div>
               )}
+              </motion.div>
+              </AnimatePresence>
             </div>
 
             {/* Sidebar — single card with section dividers, sticky on lg+ so it
                 stays in view as the user scrolls the activity timeline. */}
-            <aside className="lg:sticky lg:top-[64px] lg:self-start lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto">
+            <motion.aside
+              className="lg:sticky lg:top-[64px] lg:self-start lg:max-h-[calc(100vh-80px)] lg:overflow-y-auto"
+              initial={reduce ? false : { opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.45, ease: EASE, delay: 0.2 }}
+            >
               {/* AI assist — derived engagement score + recommended next action. */}
               <AiNextActionCard
                 lead={lead}
@@ -1202,6 +1277,15 @@ export default function LeadDetailPage() {
                   )}
                 </div>
               </div>
+
+              {/* Who referred this lead: visible to the whole team, and editable here. */}
+              <ReferralCard
+                lead={lead}
+                contacts={contacts}
+                readOnly={isReadOnly}
+                onChange={saveReferral}
+                className="mb-4"
+              />
 
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 {/* Contact section */}
@@ -1310,7 +1394,7 @@ export default function LeadDetailPage() {
 
               {/* Attachments */}
               <AttachmentsCard entityType="lead" recordId={lead.id} className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" />
-            </aside>
+            </motion.aside>
           </div>
         </main>
       </PageTransition>
@@ -1380,6 +1464,7 @@ export default function LeadDetailPage() {
 function TabButton({
   active, onClick, icon, children,
 }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
+  const reduce = useMotionPreference();
   return (
     <button
       type="button"
@@ -1394,13 +1479,15 @@ function TabButton({
     >
       {icon}
       {children}
-      <span
-        aria-hidden
-        className={cn(
-          'absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-opacity duration-200',
-          active ? 'opacity-100' : 'opacity-0',
-        )}
-      />
+      {/* One underline that slides to the tab you picked, instead of two fading in and out. */}
+      {active && (
+        <motion.span
+          aria-hidden
+          layoutId="lead-detail-tab-underline"
+          transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 480, damping: 36 }}
+          className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500"
+        />
+      )}
     </button>
   );
 }

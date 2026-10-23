@@ -257,6 +257,15 @@ public static class DomainErrors
 
         public static readonly Error Duplicate = new(
             "Lead.Duplicate", "An open lead with this email already exists");
+
+        public static readonly Error ReferrerNotFound = new(
+            "Lead.ReferrerNotFound", "The referring contact was not found in this workspace");
+
+        public static readonly Error ReferrerArchived = new(
+            "Lead.ReferrerArchived", "The referring contact is archived. Restore it first, or pick another contact");
+
+        public static readonly Error ReferrerIsSelf = new(
+            "Lead.ReferrerIsSelf", "A lead cannot be referred by the contact made from that same lead");
     }
 
     /// <summary>

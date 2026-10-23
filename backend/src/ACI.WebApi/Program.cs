@@ -636,6 +636,14 @@ try
                     ALTER TABLE [Leads] ADD [ConvertedToDealId] uniqueidentifier NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'ConvertedToCompanyId')
                     ALTER TABLE [Leads] ADD [ConvertedToCompanyId] uniqueidentifier NULL;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'ReferredByContactId')
+                BEGIN
+                    ALTER TABLE [Leads] ADD [ReferredByContactId] uniqueidentifier NULL;
+                    CREATE INDEX [IX_Leads_ReferredByContactId] ON [Leads] ([ReferredByContactId]);
+                END;
+                IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'FK_Leads_Contacts_ReferredByContactId')
+                    ALTER TABLE [Leads] ADD CONSTRAINT [FK_Leads_Contacts_ReferredByContactId]
+                        FOREIGN KEY ([ReferredByContactId]) REFERENCES [Contacts] ([Id]);
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'AssignedToUserId')
                 BEGIN
                     ALTER TABLE [Leads] ADD [AssignedToUserId] uniqueidentifier NULL;

@@ -153,6 +153,7 @@ public sealed class ContactRepository : IContactRepository
         await _db.Deals.Where(d => d.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(d => d.ContactId, (Guid?)null), ct);
         await _db.Activities.Where(a => a.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(a => a.ContactId, (Guid?)null), ct);
         await _db.TaskItems.Where(t => t.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(t => t.ContactId, (Guid?)null), ct);
+        await _db.Leads.Where(l => l.ReferredByContactId == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.ReferredByContactId, (Guid?)null), ct);
         _db.Contacts.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -284,6 +285,9 @@ public sealed class ContactRepository : IContactRepository
             activity.ContactId = keepId;
         foreach (var lead in await _db.Leads.Where(l => l.ConvertedToContactId == dropId).ToListAsync(ct))
             lead.ConvertedToContactId = keepId;
+        // The people the dropped record referred were referred by the person kept.
+        foreach (var lead in await _db.Leads.Where(l => l.ReferredByContactId == dropId).ToListAsync(ct))
+            lead.ReferredByContactId = keepId;
 
         if (drop.ConvertedFromLeadId is Guid leadId && keep.ConvertedFromLeadId == null)
             keep.ConvertedFromLeadId = leadId;

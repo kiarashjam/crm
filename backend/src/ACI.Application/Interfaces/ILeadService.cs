@@ -52,6 +52,15 @@ public interface ILeadService
     Task<Result<LeadDto>> AssignAsync(Guid id, Guid userId, Guid? organizationId, Guid? assignedToUserId, CancellationToken ct = default);
 
     /// <summary>
+    /// Records who referred a lead, or clears it when <paramref name="contactId"/> is null.
+    /// The contact must be in the same workspace, not archived, and not made from this lead.
+    /// </summary>
+    Task<Result<LeadDto>> SetReferralAsync(Guid id, Guid userId, Guid? organizationId, Guid? contactId, CancellationToken ct = default);
+
+    /// <summary>Leads a contact referred, newest first.</summary>
+    Task<Result<IReadOnlyList<LeadDto>>> GetReferredByContactAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
     /// Deletes a lead.
     /// </summary>
     Task<Result> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);

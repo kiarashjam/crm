@@ -284,6 +284,39 @@ public class LeadsController : ControllerBase
     }
 
     /// <summary>
+    /// Records who referred a lead, or clears it.
+    /// </summary>
+    /// <remarks>
+    /// The referrer is a contact in the same workspace. Pass a null <c>contactId</c> to
+    /// clear it. Allowed on a converted lead: who referred someone stays true afterwards.
+    /// </remarks>
+    /// <response code="200">The lead, with the referrer's id and name.</response>
+    /// <response code="400">The contact is not in this workspace, is archived, or is this lead's own contact.</response>
+    /// <response code="404">Lead not found.</response>
+    [HttpPut("{id:guid}/referral")]
+    [ProducesResponseType(typeof(LeadDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<LeadDto>> SetReferral(
+        Guid id,
+        [FromBody] SetLeadReferralRequest request,
+        CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var result = await _leadService.SetReferralAsync(
+            id,
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
+            request.ContactId,
+            ct);
+
+        return result.ToActionResult();
+    }
+
+    /// <summary>
     /// Deletes a lead.
     /// </summary>
     /// <param name="id">The lead ID to delete.</param>
