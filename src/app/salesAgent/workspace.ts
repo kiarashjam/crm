@@ -23,8 +23,6 @@ export interface WorkSuggestion {
   brief?: WriterBrief;
   /** Lead suggestion kind, or deal stage name, so the playbook can explain the step. */
   guide?: string;
-  /** Pending invitation, when this row can resend it. */
-  inviteId?: string;
   /** Address a confirmed send can use. Absent when the record has no email. */
   email?: string | null;
   /** Set when exactly one duplicate group can be merged without guessing which to keep. */
@@ -45,15 +43,14 @@ export interface SuggestableDeal {
   lastActivityAtUtc?: string | null;
   /** Saved amount, when the deal carries one. The judge reads it and can move the row. */
   value?: string | null;
+  /** ISO code the amount is in. Totals are kept per currency and never added across them. */
+  currency?: string | null;
   probability?: number | null;
   companyId?: string | null;
   companyName?: string | null;
   contactId?: string | null;
   contactName?: string | null;
   pipelineId?: string | null;
-  /** The next open stage on this deal's own pipeline, when the stage name is not a default. */
-  nextStageName?: string | null;
-  nextStageId?: string | null;
 }
 
 export interface SuggestableTask {
@@ -161,7 +158,8 @@ function namedStage(stage: string): { action: string; because: string; priority:
   return STAGE_BY_KEY.get(stage.toLowerCase());
 }
 
-function dealOutcome(deal: SuggestableDeal): 'won' | 'lost' | 'open' {
+/** Whether a deal is won, lost, or still open, from the flag or the stage name. */
+export function dealOutcome(deal: SuggestableDeal): 'won' | 'lost' | 'open' {
   if (deal.isWon === true) return 'won';
   if (deal.isWon === false) return 'lost';
   const stage = stageName(deal).toLowerCase();
@@ -227,14 +225,11 @@ export function nextActionForDeal(deal: SuggestableDeal, now: Date = new Date())
       };
     }
     const notes = closingSoon ? ['The expected close date is within the next seven days.'] : [];
-    const next = deal.nextStageName?.trim();
     return {
       ...base,
-      action: next
-        ? `Move the deal from ${stage} to ${next}, or record why it is waiting.`
-        : 'Move the deal to its next stage, or record why it is waiting.',
-      because: owned(evidence(next ? `${stage} is followed by ${next} on its pipeline.` : `${stage} is an open stage with no named next step.`, notes)),
-      priority: raise(next ? 68 : 64, closingSoon, quietFor),
+      action: 'Move the deal to its next stage, or record why it is waiting.',
+      because: owned(evidence(`${stage} is an open stage with no named next step.`, notes)),
+      priority: raise(64, closingSoon, quietFor),
     };
   }
 
@@ -427,11 +422,12 @@ function duplicateSuggestions(
   const rows: WorkSuggestion[] = [];
   groups.slice(0, 5).forEach((group, index) => {
     const records = group.records.filter((record) => record.id);
-    if (records.length < 2) return;
+    const [first] = records;
+    if (!first || records.length < 2) return;
     const primary = records.find((record) => record.email?.trim() && !record.doNotContact)
       ?? records.find((record) => !record.doNotContact)
       ?? records.find((record) => record.email?.trim())
-      ?? records[0];
+      ?? first;
     const rest = records.filter((record) => record.id !== primary.id);
     const kept = primary.name?.trim() || (people ? 'the contact with an email' : 'the first company');
     rows.push({

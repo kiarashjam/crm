@@ -5,15 +5,13 @@ import { createContact } from '@/app/api/contacts';
 import { mergeCompanies, mergeContacts } from '@/app/api/dedupe';
 import { createDeal, updateDeal } from '@/app/api/deals';
 import { assignLead, convertLead } from '@/app/api/leads';
-import { resendInvite } from '@/app/api/organizations';
 import { enrollInSequence } from '@/app/api/sequences';
 import { addTaskComment, createTask } from '@/app/api/tasks';
 import { sendEmail } from '@/app/api/email';
 import { getUserSettings, saveUserSettings } from '@/app/api/settings';
-import { getCurrentUser } from '@/app/lib/auth';
+import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
 import { askAgent, type AgentAction, type AgentReply, type AgentWorld } from './brain/answer';
-import { emptyMemory, remember, type AgentMemory } from './brain/reason';
-import { invalidateWork } from './agentSession';
+import { emptyMemory, remember, rowFor, type AgentMemory } from './brain/reason';
 
 const FOCUS_BASE = 'cadence.agent.focus';
 const TURNS_BASE = 'cadence.agent.turns';
@@ -39,9 +37,31 @@ function writeRaw(key: string, value: string) {
 }
 
 interface Turn {
+  id: string;
   role: 'you' | 'agent';
   text: string;
   actions: AgentAction[];
+}
+
+let turnCount = 0;
+function turnId(): string {
+  turnCount += 1;
+  return `turn-${Date.now().toString(36)}-${turnCount}`;
+}
+
+/**
+ * Turns read back from storage. Only "open" and "draft" buttons come back: whether a
+ * write was already pressed is not stored, and the record may have changed since.
+ */
+function restoredTurns(value: unknown): Turn[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-12).flatMap((turn): Turn[] => {
+    if (!turn || typeof turn !== 'object') return [];
+    const row = turn as Partial<Turn>;
+    if ((row.role !== 'you' && row.role !== 'agent') || typeof row.text !== 'string') return [];
+    const actions = Array.isArray(row.actions) ? row.actions.filter((action) => action?.kind === 'open' || action?.kind === 'draft') : [];
+    return [{ id: turnId(), role: row.role, text: row.text, actions }];
+  });
 }
 
 function asMemory(parsed: Partial<AgentMemory> | null | undefined): AgentMemory {
@@ -71,21 +91,24 @@ function readFocus(accountKey: string): AgentMemory {
 function readTurns(accountKey: string): Turn[] {
   try {
     const raw = readRaw(scopedKey(accountKey, TURNS_BASE));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Turn[];
-    return Array.isArray(parsed) ? parsed.slice(-12) : [];
+    return raw ? restoredTurns(JSON.parse(raw)) : [];
   } catch {
     return [];
   }
 }
 
+function orgOf(accountKey: string): string {
+  return accountKey.slice(accountKey.indexOf(':') + 1);
+}
+
 function memoryPayload(accountKey: string, memory: AgentMemory, turns: Turn[]): string {
-  const orgId = accountKey.split(':')[1] ?? '';
+  const orgId = orgOf(accountKey);
+  const stored = (rows: Turn[]) => rows.map(({ role, text, actions }) => ({ role, text, actions }));
   let kept = turns.slice(-12);
-  let payload = JSON.stringify({ orgId, ...memory, turns: kept });
+  let payload = JSON.stringify({ orgId, ...memory, turns: stored(kept) });
   while (kept.length > 0 && payload.length > 3900) {
     kept = kept.slice(1);
-    payload = JSON.stringify({ orgId, ...memory, turns: kept });
+    payload = JSON.stringify({ orgId, ...memory, turns: stored(kept) });
   }
   return payload.length > 3900 ? JSON.stringify({ orgId, ...memory, turns: [] }) : payload;
 }
@@ -94,13 +117,38 @@ function parseAccountMemory(raw: string | undefined, accountKey: string): { memo
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<AgentMemory> & { orgId?: unknown; turns?: unknown };
-    const orgId = accountKey.split(':')[1] ?? '';
-    if (parsed.orgId !== orgId) return null;
-    const turns = Array.isArray(parsed.turns) ? (parsed.turns as Turn[]).slice(-12) : [];
-    return { memory: asMemory(parsed), turns };
+    if (parsed.orgId !== orgOf(accountKey)) return null;
+    return { memory: asMemory(parsed), turns: restoredTurns(parsed.turns) };
   } catch {
     return null;
   }
+}
+
+// The panel remounts on every page, so the saved conversation is read from the server
+// once per account in a page session, and written only when it actually changed.
+const savedOnServer = new Map<string, Promise<string | undefined>>();
+const lastWritten = new Map<string, string>();
+
+function serverMemory(accountKey: string): Promise<string | undefined> {
+  let pending = savedOnServer.get(accountKey);
+  if (!pending) {
+    pending = getUserSettings().then((settings) => settings.agentMemoryJson ?? undefined);
+    pending.catch(() => savedOnServer.delete(accountKey));
+    savedOnServer.set(accountKey, pending);
+  }
+  return pending;
+}
+
+/** Test hook: forget what was read from and written to the server. */
+export function resetAgentDeskForTests(): void {
+  savedOnServer.clear();
+  lastWritten.clear();
+  turnCount = 0;
+}
+
+/** Why a save failed, in the server's words when it gave any. */
+function reason(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? `${fallback} ${error.message.trim()}` : fallback;
 }
 
 /**
@@ -113,23 +161,19 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
   const [turns, setTurns] = useState<Turn[]>(() => readTurns(accountKey));
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const memory = useRef<AgentMemory>(readFocus(accountKey));
+  const [initialMemory] = useState(() => readFocus(accountKey));
+  const memory = useRef<AgentMemory>(initialMemory);
   const accountReady = useRef(false);
   const savedActions = useRef(new Set<string>());
   const inflight = useRef(new Set<string>());
 
   useEffect(() => {
-    memory.current = readFocus(accountKey);
-    setTurns(readTurns(accountKey));
-    accountReady.current = false;
-  }, [accountKey]);
-
-  useEffect(() => {
     let cancelled = false;
-    getUserSettings()
-      .then((settings) => {
+    serverMemory(accountKey)
+      .then((raw) => {
         if (cancelled) return;
-        const saved = parseAccountMemory(settings.agentMemoryJson, accountKey);
+        const saved = parseAccountMemory(raw, accountKey);
+        if (raw) lastWritten.set(accountKey, raw);
         if (!saved) return;
         if (!memory.current.focusKey && saved.memory.focusKey) memory.current = saved.memory;
         if (saved.turns.length > 0) {
@@ -146,32 +190,27 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
   }, [accountKey]);
 
   useEffect(() => {
-    try {
-      writeRaw(scopedKey(accountKey, TURNS_BASE), JSON.stringify(turns));
-    } catch {
-      /* The conversation still works for this page view. */
-    }
+    writeRaw(scopedKey(accountKey, TURNS_BASE), JSON.stringify(turns.map(({ role, text, actions }) => ({ role, text, actions }))));
     if (!accountReady.current) return undefined;
     const payload = memoryPayload(accountKey, memory.current, turns);
+    if (lastWritten.get(accountKey) === payload) return undefined;
     const handle = window.setTimeout(() => {
-      saveUserSettings({ agentMemoryJson: payload }).catch(() => undefined);
+      lastWritten.set(accountKey, payload);
+      savedOnServer.set(accountKey, Promise.resolve(payload));
+      saveUserSettings({ agentMemoryJson: payload }).catch(() => lastWritten.delete(accountKey));
     }, 400);
     return () => window.clearTimeout(handle);
   }, [turns, accountKey]);
 
   function push(role: Turn['role'], text: string, actions: AgentAction[] = []) {
-    setTurns((current) => [...current, { role, text, actions }].slice(-12));
+    setTurns((current) => [...current, { id: turnId(), role, text, actions }].slice(-12));
   }
 
   function ask(text: string) {
     const reply: AgentReply = askAgent(text, world, new Date(), memory.current);
-    const focus = reply.focusKey ? world.items.find((item) => item.key === reply.focusKey) ?? null : null;
-    memory.current = remember(focus, memory.current, { leads: world.leads, deals: world.deals, contacts: world.contacts });
-    try {
-      writeRaw(scopedKey(accountKey, FOCUS_BASE), JSON.stringify(memory.current));
-    } catch {
-      /* The next question on this page still sees the ref. */
-    }
+    memory.current = reply.memory
+      ?? remember(rowFor(world, reply.focusKey), memory.current, { leads: world.leads, deals: world.deals, contacts: world.contacts });
+    writeRaw(scopedKey(accountKey, FOCUS_BASE), JSON.stringify(memory.current));
     const actions = readOnly ? reply.actions.filter((action) => action.kind === 'open' || action.kind === 'draft') : reply.actions;
     if (readOnly && actions.length < reply.actions.length) {
       setNotice('This workspace is read-only, so nothing was saved.');
@@ -191,11 +230,118 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
 
   function confirmSaved(action: AgentAction, text: string) {
     savedActions.current.add(action.id);
-    invalidateWork(accountKey);
     setTurns((current) => [...current.map((turn) => ({
       ...turn,
       actions: turn.actions.filter((item) => item.id !== action.id),
-    })), { role: 'agent' as const, text, actions: [] }].slice(-12));
+    })), { id: turnId(), role: 'agent' as const, text, actions: [] }].slice(-12));
+  }
+
+  /** The workspace and account the requests will go to, which another tab can change. */
+  function sameWorkspace(): boolean {
+    const current = `${getCurrentUser()?.id ?? 'session'}:${getCurrentOrganizationId() ?? 'no-org'}`;
+    return current === accountKey;
+  }
+
+  /** Runs one confirmed write. Returns the line to show, or null when the button is missing what it needs. */
+  async function save(action: AgentAction): Promise<{ saved: boolean; text: string } | null> {
+    if (action.kind === 'task' && action.title) {
+      const created = await createTask({
+        title: action.title,
+        dueDateUtc: action.dueDateUtc,
+        leadId: action.leadId,
+        dealId: action.dealId,
+        contactId: action.contactId,
+      });
+      return created ? { saved: true, text: `Task saved: ${created.title}.` } : { saved: false, text: 'The task was not saved.' };
+    }
+    if (action.kind === 'note' && action.body) {
+      const created = await createActivity({
+        type: 'note',
+        body: action.body,
+        subject: 'Note from the agent',
+        leadId: action.leadId,
+        dealId: action.dealId,
+        contactId: action.contactId,
+      });
+      return created ? { saved: true, text: 'Note saved on the record.' } : { saved: false, text: 'The note was not saved.' };
+    }
+    if (action.kind === 'comment' && action.taskId && action.body) {
+      const created = await addTaskComment(action.taskId, action.body);
+      return created ? { saved: true, text: 'Comment saved on the task.' } : { saved: false, text: 'The comment was not saved.' };
+    }
+    if (action.kind === 'send' && action.to && action.body) {
+      const sent = await sendEmail({
+        to: action.to,
+        subject: action.title || 'Following up',
+        body: action.body,
+        leadId: action.leadId,
+        dealId: action.dealId,
+        contactId: action.contactId,
+      });
+      return sent ? { saved: true, text: `Sent to ${action.to}.` } : { saved: false, text: 'The message was not sent.' };
+    }
+    if (action.kind === 'assign' && action.leadId) {
+      const user = getCurrentUser();
+      if (!user) return { saved: false, text: 'The lead was not assigned. Sign in so the agent knows who you are.' };
+      const saved = await assignLead(action.leadId, user.id);
+      return saved ? { saved: true, text: `${saved.name} is assigned to you.` } : { saved: false, text: 'The lead was not assigned.' };
+    }
+    if (action.kind === 'convert' && action.leadId) {
+      const saved = await convertLead(action.leadId, {
+        createContact: true,
+        createDeal: true,
+        dealName: action.recipientName,
+      });
+      return saved ? { saved: true, text: `${action.recipientName ?? 'The lead'} was converted.` } : { saved: false, text: 'The lead was not converted.' };
+    }
+    if (action.kind === 'enroll' && action.sequenceId && action.leadId) {
+      const saved = await enrollInSequence({
+        sequenceId: action.sequenceId,
+        targetType: 'lead',
+        targetId: action.leadId,
+        targetName: action.recipientName || 'Lead',
+        targetEmail: action.to,
+      });
+      return saved ? { saved: true, text: `${action.recipientName ?? 'The lead'} is enrolled.` } : { saved: false, text: 'The enrollment was not saved.' };
+    }
+    if (action.kind === 'merge' && action.mergePrimaryId && action.mergeDuplicateIds?.length) {
+      const saved = action.mergeKind === 'companies'
+        ? await mergeCompanies(action.mergePrimaryId, action.mergeDuplicateIds)
+        : await mergeContacts(action.mergePrimaryId, action.mergeDuplicateIds);
+      return saved ? { saved: true, text: 'The duplicate group was merged.' } : { saved: false, text: 'The merge was not saved.' };
+    }
+    if (action.kind === 'create-contact' && action.contactName && action.contactEmail) {
+      const result = await createContact({
+        name: action.contactName,
+        email: action.contactEmail,
+        phone: action.contactPhone,
+        companyId: action.companyId,
+      });
+      return result.contact
+        ? { saved: true, text: `Contact saved: ${result.contact.name}, ${result.contact.email}.` }
+        : { saved: false, text: result.error ?? 'The contact was not saved.' };
+    }
+    if (action.kind === 'create-deal' && action.title && action.dealValue) {
+      const saved = await createDeal({
+        name: action.title,
+        value: action.dealValue,
+        currency: action.currency,
+        companyId: action.companyId,
+        contactId: action.contactId,
+      });
+      return saved ? { saved: true, text: `Deal saved: ${saved.name}, amount ${saved.value}.` } : { saved: false, text: 'The deal was not saved.' };
+    }
+    if (action.kind === 'update-deal' && action.dealId && (action.dealValue || action.dueDateUtc)) {
+      const saved = await updateDeal(action.dealId, {
+        ...(action.dealValue ? { value: action.dealValue } : {}),
+        ...(action.dueDateUtc ? { expectedCloseDateUtc: action.dueDateUtc } : {}),
+      });
+      if (!saved) return { saved: false, text: 'The deal was not updated.' };
+      const amount = action.dealValue ? ` Amount ${saved.value}.` : '';
+      const close = action.dueDateUtc ? ` Close date ${saved.expectedCloseDateUtc?.slice(0, 10) ?? action.dueDateUtc}.` : '';
+      return { saved: true, text: `Deal saved: ${saved.name}.${amount}${close}` };
+    }
+    return null;
   }
 
   async function run(action: AgentAction) {
@@ -225,129 +371,21 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
       setNotice('This workspace is read-only, so nothing was saved.');
       return;
     }
+    // The records in this conversation belong to one workspace. Requests go to whichever
+    // one is selected now, and another tab can switch it.
+    if (!sameWorkspace()) {
+      setNotice('The workspace or account changed in another tab. Nothing was saved. Reload this page to continue here.');
+      return;
+    }
     inflight.current.add(action.id);
     setBusy(true);
     try {
-      if (action.kind === 'task') {
-        const created = await createTask({
-          title: action.title || 'Follow up',
-          dueDateUtc: action.dueDateUtc,
-          leadId: action.leadId,
-          dealId: action.dealId,
-          contactId: action.contactId,
-        });
-        if (created) confirmSaved(action, `Task saved: ${created.title}.`);
-        else push('agent', 'The task was not saved.', []);
-      }
-      if (action.kind === 'note') {
-        const created = await createActivity({
-          type: 'note',
-          body: action.body,
-          subject: 'Note from the agent',
-          leadId: action.leadId,
-          dealId: action.dealId,
-          contactId: action.contactId,
-        });
-        if (created) confirmSaved(action, 'Note saved on the record.');
-        else push('agent', 'The note was not saved.', []);
-      }
-      if (action.kind === 'comment' && action.taskId) {
-        const created = await addTaskComment(action.taskId, action.body || action.title || 'Follow up');
-        if (created) confirmSaved(action, 'Comment saved on the task.');
-        else push('agent', 'The comment was not saved.', []);
-      }
-      if (action.kind === 'resend' && action.inviteId) {
-        const sent = await resendInvite(action.inviteId);
-        if (sent) confirmSaved(action, `Invitation resent to ${sent.email}.`);
-        else push('agent', 'The invitation was not resent.', []);
-      }
-      if (action.kind === 'send' && action.to) {
-        const sent = await sendEmail({
-          to: action.to,
-          subject: action.title || 'Following up',
-          body: action.body || '',
-          leadId: action.leadId,
-          dealId: action.dealId,
-          contactId: action.contactId,
-        });
-        if (sent) confirmSaved(action, `Sent to ${action.to}.`);
-        else push('agent', 'The message was not sent.', []);
-      }
-      if (action.kind === 'assign' && action.leadId) {
-        const user = getCurrentUser();
-        const saved = user ? await assignLead(action.leadId, user.id) : null;
-        if (saved) confirmSaved(action, `${saved.name} is assigned to you.`);
-        else push('agent', 'The lead was not assigned. Sign in so the agent knows who you are.', []);
-      }
-      if (action.kind === 'convert' && action.leadId) {
-        const saved = await convertLead(action.leadId, {
-          createContact: true,
-          createDeal: true,
-          dealName: action.recipientName,
-        });
-        if (saved) confirmSaved(action, `${action.recipientName ?? 'The lead'} was converted.`);
-        else push('agent', 'The lead was not converted.', []);
-      }
-      if (action.kind === 'enroll' && action.sequenceId && action.leadId) {
-        const saved = await enrollInSequence({
-          sequenceId: action.sequenceId,
-          targetType: 'lead',
-          targetId: action.leadId,
-          targetName: action.recipientName || 'Lead',
-          targetEmail: action.to,
-        });
-        if (saved) confirmSaved(action, `${action.recipientName ?? 'The lead'} is enrolled.`);
-        else push('agent', 'The enrollment was not saved.', []);
-      }
-      if (action.kind === 'merge' && action.mergePrimaryId && action.mergeDuplicateIds?.length) {
-        const saved = action.mergeKind === 'companies'
-          ? await mergeCompanies(action.mergePrimaryId, action.mergeDuplicateIds)
-          : await mergeContacts(action.mergePrimaryId, action.mergeDuplicateIds);
-        if (saved) confirmSaved(action, 'The duplicate group was merged.');
-        else push('agent', 'The merge was not saved.', []);
-      }
-      if (action.kind === 'stage' && action.dealId && action.stageName) {
-        const saved = await updateDeal(action.dealId, {
-          stage: action.stageName,
-          ...(action.stageId ? { dealStageId: action.stageId } : {}),
-        });
-        if (saved) confirmSaved(action, `${saved.name} is now in ${action.stageName}.`);
-        else push('agent', 'The stage was not changed.', []);
-      }
-      if (action.kind === 'create-contact' && action.contactName && action.contactEmail) {
-        const result = await createContact({
-          name: action.contactName,
-          email: action.contactEmail,
-          phone: action.contactPhone,
-          companyId: action.companyId,
-        });
-        if (result.contact) confirmSaved(action, `Contact saved: ${result.contact.name}, ${result.contact.email}.`);
-        else push('agent', result.error ?? 'The contact was not saved.', []);
-      }
-      if (action.kind === 'create-deal' && action.title && action.dealValue) {
-        const saved = await createDeal({
-          name: action.title,
-          value: action.dealValue,
-          currency: action.currency,
-          companyId: action.companyId,
-          contactId: action.contactId,
-        });
-        if (saved) confirmSaved(action, `Deal saved: ${saved.name}, amount ${saved.value}.`);
-        else push('agent', 'The deal was not saved.', []);
-      }
-      if (action.kind === 'update-deal' && action.dealId && (action.dealValue || action.dueDateUtc)) {
-        const saved = await updateDeal(action.dealId, {
-          ...(action.dealValue ? { value: action.dealValue } : {}),
-          ...(action.dueDateUtc ? { expectedCloseDateUtc: action.dueDateUtc } : {}),
-        });
-        if (saved) {
-          const amount = action.dealValue ? ` amount ${saved.value}` : '';
-          const close = action.dueDateUtc ? ` close date ${saved.expectedCloseDateUtc?.slice(0, 10) ?? action.dueDateUtc}` : '';
-          confirmSaved(action, `Deal saved: ${saved.name}.${amount}${close}.`);
-        } else push('agent', 'The deal was not updated.', []);
-      }
-    } catch {
-      setNotice('That could not be saved.');
+      const result = await save(action);
+      if (!result) push('agent', 'That button is missing what the change needs, so nothing was saved. Ask again.', []);
+      else if (result.saved) confirmSaved(action, result.text);
+      else push('agent', result.text, []);
+    } catch (error) {
+      setNotice(reason(error, 'That could not be saved.'));
     } finally {
       inflight.current.delete(action.id);
       setBusy(false);
@@ -360,31 +398,37 @@ export function AgentDesk({ world, readOnly, accountKey }: { world: AgentWorld; 
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Answers stay on this account when settings can be saved, and in this browser as well. A task, note, contact, deal, send, or other change runs only when you press its button, and only once.
       </p>
-      {turns.length > 0 && (
-        <ol className="mt-3 space-y-3" aria-live="polite">
-          {turns.map((turn, index) => (
-            <li key={`${turn.role}-${index}`} className="text-sm">
-              <p className="font-medium text-slate-500">{turn.role === 'you' ? 'You' : 'Agent'}</p>
-              <p className="mt-1 whitespace-pre-wrap text-slate-800 dark:text-slate-200">{turn.text}</p>
-              {turn.actions.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {turn.actions.map((action) => (
-                    <button
-                      key={action.id}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => run(action)}
-                      className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 hover:border-[var(--brand-primary)] disabled:opacity-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
-                    >
-                      {action.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </li>
-          ))}
-        </ol>
-      )}
+      {/* The live region is always in the page, so a screen reader is already listening when the first answer arrives. */}
+      <div aria-live="polite">
+        {turns.length > 0 && (
+          <ol className="mt-3 space-y-3" aria-label="Conversation with the agent">
+            {turns.map((turn) => {
+              const actions = readOnly ? turn.actions.filter((action) => action.kind === 'open' || action.kind === 'draft') : turn.actions;
+              return (
+                <li key={turn.id} className="text-sm">
+                  <p className="font-medium text-slate-500">{turn.role === 'you' ? 'You' : 'Agent'}</p>
+                  <p className="mt-1 whitespace-pre-wrap text-slate-800 dark:text-slate-200">{turn.text}</p>
+                  {actions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {actions.map((action) => (
+                        <button
+                          key={action.id}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => run(action)}
+                          className="inline-flex h-11 items-center rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 hover:border-[var(--brand-primary)] disabled:opacity-50 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
       {notice && <p className="mt-2 text-sm text-red-700" role="status">{notice}</p>}
       <form onSubmit={onSubmit} className="mt-3 flex flex-col gap-2 sm:flex-row">
         <label className="sr-only" htmlFor="agent-question">Ask the agent</label>

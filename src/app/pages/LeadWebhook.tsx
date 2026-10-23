@@ -287,6 +287,9 @@ export default function LeadWebhook() {
                 </div>
               </div>
             </>
+          ) : webhookInfo?.hasApiKey ? (
+            // The server shows the key only to an owner or a manager: it reads the whole workspace.
+            <p className="text-slate-600">This workspace has an API key. Ask an owner or a manager for it.</p>
           ) : (
             <div>
               <p className="text-slate-600 mb-4">No API key generated yet. Generate one to start using the webhook.</p>

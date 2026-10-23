@@ -63,11 +63,26 @@ export function getCurrentUser(): AuthUser | null {
   }
 }
 
+/** The sales agent's saved conversation and focus (salesAgent/AgentDesk). They name customers. */
+const AGENT_KEY_PREFIX = 'cadence.agent.';
+
+function forgetAgentConversations(storage: Storage): void {
+  const keys: string[] = [];
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index);
+    if (key?.startsWith(AGENT_KEY_PREFIX)) keys.push(key);
+  }
+  for (const key of keys) storage.removeItem(key);
+}
+
 export function clearSession(): void {
   try {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(ORG_ID_KEY);
+    // The next person at this browser must not find the last one's questions about customers.
+    forgetAgentConversations(localStorage);
+    forgetAgentConversations(sessionStorage);
     notifySessionChanged();
   } catch {
     // ignore

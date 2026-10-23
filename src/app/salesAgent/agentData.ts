@@ -56,6 +56,11 @@ export interface AgentSnapshot {
   refreshing: boolean;
   /** The last load failed outright. Older lists, if any, are still shown. */
   failed: boolean;
+  /**
+   * Lists the last load could not read, as sentences. Each one either is empty because it
+   * never loaded, or still shows an earlier copy. An answer built on them has to say so.
+   */
+  gaps: string[];
 }
 
 /** How long a loaded copy is trusted before a navigation re-reads it. */
@@ -64,6 +69,16 @@ export const FRESH_FOR_MS = 60_000;
 export const SETTLE_MS = 400;
 
 const LIST_NAMES = ['leads', 'deals', 'tasks', 'enrollments', 'sequences', 'contacts', 'companies', 'automations'] as const;
+const LIST_LABELS: Record<(typeof LIST_NAMES)[number], string> = {
+  leads: 'Leads',
+  deals: 'Deals',
+  tasks: 'Tasks',
+  enrollments: 'Sequence enrollments',
+  sequences: 'Sequences',
+  contacts: 'Contacts',
+  companies: 'Companies',
+  automations: 'Automations',
+};
 
 function fetchAll(): Promise<PromiseSettledResult<unknown>[]> {
   return Promise.allSettled([
@@ -85,10 +100,11 @@ let loadedAt = 0;
 let inflight: { key: string; promise: Promise<void> } | null = null;
 let reloadAfter = false;
 let failed = false;
+let gaps: string[] = [];
 let settleTimer: ReturnType<typeof setTimeout> | null = null;
 let installed: (() => void) | null = null;
 
-const EMPTY: AgentSnapshot = { key: null, lists: null, loading: true, refreshing: false, failed: false };
+const EMPTY: AgentSnapshot = { key: null, lists: null, loading: true, refreshing: false, failed: false, gaps: [] };
 let snapshot: AgentSnapshot = EMPTY;
 const listeners = new Set<() => void>();
 
@@ -99,6 +115,7 @@ function emit(): void {
     loading: lists === null && inflight !== null,
     refreshing: lists !== null && inflight !== null,
     failed,
+    gaps,
   };
   for (const listener of listeners) listener();
 }
@@ -120,17 +137,28 @@ function load(forKey: string): Promise<void> {
     if (key !== forKey) return;
     if (results.every((result) => result.status === 'rejected')) {
       failed = true;
+      if (lists) gaps = LIST_NAMES.map((name) => `${LIST_LABELS[name]} could not be refreshed, so an earlier copy is used.`);
       return;
     }
     const previous = lists;
     const next = {} as Record<(typeof LIST_NAMES)[number], unknown[]>;
+    const missing: string[] = [];
     LIST_NAMES.forEach((name, index) => {
       const result = results[index]!;
       // One list failing must not erase it: an outage on deals would otherwise
-      // read as "no deals need anything", which is a quiet lie.
-      next[name] = result.status === 'fulfilled' ? rows(result.value) : previous?.[name] ?? [];
+      // read as "no deals need anything", which is a quiet lie. The gap is kept,
+      // so the agent can say the list is old or missing instead of counting it.
+      if (result.status === 'fulfilled') {
+        next[name] = rows(result.value);
+        return;
+      }
+      next[name] = previous?.[name] ?? [];
+      missing.push(previous
+        ? `${LIST_LABELS[name]} could not be refreshed, so an earlier copy is used.`
+        : `${LIST_LABELS[name]} could not be loaded.`);
     });
     lists = next as unknown as AgentLists;
+    gaps = missing;
     loadedAt = Date.now();
     failed = false;
   })().finally(() => {
@@ -188,6 +216,7 @@ export function ensureFresh(forKey: string): void {
     lists = null;
     loadedAt = 0;
     failed = false;
+    gaps = [];
     reloadAfter = false;
     emit();
     void load(forKey);
@@ -241,6 +270,7 @@ export function resetAgentDataForTests(): void {
   inflight = null;
   reloadAfter = false;
   failed = false;
+  gaps = [];
   snapshot = EMPTY;
   listeners.clear();
 }

@@ -10,7 +10,7 @@ import { getCurrentUser } from '@/app/lib/auth';
 import { reloadAgentData, useAgentData, type AgentLists } from './agentData';
 import { AgentDesk } from './AgentDesk';
 import type { AgentWorld } from './brain/answer';
-import { learnFrom } from './brain/patterns';
+import { learnFrom, type LearnedPatterns } from './brain/patterns';
 import { useNextActionsSlot } from './NextActionsSlot';
 import { itemOnList, pageScope, type PageScope } from './pageScope';
 import { dealPlan, type PlanLine } from './recordPlan';
@@ -51,7 +51,7 @@ function inList(item: WorkSuggestion, list: Extract<PageScope, { mode: 'list' }>
   return itemOnList(item, list);
 }
 
-function askWorld(lists: AgentLists, items: WorkSuggestion[], scope: Exclude<PageScope, { mode: 'hidden' }>): AgentWorld {
+function askWorld(lists: AgentLists, items: WorkSuggestion[], scope: Exclude<PageScope, { mode: 'hidden' }>, patterns: LearnedPatterns, gaps: string[]): AgentWorld {
   return {
     items,
     leads: lists.leads,
@@ -59,23 +59,27 @@ function askWorld(lists: AgentLists, items: WorkSuggestion[], scope: Exclude<Pag
     contacts: lists.contacts,
     companies: lists.companies,
     tasks: lists.tasks,
-    sequences: lists.sequences,
-    plan: null,
+    // A sequence the person can pick by name. One saved without a name still needs a label.
+    sequences: lists.sequences.map((sequence) => ({ id: sequence.id, name: sequence.name?.trim() || 'Untitled sequence' })),
     page: scope,
-    patterns: learnFrom(lists.leads, lists.deals),
-    invites: [],
-    contractHint: null,
+    patterns,
+    gaps,
   };
 }
 
-function AskBox({ lists, items, scope }: { lists: AgentLists; items: WorkSuggestion[]; scope: Exclude<PageScope, { mode: 'hidden' }> }) {
+function AskBox({ lists, gaps, items, scope }: { lists: AgentLists; gaps: string[]; items: WorkSuggestion[]; scope: Exclude<PageScope, { mode: 'hidden' }> }) {
   const org = useOrgOptional();
   const userId = getCurrentUser()?.id ?? 'session';
+  const accountKey = `${userId}:${org?.currentOrgId ?? 'no-org'}`;
+  // Read once per load of the lists, not on every render of the page underneath.
+  const patterns = useMemo(() => learnFrom(lists.leads, lists.deals), [lists]);
   return (
     <AgentDesk
-      world={askWorld(lists, items, scope)}
+      // A new workspace starts a new conversation: nothing typed in the last one carries over.
+      key={accountKey}
+      world={askWorld(lists, items, scope, patterns, gaps)}
       readOnly={org?.isReadOnly ?? false}
-      accountKey={`${userId}:${org?.currentOrgId ?? 'no-org'}`}
+      accountKey={accountKey}
     />
   );
 }
@@ -354,11 +358,12 @@ function Ladder({ lines }: { lines: PlanLine[] }) {
   );
 }
 
-function RecordStrip({ href, step, items, lists, refreshing }: {
+function RecordStrip({ href, step, items, lists, gaps, refreshing }: {
   href: string;
   step: WorkSuggestion;
   items: WorkSuggestion[];
   lists: AgentLists;
+  gaps: string[];
   refreshing: boolean;
 }) {
   const reduce = useMotionPreference();
@@ -385,7 +390,7 @@ function RecordStrip({ href, step, items, lists, refreshing }: {
         <DraftLink item={step} />
       </div>
       {ladder && <Ladder lines={ladder} />}
-      <AskBox lists={lists} items={items} scope={{ mode: 'record', href }} />
+      <AskBox lists={lists} gaps={gaps} items={items} scope={{ mode: 'record', href }} />
     </Card>
   );
 }
@@ -452,7 +457,7 @@ export function NextActions() {
     // The page already shows its state, and a card (or a gap) on every finished
     // record is noise.
     if (!step) return null;
-    return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} refreshing={data.refreshing} />);
+    return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} gaps={data.gaps} refreshing={data.refreshing} />);
   }
 
   const scoped = scope.mode === 'list' ? allItems.filter((item) => inList(item, scope.list)) : allItems;
@@ -542,7 +547,7 @@ export function NextActions() {
           </AnimatePresence>
         </>
       )}
-      <AskBox lists={data.lists} items={scoped} scope={scope} />
+      <AskBox lists={data.lists} gaps={data.gaps} items={scoped} scope={scope} />
     </Card>,
   );
 }

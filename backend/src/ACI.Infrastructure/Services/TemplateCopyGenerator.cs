@@ -87,12 +87,8 @@ public sealed class TemplateCopyGenerator : ICopyGenerator
         var template = BasicTemplates.TryGetValue(copyTypeId, out var t) ? t : DefaultTemplate;
         var result = ReplacePlaceholders(template, brandName, null);
         
-        if (!string.IsNullOrWhiteSpace(context))
-        {
-            var ctx = context.Trim();
-            if (ctx.Length > 300) ctx = ctx[..300] + "...";
-            result = result.TrimEnd() + $"\n\n---\nContext: {ctx}\n---";
-        }
+        // The context is not pasted into the message. It is record data, internal notes
+        // included, and a template is sent as it reads; the person writes it in themselves.
 
         return Task.FromResult(result.Trim() + NotConfiguredNote);
     }
@@ -122,12 +118,8 @@ public sealed class TemplateCopyGenerator : ICopyGenerator
         var template = BasicTemplates.TryGetValue(copyTypeId, out var t) ? t : DefaultTemplate;
         var body = ReplacePlaceholders(template, brandName, recipient);
         
-        if (!string.IsNullOrWhiteSpace(context))
-        {
-            var ctx = context.Trim();
-            if (ctx.Length > 300) ctx = ctx[..300] + "...";
-            body = body.TrimEnd() + $"\n\n---\nContext: {ctx}\n---";
-        }
+        // The context is not pasted into the message. It is record data, internal notes
+        // included, and a template is sent as it reads; the person writes it in themselves.
 
         body = body.Trim() + NotConfiguredNote;
 
