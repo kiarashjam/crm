@@ -1,4 +1,5 @@
-import { daysBetween, todayKey } from '../calendarDay';
+import { tryParseAmount } from '@/app/lib/money';
+import { calendarKey, daysBetween, todayKey } from '../calendarDay';
 import type { SuggestableLead } from '../nextAction';
 import type { WorkSuggestion, SuggestableDeal } from '../workspace';
 import type { LearnedPatterns } from './patterns';
@@ -25,14 +26,13 @@ const MISSING_REASON = /reason is still/i;
 const SECOND_CALL = /already called today|once more later today/i;
 const LONG_SILENCE = /Nothing has been recorded in (\d+) days/i;
 const RECORD_HREF = /^\/(leads|deals)\/([^/]+)$/;
-const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 /** A same-day retry waits until afternoon. The rule already keeps it under work that is due. */
 const SECOND_CALL_HOUR = 15;
 
+/** A positive amount, read the way the rest of the app reads it ("1.234,56" is not 1.23). */
 function money(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const amount = Number(String(value).replace(/[^0-9.]/g, ''));
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
+  const amount = tryParseAmount(value);
+  return amount !== null && amount > 0 ? amount : null;
 }
 
 function indexById<T extends { id: string }>(rows: T[]): Map<string, T> {
@@ -43,11 +43,12 @@ function indexById<T extends { id: string }>(rows: T[]): Map<string, T> {
 
 function recordId(href: string, kind: 'leads' | 'deals'): string | null {
   const match = RECORD_HREF.exec(href);
-  if (!match || match[1] !== kind) return null;
+  const raw = match?.[1] === kind ? match[2] : undefined;
+  if (raw === undefined) return null;
   try {
-    return decodeURIComponent(match[2]);
+    return decodeURIComponent(raw);
   } catch {
-    return match[2];
+    return raw;
   }
 }
 
@@ -86,11 +87,9 @@ function weighIndexed(
     const points = lead.leadScore >= 90 ? 10 : 6;
     weights.push({ name: 'Lead score', points, because: `Lead score is ${lead.leadScore}.` });
   }
-  if (lead?.lastContactedAt) {
-    const key = lead.lastContactedAt.slice(0, 10);
-    if (DAY_KEY.test(key) && daysBetween(key, todayKey(now)) >= QUIET_DAYS) {
-      weights.push({ name: 'Gone quiet', points: 5, because: `Last contact on the lead is ${key}.` });
-    }
+  const contacted = calendarKey(lead?.lastContactedAt);
+  if (contacted && daysBetween(contacted, todayKey(now)) >= QUIET_DAYS) {
+    weights.push({ name: 'Gone quiet', points: 5, because: `Last contact on the lead is ${contacted}.` });
   }
 
   const dealId = recordId(item.href, 'deals');
@@ -136,10 +135,9 @@ export function judgeAll(items: WorkSuggestion[], leads: SuggestableLead[], deal
  * Does not invent a fact that is not on a weight.
  */
 export function judgmentText(items: WorkSuggestion[], leads: SuggestableLead[], deals: SuggestableDeal[], patterns: LearnedPatterns, now: Date): { text: string; pick: WorkSuggestion | null } {
-  if (items.length === 0) return { text: 'Nothing is waiting.', pick: null };
-  const ranked = judgeAll(items, leads, deals, now);
-  const best = ranked[0];
+  const best = judgeAll(items, leads, deals, now)[0];
   const ruleFirst = [...items].sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name))[0];
+  if (!best || !ruleFirst) return { text: 'Nothing is waiting.', pick: null };
   const lines = [
     `Rule order starts with ${ruleFirst.name} at priority ${ruleFirst.priority}. ${ruleFirst.action}`,
   ];

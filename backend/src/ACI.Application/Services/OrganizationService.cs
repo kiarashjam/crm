@@ -281,12 +281,16 @@ public sealed class OrganizationService : IOrganizationService
     {
         _logger.LogDebug("Getting webhook info for organization {OrganizationId}", organizationId);
         
-        var isMember = await _organizationRepository.IsMemberAsync(userId, organizationId, ct);
-        if (!isMember)
+        var role = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
+        if (role == null)
         {
             _logger.LogWarning("User {UserId} is not a member of organization {OrganizationId}", userId, organizationId);
             return DomainErrors.Organization.NotMember;
         }
+        // The key opens the whole workspace to whoever holds it: inbound leads, and the
+        // CRM tools an assistant connects with, which read as the owner and so see private
+        // deals. Everyone may know whether there is one; only the owner or a manager sees it.
+        var mayHoldKey = role is OrgMemberRole.Owner or OrgMemberRole.Manager;
         
         var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
         if (org == null)
@@ -300,7 +304,7 @@ public sealed class OrganizationService : IOrganizationService
         _logger.LogDebug("Successfully retrieved webhook info for organization {OrganizationId}", organizationId);
         return new WebhookInfoDto(
             WebhookUrl: webhookUrl,
-            ApiKey: org.WebhookApiKey,
+            ApiKey: mayHoldKey ? org.WebhookApiKey : null,
             ApiKeyCreatedAt: org.WebhookApiKeyCreatedAtUtc,
             HasApiKey: !string.IsNullOrEmpty(org.WebhookApiKey),
             UsesDefaultWebhookPassword: string.IsNullOrEmpty(org.WebhookPassword),

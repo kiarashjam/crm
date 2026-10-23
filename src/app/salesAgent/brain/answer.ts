@@ -1,29 +1,22 @@
+import { currencyOf, formatMoney, tryParseAmount } from '@/app/lib/money';
 import { shiftKey, todayKey } from '../calendarDay';
 import type { SuggestableLead } from '../nextAction';
-import type { RecordPlan } from '../recordPlan';
 import type { SuggestableContact, SuggestableDeal, SuggestableTask, WorkSuggestion } from '../workspace';
 import { itemOnList, type PageScope } from '../pageScope';
 import { LEAD_PLAYBOOKS, playbookForKind, playbookForStage, type Playbook } from './playbooks';
 import type { LearnedPatterns } from './patterns';
 import type { WriterBrief } from '../writerBrief';
 import { judgmentText } from './judge';
-import { ambiguousPeople, costOfWaiting, emptyMemory, matchPeople, remember, whyThisOrder, type AgentMemory } from './reason';
-import { activityReport, amountOf, duplicateReview, groundedDraft, neglectedReport, pipelineTotals, proposeContact, proposeDeal, proposeDealUpdate, recordBrief } from './workflows';
+import { ambiguousPeople, costOfWaiting, emptyMemory, matchPeople, namesIn, pointsBack, recall, remember, whyThisOrder, type AgentMemory } from './reason';
+import { activityReport, amountText, duplicateReview, groundedDraft, isOpenDeal, neglectedReport, pipelineTotals, proposeContact, proposeDeal, proposeDealUpdate, recordBrief } from './workflows';
 
 export interface AgentWorld {
   items: WorkSuggestion[];
   leads: SuggestableLead[];
   deals: SuggestableDeal[];
-  plan: RecordPlan | null;
   page: PageScope;
   patterns: LearnedPatterns;
-  /** Emails with an invitation that has not been accepted. */
-  invites: { id?: string; email: string }[];
-  /** Contract hint for the open lead, when one is loaded. */
-  contractHint: string | null;
-  /** Totals that are not a single next step: pipeline value, copy history, required fields. */
-  facts?: string[];
-  /** Sequences already saved, so an enroll button can name one when there is only one. */
+  /** Sequences already saved, so an enroll button can name one. */
   sequences?: { id: string; name: string }[];
   /** Workspace setting used when a meeting is saved as a dated task. */
   followUpDays?: number;
@@ -33,6 +26,7 @@ export interface AgentWorld {
   /** Lists that failed or were capped. Facts must not be treated as complete when this is set. */
   gaps?: string[];
   tasks?: SuggestableTask[];
+  /** Left out when activities are not loaded, so no answer reads "none" into a list it never saw. */
   activities?: AgentActivity[];
 }
 
@@ -50,7 +44,7 @@ export interface AgentActivity {
 export interface AgentAction {
   id: string;
   label: string;
-  kind: 'task' | 'note' | 'draft' | 'open' | 'resend' | 'comment' | 'send' | 'assign' | 'convert' | 'enroll' | 'merge' | 'stage' | 'create-contact' | 'create-deal' | 'update-deal';
+  kind: 'task' | 'note' | 'draft' | 'open' | 'comment' | 'send' | 'assign' | 'convert' | 'enroll' | 'merge' | 'create-contact' | 'create-deal' | 'update-deal';
   href?: string;
   title?: string;
   body?: string;
@@ -58,12 +52,9 @@ export interface AgentAction {
   dealId?: string;
   contactId?: string;
   taskId?: string;
-  inviteId?: string;
   sequenceId?: string;
   to?: string;
   dueDateUtc?: string;
-  stageId?: string;
-  stageName?: string;
   mergeKind?: 'contacts' | 'companies';
   mergePrimaryId?: string;
   mergeDuplicateIds?: string[];
@@ -83,6 +74,8 @@ export interface AgentReply {
   actions: AgentAction[];
   /** The record this answer was about, so the next question can say "that one". */
   focusKey: string | null;
+  /** Set when the answer was about something the key alone cannot name, such as a company. */
+  memory?: AgentMemory;
 }
 
 function clean(value: string): string {
@@ -92,7 +85,7 @@ function clean(value: string): string {
 function idsFromHref(href: string): { leadId?: string; dealId?: string; contactId?: string } {
   const match = /^\/(leads|deals|contacts)\/([^/]+)$/.exec(href);
   if (!match) return {};
-  const id = decodeURIComponent(match[2]);
+  const id = decodeURIComponent(match[2] ?? '');
   if (match[1] === 'leads') return { leadId: id };
   if (match[1] === 'deals') return { dealId: id };
   return { contactId: id };
@@ -100,7 +93,7 @@ function idsFromHref(href: string): { leadId?: string; dealId?: string; contactI
 
 function party(world: AgentWorld, person: WorkSuggestion | null, memory?: AgentMemory): AgentMemory {
   if (person) return remember(person, memory, { leads: world.leads, deals: world.deals, contacts: world.contacts });
-  return memory?.focusKey ? { ...emptyMemory(), ...memory } : emptyMemory();
+  return memory ? { ...emptyMemory(), ...memory } : emptyMemory();
 }
 
 function sameParty(deal: SuggestableDeal, ctx: AgentMemory): boolean {
@@ -115,8 +108,13 @@ function limitLine(world: AgentWorld): string {
   return world.gaps?.length ? `Not loaded: ${world.gaps.join(' ')}` : '';
 }
 
+/** A list that did not load at all, as opposed to an earlier copy shown after a failed refresh. */
+function notLoaded(world: AgentWorld, label: string): string | null {
+  return world.gaps?.find((gap) => gap.startsWith(`${label} could not be loaded`)) ?? null;
+}
+
 function otherDeals(world: AgentWorld, person: WorkSuggestion | null, memory?: AgentMemory): AgentReply {
-  if (world.gaps?.some((gap) => gap.startsWith('Deals could not'))) {
+  if (notLoaded(world, 'Deals')) {
     return say('Deals could not be loaded, so I cannot list opportunities.');
   }
   const ctx = party(world, person, memory);
@@ -135,7 +133,7 @@ function otherDeals(world: AgentWorld, person: WorkSuggestion | null, memory?: A
   const shown = others.slice(0, 8);
   const lines = [
     `Recorded deals for ${label}. This list is not a suggestion.`,
-    ...shown.map((deal) => `${deal.name}: ${deal.value ?? 'no amount saved'} · ${deal.dealStageName || deal.stage || 'no stage'}`),
+    ...shown.map((deal) => `${deal.name}: ${amountText(deal)} · ${deal.dealStageName || deal.stage || 'no stage'}`),
   ];
   if (others.length > shown.length) lines.push(`${others.length - shown.length} more loaded deals are not listed.`);
   const gap = limitLine(world);
@@ -169,37 +167,57 @@ function otherPeople(world: AgentWorld, person: WorkSuggestion | null, memory?: 
   })), person);
 }
 
-function briefByName(world: AgentWorld, q: string, memory: AgentMemory | undefined, now: Date): AgentReply | null {
+/** Matches whose name is inside a longer match's name are dropped: "Pavilion renewal" over "Pavilion". */
+function longestOnly<T extends { name: string }>(rows: T[]): T[] {
+  return rows.filter((row) => !rows.some((other) => other !== row && other.name.length > row.name.length && namesIn(other.name, row.name)));
+}
+
+function briefByName(world: AgentWorld, q: string, now: Date): AgentReply | null {
   const blank = emptyMemory();
-  const leads = world.leads.filter((lead) => lead.name.length >= 3 && q.includes(lead.name.toLowerCase()));
-  const contacts = (world.contacts ?? []).filter((contact) => contact.name.length >= 3 && q.includes(contact.name.toLowerCase()));
-  const deals = world.deals.filter((deal) => deal.name.length >= 3 && q.includes(deal.name.toLowerCase()));
-  const people = [...leads, ...contacts, ...deals];
-  if (people.length > 1) {
+  type Hit = { kind: 'lead' | 'contact' | 'deal'; id: string; name: string; email?: string | null; companyId?: string | null; companyName?: string | null; contactId?: string | null };
+  const hits: Hit[] = longestOnly([
+    ...(world.contacts ?? []).map((row): Hit => ({ kind: 'contact', ...row })),
+    ...world.leads.map((row): Hit => ({ kind: 'lead', ...row })),
+    ...world.deals.map((row): Hit => ({ kind: 'deal', id: row.id, name: row.name, companyId: row.companyId, companyName: row.companyName, contactId: row.contactId })),
+  ].filter((row) => namesIn(q, row.name)));
+  // A lead and the contact made from it share an email. They are one person, briefed together.
+  const people = new Map<string, Hit[]>();
+  for (const hit of hits) {
+    const identity = hit.kind !== 'deal' && hit.email?.trim() ? `email:${hit.email.trim().toLowerCase()}` : `${hit.kind}:${hit.id}`;
+    people.set(identity, [...(people.get(identity) ?? []), hit]);
+  }
+  if (people.size > 1) {
     return say([
-      `${people.length} records match. I will not guess.`,
-      ...people.slice(0, 5).map((row, index) => `${index + 1}. ${row.name}`),
+      `${people.size} records match. I will not guess.`,
+      ...[...people.values()].slice(0, 5).map((group, index) => `${index + 1}. ${group[0]?.name ?? ''}`),
       'Which one?',
     ].join('\n'));
   }
-  const lead = leads.length === 1 ? leads[0] : undefined;
-  if (lead) {
-    return recordBrief(world, null, { ...blank, ...memory, focusKey: memory?.focusKey ?? null, name: lead.name, leadId: lead.id, dealId: null, contactId: null, companyId: lead.companyId ?? null, companyName: lead.companyName ?? null }, now);
-  }
-  const contact = contacts.length === 1 ? contacts[0] : undefined;
-  if (contact) {
-    return recordBrief(world, null, { ...blank, ...memory, focusKey: memory?.focusKey ?? null, name: contact.name, leadId: null, dealId: null, contactId: contact.id, companyId: contact.companyId ?? null, companyName: contact.companyName ?? null }, now);
-  }
-  const deal = deals.length === 1 ? deals[0] : undefined;
-  if (deal) {
-    return recordBrief(world, null, { ...blank, ...memory, focusKey: memory?.focusKey ?? null, name: deal.name, leadId: null, dealId: deal.id, contactId: deal.contactId ?? null, companyId: deal.companyId ?? null, companyName: deal.companyName ?? null }, now);
+  const [group] = [...people.values()];
+  if (group) {
+    const lead = group.find((hit) => hit.kind === 'lead');
+    const contact = group.find((hit) => hit.kind === 'contact');
+    const deal = group.find((hit) => hit.kind === 'deal');
+    const keys = [lead && `lead:${lead.id}`, contact && `contact:${contact.id}`, deal && `deal:${deal.id}`].filter((key): key is string => !!key);
+    const focusKey = keys.find((key) => world.items.some((item) => item.key === key)) ?? keys[0] ?? null;
+    const first = lead ?? contact ?? deal;
+    return recordBrief(world, null, {
+      ...blank,
+      focusKey,
+      name: first?.name ?? null,
+      leadId: lead?.id ?? null,
+      contactId: contact?.id ?? deal?.contactId ?? null,
+      dealId: deal?.id ?? null,
+      companyId: first?.companyId ?? null,
+      companyName: first?.companyName ?? null,
+    }, now);
   }
   const companyNames = new Set<string>();
   for (const row of [...world.leads, ...world.deals, ...(world.contacts ?? [])]) {
-    if (row.companyName && row.companyName.length >= 3 && q.includes(row.companyName.toLowerCase())) companyNames.add(row.companyName);
+    if (row.companyName && namesIn(q, row.companyName)) companyNames.add(row.companyName);
   }
   for (const company of world.companies ?? []) {
-    if (company.name.length >= 3 && q.includes(company.name.toLowerCase())) companyNames.add(company.name);
+    if (namesIn(q, company.name)) companyNames.add(company.name);
   }
   if (companyNames.size > 1) {
     return say(`${companyNames.size} companies match. I will not guess.\n${[...companyNames].slice(0, 5).join('\n')}\nWhich one?`);
@@ -252,17 +270,37 @@ function emptyQueue(world: AgentWorld): string {
 
 /** Rows on the open list. A record page and the dashboard keep the whole queue. */
 function listQueue(world: AgentWorld): WorkSuggestion[] {
-  if (world.page.mode !== 'list') return world.items;
-  return world.items.filter((item) => itemOnList(item, world.page.list));
+  const page = world.page;
+  if (page.mode !== 'list') return world.items;
+  return world.items.filter((item) => itemOnList(item, page.list));
 }
 
 /** The open record when it has a step, otherwise the list the person is looking at. */
 function nextQueue(world: AgentWorld): WorkSuggestion[] {
-  if (world.page.mode === 'record') {
-    const here = world.items.filter((item) => item.href === world.page.href);
+  const page = world.page;
+  if (page.mode === 'record') {
+    const here = world.items.filter((item) => item.href === page.href);
     if (here.length > 0) return here;
   }
   return listQueue(world);
+}
+
+/** The record on screen, when the panel sits on a record page. */
+function pageRow(world: AgentWorld): WorkSuggestion | null {
+  const page = world.page;
+  return page.mode === 'record' ? world.items.find((item) => item.href === page.href) ?? null : null;
+}
+
+/**
+ * Who a follow-up such as "draft a message" is about: the record named, else the one on
+ * screen, else the one the last answer was about ("that one" asks for that first). Never
+ * the top of the queue: a write proposed on a record nobody named is a guess.
+ */
+function target(world: AgentWorld, person: WorkSuggestion | null, memory: AgentMemory | undefined, question: string): WorkSuggestion | null {
+  if (person) return person;
+  const here = pageRow(world);
+  const before = recall(world, memory);
+  return pointsBack(question) ? before ?? here : here ?? before;
 }
 
 function leadIdFrom(href: string): string | null {
@@ -300,31 +338,23 @@ function callSlate(world: AgentWorld, items: WorkSuggestion[]): AgentReply {
       const lead = leadById.get(leadIdFrom(item.href) ?? '');
       return { item, phone: lead?.phone?.trim() ?? '' };
     });
-  if (shown.length === 0) {
+  const [firstCall] = shown;
+  if (!firstCall) {
     const where = world.page.mode === 'list' ? 'on this page' : 'in the loaded queue';
     return say(`No step ${where} is a call.`);
   }
   const lines = shown.map(({ item, phone }) => `${item.name}: ${item.action}${phone ? ` Phone ${phone}.` : ''}`);
-  return say(lines.join('\n'), [openFor(shown[0].item)], shown[0].item);
+  return say(lines.join('\n'), [openFor(firstCall.item)], firstCall.item);
 }
 
-function taskFor(item: WorkSuggestion): AgentAction {
+function taskFor(item: WorkSuggestion, title?: string, due?: string): AgentAction {
+  const text = title || item.action.replace(/\.$/, '') || `Follow up with ${item.name}`;
   return {
-    id: `task:${item.key}`,
+    id: `task:${item.key}:${text.toLowerCase()}:${due ?? ''}`,
     label: `Create task for ${item.name}`,
     kind: 'task',
-    title: item.action.replace(/\.$/, ''),
-    href: item.href,
-    ...idsFromHref(item.href),
-  };
-}
-
-function noteFor(item: WorkSuggestion, body: string): AgentAction {
-  return {
-    id: `note:${item.key}`,
-    label: `Log note on ${item.name}`,
-    kind: 'note',
-    body,
+    title: text,
+    dueDateUtc: due,
     href: item.href,
     ...idsFromHref(item.href),
   };
@@ -354,29 +384,99 @@ function briefing(world: AgentWorld): string {
       : `${world.items.length} record${world.items.length === 1 ? '' : 's'} need a step.`,
   ];
   for (const item of top) lines.push(`${item.name}: ${item.action}`);
-  if (world.contractHint) lines.push(`Open contract: ${world.contractHint}`);
-  if (world.invites.length) lines.push(`${world.invites.length} team invitation${world.invites.length === 1 ? '' : 's'} still waiting.`);
   lines.push('Calculated from the closed records loaded here:');
   lines.push(...world.patterns.lines);
-  lines.push(...(world.facts ?? []));
   if (world.gaps?.length) lines.push(`Not loaded: ${world.gaps.join(' ')}`);
   return lines.join('\n');
 }
 
+/** A colon that starts the person's own words. The one in 10:30 does not. */
+const PAYLOAD_COLON = /:(?!\d)/;
+
+/**
+ * The command part of a question: what comes before the person's own words. Names and
+ * intents are read only here, so "send Ada: please add a note" is a send to Ada, and a
+ * note that mentions someone else does not turn into "which one?".
+ */
+function commandOf(question: string): string {
+  return question.split(/:(?!\d)|["“]/)[0] ?? question;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The words a person typed for a note, comment, or task, after the command. A colon or
+ * quotes mark them exactly. "for Ada Lovelace" before them is the record, not the text.
+ */
+function ownWords(question: string, command: RegExp, name: string | null): string {
+  const match = command.exec(question);
+  if (!match) return '';
+  let rest = question.slice((match.index ?? 0) + match[0].length);
+  const quoted = /["“](.+?)["”]/.exec(rest);
+  if (quoted?.[1]?.trim()) return quoted[1].trim();
+  const colon = rest.search(PAYLOAD_COLON);
+  if (colon >= 0) return rest.slice(colon + 1).trim();
+  if (name) {
+    const parts = [name, name.split(/\s+/)[0] ?? ''].filter((part) => part.length >= 2).map(escapeRegExp);
+    rest = rest.replace(new RegExp(`^\\s*(?:to|for|on|about|with)\\s+(?:${parts.join('|')})\\b[\\s,.-]*`, 'i'), '');
+  }
+  return rest.replace(/^\s*(?:to|for|on|about|that|saying)\b\s*/i, '').trim().replace(/[.?!]+$/, '');
+}
+
+/** A send to someone whose contact record says "do not contact" is refused. */
+function doNotContact(world: AgentWorld, item: WorkSuggestion): boolean {
+  const email = item.email?.trim().toLowerCase();
+  const { contactId } = idsFromHref(item.href);
+  return (world.contacts ?? []).some((contact) => contact.doNotContact
+    && (contact.id === contactId || (!!email && contact.email?.trim().toLowerCase() === email)));
+}
+
+const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/** A day the person named: today, tomorrow, in 3 days, next week, Friday, or 2026-11-02. */
+function dayIn(question: string, now: Date): { day: string; text: string } | null {
+  const today = todayKey(now);
+  const iso = /\b(?:on |by )?(\d{4}-\d{2}-\d{2})\b/i.exec(question);
+  if (iso?.[1]) return { day: iso[1], text: iso[0] };
+  const word = /\b(?:on |by )?(today|tomorrow|next week)\b/i.exec(question);
+  if (word?.[1]) {
+    const shift = { today: 0, tomorrow: 1, 'next week': 7 }[word[1].toLowerCase() as 'today' | 'tomorrow' | 'next week'];
+    return { day: shiftKey(today, shift), text: word[0] };
+  }
+  const inDays = /\bin (\d{1,3}) days?\b/i.exec(question);
+  if (inDays?.[1]) return { day: shiftKey(today, Number(inDays[1])), text: inDays[0] };
+  const weekday = new RegExp(`\\b(?:on |by |next )?(${WEEKDAYS.join('|')})\\b`, 'i').exec(question);
+  if (weekday?.[1]) {
+    const wanted = WEEKDAYS.indexOf(weekday[1].toLowerCase());
+    const ahead = (wanted - now.getDay() + 7) % 7 || 7;
+    return { day: shiftKey(today, ahead), text: weekday[0] };
+  }
+  return null;
+}
+
+const TASK = /\b(create a task|add a task|make a task|new task|remind me)\b/i;
+const NOTE = /\b(log a note|add a note|make a note|note that|write down)\b/i;
+const COMMENT = /\b(comment on|add a comment)\b/i;
+/** Questions about lists and totals: a name inside them is a filter, not a person to act on. */
+const LISTING = /\b(find|search for|look up|how many|pipeline value|pipeline total|where is the money|show me the money|biggest deal|largest deal|duplicates|who went quiet|gone quiet|gone silent|neglected|who should i call|who do i call|call list|who to call|compare|top three|top 3|rank them|show the order|win rate|what did we learn)\b/;
+
 /**
  * Answer from the records already loaded. Refuses to invent a person, a number, or a send.
- * Writing a task or a note is proposed here and performed only after the desk confirms it.
+ * A change is proposed here and performed only after the desk confirms it.
  */
 export function askAgent(question: string, world: AgentWorld, now: Date = new Date(), memory?: AgentMemory): AgentReply {
-  const q = clean(question);
-  if (!q) return say('Ask what to do next, who went quiet, why that order, or what the closed deals say.');
+  if (!clean(question)) return say('Ask what to do next, who went quiet, why that order, or what the closed deals say.');
+  const command = commandOf(question);
+  const q = clean(command);
 
   if (/\b(delete|wipe|destroy|erase)\b/.test(q)) {
     return say('I cannot delete records. Nothing was changed.');
   }
 
-  const listing = /\b(find|search for|look up|how many|pipeline value|duplicates|quiet|neglected)\b/.test(q);
-  const clash = listing ? null : ambiguousPeople(world.leads, world.contacts, question);
+  const listing = LISTING.test(q);
+  const clash = listing ? null : ambiguousPeople(world.leads, world.contacts, command);
   if (clash) {
     return say([
       `${clash.length} records match. I will not guess.`,
@@ -390,7 +490,7 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
     })));
   }
 
-  const matched = matchPeople(world.items, question, memory);
+  const matched = listing ? { status: 'none' as const } : matchPeople(world.items, command, memory);
   if (matched.status === 'many') {
     const choices = matched.items.slice(0, 5);
     return say([
@@ -405,30 +505,33 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
     return say([
       'I answer from the records loaded for this workspace, and I keep the last record you asked about.',
       'Ask: brief this, recent activity, who went quiet, pipeline value, draft that, create a contact, create a deal, set the amount, duplicates, what should I do.',
-      'A draft opens the sales writer. Send, assign, convert, enroll, a task, a note, a comment, or an invite resend happens only after you press the button.',
+      'A draft opens the sales writer. Send, assign, convert, enroll, a task, a note, or a comment happens only after you press the button.',
     ].join('\n'));
   }
 
   if (/^(why|explain|and why|why that|why this order|why first)$/.test(q) || /why (that|this) order/.test(q)) {
-    const focus = person ?? world.items.find((item) => item.key === memory?.focusKey) ?? null;
-    if (focus && !/order|first/.test(q)) {
+    const focus = person ?? recall(world, memory);
+    if (focus?.action && !/order|first/.test(q)) {
       return say(`${focus.name}. ${focus.action}\n${focus.because}`, [openFor(focus)], focus);
     }
     const rows = listQueue(world);
-    if (rows.length === 0) return say(emptyQueue(world));
-    return say(whyThisOrder(rows), [openFor(rows[0])], rows[0]);
+    const [lead] = rows;
+    if (!lead) return say(emptyQueue(world));
+    return say(whyThisOrder(rows), [openFor(lead)], lead);
   }
 
   if (/(what if i wait|if i wait|what happens if i leave|cost of waiting)/.test(q)) {
     const rows = listQueue(world);
-    if (rows.length === 0) return say(emptyQueue(world));
-    return say(costOfWaiting(rows), [openFor(rows[0])], rows[0]);
+    const [lead] = rows;
+    if (!lead) return say(emptyQueue(world));
+    return say(costOfWaiting(rows), [openFor(lead)], lead);
   }
 
   if (/\b(compare|top three|top 3|rank them|show the order)\b/.test(q)) {
     const top = listQueue(world).slice(0, 3);
-    if (top.length === 0) return say(emptyQueue(world));
-    return say(top.map((item, index) => `${index + 1}. ${item.name} (${item.priority}). ${item.action}`).join('\n'), [openFor(top[0])], top[0]);
+    const [lead] = top;
+    if (!lead) return say(emptyQueue(world));
+    return say(top.map((item, index) => `${index + 1}. ${item.name} (${item.priority}). ${item.action}`).join('\n'), [openFor(lead)], lead);
   }
 
   if (/(what did we learn|why do we lose|why are we losing|pattern|what works|closed deals|win rate)/.test(q)) {
@@ -449,36 +552,26 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
 
   if (/\bhow many\b/.test(q) && /\b(leads|deals|contacts|companies)\b/.test(q)) {
     const kind = /\bleads\b/.test(q) ? 'leads' : /\bdeals\b/.test(q) ? 'deals' : /\bcontacts\b/.test(q) ? 'contacts' : 'companies';
+    const label = `${kind[0]?.toUpperCase() ?? ''}${kind.slice(1)}`;
     const openOnly = kind === 'deals' && /\bopen\b/.test(q);
     const count = kind === 'leads'
       ? world.leads.length
       : kind === 'deals'
-        ? (openOnly ? world.deals.filter((deal) => deal.isWon !== true && deal.isWon !== false && !/closed won|closed lost/i.test(`${deal.dealStageName ?? ''} ${deal.stage ?? ''}`)).length : world.deals.length)
+        ? (openOnly ? world.deals.filter(isOpenDeal).length : world.deals.length)
         : kind === 'contacts'
           ? (world.contacts ?? []).length
           : (world.companies ?? []).length;
-    const failed = world.gaps?.find((gap) => gap.toLowerCase().startsWith(kind));
-    const line = failed ? failed : `Calculated from the records loaded here: ${count} ${openOnly ? 'open ' : ''}${kind}.`;
+    const failed = notLoaded(world, label);
+    if (failed) return say(failed);
+    const line = `Calculated from the records loaded here: ${count} ${openOnly ? 'open ' : ''}${kind}.`;
     const gap = limitLine(world);
-    return say(gap && !failed ? `${line}\n${gap}` : line);
+    return say(gap ? `${line}\n${gap}` : line);
   }
 
   if (/(invite|who hasn.t joined|waiting to join|pending invite)/.test(q)) {
-    if (world.invites.length === 0) return say('No team invitation is waiting.');
-    const first = world.invites[0];
-    const actions: AgentAction[] = [{ id: 'open-team', label: 'Open team', kind: 'open', href: '/team' }];
-    if (first.id) actions.push({ id: `resend:${first.id}`, label: `Resend invite to ${first.email}`, kind: 'resend', inviteId: first.id });
-    return say(
-      world.invites.map((invite) => `${invite.email} has not accepted yet.`).join('\n'),
-      actions,
-    );
-  }
-
-  if (!person && /\b(club|members?|charges?|reservations?|applications?|subscriptions?|campaigns?)\b/.test(q)) {
-    const club = world.items.filter((item) => /Members|Charges|Reservations|Applications|Subscriptions|Campaigns|Events|Gift|Tabs|Communications|Donations|Households|Loyalty/.test(item.list));
-    if (club.length === 0) return say('No club record that loaded is waiting on a step.');
-    const top = club.slice(0, 5);
-    return say(top.map((item) => `${item.name} (${item.list}): ${item.action}`).join('\n'), [openFor(top[0])], top[0]);
+    return say('Invitations are not loaded in this panel. The Team page lists who has not joined, and can resend an invite.', [
+      { id: 'open-team', label: 'Open team', kind: 'open', href: '/team' },
+    ]);
   }
 
   if (/(who should i call|who do i call|call list|who to call)/.test(q)) {
@@ -494,15 +587,15 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
   }
 
   if (/\b(brief|briefing)\b/.test(q) && !/^(brief me|briefing)$/.test(q)) {
-    if (person || (memory?.focusKey && /\b(this|that|their|the company|the deal|the contact)\b/.test(q))) {
+    if (person || (memory && /\b(this|that|their|the company|the deal|the contact)\b/.test(q))) {
       return recordBrief(world, person, memory, now);
     }
-    const named = briefByName(world, q, memory, now);
+    const named = briefByName(world, q, now);
     if (named) return named;
     return say('No loaded company, contact, or deal matches that name.');
   }
 
-  if (/(how many|count|pipeline size|summary|brief me|good morning|what.s going on|catch me up|rundown)/.test(q)) {
+  if (/(how many|\bcount\b|pipeline size|summary|brief me|good morning|what.s going on|catch me up|rundown)/.test(q)) {
     return say(briefing(world), world.items[0] ? [openFor(world.items[0])] : [], world.items[0] ?? null);
   }
 
@@ -515,29 +608,29 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
     const lines = [`Suggestion. ${judged.text}`];
     if (reach) lines.push(reach);
     if (next) lines.push(`Next in line: ${next.name}. ${next.action}`);
-    if (world.contractHint) lines.push(`On the open contract: ${world.contractHint}`);
     return say(lines.join('\n'), [openFor(judged.pick), taskFor(judged.pick)], judged.pick);
   }
 
-  if (/(where is the money|biggest deal|largest deal|which deal|show me the money|pipeline value)/.test(q)) {
-    if (world.gaps?.some((gap) => gap.startsWith('Deals could not'))) {
+  if (/(where is the money|biggest deal|largest deal|which deal|show me the money|pipeline value|pipeline total)/.test(q)) {
+    if (notLoaded(world, 'Deals')) {
       return say('Deals could not be loaded, so there is no pipeline total.');
     }
-    const openDeals = world.deals.filter((deal) => deal.isWon !== true && deal.isWon !== false && !/closed won|closed lost/i.test(`${deal.dealStageName ?? ''} ${deal.stage ?? ''}`));
-    const withMoney = openDeals
-      .map((deal) => ({ deal, amount: amountOf(deal.value) }))
-      .filter((row): row is { deal: SuggestableDeal; amount: number } => row.amount !== null)
+    const withMoney = world.deals
+      .filter(isOpenDeal)
+      .map((deal) => ({ deal, amount: tryParseAmount(deal.value) }))
+      .filter((row): row is { deal: SuggestableDeal; amount: number } => row.amount !== null && row.amount > 0)
       .sort((a, b) => b.amount - a.amount);
-    if (withMoney.length === 0 && (world.facts ?? []).length === 0) return say('No open amount is saved on the loaded deals.');
+    if (withMoney.length === 0) return say('No open amount is saved on the loaded deals.');
+    const currencies = new Set(withMoney.map((row) => currencyOf({ currency: row.deal.currency ?? undefined })));
     const top = withMoney.slice(0, 3).map((row) => {
       const probability = typeof row.deal.probability === 'number' ? ` Recorded probability ${row.deal.probability}%.` : '';
-      return `${row.deal.name}: ${row.deal.value}.${probability}`;
-    }).join('\n');
-    const stages = (world.facts ?? []).filter((line) => line.includes('across')).join('\n');
-    const calculated = pipelineTotals(world.deals);
+      return `${row.deal.name}: ${formatMoney(row.amount, currencyOf({ currency: row.deal.currency ?? undefined }))}.${probability}`;
+    });
+    const order = currencies.size > 1 ? 'The deals are in more than one currency, and nothing is converted, so this order compares the numbers only.' : '';
     const gap = limitLine(world);
-    const match = withMoney[0] ? world.items.find((item) => item.href === `/deals/${withMoney[0].deal.id}`) ?? null : null;
-    return say(['Recorded amounts.', top, stages, calculated, gap].filter(Boolean).join('\n'), match ? [openFor(match)] : [], match);
+    const biggest = withMoney[0];
+    const match = biggest ? world.items.find((item) => item.href === `/deals/${biggest.deal.id}`) ?? null : null;
+    return say(['Recorded amounts.', ...top, order, pipelineTotals(world.deals), gap].filter(Boolean).join('\n'), match ? [openFor(match)] : [], match);
   }
 
   if (/\b(the )?(late|overdue) one\b/.test(q)) {
@@ -548,12 +641,11 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
 
   if (/(what.s the risk|what are the risks|what is at risk|risky|what is overdue|what.s overdue|slipping)/.test(q)) {
     const late = listQueue(world).filter((item) => /passed|overdue|reason is still|nobody is assigned/i.test(`${item.action} ${item.because}`));
-    if (late.length === 0) {
-      return say(world.page.mode === 'list'
-        ? 'No step on this page is late, missing a reason, or missing an owner.'
-        : 'No loaded step is late, missing a reason, or missing an owner.');
-    }
-    return say(late.slice(0, 5).map((item) => `${item.name}: ${item.because}`).join('\n'), [openFor(late[0])], late[0]);
+    const [lead] = late;
+    if (!lead) return say(world.page.mode === 'list'
+      ? 'No step on this page is late, missing a reason, or missing an owner.'
+      : 'No loaded step is late, missing a reason, or missing an owner.');
+    return say(late.slice(0, 5).map((item) => `${item.name}: ${item.because}`).join('\n'), [openFor(lead)], lead);
   }
 
   if (/(^how |how do i|playbook|talk track)/.test(q)) {
@@ -562,7 +654,7 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
     return say(howTo(item), [openFor(item)], item);
   }
 
-  if (person && /\b(email|phone)\b/.test(q) && !/\b(draft|write|send|create|add|message)\b/.test(q)) {
+  if (person && /\b(email|phone)\b/.test(q) && !/\b(draft|write|send|create|add|message|note|task|remind)\b/.test(q)) {
     const ctx = remember(person, memory, { leads: world.leads, deals: world.deals, contacts: world.contacts });
     const lead = ctx.leadId ? world.leads.find((row) => row.id === ctx.leadId) : undefined;
     const contact = ctx.contactId ? (world.contacts ?? []).find((row) => row.id === ctx.contactId) : undefined;
@@ -574,9 +666,52 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
     return say(phone ? `Recorded phone for ${person.name}: ${phone}.` : `No phone is saved on ${person.name}.`, [openFor(person)], person);
   }
 
-  if (/(draft|write|email|message)/.test(q) && !/\bsend\b/.test(q)) {
-    const remembered = world.items.find((item) => item.key === memory?.focusKey) ?? null;
-    const item = person ?? remembered ?? world.items.find((entry) => entry.brief) ?? null;
+  // Tasks, notes, and comments carry the person's own words. They come before "draft" and
+  // "send", which would otherwise catch "remind me to email Ada" or "write down that…".
+  if (COMMENT.test(q)) {
+    const item = target(world, person, memory, command);
+    const taskId = item ? /^\/tasks\/([^/]+)$/.exec(item.href)?.[1] : undefined;
+    if (!item || !taskId) return say('Name the task the comment belongs on.');
+    const body = ownWords(question, COMMENT, item.name);
+    if (!body) return say(`What should the comment on ${item.name} say? For example: add a comment: waiting on the signed copy.`, [openFor(item)], item);
+    return say(`I can add this comment on ${item.name}: "${body}". It is saved only after you confirm.`, [{
+      id: `comment:${item.key}:${body.toLowerCase()}`,
+      label: `Comment on ${item.name}`,
+      kind: 'comment',
+      taskId: decodeURIComponent(taskId),
+      body,
+      href: item.href,
+    }], item);
+  }
+
+  if (TASK.test(q)) {
+    const item = target(world, person, memory, command);
+    if (!item) return say('Name the lead, deal, or contact the task is for. I will not attach it to another record.');
+    const when = dayIn(question, now);
+    const typed = ownWords(when ? question.replace(when.text, ' ') : question, TASK, item.name);
+    const title = typed ? `${typed[0]?.toUpperCase() ?? ''}${typed.slice(1)}` : undefined;
+    const action = taskFor(item, title, when?.day);
+    const due = when ? `, due ${when.day}` : ', with no due date';
+    return say(`I can create a task on ${item.name}: "${action.title}"${due}. It is saved only after you confirm.`, [action], item);
+  }
+
+  if (NOTE.test(q)) {
+    const item = target(world, person, memory, command);
+    if (!item) return say('Name the record the note belongs on.');
+    const body = ownWords(question, NOTE, item.name);
+    if (!body) return say(`What should the note on ${item.name} say? For example: add a note: left a voicemail.`, [openFor(item)], item);
+    return say(`I can log this note on ${item.name}: "${body}". It is saved only after you confirm.`, [{
+      id: `note:${item.key}:${body.toLowerCase()}`,
+      label: `Log note on ${item.name}`,
+      kind: 'note',
+      body,
+      href: item.href,
+      ...idsFromHref(item.href),
+    }], item);
+  }
+
+  if ((/\b(draft|write|compose)\b/.test(q) || /^(email|message)\b/.test(q)) && !/\bsend\b/.test(q)) {
+    const item = target(world, person, memory, command);
     if (!item) return say('Name the lead, contact, or deal the draft is for.');
     const draft = groundedDraft(world, item);
     if (!draft) return say(`${item.name} is not a lead, contact, or deal, so there is no message to draft.`, [openFor(item)], item);
@@ -584,44 +719,59 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
   }
 
   if (/\bsend\b/.test(q) && !/contract/.test(q)) {
-    const remembered = world.items.find((item) => item.key === memory?.focusKey) ?? null;
-    const item = person ?? remembered ?? world.items.find((entry) => entry.email) ?? null;
+    const item = target(world, person, memory, command);
     if (!item) return say('Name the person the message is for.');
     if (!item.email?.trim()) return say(`No email is saved on ${item.name}, so nothing can be sent.`, [openFor(item)], item);
-    return say(`I can send a short note to ${item.email}. It goes out only after you confirm.`, [{
-      id: `send:${item.key}`,
+    if (doNotContact(world, item)) return say(`${item.name} is marked do not contact. Nothing will be sent.`, [openFor(item)], item);
+    // Only words the person wrote are sent. The saved step is an instruction to the rep,
+    // not a message to the customer.
+    const quoted = /["“](.+?)["”]/.exec(question)?.[1]?.trim();
+    const colon = question.search(PAYLOAD_COLON);
+    const saying = /\b(?:saying|that says)\s+(.+)$/i.exec(question)?.[1]?.trim();
+    const body = quoted || (colon >= 0 ? question.slice(colon + 1).trim() : '') || saying || '';
+    if (!body) {
+      const draft = groundedDraft(world, item);
+      return say(
+        `Write the message first. I will not send the saved step as an email. Say it like: send ${item.name}: "Thanks for today. The deck is attached." Or open the draft in the sales writer.`,
+        draft ? [draft] : [openFor(item)],
+        item,
+      );
+    }
+    const subject = 'Following up';
+    return say(`I can send this to ${item.email}.\nSubject: ${subject}\n${body}\nIt goes out only after you confirm.`, [{
+      id: `send:${item.key}:${body.toLowerCase()}`,
       label: `Send to ${item.name}`,
       kind: 'send',
       to: item.email,
-      title: `Following up with ${item.name}`,
-      body: `${item.action}\n\n${item.because}`,
+      title: subject,
+      body,
       ...idsFromHref(item.href),
     }], item);
   }
 
   if (/\b(assign|i.?ll take it|assign to me)\b/.test(q)) {
-    const item = person ?? world.items.find((entry) => entry.key === memory?.focusKey) ?? world.items.find((entry) => /nobody is assigned/i.test(entry.because)) ?? null;
-    const leadId = item ? /^\/leads\/([^/]+)$/.exec(item.href)?.[1] : undefined;
+    const item = target(world, person, memory, command);
+    const leadId = item ? leadIdFrom(item.href) : null;
     if (!item || !leadId) return say('Name the lead to assign. Deals and tasks are assigned on their own record.');
-    if (!/nobody is assigned/i.test(`${item.action} ${item.because}`)) return say(`${item.name} already has an owner.`, [openFor(item)], item);
+    if (!/nobody is assigned/i.test(`${item.action} ${item.because}`)) return say(`${item.name} already has an owner, or no open step says otherwise.`, [openFor(item)], item);
     return say(`I can assign ${item.name} to you. It is saved only after you confirm.`, [{
       id: `assign:${item.key}`,
       label: `Assign ${item.name} to me`,
       kind: 'assign',
-      leadId: decodeURIComponent(leadId),
+      leadId,
       href: item.href,
     }], item);
   }
 
   if (/\bconvert\b/.test(q)) {
-    const item = person ?? world.items.find((entry) => entry.guide === 'convert') ?? null;
-    const leadId = item ? /^\/leads\/([^/]+)$/.exec(item.href)?.[1] : undefined;
-    if (!item || !leadId) return say('No loaded lead is ready to convert.');
+    const item = target(world, person, memory, command);
+    const leadId = item ? leadIdFrom(item.href) : null;
+    if (!item || !leadId) return say('Name the lead to convert.');
     return say(`I can convert ${item.name} into a contact and a deal. It is saved only after you confirm.`, [{
       id: `convert:${item.key}`,
       label: `Convert ${item.name}`,
       kind: 'convert',
-      leadId: decodeURIComponent(leadId),
+      leadId,
       recipientName: item.name,
       href: item.href,
     }], item);
@@ -629,17 +779,16 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
 
   if (/\benroll\b/.test(q)) {
     const sequences = (world.sequences ?? []).slice(0, 5);
-    const item = person ?? world.items.find((entry) => entry.href.startsWith('/leads/')) ?? null;
-    const leadId = item ? /^\/leads\/([^/]+)$/.exec(item.href)?.[1] : undefined;
+    const item = target(world, person, memory, command);
+    const leadId = item ? leadIdFrom(item.href) : null;
     if (sequences.length === 0) return say('No sequence is saved.');
     if (!item || !leadId) return say('Name the lead to enroll.');
-    const id = decodeURIComponent(leadId);
     return say(`Pick the sequence for ${item.name}. It is saved only after you confirm.`, sequences.map((sequence) => ({
       id: `enroll:${item.key}:${sequence.id}`,
       label: `Enroll in ${sequence.name}`,
       kind: 'enroll' as const,
       sequenceId: sequence.id,
-      leadId: id,
+      leadId,
       recipientName: item.name,
       to: item.email ?? undefined,
       href: item.href,
@@ -677,62 +826,20 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
   }
 
   if (/\b(move the stage|advance the deal|next stage)\b/.test(q)) {
-    const item = person ?? world.items.find((entry) => entry.href.startsWith('/deals/')) ?? null;
-    const dealId = item ? /^\/deals\/([^/]+)$/.exec(item.href)?.[1] : undefined;
-    const deal = dealId ? world.deals.find((entry) => entry.id === decodeURIComponent(dealId)) : undefined;
-    if (!item || !deal?.nextStageName) return say('No loaded deal has a next stage on its pipeline.');
-    return say(`I can move ${item.name} to ${deal.nextStageName}. It is saved only after you confirm.`, [{
-      id: `stage:${item.key}`,
-      label: `Move to ${deal.nextStageName}`,
-      kind: 'stage',
-      dealId: deal.id,
-      stageName: deal.nextStageName,
-      stageId: deal.nextStageId ?? undefined,
-      href: item.href,
-    }], item);
+    const item = target(world, person, memory, command);
+    const deal = item?.href.startsWith('/deals/') ? item : null;
+    return say('This panel does not load pipeline stages, so it cannot pick the next one. Move the stage on the deal itself.', deal ? [openFor(deal)] : [], deal);
   }
 
   if (/\b(book|schedule the meeting|schedule a meeting)\b/.test(q)) {
-    const item = person ?? world.items.find((entry) => entry.key === memory?.focusKey) ?? world.items[0];
+    const item = target(world, person, memory, command);
     if (!item) return say('Name who the meeting is with.');
-    const days = world.followUpDays ?? 3;
-    const due = shiftKey(todayKey(now), days);
+    const when = dayIn(question, now);
+    const due = when?.day ?? shiftKey(todayKey(now), world.followUpDays ?? 3);
     return say(`I can save a meeting task for ${item.name} due ${due}. A club reservation still needs a room on the Reservations page. The task is saved only after you confirm.`, [{
-      ...taskFor(item),
-      id: `book:${item.key}`,
+      ...taskFor(item, `Meeting with ${item.name}`, due),
       label: `Schedule meeting for ${item.name}`,
-      title: `Meeting with ${item.name}`,
-      dueDateUtc: due,
     }], item);
-  }
-
-  if (/(comment on|add a comment)/.test(q)) {
-    const item = person ?? world.items.find((entry) => entry.key === memory?.focusKey) ?? world.items.find((entry) => entry.href.startsWith('/tasks/'));
-    const taskId = item ? /^\/tasks\/([^/]+)$/.exec(item.href)?.[1] : undefined;
-    if (!item || !taskId) return say('Name the task the comment belongs on.');
-    const body = question.replace(/^.*?(comment on|add a comment)\s*/i, '').trim() || item.action;
-    return say(`I can add this comment on ${item.name}. It is saved only after you confirm.`, [{
-      id: `comment:${item.key}`,
-      label: `Comment on ${item.name}`,
-      kind: 'comment',
-      taskId: decodeURIComponent(taskId),
-      body,
-      href: item.href,
-    }], item);
-  }
-
-  if (/(create a task|add a task|remind me|make a task)/.test(q)) {
-    const item = person ?? world.items.find((entry) => entry.key === memory?.focusKey) ?? world.items[0];
-    if (!item) return say('Name who the task is for. Nothing is waiting to attach it to.');
-    return say(`I can create a task on ${item.name}: ${item.action} It is saved only after you confirm.`, [taskFor(item)], item);
-  }
-
-  if (/(log a note|add a note|note that|write down)/.test(q)) {
-    const onPage = world.page.mode === 'record' ? world.items.find((entry) => entry.href === world.page.href) ?? null : null;
-    const item = person ?? world.items.find((entry) => entry.key === memory?.focusKey) ?? onPage;
-    if (!item) return say('Name the record the note belongs on.');
-    const body = question.replace(/^.*?(log a note|add a note|note that|write down)\s*/i, '').trim() || item.action;
-    return say(`I can log this note on ${item.name}. It is saved only after you confirm.`, [noteFor(item, body)], item);
   }
 
   if (person && /\b(what do we have|tell me about|show me|details on)\b/.test(q)) {
@@ -740,25 +847,13 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
   }
 
   if (person && /(who is|status of|plan for|about|update on)/.test(q)) {
-    const planBit = world.plan && world.plan.name === person.name
-      ? `\n${world.plan.lines.map((line) => `${line.state}: ${line.title}`).join('\n')}`
-      : '';
-    return say(`${person.name}, ${person.list}. ${person.action}\n${person.because}${planBit}`, [openFor(person), taskFor(person)], person);
+    return say(`${person.name}, ${person.list}. ${person.action}\n${person.because}`, [openFor(person), taskFor(person)], person);
   }
 
   if (person) {
     return say(`${person.name}: ${person.action}\n${person.because}`, [openFor(person)], person);
   }
 
-  if (world.contractHint && /contract/.test(q)) {
-    return say(world.contractHint);
-  }
-
-  const words = q.split(/[^a-z0-9]+/).filter((word) => word.length >= 3);
-  const named = world.items.filter((item) => words.some((word) => item.name.toLowerCase().includes(word)));
-  if (named.length > 1) {
-    return say('I could not match that to one loaded record. I will not guess when two names fit equally.');
-  }
   const top = world.items[0];
   if (!top) return say('Nothing is waiting.\nThat was not a set question, so this is the queue that loaded.');
   return say(`${top.name} is first in the loaded queue: ${top.action}\n${briefing(world)}\nThat was not a set question, so this is the queue that loaded.`, [openFor(top)], top);

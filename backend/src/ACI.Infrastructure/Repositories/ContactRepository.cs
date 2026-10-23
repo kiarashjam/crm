@@ -295,6 +295,10 @@ public sealed class ContactRepository : IContactRepository
             keep.CompanyId = drop.CompanyId;
         if (string.IsNullOrWhiteSpace(keep.JobTitle) && !string.IsNullOrWhiteSpace(drop.JobTitle))
             keep.JobTitle = drop.JobTitle;
+        // Either record saying "do not contact" is the person saying it. Merging must not
+        // quietly make them reachable again.
+        if (drop.DoNotContact)
+            keep.DoNotContact = true;
 
         drop.IsArchived = true;
         drop.ArchivedAtUtc = DateTime.UtcNow;

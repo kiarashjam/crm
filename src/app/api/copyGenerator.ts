@@ -200,9 +200,8 @@ export async function generateCopy(params: GenerateCopyParams): Promise<string> 
   if (params.brandName) {
     text = text.replace(/\[Company Name\]/g, params.brandName);
   }
-  if (params.context?.trim()) {
-    text = text + `\n\n--- Context provided: ${params.context.trim().slice(0, 200)} ---`;
-  }
+  // The context is not pasted into the message: it is record data, notes included,
+  // and a template may be sent as it reads.
   if (params.length === 'short') {
     text = text.split('\n\n').slice(0, 4).join('\n\n') + '\n\nBest,\n[Your Name]';
   } else if (params.length === 'long') {
