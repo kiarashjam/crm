@@ -71,6 +71,34 @@ describe('the queue', () => {
     expect(screen.getByText(/Record why they dropped out/)).toBeInTheDocument();
   });
 
+  it('closes down to its icons, stays closed on other pages, and opens again from them', async () => {
+    leads.mockResolvedValue(['A', 'B', 'C'].map((n) => lost(n, `Lead ${n}`)));
+    const user = userEvent.setup();
+    const { unmount } = at('/dashboard');
+    await screen.findByRole('heading', { name: 'Do this next' });
+
+    await user.click(screen.getByRole('button', { name: 'Close next steps' }));
+    expect(screen.queryByRole('heading', { name: 'Do this next' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open next steps, 3 waiting' })).toBeInTheDocument();
+
+    // Another page: still closed until opened.
+    unmount();
+    at('/leads');
+    const reopen = await screen.findByRole('button', { name: 'Open next steps, 3 waiting' });
+    await user.click(reopen);
+    expect(await screen.findByRole('heading', { name: 'Do this next' })).toBeInTheDocument();
+  });
+
+  it('the closed chat icon opens the panel with the chat open', async () => {
+    leads.mockResolvedValue([lost('l1', 'Ada')]);
+    localStorage.setItem('cadence.nextActions.panelOpen', 'false');
+    const user = userEvent.setup();
+    at('/dashboard');
+    await user.click(await screen.findByRole('button', { name: 'Ask Cadence AI' }));
+    expect(await screen.findByLabelText('Ask the agent')).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByLabelText('Ask the agent'));
+  });
+
   it('opens with the full queue on the dashboard', async () => {
     leads.mockResolvedValue(['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((n) => lost(n, `Lead ${n}`)));
     at('/dashboard');

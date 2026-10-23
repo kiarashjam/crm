@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUp, Maximize2, Minimize2, RotateCcw, ShieldCheck } from 'lucide-react';
+import { ArrowUp, ChevronUp, Maximize2, Minimize2, RotateCcw, ShieldCheck, X } from 'lucide-react';
 import { createActivity } from '@/app/api/activities';
 import { createContact } from '@/app/api/contacts';
 import { mergeCompanies, mergeContacts } from '@/app/api/dedupe';
@@ -18,6 +18,7 @@ import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
 import { ActionChip, AgentBubble, AiOrb, EASE, SuggestionChips, ThinkingBubble, UserBubble } from './AgentChatParts';
 import { followUpSuggestions, starterSuggestions } from './chatSuggestions';
+import { CHAT_OPEN_KEY, takeChatFocusRequest, useStoredFlag } from './panelPrefs';
 
 const FOCUS_BASE = 'cadence.agent.focus';
 const TURNS_BASE = 'cadence.agent.turns';
@@ -168,12 +169,14 @@ const THINKING_MS = 650;
  * The conversation on top of the rules, as a chat. A task or a note is written only from
  * a button, and only once. A draft only opens the sales writer.
  */
-export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_MS }: {
+export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_MS, initialOpen = false }: {
   world: AgentWorld;
   readOnly: boolean;
   accountKey: string;
   /** Pause before an answer appears. Zero answers at once (tests, and reduced motion). */
   thinkingMs?: number;
+  /** Open or closed when this browser has no saved choice yet. Closed: the chat opens when asked for. */
+  initialOpen?: boolean;
 }) {
   const navigate = useNavigate();
   const reduce = useMotionPreference();
@@ -188,6 +191,8 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
   const thinkTimer = useRef<number | null>(null);
   const scroller = useRef<HTMLDivElement | null>(null);
   const field = useRef<HTMLTextAreaElement | null>(null);
+  const [chatOpen, setChatOpen] = useStoredFlag(CHAT_OPEN_KEY, initialOpen);
+  const focusOnOpen = useRef(takeChatFocusRequest());
   const [initialMemory] = useState(() => readFocus(accountKey));
   const memory = useRef<AgentMemory>(initialMemory);
   const accountReady = useRef(false);
@@ -233,13 +238,27 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
     if (thinkTimer.current) window.clearTimeout(thinkTimer.current);
   }, []);
 
-  // Keep the newest message in view as the conversation grows.
+  // Keep the newest message in view as the conversation grows, and when the chat opens.
   useEffect(() => {
     const box = scroller.current;
     if (!box) return;
     if (typeof box.scrollTo === 'function') box.scrollTo({ top: box.scrollHeight, behavior: reduce ? 'auto' : 'smooth' });
     else box.scrollTop = box.scrollHeight;
-  }, [turns.length, thinking, reduce]);
+  }, [turns.length, thinking, reduce, chatOpen]);
+
+  // Opened by the person: the cursor goes where they will type, as soon as the box is there.
+  const attachField = (element: HTMLTextAreaElement | null) => {
+    field.current = element;
+    if (element && focusOnOpen.current) {
+      focusOnOpen.current = false;
+      element.focus();
+    }
+  };
+
+  function openChat() {
+    focusOnOpen.current = true;
+    setChatOpen(true);
+  }
 
   // The box grows with what is typed, up to a few lines.
   useLayoutEffect(() => {
@@ -486,8 +505,54 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
       : [];
   const status = thinking ? 'Thinking…' : busy ? 'Saving…' : 'Ready';
 
+  const messageCount = turns.length;
   return (
-    <section
+    <AnimatePresence mode="wait" initial={false}>
+      {!chatOpen ? (
+        <motion.button
+          key="chat-closed"
+          type="button"
+          onClick={openChat}
+          aria-expanded={false}
+          aria-controls="agent-chat"
+          initial={reduce ? false : { opacity: 0, y: 8, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: -6, scale: 0.98, transition: { duration: 0.15 } }}
+          transition={{ duration: 0.3, ease: EASE }}
+          whileHover={reduce ? undefined : { y: -2 }}
+          whileTap={reduce ? undefined : { scale: 0.99 }}
+          className="group relative mt-5 flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-fuchsia-200/70 bg-gradient-to-r from-white via-fuchsia-50/50 to-orange-50/40 px-4 py-3 text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 dark:border-fuchsia-900/50 dark:from-slate-900 dark:via-fuchsia-950/30 dark:to-slate-900"
+        >
+          {!reduce && (
+            <motion.span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/80 to-transparent dark:via-white/10"
+              animate={{ x: ['0%', '420%'] }}
+              transition={{ duration: 1.8, repeat: Infinity, repeatDelay: 5, ease: 'easeInOut' }}
+            />
+          )}
+          <AiOrb size={34} reduce={reduce} />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+              Ask Cadence AI
+              <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>
+            </span>
+            <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+              {messageCount > 0
+                ? `Continue the conversation · ${messageCount} message${messageCount === 1 ? '' : 's'}`
+                : 'Ask what to do next, or about a lead, deal, or contact'}
+            </span>
+          </span>
+          <ChevronUp className="h-4 w-4 shrink-0 text-fuchsia-500 transition-transform motion-safe:group-hover:-translate-y-0.5" aria-hidden="true" />
+        </motion.button>
+      ) : (
+    <motion.section
+      key="chat-open"
+      id="agent-chat"
+      initial={reduce ? false : { opacity: 0, y: 10, scale: 0.99 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, y: 8, scale: 0.99, transition: { duration: 0.15 } }}
+      transition={{ duration: 0.35, ease: EASE }}
       aria-labelledby="agent-chat-heading"
       className="relative mt-5 overflow-hidden rounded-2xl border border-fuchsia-200/70 bg-gradient-to-b from-white via-white to-fuchsia-50/40 shadow-sm dark:border-fuchsia-900/50 dark:from-slate-900 dark:via-slate-900 dark:to-fuchsia-950/20"
     >
@@ -548,6 +613,17 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
             {expanded ? <Minimize2 className="h-4 w-4" aria-hidden="true" /> : <Maximize2 className="h-4 w-4" aria-hidden="true" />}
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setChatOpen(false)}
+          aria-label="Close chat"
+          aria-expanded
+          aria-controls="agent-chat"
+          title="Close chat. The conversation is kept."
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fuchsia-400 dark:hover:bg-slate-800"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
       </header>
 
       {/* The live region is always in the page, so a screen reader is already listening when the first answer arrives. */}
@@ -645,7 +721,7 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
           <div className="relative flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 pl-3.5 shadow-sm dark:border-slate-600 dark:bg-slate-950">
             <textarea
               id="agent-question"
-              ref={field}
+              ref={attachField}
               rows={1}
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
@@ -670,6 +746,8 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
           Enter to send, Shift+Enter for a new line. A change runs only when you press its button, and only once.
         </p>
       </div>
-    </section>
+    </motion.section>
+      )}
+    </AnimatePresence>
   );
 }

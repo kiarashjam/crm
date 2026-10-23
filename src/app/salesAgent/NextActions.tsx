@@ -2,13 +2,15 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, Check, ChevronDown, Loader2, PenLine, RotateCw, Sparkles } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Loader2, PenLine, RotateCw, Sparkles, X } from 'lucide-react';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
 import { getCurrentUser } from '@/app/lib/auth';
 import { reloadAgentData, useAgentData, type AgentLists } from './agentData';
 import { AgentDesk } from './AgentDesk';
+import { AiOrb } from './AgentChatParts';
+import { CHAT_OPEN_KEY, PANEL_OPEN_KEY, requestChatFocus, useStoredFlag, writeFlag } from './panelPrefs';
 import type { AgentWorld } from './brain/answer';
 import { learnFrom, type LearnedPatterns } from './brain/patterns';
 import { useNextActionsSlot } from './NextActionsSlot';
@@ -175,11 +177,11 @@ function Card({ className, labelledBy, children }: { className?: string; labelle
 }
 
 /** The agent's tile: a gradient with a turning sheen and sparkles that twinkle around it. */
-function IconTile({ busy }: { busy: boolean }) {
+function IconTile({ busy, small = false }: { busy: boolean; small?: boolean }) {
   const reduce = useMotionPreference();
   return (
     <motion.span
-      className="relative flex h-10 w-10 shrink-0 items-center justify-center"
+      className={cn('relative flex shrink-0 items-center justify-center', small ? 'h-8 w-8' : 'h-10 w-10')}
       whileHover={reduce ? undefined : { rotate: -10, scale: 1.08 }}
       transition={{ type: 'spring', stiffness: 300, damping: 15 }}
       aria-hidden="true"
@@ -191,7 +193,7 @@ function IconTile({ busy }: { busy: boolean }) {
           transition={{ duration: busy ? 1.2 : 3, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
-      <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 via-fuchsia-500 to-violet-600 text-white shadow-md shadow-fuchsia-500/30">
+      <span className={cn('relative flex items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 via-fuchsia-500 to-violet-600 text-white shadow-md shadow-fuchsia-500/30', small ? 'h-8 w-8' : 'h-10 w-10')}>
         {!reduce && (
           <motion.span
             className="absolute inset-[-50%] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.5)_50deg,transparent_110deg)]"
@@ -199,7 +201,7 @@ function IconTile({ busy }: { busy: boolean }) {
             transition={{ duration: busy ? 1.5 : 6, repeat: Infinity, ease: 'linear' }}
           />
         )}
-        <Sparkles className="relative h-5 w-5" />
+        <Sparkles className={cn('relative', small ? 'h-4 w-4' : 'h-5 w-5')} />
       </span>
       {!reduce && [
         { className: '-right-1 -top-1 h-1.5 w-1.5', delay: 0 },
@@ -368,6 +370,76 @@ function Row({ item, index }: { item: WorkSuggestion; index: number }) {
   );
 }
 
+/** Closes the panel down to its icons. It stays closed, on every page, until opened. */
+function CloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close next steps"
+      title="Close. Open it again from its icon."
+      className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200', focusRing)}
+    >
+      <X className="h-4 w-4" aria-hidden="true" />
+    </button>
+  );
+}
+
+/**
+ * The panel when closed: two icons, one for the next steps and one for the chat. Either
+ * opens the panel again; the chat one opens the chat with the cursor in it.
+ */
+function ClosedPanel({ label, count, refreshing, onOpen, onAsk }: {
+  label: string;
+  count: number;
+  refreshing: boolean;
+  onOpen: () => void;
+  onAsk: () => void;
+}) {
+  const reduce = useMotionPreference();
+  const pill = cn(
+    'group relative inline-flex h-12 items-center gap-2.5 overflow-hidden rounded-full border border-fuchsia-200/80 bg-white/90 pl-2 pr-4 text-sm font-semibold text-slate-800 shadow-sm shadow-fuchsia-500/10 backdrop-blur transition-shadow hover:shadow-md dark:border-fuchsia-900/60 dark:bg-slate-900/90 dark:text-slate-100',
+    focusRing,
+  );
+  const enter = (delay: number) => (reduce
+    ? { initial: false as const }
+    : { initial: { opacity: 0, scale: 0.85, y: 6 }, animate: { opacity: 1, scale: 1, y: 0 }, transition: { type: 'spring' as const, stiffness: 380, damping: 24, delay } });
+  return (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Next steps and chat, closed">
+      <motion.button
+        type="button"
+        onClick={onOpen}
+        aria-expanded={false}
+        aria-label={`Open next steps${count > 0 ? `, ${count} waiting` : ''}`}
+        whileHover={reduce ? undefined : { y: -2 }}
+        whileTap={reduce ? undefined : { scale: 0.97 }}
+        className={pill}
+        {...enter(0)}
+      >
+        <IconTile busy={refreshing} small />
+        <span>{label}</span>
+        {count > 0 && (
+          <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white">
+            <RollingNumber value={count} />
+          </span>
+        )}
+      </motion.button>
+      <motion.button
+        type="button"
+        onClick={onAsk}
+        aria-label="Ask Cadence AI"
+        whileHover={reduce ? undefined : { y: -2 }}
+        whileTap={reduce ? undefined : { scale: 0.97 }}
+        className={pill}
+        {...enter(0.06)}
+      >
+        <AiOrb size={32} reduce={reduce} />
+        <span className="hidden sm:inline">Ask AI</span>
+      </motion.button>
+    </div>
+  );
+}
+
 // ── the record strip ─────────────────────────────────────────────────────────
 
 const STEP_TONE: Record<PlanLine['state'], string> = {
@@ -401,13 +473,14 @@ function Ladder({ lines }: { lines: PlanLine[] }) {
   );
 }
 
-function RecordStrip({ href, step, items, lists, gaps, refreshing }: {
+function RecordStrip({ href, step, items, lists, gaps, refreshing, onClose }: {
   href: string;
   step: WorkSuggestion;
   items: WorkSuggestion[];
   lists: AgentLists;
   gaps: string[];
   refreshing: boolean;
+  onClose: () => void;
 }) {
   const reduce = useMotionPreference();
   const isDeal = href.startsWith('/deals/');
@@ -430,7 +503,10 @@ function RecordStrip({ href, step, items, lists, gaps, refreshing }: {
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{step.because}</p>
           </motion.div>
         </div>
-        <DraftLink item={step} />
+        <div className="flex items-center gap-2">
+          <DraftLink item={step} />
+          <CloseButton onClose={onClose} />
+        </div>
       </div>
       {ladder && <Ladder lines={ladder} />}
       <AskBox lists={lists} gaps={gaps} items={items} scope={{ mode: 'record', href }} />
@@ -449,6 +525,14 @@ export function NextActions() {
   const data = useAgentData(orgId, scope.mode !== 'hidden');
   const slot = useNextActionsSlot();
   const reduce = useMotionPreference();
+  const [panelOpen, setPanelOpen] = useStoredFlag(PANEL_OPEN_KEY, true);
+  const openPanel = () => setPanelOpen(true);
+  const closePanel = () => setPanelOpen(false);
+  const askFromClosed = () => {
+    writeFlag(CHAT_OPEN_KEY, true);
+    requestChatFocus();
+    setPanelOpen(true);
+  };
 
   // Recomputed only when the lists change — not on every render of every page.
   const allItems = useMemo(
@@ -500,7 +584,10 @@ export function NextActions() {
     // The page already shows its state, and a card (or a gap) on every finished
     // record is noise.
     if (!step) return null;
-    return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} gaps={data.gaps} refreshing={data.refreshing} />);
+    if (!panelOpen) {
+      return place(<ClosedPanel label={`Next for this ${recordNoun(scope.href)}`} count={1} refreshing={data.refreshing} onOpen={openPanel} onAsk={askFromClosed} />);
+    }
+    return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} gaps={data.gaps} refreshing={data.refreshing} onClose={closePanel} />);
   }
 
   const scoped = scope.mode === 'list' ? allItems.filter((item) => inList(item, scope.list)) : allItems;
@@ -512,6 +599,10 @@ export function NextActions() {
     setOpen(next);
     writeOpen(where, next);
   };
+
+  if (!panelOpen) {
+    return place(<ClosedPanel label="Do this next" count={scoped.length} refreshing={data.refreshing} onOpen={openPanel} onAsk={askFromClosed} />);
+  }
 
   return place(
     <Card className="px-4 pb-3 pt-5 sm:px-5" labelledBy="next-actions-heading">
@@ -548,6 +639,7 @@ export function NextActions() {
             </motion.span>
           </button>
         )}
+        <CloseButton onClose={closePanel} />
       </div>
 
       {scoped.length === 0 ? (

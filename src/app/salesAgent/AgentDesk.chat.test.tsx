@@ -49,7 +49,7 @@ function world(extra: Partial<AgentWorld> = {}): AgentWorld {
 function open(props: Partial<Parameters<typeof AgentDesk>[0]> = {}) {
   return render(
     <MemoryRouter>
-      <AgentDesk world={world()} readOnly={false} accountKey="user-1:org-a" {...props} />
+      <AgentDesk world={world()} readOnly={false} accountKey="user-1:org-a" initialOpen {...props} />
     </MemoryRouter>,
   );
 }
@@ -132,5 +132,33 @@ describe('the ask box as a chat', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toHaveProperty('disabled', true);
     fireEvent.keyDown(box(), { key: 'Enter' });
     expect(screen.queryByRole('list', { name: 'Conversation with the agent' })).toBeNull();
+  });
+
+  it('starts closed, as a bar that opens the chat, and closes again to that bar', async () => {
+    open({ initialOpen: false, thinkingMs: 0 });
+    expect(screen.queryByLabelText('Ask the agent')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Ask Cadence AI/ }));
+    // The bar animates out first, then the chat opens with the cursor in its box.
+    expect(await screen.findByLabelText('Ask the agent')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByLabelText('Ask the agent'));
+    expect(localStorage.getItem('cadence.nextActions.chatOpen')).toBe('true');
+
+    fireEvent.change(box(), { target: { value: 'who went quiet?' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close chat' }));
+    // The conversation is kept, and the bar says so.
+    expect(await screen.findByRole('button', { name: /Continue the conversation · 2 messages/ })).toBeTruthy();
+    expect(screen.queryByLabelText('Ask the agent')).toBeNull();
+    expect(localStorage.getItem('cadence.nextActions.chatOpen')).toBe('false');
+  });
+
+  it('remembers the choice across pages', () => {
+    localStorage.setItem('cadence.nextActions.chatOpen', 'true');
+    const first = open({ initialOpen: false, thinkingMs: 0 });
+    expect(screen.getByLabelText('Ask the agent')).toBeTruthy();
+    first.unmount();
+    localStorage.setItem('cadence.nextActions.chatOpen', 'false');
+    open({ initialOpen: true, thinkingMs: 0 });
+    expect(screen.queryByLabelText('Ask the agent')).toBeNull();
   });
 });
