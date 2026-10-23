@@ -39,12 +39,7 @@ const COPY_BY_TYPE_AND_GOAL: Record<string, string> = {
 
 I hope this email finds you well! I wanted to reach out to see if you'd be interested in scheduling a brief call to discuss how our solutions can help [Company Name] achieve your goals.
 
-We've helped companies similar to yours:
-• Increase productivity by 40%
-• Reduce operational costs by 25%
-• Streamline workflows and save time
-
-Would you be available for a 15-minute call next week? I'd love to learn more about your current challenges and share how we can help.
+Would you be available for a 15-minute call next week? I'd like to learn what [Company Name] is working on.
 
 Looking forward to connecting!
 
@@ -172,12 +167,7 @@ const DEFAULT_COPY = `Hi [First Name],
 
 I hope this email finds you well! I wanted to reach out to see if you'd be interested in scheduling a brief call to discuss how our solutions can help [Company Name] achieve your goals.
 
-We've helped companies similar to yours:
-• Increase productivity by 40%
-• Reduce operational costs by 25%
-• Streamline workflows and save time
-
-Would you be available for a 15-minute call next week? I'd love to learn more about your current challenges and share how we can help.
+Would you be available for a 15-minute call next week? I'd like to learn what [Company Name] is working on.
 
 Looking forward to connecting!
 
@@ -341,12 +331,6 @@ function makeFriendlier(text: string): string {
   result = result.replace(/Looking forward to connecting/gi, "Can't wait to chat");
   result = result.replace(/Please let me know/gi, 'Just let me know');
   result = result.replace(/Would you be available/gi, 'Any chance you\'re free');
-  
-  // Add emojis to bullet points
-  result = result.replace(/• Increase productivity/gi, '• 🚀 Boost productivity');
-  result = result.replace(/• Reduce operational costs/gi, '• 💰 Cut costs');
-  result = result.replace(/• Streamline workflows/gi, '• ⚡ Smoother workflows');
-  
   return result;
 }
 
@@ -362,27 +346,10 @@ function makePersuasive(text: string): string {
   // Add urgency
   result = result.replace(/next week/gi, 'this week');
   result = result.replace(/Would you be available/gi, 'Are you available');
-  
-  // Strengthen value props
-  result = result.replace(/by 40%/gi, 'by 40% within 90 days');
-  result = result.replace(/by 25%/gi, 'by 25% in the first quarter');
-  
-  // Strengthen closing
   result = result.replace(
     /Looking forward to connecting/gi,
-    'The sooner we connect, the sooner you\'ll see results. I look forward to your response'
+    'I look forward to your reply'
   );
-  
-  // Add FOMO
-  if (!result.includes('competitors') && result.length < 1500) {
-    const closingIndex = result.lastIndexOf('Best');
-    if (closingIndex > 0) {
-      result = result.slice(0, closingIndex) + 
-        "\nYour competitors aren't waiting. Neither should you.\n\n" + 
-        result.slice(closingIndex);
-    }
-  }
-  
   return result;
 }
 
@@ -429,6 +396,8 @@ export async function generateCopyInLanguage(params: GenerateCopyMultiLanguagePa
       body: JSON.stringify({
         copyTypeId: params.copyTypeId,
         goal: params.goal,
+        context: params.context ?? null,
+        brandName: params.brandName ?? null,
         brandTone: params.brandTone ?? null,
         length: params.length ?? 'medium',
         targetLanguage: params.targetLanguage,

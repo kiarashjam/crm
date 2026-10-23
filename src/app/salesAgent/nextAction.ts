@@ -56,10 +56,17 @@ export interface SuggestableLead {
   name: string;
   email?: string | null;
   phone?: string | null;
+  companyId?: string | null;
+  companyName?: string | null;
   pipelineState?: string | null;
   isConverted?: boolean;
   assignedToId?: string | null;
   lastContactedAt?: string | null;
+  leadScore?: number | null;
+  source?: string | null;
+  description?: string | null;
+  tags?: string[] | null;
+  referredByContactName?: string | null;
 }
 
 function actionFor(p: LeadPipeline, now: Date, lastContactedAt?: string | null): Omit<NextAction, 'leadId' | 'leadName'> | null {

@@ -11,7 +11,7 @@
 // fails with the server's reason, and the composer offers the person's own
 // email app (`mailtoHref`) instead.
 
-import { ApiError, authFetchJson, servesDemoData } from './apiClient';
+import { ApiError, apiWithFallback, authFetchJson, servesDemoData } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 const SEND_PATH = '/api/email/send';
@@ -98,4 +98,38 @@ export async function sendEmail(req: SendEmailRequest): Promise<EmailMessage | n
     contactId: req.contactId,
     dealId: req.dealId,
   });
+}
+
+async function getEmails(params: { leadId?: string; contactId?: string; dealId?: string }): Promise<EmailMessage[]> {
+  return apiWithFallback(
+    async () => {
+      const q = new URLSearchParams();
+      if (params.leadId) q.set('leadId', params.leadId);
+      if (params.contactId) q.set('contactId', params.contactId);
+      if (params.dealId) q.set('dealId', params.dealId);
+      const res = await authFetchJson<EmailMessage[]>(`/api/email?${q.toString()}`);
+      return Array.isArray(res) ? res : [];
+    },
+    async () => {
+      await delay(120);
+      return emailStore
+        .list()
+        .filter(
+          (m) =>
+            (!params.leadId || m.leadId === params.leadId) &&
+            (!params.contactId || m.contactId === params.contactId) &&
+            (!params.dealId || m.dealId === params.dealId),
+        )
+        .sort((a, b) => Date.parse(b.sentAtUtc) - Date.parse(a.sentAtUtc));
+    },
+  );
+}
+
+export const getEmailsByLead = (leadId: string) => getEmails({ leadId });
+export const getEmailsByContact = (contactId: string) => getEmails({ contactId });
+export const getEmailsByDeal = (dealId: string) => getEmails({ dealId });
+
+/** Recent outbound mail saved in Cadence. Empty when the request fails. */
+export function listRecentEmails(): Promise<EmailMessage[]> {
+  return getEmails({});
 }

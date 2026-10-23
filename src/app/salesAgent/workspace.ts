@@ -21,6 +21,16 @@ export interface WorkSuggestion {
   priority: number;
   /** Present when the step is a message the sales writer can draft. Nothing is sent. */
   brief?: WriterBrief;
+  /** Lead suggestion kind, or deal stage name, so the playbook can explain the step. */
+  guide?: string;
+  /** Pending invitation, when this row can resend it. */
+  inviteId?: string;
+  /** Address a confirmed send can use. Absent when the record has no email. */
+  email?: string | null;
+  /** Set when exactly one duplicate group can be merged without guessing which to keep. */
+  mergeKind?: 'contacts' | 'companies';
+  mergePrimaryId?: string;
+  mergeDuplicateIds?: string[];
 }
 
 export interface SuggestableDeal {
@@ -33,6 +43,17 @@ export interface SuggestableDeal {
   closedReason?: string | null;
   assigneeId?: string | null;
   lastActivityAtUtc?: string | null;
+  /** Saved amount, when the deal carries one. The judge reads it and can move the row. */
+  value?: string | null;
+  probability?: number | null;
+  companyId?: string | null;
+  companyName?: string | null;
+  contactId?: string | null;
+  contactName?: string | null;
+  pipelineId?: string | null;
+  /** The next open stage on this deal's own pipeline, when the stage name is not a default. */
+  nextStageName?: string | null;
+  nextStageId?: string | null;
 }
 
 export interface SuggestableTask {
@@ -41,7 +62,11 @@ export interface SuggestableTask {
   status: string;
   priority?: string;
   dueDateUtc?: string | null;
+  reminderDateUtc?: string | null;
   completed?: boolean;
+  leadId?: string | null;
+  dealId?: string | null;
+  contactId?: string | null;
 }
 
 export interface SuggestableEnrollment {
@@ -58,6 +83,7 @@ export interface SuggestableEnrollment {
 export interface SuggestableSequence {
   id: string;
   steps: { order: number; type: SequenceStepType | string; taskTitle?: string; subject?: string }[];
+  name?: string;
 }
 
 const STALE_DAYS = 7;
@@ -129,9 +155,10 @@ function stageName(deal: SuggestableDeal): string {
   return (deal.dealStageName || deal.stage || '').trim();
 }
 
+const STAGE_BY_KEY = new Map(Object.entries(STAGE_STEPS).map(([name, step]) => [name.toLowerCase(), step]));
+
 function namedStage(stage: string): { action: string; because: string; priority: number } | undefined {
-  const key = stage.toLowerCase();
-  return Object.entries(STAGE_STEPS).find(([name]) => name.toLowerCase() === key)?.[1];
+  return STAGE_BY_KEY.get(stage.toLowerCase());
 }
 
 function dealOutcome(deal: SuggestableDeal): 'won' | 'lost' | 'open' {
@@ -147,7 +174,7 @@ function dealOutcome(deal: SuggestableDeal): 'won' | 'lost' | 'open' {
 export function nextActionForDeal(deal: SuggestableDeal, now: Date = new Date()): WorkSuggestion | null {
   const outcome = dealOutcome(deal);
   const name = deal.name || 'Untitled deal';
-  const base = { key: `deal:${deal.id}`, href: `/deals/${deal.id}`, name, list: 'Deals' };
+  const base = { key: `deal:${deal.id}`, href: `/deals/${deal.id}`, name, list: 'Deals', guide: stageName(deal) || undefined };
 
   if (outcome === 'won') return null;
   if (outcome === 'lost') {
@@ -200,11 +227,14 @@ export function nextActionForDeal(deal: SuggestableDeal, now: Date = new Date())
       };
     }
     const notes = closingSoon ? ['The expected close date is within the next seven days.'] : [];
+    const next = deal.nextStageName?.trim();
     return {
       ...base,
-      action: 'Move the deal to its next stage, or record why it is waiting.',
-      because: owned(evidence(`${stage} is an open stage with no named next step.`, notes)),
-      priority: raise(64, closingSoon, quietFor),
+      action: next
+        ? `Move the deal from ${stage} to ${next}, or record why it is waiting.`
+        : 'Move the deal to its next stage, or record why it is waiting.',
+      because: owned(evidence(next ? `${stage} is followed by ${next} on its pipeline.` : `${stage} is an open stage with no named next step.`, notes)),
+      priority: raise(next ? 68 : 64, closingSoon, quietFor),
     };
   }
 
@@ -233,6 +263,10 @@ export function nextActionForTask(task: SuggestableTask, now: Date = new Date())
   }
   if (due && due === today) {
     return { ...base, action: 'Do this task today.', because: 'It is due today.', priority: 73 };
+  }
+  const reminder = calendarKey(task.reminderDateUtc);
+  if (reminder && reminder <= today && (!due || due > today)) {
+    return { ...base, action: 'This reminder is due.', because: `The reminder date is ${reminder} and the task is still open.`, priority: 60 };
   }
   if (!due && (task.priority === 'high' || task.status === 'in_progress')) {
     return { ...base, action: 'Set a due date so this task cannot stall.', because: 'It is open and has no due date.', priority: 58 };
@@ -290,6 +324,9 @@ export interface SuggestableContact {
   companyId?: string | null;
   isArchived?: boolean;
   doNotContact?: boolean;
+  jobTitle?: string | null;
+  preferredContactMethod?: string | null;
+  companyName?: string | null;
 }
 
 export interface SuggestableCompany {
@@ -314,7 +351,11 @@ export function nextActionForContact(contact: SuggestableContact): WorkSuggestio
     name: contact.name?.trim() || 'Untitled contact',
     list: 'Contacts',
     action: 'Add an email or a phone number.',
-    because: 'This contact cannot be reached.',
+    because: [
+      'This contact cannot be reached.',
+      contact.jobTitle?.trim() ? `Job title: ${contact.jobTitle.trim()}.` : '',
+      contact.preferredContactMethod?.trim() ? `Preferred method: ${contact.preferredContactMethod.trim()}.` : '',
+    ].filter(Boolean).join(' '),
     priority: 64,
   };
 }
@@ -354,9 +395,16 @@ function leadSuggestion(step: NextAction, lead: SuggestableLead): WorkSuggestion
   const action = blocked
     ? 'Add a phone number or an email. There is no way to reach them.'
     : step.action;
+  const context = [
+    lead.source?.trim() ? `Source: ${lead.source.trim()}.` : '',
+    lead.referredByContactName?.trim() ? `Referred by ${lead.referredByContactName.trim()}.` : '',
+    lead.tags && lead.tags.length > 0 ? `Tags: ${lead.tags.slice(0, 3).join(', ')}.` : '',
+    typeof lead.leadScore === 'number' ? `Lead score ${lead.leadScore}.` : '',
+    lead.description?.trim() ? 'A description is saved on the lead.' : '',
+  ].filter(Boolean);
   const because = blocked
     ? 'The next step is a call, and neither a phone number nor an email is saved.'
-    : step.because;
+    : [step.because, ...context].join(' ');
   const canWrite = !blocked && !!lead.email?.trim();
   return withBrief({
     key: `lead:${step.leadId}`,
@@ -366,21 +414,42 @@ function leadSuggestion(step: NextAction, lead: SuggestableLead): WorkSuggestion
     action,
     because: noteOwner(because, !!lead.assignedToId?.trim()),
     priority: step.priority,
+    guide: step.kind,
+    email: lead.email,
   }, canWrite ? LEAD_BRIEF[step.kind] ?? null : null);
 }
 
-function duplicateSuggestion(kind: 'contacts' | 'companies', groups: number): WorkSuggestion | null {
-  if (groups < 1) return null;
+function duplicateSuggestions(
+  kind: 'contacts' | 'companies',
+  groups: { records: { id: string; name?: string | null; email?: string | null; doNotContact?: boolean | null }[] }[],
+): WorkSuggestion[] {
   const people = kind === 'contacts';
-  return {
-    key: `duplicates:${kind}`,
-    href: '/duplicates',
-    name: people ? 'Duplicate contacts' : 'Duplicate companies',
-    list: 'Duplicates',
-    action: `Merge ${groups} duplicate ${people ? 'contact' : 'company'} group${groups === 1 ? '' : 's'}.`,
-    because: people ? 'They share an email or a name.' : 'They share a domain or a name.',
-    priority: 62,
-  };
+  const rows: WorkSuggestion[] = [];
+  groups.slice(0, 5).forEach((group, index) => {
+    const records = group.records.filter((record) => record.id);
+    if (records.length < 2) return;
+    const primary = records.find((record) => record.email?.trim() && !record.doNotContact)
+      ?? records.find((record) => !record.doNotContact)
+      ?? records.find((record) => record.email?.trim())
+      ?? records[0];
+    const rest = records.filter((record) => record.id !== primary.id);
+    const kept = primary.name?.trim() || (people ? 'the contact with an email' : 'the first company');
+    rows.push({
+      key: index === 0 ? `duplicates:${kind}` : `duplicates:${kind}:${primary.id}`,
+      href: '/duplicates',
+      name: primary.name?.trim() || (people ? 'Duplicate contacts' : 'Duplicate companies'),
+      list: 'Duplicates',
+      action: `Merge ${rest.length} duplicate${rest.length === 1 ? '' : 's'} into ${kept}.`,
+      because: people
+        ? 'They share an email or a name. The record with an email is kept.'
+        : 'They share a domain or a name. The first record in the group is kept.',
+      priority: 62,
+      mergeKind: kind,
+      mergePrimaryId: primary.id,
+      mergeDuplicateIds: rest.map((record) => record.id),
+    });
+  });
+  return rows;
 }
 
 export interface WorkspaceInput {
@@ -439,10 +508,10 @@ export function collectWork(input: WorkspaceInput, now: Date = new Date(), limit
     const step = nextActionForAutomation(rule);
     if (step) items.push(step);
   }
-  const contactDupes = duplicateSuggestion('contacts', duplicateContactGroups(contacts).length);
-  const companyDupes = duplicateSuggestion('companies', duplicateCompanyGroups(input.companies ?? []).length);
-  if (contactDupes) items.push(contactDupes);
-  if (companyDupes) items.push(companyDupes);
+  const contactGroups = duplicateContactGroups(contacts);
+  const companyGroups = duplicateCompanyGroups(input.companies ?? []);
+  for (const step of duplicateSuggestions('contacts', contactGroups)) items.push(step);
+  for (const step of duplicateSuggestions('companies', companyGroups)) items.push(step);
 
   const bestByRecord = new Map<string, WorkSuggestion>();
   for (const item of items) {

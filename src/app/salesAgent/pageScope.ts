@@ -3,7 +3,7 @@
 export type PageScope =
   | { mode: 'hidden' }
   | { mode: 'focus' }
-  | { mode: 'list'; list: 'Leads' | 'Deals' | 'Tasks' | 'Contacts' | 'Companies' | 'Sequences' | 'Automations' | 'Duplicates' }
+  | { mode: 'list'; list: 'Leads' | 'Deals' | 'Tasks' | 'Contacts' | 'Companies' | 'Sequences' | 'Automations' | 'Duplicates' | 'Team' | 'Members' | 'Applications' | 'Charges' | 'Reservations' | 'Subscriptions' | 'Campaigns' | 'Events' | 'Activities' | 'Calendar' | 'Households' | 'Loyalty' | 'Visits' | 'Gift cards' | 'Tabs' | 'Communications' | 'Donations' | 'Statements' | 'POS' | 'Club reports' | 'Audit' | 'History' }
   | { mode: 'record'; href: string };
 
 const LISTS: { prefix: string; list: Extract<PageScope, { mode: 'list' }>['list'] }[] = [
@@ -15,6 +15,28 @@ const LISTS: { prefix: string; list: Extract<PageScope, { mode: 'list' }>['list'
   { prefix: '/sequences', list: 'Sequences' },
   { prefix: '/automations', list: 'Automations' },
   { prefix: '/duplicates', list: 'Duplicates' },
+  { prefix: '/team', list: 'Team' },
+  { prefix: '/members', list: 'Members' },
+  { prefix: '/applications', list: 'Applications' },
+  { prefix: '/charges', list: 'Charges' },
+  { prefix: '/reservations', list: 'Reservations' },
+  { prefix: '/subscriptions', list: 'Subscriptions' },
+  { prefix: '/campaigns', list: 'Campaigns' },
+  { prefix: '/events', list: 'Events' },
+  { prefix: '/activities', list: 'Activities' },
+  { prefix: '/calendar', list: 'Calendar' },
+  { prefix: '/households', list: 'Households' },
+  { prefix: '/loyalty', list: 'Loyalty' },
+  { prefix: '/visits', list: 'Visits' },
+  { prefix: '/gift-cards', list: 'Gift cards' },
+  { prefix: '/tabs', list: 'Tabs' },
+  { prefix: '/communications', list: 'Communications' },
+  { prefix: '/donations', list: 'Donations' },
+  { prefix: '/statements', list: 'Statements' },
+  { prefix: '/pos', list: 'POS' },
+  { prefix: '/club-reports', list: 'Club reports' },
+  { prefix: '/audit', list: 'Audit' },
+  { prefix: '/history', list: 'History' },
 ];
 
 /**
@@ -27,6 +49,7 @@ const LISTS: { prefix: string; list: Extract<PageScope, { mode: 'list' }>['list'
  */
 export const NOT_RECORDS: Readonly<Record<string, readonly string[]>> = {
   '/leads': ['import', 'routing', 'webhook'],
+  '/members': ['import'],
 };
 
 /**
@@ -47,4 +70,18 @@ export function pageScope(pathname: string): PageScope {
     if (rest.length > 0 && !rest.includes('/')) return { mode: 'record', href: path };
   }
   return { mode: 'focus' };
+}
+
+type ListName = Extract<PageScope, { mode: 'list' }>['list'];
+
+/** Whether a suggestion belongs on the list that is open. Lead rows keep their phase name. */
+export function itemOnList(item: { href: string; list: string }, list: ListName): boolean {
+  if (list === 'Leads') return item.href.startsWith('/leads/') || item.list === 'Leads';
+  if (list === 'Deals') return item.href.startsWith('/deals/');
+  if (list === 'Calendar') return item.list === 'Reservations' || item.list === 'Events';
+  if (list === 'Team') return item.list === 'Team';
+  if (list === 'Statements') return item.list === 'Charges';
+  if (list === 'POS') return item.list === 'Tabs';
+  if (list === 'Club reports') return item.list === 'Members' || item.list === 'Charges' || item.list === 'Reservations' || item.list === 'Subscriptions';
+  return item.list === list;
 }

@@ -25,7 +25,9 @@ public sealed class LeadRepository : ILeadRepository
         return query.Where(l =>
             l.Name.ToLower().Contains(q) ||
             l.Email.ToLower().Contains(q) ||
-            (l.Phone != null && l.Phone.Contains(q)));
+            (l.Phone != null && l.Phone.Contains(q)) ||
+            (l.Company != null && l.Company.Name.ToLower().Contains(q)) ||
+            (l.Source != null && l.Source.ToLower().Contains(q)));
     }
 
     private static IQueryable<Lead> ApplyFilters(IQueryable<Lead> query, LeadQueryOptions? options)
@@ -173,7 +175,9 @@ public sealed class LeadRepository : ILeadRepository
         var filtered = ApplySort(
             FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
                 .Where(l => l.Name.ToLower().Contains(q) || l.Email.ToLower().Contains(q) ||
-                            (l.Phone != null && l.Phone.Contains(q))),
+                            (l.Phone != null && l.Phone.Contains(q)) ||
+                            (l.Company != null && l.Company.Name.ToLower().Contains(q)) ||
+                            (l.Source != null && l.Source.ToLower().Contains(q))),
             new LeadQueryOptions { SortBy = "name", SortDir = "asc" });
         if (take is > 0)
             filtered = filtered.Take(take.Value);

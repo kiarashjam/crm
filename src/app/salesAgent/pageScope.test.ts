@@ -1,14 +1,19 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { HIDDEN_ON, NOT_RECORDS, pageScope } from './pageScope';
+import { HIDDEN_ON, NOT_RECORDS, itemOnList, pageScope } from './pageScope';
 
 describe('pageScope', () => {
   it('keeps the whole workspace on the dashboard and on pages with no list', () => {
     expect(pageScope('/dashboard')).toEqual({ mode: 'focus' });
     expect(pageScope('/reports')).toEqual({ mode: 'focus' });
     expect(pageScope('/settings')).toEqual({ mode: 'focus' });
-    expect(pageScope('/members/mem-1')).toEqual({ mode: 'focus' });
+    expect(pageScope('/members/mem-1')).toEqual({ mode: 'record', href: '/members/mem-1' });
+    expect(pageScope('/members')).toEqual({ mode: 'list', list: 'Members' });
+    expect(pageScope('/members/import')).toEqual({ mode: 'list', list: 'Members' });
+    expect(pageScope('/calendar')).toEqual({ mode: 'list', list: 'Calendar' });
+    expect(pageScope('/visits')).toEqual({ mode: 'list', list: 'Visits' });
+    expect(pageScope('/audit')).toEqual({ mode: 'list', list: 'Audit' });
   });
 
   it('uses the list on a list page, including lead tools', () => {
@@ -22,6 +27,12 @@ describe('pageScope', () => {
     // It used to come back as { mode: 'record', href: '/leads/routing' }, and the
     // panel showed an empty "Plan / This record has no saved plan." on top of it.
     expect(pageScope('/leads/routing')).toEqual({ mode: 'list', list: 'Leads' });
+  });
+
+  it('keeps a lead phase on the leads list and reservations on the calendar', () => {
+    expect(itemOnList({ href: '/leads/l1', list: 'Outreach' }, 'Leads')).toBe(true);
+    expect(itemOnList({ href: '/deals/d1', list: 'Deals' }, 'Leads')).toBe(false);
+    expect(itemOnList({ href: '/reservations/r1', list: 'Reservations' }, 'Calendar')).toBe(true);
   });
 
   it('uses the open record on a detail page', () => {

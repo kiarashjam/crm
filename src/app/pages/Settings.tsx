@@ -241,7 +241,8 @@ export default function Settings() {
     if (!settings) return;
     setSaving(true);
     try {
-      await saveUserSettings(settings);
+      const { agentMemoryJson: _keptWithTheAgent, ...form } = settings;
+      await saveUserSettings(form);
       toast.success(messages.settings.saved);
       setHasChanges(false);
     } catch {

@@ -93,6 +93,7 @@ public class SettingsService : ISettingsService
         // Privacy
         if (request.ShowActivityStatus.HasValue) settings.ShowActivityStatus = request.ShowActivityStatus.Value;
         if (request.AllowAnalytics.HasValue) settings.AllowAnalytics = request.AllowAnalytics.Value;
+        if (request.AgentMemoryJson != null) settings.AgentMemoryJson = request.AgentMemoryJson;
 
         settings.UpdatedAtUtc = DateTime.UtcNow;
         await _userRepository.UpsertSettingsAsync(settings, ct);
@@ -106,9 +107,11 @@ public class SettingsService : ISettingsService
     {
         _logger.LogInformation("Resetting settings to defaults for user {UserId}", userId);
         
+        var existing = await _userRepository.GetSettingsAsync(userId, ct);
         var settings = new UserSettings
         {
             UserId = userId,
+            AgentMemoryJson = existing?.AgentMemoryJson,
             BrandName = "My Brand",
             BrandTone = BrandTone.Professional,
             Theme = Theme.Light,
@@ -178,6 +181,7 @@ public class SettingsService : ISettingsService
         // Privacy
         ShowActivityStatus = s.ShowActivityStatus,
         AllowAnalytics = s.AllowAnalytics,
+        AgentMemoryJson = s.AgentMemoryJson,
 
         // Metadata
         CreatedAtUtc = s.CreatedAtUtc,

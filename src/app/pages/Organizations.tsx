@@ -38,6 +38,7 @@ import { servesDemoData } from '@/app/api/apiClient';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { NextActions } from '@/app/salesAgent/NextActions';
 import { getCurrentUser } from '@/app/lib/auth';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import DemoBanner from '@/app/components/DemoBanner';
@@ -687,6 +688,11 @@ export default function Organizations() {
               Open workspace settings
             </Link>
           </p>
+        )}
+        {currentOrgId && (
+          <div className="mt-10 rounded-2xl bg-white p-1 text-slate-900">
+            <NextActions />
+          </div>
         )}
       </main>
 
