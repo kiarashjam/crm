@@ -323,6 +323,20 @@ describe('follow-ups stay on the record they were about', () => {
     expect(back.actions[0]?.leadId).toBe('l1');
   });
 
+  it('"brief this" on a record page is about the record on screen, not the last one asked about', () => {
+    const reply = askAgent('brief this', world({ items: [item, other], page: { mode: 'record', href: '/leads/l2' }, leads: [{ id: 'l1', name: 'Ada Lovelace' }, { id: 'l2', name: 'Grace Hopper', email: 'grace@example.com' }] }), NOW, { ...emptyMemory(), focusKey: 'lead:l1', leadId: 'l1', name: 'Ada Lovelace' });
+    expect(reply.text).toContain('Briefing for Grace Hopper');
+    const activity = askAgent('recent activity', world({ items: [item, other], page: { mode: 'record', href: '/leads/l2' } }), NOW, { ...emptyMemory(), focusKey: 'lead:l1', leadId: 'l1', name: 'Ada Lovelace' });
+    expect(activity.text).toContain('Recent activity for Grace Hopper');
+  });
+
+  it('a record named in full is the one acted on, even with no open step and another record on screen', () => {
+    const quietLead = { id: 'l9', name: 'Mary Shelley', email: 'mary@example.com' };
+    const reply = askAgent('draft a message to Mary Shelley', world({ items: [item, other], leads: [quietLead], page: { mode: 'record', href: '/leads/l2' } }));
+    expect(reply.actions[0]?.kind).toBe('draft');
+    expect(reply.actions[0]?.leadId).toBe('l9');
+  });
+
   it('a brief by name moves the focus to that record', () => {
     const quietLead = { id: 'l9', name: 'Mary Shelley', email: 'mary@example.com' };
     const reply = askAgent('brief Mary Shelley', world({ leads: [quietLead, { id: 'l1', name: 'Ada Lovelace' }] }), NOW, { ...emptyMemory(), focusKey: 'lead:l1', leadId: 'l1' });

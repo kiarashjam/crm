@@ -7,7 +7,7 @@ import { LEAD_PLAYBOOKS, playbookForKind, playbookForStage, type Playbook } from
 import type { LearnedPatterns } from './patterns';
 import type { WriterBrief } from '../writerBrief';
 import { judgmentText } from './judge';
-import { ambiguousPeople, costOfWaiting, emptyMemory, matchPeople, namesIn, pointsBack, recall, remember, whyThisOrder, type AgentMemory } from './reason';
+import { ambiguousPeople, costOfWaiting, emptyMemory, matchPeople, namesIn, pointsBack, recall, remember, rowFor, whyThisOrder, type AgentMemory } from './reason';
 import { activityReport, amountText, duplicateReview, groundedDraft, isOpenDeal, neglectedReport, pipelineTotals, proposeContact, proposeDeal, proposeDealUpdate, recordBrief } from './workflows';
 
 export interface AgentWorld {
@@ -285,6 +285,26 @@ function nextQueue(world: AgentWorld): WorkSuggestion[] {
   return listQueue(world);
 }
 
+/**
+ * A lead, contact, or deal the question names in full, even with no open step on it.
+ * A lead and the contact made from it count once. Two different records: none.
+ */
+function namedRecord(world: AgentWorld, question: string): WorkSuggestion | null {
+  const keys = new Map<string, string>();
+  for (const lead of world.leads) {
+    if (namesIn(question, lead.name)) keys.set(lead.email?.trim() ? `email:${lead.email.trim().toLowerCase()}` : `lead:${lead.id}`, `lead:${lead.id}`);
+  }
+  for (const contact of world.contacts ?? []) {
+    const identity = contact.email?.trim() ? `email:${contact.email.trim().toLowerCase()}` : `contact:${contact.id}`;
+    if (namesIn(question, contact.name) && !keys.has(identity)) keys.set(identity, `contact:${contact.id}`);
+  }
+  for (const deal of world.deals) {
+    if (namesIn(question, deal.name)) keys.set(`deal:${deal.id}`, `deal:${deal.id}`);
+  }
+  const [only, ...rest] = [...keys.values()];
+  return only && rest.length === 0 ? rowFor(world, only) : null;
+}
+
 /** The record on screen, when the panel sits on a record page. */
 function pageRow(world: AgentWorld): WorkSuggestion | null {
   const page = world.page;
@@ -298,6 +318,8 @@ function pageRow(world: AgentWorld): WorkSuggestion | null {
  */
 function target(world: AgentWorld, person: WorkSuggestion | null, memory: AgentMemory | undefined, question: string): WorkSuggestion | null {
   if (person) return person;
+  const named = namedRecord(world, question);
+  if (named) return named;
   const here = pageRow(world);
   const before = recall(world, memory);
   return pointsBack(question) ? before ?? here : here ?? before;
@@ -582,13 +604,17 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
     return neglectedReport(world, now);
   }
 
+  // On a record page, "this" is the record on screen; elsewhere it is the last one answered about.
+  const onScreen = /\b(this|here)\b/.test(q) || !pointsBack(command) ? pageRow(world) : null;
+
   if (/\b(recent activity|latest activity|what happened|outstanding|open tasks|commitments)\b/.test(q)) {
-    return activityReport(world, person, memory);
+    return activityReport(world, person ?? namedRecord(world, command) ?? onScreen, memory);
   }
 
   if (/\b(brief|briefing)\b/.test(q) && !/^(brief me|briefing)$/.test(q)) {
-    if (person || (memory && /\b(this|that|their|the company|the deal|the contact)\b/.test(q))) {
-      return recordBrief(world, person, memory, now);
+    const subject = person ?? (/\b(this|here)\b/.test(q) ? onScreen : null);
+    if (subject || (memory && /\b(this|that|their|them|the company|the deal|the contact)\b/.test(q))) {
+      return recordBrief(world, subject, memory, now);
     }
     const named = briefByName(world, q, now);
     if (named) return named;

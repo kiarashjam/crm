@@ -2,13 +2,15 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, Check, ChevronDown, Compass, Loader2, PenLine, RotateCw, Sparkles } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Loader2, PenLine, RotateCw, Sparkles, X } from 'lucide-react';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
 import { getCurrentUser } from '@/app/lib/auth';
 import { reloadAgentData, useAgentData, type AgentLists } from './agentData';
 import { AgentDesk } from './AgentDesk';
+import { AiOrb } from './AgentChatParts';
+import { CHAT_OPEN_KEY, PANEL_OPEN_KEY, requestChatFocus, useStoredFlag, writeFlag } from './panelPrefs';
 import type { AgentWorld } from './brain/answer';
 import { learnFrom, type LearnedPatterns } from './brain/patterns';
 import { useNextActionsSlot } from './NextActionsSlot';
@@ -146,39 +148,73 @@ function Accent() {
   );
 }
 
-/** The card arriving: a short rise and fade. */
+/**
+ * The card arriving: a short rise and fade, inside a gradient border that slowly turns,
+ * so the panel reads as the AI at work. With less motion asked for, the border is still.
+ */
 function Card({ className, labelledBy, children }: { className?: string; labelledBy: string; children: ReactNode }) {
   const reduce = useMotionPreference();
   return (
     <motion.section
-      className={cn(shell, className)}
+      className="relative overflow-hidden rounded-2xl p-[1.5px] shadow-[0_10px_40px_-18px_rgba(217,70,239,0.45)]"
       aria-labelledby={labelledBy}
       initial={reduce ? false : { opacity: 0, y: 14, scale: 0.99 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.45, ease: EASE }}
     >
-      <Accent />
-      {children}
+      <motion.span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[160%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(from_0deg,#f97316,#f59e0b,#ec4899,#8b5cf6,#6366f1,#f97316)] opacity-70"
+        animate={reduce ? undefined : { rotate: 360 }}
+        transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+      />
+      <div className={cn('relative overflow-hidden rounded-[15px] bg-white dark:bg-slate-900', className)}>
+        <Accent />
+        {children}
+      </div>
     </motion.section>
   );
 }
 
-function IconTile({ busy }: { busy: boolean }) {
+/** The agent's tile: a gradient with a turning sheen and sparkles that twinkle around it. */
+function IconTile({ busy, small = false }: { busy: boolean; small?: boolean }) {
   const reduce = useMotionPreference();
   return (
     <motion.span
-      className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/30"
-      whileHover={reduce ? undefined : { rotate: -12, scale: 1.06 }}
+      className={cn('relative flex shrink-0 items-center justify-center', small ? 'h-8 w-8' : 'h-10 w-10')}
+      whileHover={reduce ? undefined : { rotate: -10, scale: 1.08 }}
       transition={{ type: 'spring', stiffness: 300, damping: 15 }}
       aria-hidden="true"
     >
-      <Compass className="h-5 w-5" />
-      {busy && (
-        <span className="absolute -right-1 -top-1 flex h-3 w-3">
-          <span className="absolute inline-flex h-full w-full rounded-full bg-amber-300 opacity-75 motion-safe:animate-ping" />
-          <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-400 ring-2 ring-white dark:ring-slate-900" />
-        </span>
+      {!reduce && (
+        <motion.span
+          className="absolute inset-0 rounded-xl bg-gradient-to-br from-orange-400 via-fuchsia-500 to-violet-500 blur-md"
+          animate={{ opacity: busy ? [0.5, 0.95, 0.5] : [0.3, 0.6, 0.3], scale: busy ? [1, 1.2, 1] : [1, 1.08, 1] }}
+          transition={{ duration: busy ? 1.2 : 3, repeat: Infinity, ease: 'easeInOut' }}
+        />
       )}
+      <span className={cn('relative flex items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 via-fuchsia-500 to-violet-600 text-white shadow-md shadow-fuchsia-500/30', small ? 'h-8 w-8' : 'h-10 w-10')}>
+        {!reduce && (
+          <motion.span
+            className="absolute inset-[-50%] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.5)_50deg,transparent_110deg)]"
+            animate={{ rotate: 360 }}
+            transition={{ duration: busy ? 1.5 : 6, repeat: Infinity, ease: 'linear' }}
+          />
+        )}
+        <Sparkles className={cn('relative', small ? 'h-4 w-4' : 'h-5 w-5')} />
+      </span>
+      {!reduce && [
+        { className: '-right-1 -top-1 h-1.5 w-1.5', delay: 0 },
+        { className: '-left-1 top-1 h-1 w-1', delay: 0.8 },
+        { className: '-bottom-1 right-2 h-1 w-1', delay: 1.6 },
+      ].map((spark) => (
+        <motion.span
+          key={spark.delay}
+          className={cn('absolute rounded-full bg-amber-300 shadow-[0_0_6px_rgba(251,191,36,0.9)]', spark.className)}
+          animate={{ scale: [0, 1.2, 0], opacity: [0, 1, 0] }}
+          transition={{ duration: 2.4, repeat: Infinity, delay: spark.delay, ease: 'easeInOut' }}
+        />
+      ))}
     </motion.span>
   );
 }
@@ -276,6 +312,15 @@ function Row({ item, index }: { item: WorkSuggestion; index: number }) {
           )}
         >
           <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1', URGENCY_BAR[urgency])} />
+          {first && !reduce && (
+            // A light sweep across the step to do now, every few seconds.
+            <motion.span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/70 to-transparent dark:via-white/10"
+              animate={{ x: ['0%', '420%'] }}
+              transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 4.5, ease: 'easeInOut' }}
+            />
+          )}
           <span
             className={cn(
               'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
@@ -325,6 +370,76 @@ function Row({ item, index }: { item: WorkSuggestion; index: number }) {
   );
 }
 
+/** Closes the panel down to its icons. It stays closed, on every page, until opened. */
+function CloseButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close next steps"
+      title="Close. Open it again from its icon."
+      className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200', focusRing)}
+    >
+      <X className="h-4 w-4" aria-hidden="true" />
+    </button>
+  );
+}
+
+/**
+ * The panel when closed: two icons, one for the next steps and one for the chat. Either
+ * opens the panel again; the chat one opens the chat with the cursor in it.
+ */
+function ClosedPanel({ label, count, refreshing, onOpen, onAsk }: {
+  label: string;
+  count: number;
+  refreshing: boolean;
+  onOpen: () => void;
+  onAsk: () => void;
+}) {
+  const reduce = useMotionPreference();
+  const pill = cn(
+    'group relative inline-flex h-12 items-center gap-2.5 overflow-hidden rounded-full border border-fuchsia-200/80 bg-white/90 pl-2 pr-4 text-sm font-semibold text-slate-800 shadow-sm shadow-fuchsia-500/10 backdrop-blur transition-shadow hover:shadow-md dark:border-fuchsia-900/60 dark:bg-slate-900/90 dark:text-slate-100',
+    focusRing,
+  );
+  const enter = (delay: number) => (reduce
+    ? { initial: false as const }
+    : { initial: { opacity: 0, scale: 0.85, y: 6 }, animate: { opacity: 1, scale: 1, y: 0 }, transition: { type: 'spring' as const, stiffness: 380, damping: 24, delay } });
+  return (
+    <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Next steps and chat, closed">
+      <motion.button
+        type="button"
+        onClick={onOpen}
+        aria-expanded={false}
+        aria-label={`Open next steps${count > 0 ? `, ${count} waiting` : ''}`}
+        whileHover={reduce ? undefined : { y: -2 }}
+        whileTap={reduce ? undefined : { scale: 0.97 }}
+        className={pill}
+        {...enter(0)}
+      >
+        <IconTile busy={refreshing} small />
+        <span>{label}</span>
+        {count > 0 && (
+          <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white">
+            <RollingNumber value={count} />
+          </span>
+        )}
+      </motion.button>
+      <motion.button
+        type="button"
+        onClick={onAsk}
+        aria-label="Ask Cadence AI"
+        whileHover={reduce ? undefined : { y: -2 }}
+        whileTap={reduce ? undefined : { scale: 0.97 }}
+        className={pill}
+        {...enter(0.06)}
+      >
+        <AiOrb size={32} reduce={reduce} />
+        <span className="hidden sm:inline">Ask AI</span>
+      </motion.button>
+    </div>
+  );
+}
+
 // ── the record strip ─────────────────────────────────────────────────────────
 
 const STEP_TONE: Record<PlanLine['state'], string> = {
@@ -358,13 +473,14 @@ function Ladder({ lines }: { lines: PlanLine[] }) {
   );
 }
 
-function RecordStrip({ href, step, items, lists, gaps, refreshing }: {
+function RecordStrip({ href, step, items, lists, gaps, refreshing, onClose }: {
   href: string;
   step: WorkSuggestion;
   items: WorkSuggestion[];
   lists: AgentLists;
   gaps: string[];
   refreshing: boolean;
+  onClose: () => void;
 }) {
   const reduce = useMotionPreference();
   const isDeal = href.startsWith('/deals/');
@@ -387,7 +503,10 @@ function RecordStrip({ href, step, items, lists, gaps, refreshing }: {
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{step.because}</p>
           </motion.div>
         </div>
-        <DraftLink item={step} />
+        <div className="flex items-center gap-2">
+          <DraftLink item={step} />
+          <CloseButton onClose={onClose} />
+        </div>
       </div>
       {ladder && <Ladder lines={ladder} />}
       <AskBox lists={lists} gaps={gaps} items={items} scope={{ mode: 'record', href }} />
@@ -406,6 +525,14 @@ export function NextActions() {
   const data = useAgentData(orgId, scope.mode !== 'hidden');
   const slot = useNextActionsSlot();
   const reduce = useMotionPreference();
+  const [panelOpen, setPanelOpen] = useStoredFlag(PANEL_OPEN_KEY, true);
+  const openPanel = () => setPanelOpen(true);
+  const closePanel = () => setPanelOpen(false);
+  const askFromClosed = () => {
+    writeFlag(CHAT_OPEN_KEY, true);
+    requestChatFocus();
+    setPanelOpen(true);
+  };
 
   // Recomputed only when the lists change — not on every render of every page.
   const allItems = useMemo(
@@ -457,7 +584,10 @@ export function NextActions() {
     // The page already shows its state, and a card (or a gap) on every finished
     // record is noise.
     if (!step) return null;
-    return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} gaps={data.gaps} refreshing={data.refreshing} />);
+    if (!panelOpen) {
+      return place(<ClosedPanel label={`Next for this ${recordNoun(scope.href)}`} count={1} refreshing={data.refreshing} onOpen={openPanel} onAsk={askFromClosed} />);
+    }
+    return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} gaps={data.gaps} refreshing={data.refreshing} onClose={closePanel} />);
   }
 
   const scoped = scope.mode === 'list' ? allItems.filter((item) => inList(item, scope.list)) : allItems;
@@ -470,13 +600,18 @@ export function NextActions() {
     writeOpen(where, next);
   };
 
+  if (!panelOpen) {
+    return place(<ClosedPanel label="Do this next" count={scoped.length} refreshing={data.refreshing} onOpen={openPanel} onAsk={askFromClosed} />);
+  }
+
   return place(
     <Card className="px-4 pb-3 pt-5 sm:px-5" labelledBy="next-actions-heading">
       <div className="flex items-center gap-3">
         <IconTile busy={data.refreshing} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 id="next-actions-heading" className="text-base font-semibold text-slate-900 dark:text-white">Do this next</h2>
+            <h2 id="next-actions-heading" className="bg-gradient-to-r from-slate-900 via-fuchsia-600 to-slate-900 bg-[length:200%_100%] bg-clip-text text-base font-semibold text-transparent motion-safe:animate-[shimmer_6s_linear_infinite] dark:from-white dark:via-fuchsia-300 dark:to-white">Do this next</h2>
+            <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>
             <Refreshing on={data.refreshing} />
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -504,6 +639,7 @@ export function NextActions() {
             </motion.span>
           </button>
         )}
+        <CloseButton onClose={closePanel} />
       </div>
 
       {scoped.length === 0 ? (
