@@ -13,6 +13,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
+import ReferredLeadsCard from '@/app/components/ReferredLeadsCard';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import {
   getActivitiesByContact, getTasksByContact,
@@ -557,6 +558,9 @@ export default function ContactDetail() {
               </div>
             )}
           </div>
+
+          {/* Leads this person referred, each a link to that lead */}
+          <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} className="mb-6" />
 
           {/* Custom fields (renders only when fields are defined for contacts) */}
           <CustomFieldsCard

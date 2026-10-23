@@ -33,11 +33,15 @@ internal sealed class LeadConfiguration : IEntityTypeConfiguration<Lead>
         builder.HasOne(e => e.AssignedToUser).WithMany().HasForeignKey(e => e.AssignedToUserId).IsRequired(false);
         // ConvertedToContact is configured in ContactConfiguration (one-to-one)
         builder.HasOne(e => e.ConvertedToDeal).WithMany().HasForeignKey(e => e.ConvertedToDealId).IsRequired(false);
+        // No cascade: deleting a contact clears the referral on its leads (ContactRepository.DeleteAsync).
+        builder.HasOne(e => e.ReferredByContact).WithMany().HasForeignKey(e => e.ReferredByContactId)
+            .IsRequired(false).OnDelete(DeleteBehavior.ClientSetNull);
 
         // Indexes
         builder.HasIndex(e => e.OrganizationId);
         builder.HasIndex(e => e.IsConverted);
         builder.HasIndex(e => e.AssignedToUserId);
+        builder.HasIndex(e => e.ReferredByContactId);
         builder.HasIndex(e => new { e.OrganizationId, e.CreatedAtUtc });
         builder.HasIndex(e => new { e.OrganizationId, e.Status });
     }

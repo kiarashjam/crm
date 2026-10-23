@@ -35,6 +35,11 @@ public record CreateLeadRequest
     public Guid? CompanyId { get; init; }
 
     /// <summary>
+    /// The contact who referred this lead (optional). Must be a contact in the same workspace.
+    /// </summary>
+    public Guid? ReferredByContactId { get; init; }
+
+    /// <summary>
     /// Source of the lead (e.g., Website, Referral).
     /// </summary>
     [StringLength(100, ErrorMessage = "Source cannot exceed 100 characters")]

@@ -2,7 +2,7 @@ import type { Lead, PagedResult, PaginationParams } from './types';
 import { mockLeads } from './mockData';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
-import { ensureDemoPersonContacts } from './contacts';
+import { ensureDemoPersonContacts, getContacts } from './contacts';
 import { QUALIFIED_OR_BEYOND, statusIn } from '@/app/pages/leads/leadStatusSync';
 
 function delay(ms: number): Promise<void> {
@@ -48,6 +48,8 @@ type LeadRaw = {
   emailOpenCount?: number;
   enrichedDomain?: string | null;
   scoreIsManual?: boolean;
+  referredByContactId?: string | null;
+  referredByContactName?: string | null;
 };
 
 function mapLead(d: LeadRaw): Lead {
@@ -84,6 +86,8 @@ function mapLead(d: LeadRaw): Lead {
     emailOpenCount: d.emailOpenCount ?? 0,
     enrichedDomain: d.enrichedDomain ?? undefined,
     scoreIsManual: d.scoreIsManual ?? false,
+    referredByContactId: d.referredByContactId ?? undefined,
+    referredByContactName: d.referredByContactName ?? undefined,
   };
 }
 
@@ -329,6 +333,8 @@ export async function createLead(params: {
   lastContactedAt?: string;
   description?: string;
   lifecycleStage?: string;
+  /** The contact who referred this lead. */
+  referredByContactId?: string;
   /** Create it even though an open lead already has this email. */
   allowDuplicate?: boolean;
 }): Promise<Lead | null> {
@@ -357,6 +363,7 @@ export async function createLead(params: {
     isConverted: false,
     convertedAtUtc: undefined,
     createdAtUtc: new Date().toISOString(),
+    ...(params.referredByContactId ? await demoReferrer(params.referredByContactId) : {}),
   };
   const saved = leadStore.add(created);
   ensureDemoPersonContacts();
@@ -410,6 +417,42 @@ export async function assignLead(id: string, assignedToUserId: string | null): P
   }
   await delay(200);
   return leadStore.update(id, { assignedToId: assignedToUserId ?? undefined } as Partial<Lead>);
+}
+
+/** The referrer's id and name for a demo lead, read from the demo contacts. */
+async function demoReferrer(contactId: string | null): Promise<Pick<Lead, 'referredByContactId' | 'referredByContactName'>> {
+  if (!contactId) return { referredByContactId: undefined, referredByContactName: undefined };
+  const contact = (await getContacts()).find((c) => c.id === contactId);
+  return { referredByContactId: contactId, referredByContactName: contact?.name };
+}
+
+/**
+ * Record who referred a lead, or clear it with null. Saved on the lead for the whole
+ * workspace, so a teammate sees the same referrer. Allowed on a converted lead too.
+ */
+export async function setLeadReferral(id: string, contactId: string | null): Promise<Lead | null> {
+  if (!servesDemoData()) {
+    const lead = await authFetchJson<LeadRaw>(`/api/leads/${id}/referral`, {
+      method: 'PUT',
+      body: JSON.stringify({ contactId }),
+    });
+    return lead ? mapLead(lead) : null;
+  }
+  await delay(150);
+  return leadStore.update(id, await demoReferrer(contactId));
+}
+
+/** Leads a contact referred, newest first. */
+export async function getLeadsReferredBy(contactId: string): Promise<Lead[]> {
+  if (!servesDemoData()) {
+    const list = await authFetchJson<LeadRaw[]>(`/api/contacts/${contactId}/referred-leads`);
+    return Array.isArray(list) ? list.map(mapLead) : [];
+  }
+  await delay(150);
+  return leadStore
+    .list()
+    .filter((lead) => lead.referredByContactId === contactId)
+    .sort((a, b) => (b.createdAtUtc ?? '').localeCompare(a.createdAtUtc ?? ''));
 }
 
 /** Delete a lead. */

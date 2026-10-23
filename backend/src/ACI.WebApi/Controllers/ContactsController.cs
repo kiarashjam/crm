@@ -162,6 +162,23 @@ public class ContactsController : ControllerBase
         return Ok(list);
     }
 
+    /// <summary>Leads this contact referred, newest first.</summary>
+    /// <response code="200">The referred leads. Empty when the contact referred nobody.</response>
+    /// <response code="404">Contact not found.</response>
+    [HttpGet("{id:guid}/referred-leads")]
+    [ProducesResponseType(typeof(IReadOnlyList<LeadDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<LeadDto>>> ReferredLeads(
+        Guid id,
+        [FromServices] ILeadService leadService,
+        CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await leadService.GetReferredByContactAsync(id, userId.Value, _currentUser.CurrentOrganizationId, ct);
+        return result.ToActionResult();
+    }
+
     /// <summary>Keeps this contact and folds the other person into it.</summary>
     [HttpPost("{id:guid}/merge")]
     public async Task<ActionResult> Merge(Guid id, [FromBody] MergeContactsRequest request, CancellationToken ct)

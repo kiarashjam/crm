@@ -182,6 +182,12 @@ public class LeadService : ILeadService
             }
         }
 
+        if (request.ReferredByContactId is Guid referrerId)
+        {
+            var referrer = await CheckReferrerAsync(referrerId, null, userId, organizationId, ct);
+            if (referrer.IsFailure) return referrer.Error;
+        }
+
         var entity = new Lead
         {
             Id = Guid.NewGuid(),
@@ -204,6 +210,7 @@ public class LeadService : ILeadService
             Country = request.Country?.Trim(),
             Industry = request.Industry?.Trim(),
             CompanySize = request.CompanySize?.Trim(),
+            ReferredByContactId = request.ReferredByContactId,
             CreatedAtUtc = DateTime.UtcNow,
         };
 
@@ -368,6 +375,57 @@ public class LeadService : ILeadService
         }
 
         return Map(updated);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<LeadDto>> SetReferralAsync(
+        Guid id,
+        Guid userId,
+        Guid? organizationId,
+        Guid? contactId,
+        CancellationToken ct = default)
+    {
+        var lead = await _repository.GetByIdAsync(id, userId, organizationId, ct);
+        if (lead == null) return DomainErrors.Lead.NotFound;
+        // Who referred a lead stays true after it converts, so this is allowed on a converted lead.
+        if (contactId is Guid referrerId)
+        {
+            var referrer = await CheckReferrerAsync(referrerId, lead, userId, organizationId, ct);
+            if (referrer.IsFailure) return referrer.Error;
+        }
+
+        var updated = await _repository.SetReferralAsync(id, userId, organizationId, contactId, ct);
+        if (updated == null) return DomainErrors.Lead.NotFound;
+        _logger.LogInformation("Lead {LeadId} referral set to {ContactId}", id, contactId);
+        return Map(updated);
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<IReadOnlyList<LeadDto>>> GetReferredByContactAsync(
+        Guid contactId,
+        Guid userId,
+        Guid? organizationId,
+        CancellationToken ct = default)
+    {
+        var contact = await _contactRepository.GetByIdAsync(contactId, userId, organizationId, ct);
+        if (contact == null) return Result.Failure<IReadOnlyList<LeadDto>>(DomainErrors.Contact.NotFound);
+        var leads = await _repository.GetReferredByAsync(contactId, userId, organizationId, ct);
+        return Result.Success<IReadOnlyList<LeadDto>>(leads.Select(Map).ToList());
+    }
+
+    /// <summary>
+    /// A referrer has to be a contact this workspace can see, still active, and not the
+    /// contact this same lead became: a lead cannot refer itself.
+    /// </summary>
+    private async Task<Result> CheckReferrerAsync(Guid contactId, Lead? lead, Guid userId, Guid? organizationId, CancellationToken ct)
+    {
+        var contact = await _contactRepository.GetByIdAsync(contactId, userId, organizationId, ct);
+        if (contact == null) return DomainErrors.Lead.ReferrerNotFound;
+        if (lead != null && (lead.ConvertedToContactId == contactId || contact.ConvertedFromLeadId == lead.Id))
+            return DomainErrors.Lead.ReferrerIsSelf;
+        // An archived contact already recorded as the referrer may stay; a new one may not.
+        if (contact.IsArchived && lead?.ReferredByContactId != contactId) return DomainErrors.Lead.ReferrerArchived;
+        return Result.Success();
     }
 
     /// <inheritdoc />
@@ -637,5 +695,7 @@ public class LeadService : ILeadService
             null,
             e.EmailOpenCount,
             e.EnrichedDomain,
-            e.ScoreIsManual);
+            e.ScoreIsManual,
+            e.ReferredByContactId,
+            e.ReferredByContact?.Name);
 }

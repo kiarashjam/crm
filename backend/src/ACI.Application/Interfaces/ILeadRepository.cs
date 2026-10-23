@@ -30,5 +30,11 @@ public interface ILeadRepository
     Task<Lead> AddAsync(Lead lead, CancellationToken ct = default);
     Task<Lead?> UpdateAsync(Lead lead, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Lead?> AssignAsync(Guid id, Guid userId, Guid? organizationId, Guid? assignedToUserId, CancellationToken ct = default);
+
+    /// <summary>Records (or clears, with null) the contact who referred a lead. The contact is checked by the caller.</summary>
+    Task<Lead?> SetReferralAsync(Guid id, Guid userId, Guid? organizationId, Guid? referredByContactId, CancellationToken ct = default);
+
+    /// <summary>Leads in this workspace that a contact referred, newest first.</summary>
+    Task<IReadOnlyList<Lead>> GetReferredByAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

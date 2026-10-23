@@ -33,7 +33,7 @@ internal static class AuditTrail
             nameof(Lead.Name), nameof(Lead.Email), nameof(Lead.Phone), nameof(Lead.CompanyId), nameof(Lead.Source),
             nameof(Lead.LeadSourceId), nameof(Lead.Description), nameof(Lead.LifecycleStage), nameof(Lead.PipelineState),
             nameof(Lead.JobTitle), nameof(Lead.Country), nameof(Lead.Industry), nameof(Lead.CompanySize),
-            nameof(Lead.QueueId), nameof(Lead.TerritoryId),
+            nameof(Lead.QueueId), nameof(Lead.TerritoryId), nameof(Lead.ReferredByContactId),
         }),
         [typeof(Deal)] = new("deal", "Deal", nameof(Deal.Name), new[]
         {
@@ -64,6 +64,7 @@ internal static class AuditTrail
     {
         [nameof(Lead.PipelineState)] = "pipeline progress",
         [nameof(Lead.LeadSourceId)] = "source",
+        [nameof(Lead.ReferredByContactId)] = "referred by",
         [nameof(Contact.DoNotContact)] = "do-not-contact",
         [nameof(Deal.ClosedReasonCategory)] = "close reason",
         [nameof(Deal.ClosedReason)] = "close reason",

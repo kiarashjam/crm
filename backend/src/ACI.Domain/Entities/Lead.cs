@@ -13,6 +13,8 @@ public class Lead : Common.BaseEntity
     public string Email { get; set; } = string.Empty;
     public string? Phone { get; set; }
     public Guid? CompanyId { get; set; }
+    /// <summary>The contact who referred this lead. Null when nobody did, or nobody was recorded.</summary>
+    public Guid? ReferredByContactId { get; set; }
     /// <summary>Source: website, referral, ads, events, manual (legacy string).</summary>
     public string? Source { get; set; }
     /// <summary>Status: New, Contacted, Qualified, Lost (legacy string).</summary>
@@ -63,6 +65,7 @@ public class Lead : Common.BaseEntity
     public LeadSource? LeadSource { get; set; }
     public LeadStatus? LeadStatus { get; set; }
     public Contact? ConvertedToContact { get; set; }
+    public Contact? ReferredByContact { get; set; }
     public Deal? ConvertedToDeal { get; set; }
     public ICollection<TaskItem> TaskItems { get; set; } = new List<TaskItem>();
     public ICollection<Activity> Activities { get; set; } = new List<Activity>();

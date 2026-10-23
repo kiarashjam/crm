@@ -193,7 +193,7 @@ public sealed class LeadRepository : ILeadRepository
     }
 
     /// <summary>
-    /// Loads lead rows plus company and assignee names only.
+    /// Loads lead rows plus company, assignee, and referrer names only.
     /// Avoids joining the full User row (password hash, 2FA secret, and the rest).
     /// </summary>
     private static async Task<List<Lead>> MaterializeListAsync(IQueryable<Lead> query, CancellationToken ct)
@@ -204,6 +204,7 @@ public sealed class LeadRepository : ILeadRepository
                 Lead = l,
                 CompanyName = l.Company != null ? l.Company.Name : null,
                 AssigneeName = l.AssignedToUser != null ? l.AssignedToUser.Name : null,
+                ReferrerName = l.ReferredByContact != null ? l.ReferredByContact.Name : null,
             })
             .ToListAsync(ct);
 
@@ -214,6 +215,8 @@ public sealed class LeadRepository : ILeadRepository
                 row.Lead.Company = new Company { Id = companyId, Name = row.CompanyName };
             if (row.Lead.AssignedToUserId is Guid assigneeId && row.AssigneeName != null)
                 row.Lead.AssignedToUser = new User { Id = assigneeId, Name = row.AssigneeName };
+            if (row.Lead.ReferredByContactId is Guid referrerId && row.ReferrerName != null)
+                row.Lead.ReferredByContact = new Contact { Id = referrerId, Name = row.ReferrerName };
             list.Add(row.Lead);
         }
         return list;
@@ -262,6 +265,24 @@ public sealed class LeadRepository : ILeadRepository
         // Re-read with the assignee navigation so the returned DTO carries the name.
         return await GetByIdAsync(id, userId, organizationId, ct);
     }
+
+    public async Task<Lead?> SetReferralAsync(Guid id, Guid userId, Guid? organizationId, Guid? referredByContactId, CancellationToken ct = default)
+    {
+        var existing = await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (existing == null) return null;
+        existing.ReferredByContactId = referredByContactId;
+        existing.UpdatedAtUtc = DateTime.UtcNow;
+        existing.UpdatedByUserId = userId;
+        await _db.SaveChangesAsync(ct);
+        return await GetByIdAsync(id, userId, organizationId, ct);
+    }
+
+    public async Task<IReadOnlyList<Lead>> GetReferredByAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        await MaterializeListAsync(
+            FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
+                .Where(l => l.ReferredByContactId == contactId)
+                .OrderByDescending(l => l.CreatedAtUtc),
+            ct);
 
     public async Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {

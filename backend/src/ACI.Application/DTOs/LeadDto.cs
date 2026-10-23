@@ -34,4 +34,6 @@ public record LeadDto(
     string? TerritoryName = null,
     int EmailOpenCount = 0,
     string? EnrichedDomain = null,
-    bool ScoreIsManual = false);
+    bool ScoreIsManual = false,
+    Guid? ReferredByContactId = null,
+    string? ReferredByContactName = null);
