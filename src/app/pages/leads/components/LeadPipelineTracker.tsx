@@ -7,6 +7,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
+import { Confetti } from '@/app/components/Confetti';
 import { Button } from '@/app/components/ui/button';
 import { useMotionPreference } from '@/app/hooks';
 import {
@@ -25,6 +26,102 @@ import { usePhaseMotion, type PhaseMotionTokens } from './phaseMotion';
 import { useTrackerAnnouncement } from './useTrackerAnnouncement';
 
 const PHASE_ICONS: LucideIcon[] = [Phone, Users, FileSignature, PenLine, Wallet];
+
+/**
+ * Each phase has its own colour, so the lifecycle reads at a glance as five
+ * different kinds of work rather than five grey boxes: outreach sky, the meeting
+ * violet, the contract amber, the signature pink, the deposit teal. Done stays
+ * emerald and stopped stays rose everywhere, so those two still mean one thing.
+ */
+interface PhaseTone {
+  surface: string;
+  badge: string;
+  idleBadge: string;
+  pill: string;
+  hover: string;
+  tick: string;
+  dotCurrent: string;
+  dotIdle: string;
+  label: string;
+  cursor: string;
+  pulse: string;
+  glow: string;
+}
+const PHASE_TONES: PhaseTone[] = [
+  {
+    surface: 'border-sky-200 bg-gradient-to-br from-white via-white to-sky-50/80 shadow-md shadow-sky-500/10 ring-1 ring-sky-100',
+    badge: 'bg-gradient-to-br from-sky-400 to-blue-600 text-white shadow-md shadow-sky-500/30',
+    idleBadge: 'bg-sky-50 text-sky-400 ring-1 ring-sky-100',
+    pill: 'bg-sky-50 text-sky-700',
+    hover: 'hover:bg-sky-50/60',
+    tick: 'bg-sky-500',
+    dotCurrent: 'border-sky-500 bg-white text-sky-700',
+    dotIdle: 'border-sky-100 bg-sky-50 text-sky-400',
+    label: 'text-sky-700',
+    cursor: 'bg-sky-100/60 ring-2 ring-sky-400/80',
+    pulse: 'bg-sky-400/30',
+    glow: 'bg-sky-200/30',
+  },
+  {
+    surface: 'border-violet-200 bg-gradient-to-br from-white via-white to-violet-50/80 shadow-md shadow-violet-500/10 ring-1 ring-violet-100',
+    badge: 'bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow-md shadow-violet-500/30',
+    idleBadge: 'bg-violet-50 text-violet-400 ring-1 ring-violet-100',
+    pill: 'bg-violet-50 text-violet-700',
+    hover: 'hover:bg-violet-50/60',
+    tick: 'bg-violet-500',
+    dotCurrent: 'border-violet-500 bg-white text-violet-700',
+    dotIdle: 'border-violet-100 bg-violet-50 text-violet-400',
+    label: 'text-violet-700',
+    cursor: 'bg-violet-100/60 ring-2 ring-violet-400/80',
+    pulse: 'bg-violet-400/30',
+    glow: 'bg-violet-200/30',
+  },
+  {
+    surface: 'border-amber-200 bg-gradient-to-br from-white via-white to-amber-50/80 shadow-md shadow-amber-500/10 ring-1 ring-amber-100',
+    badge: 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-amber-500/30',
+    idleBadge: 'bg-amber-50 text-amber-500 ring-1 ring-amber-100',
+    pill: 'bg-amber-50 text-amber-700',
+    hover: 'hover:bg-amber-50/60',
+    tick: 'bg-amber-500',
+    dotCurrent: 'border-amber-500 bg-white text-amber-700',
+    dotIdle: 'border-amber-100 bg-amber-50 text-amber-500',
+    label: 'text-amber-700',
+    cursor: 'bg-amber-100/60 ring-2 ring-amber-400/80',
+    pulse: 'bg-amber-400/30',
+    glow: 'bg-amber-200/30',
+  },
+  {
+    surface: 'border-pink-200 bg-gradient-to-br from-white via-white to-pink-50/80 shadow-md shadow-pink-500/10 ring-1 ring-pink-100',
+    badge: 'bg-gradient-to-br from-pink-500 to-fuchsia-600 text-white shadow-md shadow-pink-500/30',
+    idleBadge: 'bg-pink-50 text-pink-400 ring-1 ring-pink-100',
+    pill: 'bg-pink-50 text-pink-700',
+    hover: 'hover:bg-pink-50/60',
+    tick: 'bg-pink-500',
+    dotCurrent: 'border-pink-500 bg-white text-pink-700',
+    dotIdle: 'border-pink-100 bg-pink-50 text-pink-400',
+    label: 'text-pink-700',
+    cursor: 'bg-pink-100/60 ring-2 ring-pink-400/80',
+    pulse: 'bg-pink-400/30',
+    glow: 'bg-pink-200/30',
+  },
+  {
+    surface: 'border-teal-200 bg-gradient-to-br from-white via-white to-teal-50/80 shadow-md shadow-teal-500/10 ring-1 ring-teal-100',
+    badge: 'bg-gradient-to-br from-teal-400 to-cyan-600 text-white shadow-md shadow-teal-500/30',
+    idleBadge: 'bg-teal-50 text-teal-500 ring-1 ring-teal-100',
+    pill: 'bg-teal-50 text-teal-700',
+    hover: 'hover:bg-teal-50/60',
+    tick: 'bg-teal-500',
+    dotCurrent: 'border-teal-500 bg-white text-teal-700',
+    dotIdle: 'border-teal-100 bg-teal-50 text-teal-500',
+    label: 'text-teal-700',
+    cursor: 'bg-teal-100/60 ring-2 ring-teal-400/80',
+    pulse: 'bg-teal-400/30',
+    glow: 'bg-teal-200/30',
+  },
+];
+function toneOf(index: number): PhaseTone {
+  return PHASE_TONES[index] ?? PHASE_TONES[0]!;
+}
 
 type LogHint = { subject: string; body?: string };
 
@@ -374,6 +471,7 @@ function PhaseCard({
   children: React.ReactNode;
 }) {
   const Icon = PHASE_ICONS[n - 1] ?? Phone;
+  const tone = toneOf(n - 1);
   const isDone = state === 'done';
   const uid = useId();
   const bodyId = `${uid}-phase-${n}`;
@@ -402,8 +500,9 @@ function PhaseCard({
         // No overflow-hidden: the accent bars are inset from the corners instead,
         // so a focused chip's ring is never clipped at the card edge.
         'relative rounded-2xl border p-2 sm:p-2.5',
-        'transition-[border-color,box-shadow,background-color] duration-[240ms] ease-out',
-        SURFACE[state],
+        'transition-[border-color,box-shadow,background-color,transform] duration-[240ms] ease-out',
+        state === 'active' ? tone.surface : SURFACE[state],
+        state === 'idle' && 'hover:-translate-y-px hover:border-slate-300 hover:bg-white hover:shadow-sm',
       )}
     >
       {/* THE SEAL — pours down the left edge when this phase completes. */}
@@ -423,7 +522,7 @@ function PhaseCard({
         className={cn(
           'pointer-events-none absolute left-0 top-3 h-7 w-[3px] origin-top rounded-full',
           'transition-colors duration-[240ms]',
-          state === 'lost' ? 'bg-rose-500' : 'bg-indigo-500',
+          state === 'lost' ? 'bg-rose-500' : tone.tick,
         )}
       />
 
@@ -441,7 +540,7 @@ function PhaseCard({
         className={cn(
           'flex w-full items-start gap-3 rounded-xl p-2 text-left transition-colors duration-150 sm:p-2.5',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
-          HEADER_HOVER[state],
+          state === 'active' || state === 'idle' ? tone.hover : HEADER_HOVER[state],
         )}
       >
         <motion.span
@@ -451,9 +550,11 @@ function PhaseCard({
           className={cn(
             'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
             'transition-colors duration-[240ms]',
-            BADGE[state],
+            state === 'active' ? tone.badge : state === 'idle' ? tone.idleBadge : BADGE[state],
           )}
         >
+          {/* A burst of confetti the moment this phase is finished. */}
+          <Confetti fire={celebrate && isDone} />
           {/* Both glyphs stay mounted and absolutely positioned, so the badge is
               never empty mid-swap and nothing is measured or pinned out of flow. */}
           <motion.span
@@ -490,7 +591,7 @@ function PhaseCard({
                 initial={{ opacity: 0, y: 3 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={t.swap}
-                className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', PILL[state])}
+                className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', state === 'active' ? tone.pill : PILL[state])}
               >
                 {PILL_TEXT[state]}
               </motion.span>
@@ -697,7 +798,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
         className={cn(
           'pointer-events-none absolute -left-24 -top-32 h-64 w-[28rem] rounded-full blur-3xl',
           'transition-colors duration-500',
-          complete ? 'bg-emerald-200/25' : lost ? 'bg-rose-200/20' : 'bg-indigo-200/25',
+          complete ? 'bg-emerald-200/25' : lost ? 'bg-rose-200/20' : toneOf(phase - 1).glow,
         )}
       />
 
@@ -717,7 +818,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
           >
             <Sparkles className={cn(
               'h-4 w-4 transition-colors duration-500',
-              complete ? 'text-emerald-600' : lost ? 'text-rose-500' : 'text-indigo-600',
+              complete ? 'text-emerald-600' : lost ? 'text-rose-500' : 'text-fuchsia-600',
             )} />
           </motion.span>
           Lead lifecycle
@@ -788,6 +889,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
               const isCurrent = st === 'active';
               const isLostHere = st === 'lost';
               const word = isDone ? 'complete' : isCurrent ? 'in progress' : isLostHere ? 'stopped here' : 'not started';
+              const tone = toneOf(i);
               return (
                 <li key={title} className={cn('flex items-start', i < PHASE_TITLES.length - 1 && 'flex-1')}>
                   <motion.button
@@ -815,7 +917,8 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                       {isCurrent && !reduce && (
                         <motion.span
                           aria-hidden
-                          className="absolute -inset-1.5 rounded-full bg-indigo-400/30"
+                          data-pulse
+                          className={cn('absolute -inset-1.5 rounded-full', tone.pulse)}
                           animate={{ scale: [1, 1.28, 1], opacity: [0.45, 0.12, 0.45] }}
                           transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
                         />
@@ -825,7 +928,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                           aria-hidden
                           layoutId={`${railId}-cursor`}
                           transition={t.railCursor}
-                          className="absolute -inset-1 rounded-full bg-indigo-100/60 ring-2 ring-indigo-400/80"
+                          className={cn('absolute -inset-1 rounded-full transition-colors duration-300', tone.cursor)}
                         />
                       )}
                       <motion.span
@@ -839,9 +942,9 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                           // shape difference, so it survives greyscale and
                           // red-green deficiency where hue alone would not.
                           isDone && 'border-emerald-500 bg-emerald-500 text-white',
-                          isCurrent && 'border-indigo-500 bg-white text-indigo-700',
+                          isCurrent && tone.dotCurrent,
                           isLostHere && 'border-rose-500 bg-rose-500 text-white',
-                          !isDone && !isCurrent && !isLostHere && 'border-slate-200 bg-slate-100 text-slate-400',
+                          !isDone && !isCurrent && !isLostHere && tone.dotIdle,
                         )}
                       >
                         <span className="sr-only">{`Phase ${i + 1}, ${title}: ${word}. Show this phase.`}</span>
@@ -854,7 +957,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                     </span>
                     <span aria-hidden className={cn(
                       'hidden text-center text-[10px] font-medium leading-tight sm:block',
-                      isDone ? 'text-emerald-700' : isCurrent ? 'text-indigo-700' : isLostHere ? 'text-rose-700' : 'text-slate-400',
+                      isDone ? 'text-emerald-700' : isCurrent ? tone.label : isLostHere ? 'text-rose-700' : 'text-slate-400',
                     )}>
                       {title}
                     </span>
@@ -865,7 +968,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                         initial={false}
                         animate={{ scaleX: done[i] ? 1 : 0 }}
                         transition={celebrates(i) ? t.connector : { duration: 0 }}
-                        className="block h-full w-full origin-left rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500"
+                        className="block h-full w-full origin-left rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500"
                       />
                     </span>
                   )}

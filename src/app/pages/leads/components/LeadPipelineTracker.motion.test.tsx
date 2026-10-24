@@ -39,7 +39,9 @@ const CHIP_CHOSEN: LeadPipeline = { outreachStatus: 'contacted' };
 const show = (value: LeadPipeline) =>
   render(<LeadPipelineTracker value={value} onChange={() => {}} />);
 
-const PULSE = '.bg-indigo-400\\/30';
+// The breathing halo on the current pip. Found by its marker, not its colour:
+// each phase has its own colour now.
+const PULSE = '[data-pulse]';
 
 beforeEach(() => { reduced.value = false; });
 afterEach(() => { reduced.value = false; });
