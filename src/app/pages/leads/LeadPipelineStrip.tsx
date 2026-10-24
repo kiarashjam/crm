@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
+import { motion } from 'motion/react';
+import { CountUp } from '@/app/components/motion/CountUp';
 import { Reveal } from '@/app/components/motion/PageEnter';
+import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
 import type { LeadStats } from '@/app/api';
 
@@ -34,16 +37,23 @@ const TONE = {
 
 type Tone = keyof typeof TONE;
 
+/** A bar that grows in from empty, then follows the share as it changes. */
+function GrowBar({ share, className }: { share: number; className: string }) {
+  const reduce = useMotionPreference();
+  return (
+    <motion.div
+      className={className}
+      initial={reduce ? false : { width: 0 }}
+      animate={{ width: `${share}%` }}
+      transition={reduce ? { duration: 0 } : { duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
+    />
+  );
+}
+
 function Meter({ share, tone }: { share: number; tone: Tone }) {
   return (
     <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
-      <div
-        className={cn(
-          'h-full rounded-full motion-reduce:transition-none transition-[width] duration-500 ease-out',
-          TONE[tone].bar,
-        )}
-        style={{ width: `${share}%` }}
-      />
+      <GrowBar share={share} className={cn('h-full rounded-full', TONE[tone].bar)} />
     </div>
   );
 }
@@ -60,7 +70,7 @@ function Figure({
   actionLabel,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   hint: string;
   tone: Tone;
   share: number;
@@ -174,7 +184,7 @@ export function LeadPipelineStrip({
             Pipeline
           </p>
           <p className="mt-2 text-5xl font-semibold leading-none tabular-nums tracking-[-0.045em] text-slate-950">
-            {formatCount(total)}
+            <CountUp value={total} />
           </p>
           <p className="mt-2 text-sm text-slate-600">Total leads</p>
 
@@ -183,14 +193,8 @@ export function LeadPipelineStrip({
             role="img"
             aria-label={`${formatCount(stats.active)} active and ${formatCount(stats.converted)} converted out of ${formatCount(total)} leads`}
           >
-            <div
-              className="h-full bg-sky-500 motion-reduce:transition-none transition-[width] duration-500 ease-out"
-              style={{ width: `${activeShare}%` }}
-            />
-            <div
-              className="h-full bg-teal-600 motion-reduce:transition-none transition-[width] duration-500 ease-out"
-              style={{ width: `${convertedShare}%` }}
-            />
+            <GrowBar share={activeShare} className="h-full bg-sky-500" />
+            <GrowBar share={convertedShare} className="h-full bg-teal-600" />
           </div>
           <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600">
             <Legend color="bg-sky-500">{formatCount(stats.active)} active</Legend>
@@ -201,7 +205,7 @@ export function LeadPipelineStrip({
         <ul className="grid flex-1 grid-cols-2 gap-px bg-slate-200 sm:grid-cols-3 xl:grid-cols-5 [&>li:last-child]:col-span-2 xl:[&>li:last-child]:col-span-1">
           <Figure
             label="Active"
-            value={formatCount(stats.active)}
+            value={<CountUp value={stats.active} />}
             hint="Still open"
             tone="sky"
             share={activeShare}
@@ -215,7 +219,7 @@ export function LeadPipelineStrip({
           />
           <Figure
             label="Hot"
-            value={formatCount(stats.hotLeads)}
+            value={<CountUp value={stats.hotLeads} />}
             hint="Score of 70 or more"
             tone="orange"
             share={hotShare}
@@ -223,7 +227,7 @@ export function LeadPipelineStrip({
           />
           <Figure
             label="Converted"
-            value={`${formatCount(rate)}%`}
+            value={<CountUp value={rate} format={(n) => `${n === rate ? formatCount(rate) : Math.round(n)}%`} />}
             hint={convertedHint}
             tone="teal"
             share={rate}
@@ -237,14 +241,14 @@ export function LeadPipelineStrip({
           />
           <Figure
             label="This week"
-            value={formatCount(stats.thisWeek)}
+            value={<CountUp value={stats.thisWeek} />}
             hint="Added in the last 7 days"
             tone="slate"
             share={weekShare}
           />
           <Figure
             label="Qualified"
-            value={formatCount(stats.qualified)}
+            value={<CountUp value={stats.qualified} />}
             hint="Qualified or further"
             tone="emerald"
             share={qualifiedShare}

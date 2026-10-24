@@ -43,7 +43,7 @@ export function StatusFilterMultiSelect({ options, selected, onChange }: StatusF
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/10 px-3 text-sm text-white transition-colors hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/40"
+          className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm transition-colors hover:border-orange-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/40"
           aria-label="Filter by status"
         >
           <span className="flex items-center gap-2 truncate">

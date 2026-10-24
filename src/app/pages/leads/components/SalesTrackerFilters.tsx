@@ -51,8 +51,8 @@ interface Props {
 
 function Label({ icon: Icon, children }: { icon: React.ElementType; children: React.ReactNode }) {
   return (
-    <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-      <Icon className="w-3.5 h-3.5 text-orange-300/80" />
+    <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+      <Icon className="w-3.5 h-3.5 text-orange-500" />
       {children}
     </label>
   );
@@ -78,7 +78,7 @@ function EnumSelect({
       value={value === '' ? SENTINEL_CLEARED : value}
       onValueChange={(v) => onChange(v === SENTINEL_CLEARED ? '' : v)}
     >
-      <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+      <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -139,7 +139,7 @@ export function SalesTrackerFilters({ value, onChange }: Props) {
       <div className="min-w-0">
         <Label icon={CircleDollarSign}>Deposit paid</Label>
         <Select value={value.depositPaid} onValueChange={(v) => onChange({ depositPaid: v })}>
-          <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+          <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -153,7 +153,7 @@ export function SalesTrackerFilters({ value, onChange }: Props) {
       <div className="min-w-0">
         <Label icon={AlertOctagon}>Decline stage</Label>
         <Select value={value.declineStage} onValueChange={(v) => onChange({ declineStage: v })}>
-          <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+          <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -168,7 +168,7 @@ export function SalesTrackerFilters({ value, onChange }: Props) {
       <div className="min-w-0">
         <Label icon={Clock}>Overdue contracts</Label>
         <Select value={value.overdue} onValueChange={(v) => onChange({ overdue: v })}>
-          <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+          <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -219,18 +219,18 @@ export function SalesTrackerFilterChips({
     );
   };
 
-  if (filters.outreachStatus !== 'all') pill('outreachStatus', `Outreach: ${filters.outreachStatus}`, PhoneCall, 'bg-blue-500/20 text-blue-300 border-blue-400/30');
-  if (filters.meetingScheduled !== 'all') pill('meetingScheduled', `Meeting: ${filters.meetingScheduled}`, Calendar, 'bg-violet-500/20 text-violet-300 border-violet-400/30');
-  if (filters.contractSent !== 'all') pill('contractSent', `Contract sent: ${filters.contractSent}`, PenSquare, 'bg-indigo-500/20 text-indigo-300 border-indigo-400/30');
-  if (filters.contractSigned !== 'all') pill('contractSigned', `Signed: ${filters.contractSigned}`, FileCheck2, 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30');
-  if (filters.depositPaid !== 'all') pill('depositPaid', `Deposit: ${filters.depositPaid}`, CircleDollarSign, 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30');
-  if (filters.declineStage !== 'all') pill('declineStage', filters.declineStage === 'any' ? 'Declined (any)' : `Declined ${filters.declineStage.toLowerCase()}`, AlertOctagon, 'bg-rose-500/20 text-rose-300 border-rose-400/30');
+  if (filters.outreachStatus !== 'all') pill('outreachStatus', `Outreach: ${filters.outreachStatus}`, PhoneCall, 'bg-blue-50 text-blue-700 border-blue-200');
+  if (filters.meetingScheduled !== 'all') pill('meetingScheduled', `Meeting: ${filters.meetingScheduled}`, Calendar, 'bg-violet-50 text-violet-700 border-violet-200');
+  if (filters.contractSent !== 'all') pill('contractSent', `Contract sent: ${filters.contractSent}`, PenSquare, 'bg-indigo-50 text-indigo-700 border-indigo-200');
+  if (filters.contractSigned !== 'all') pill('contractSigned', `Signed: ${filters.contractSigned}`, FileCheck2, 'bg-emerald-50 text-emerald-700 border-emerald-200');
+  if (filters.depositPaid !== 'all') pill('depositPaid', `Deposit: ${filters.depositPaid}`, CircleDollarSign, 'bg-emerald-50 text-emerald-700 border-emerald-200');
+  if (filters.declineStage !== 'all') pill('declineStage', filters.declineStage === 'any' ? 'Declined (any)' : `Declined ${filters.declineStage.toLowerCase()}`, AlertOctagon, 'bg-rose-50 text-rose-700 border-rose-200');
   if (filters.overdue !== 'all') {
     const label =
       filters.overdue === 'over30' ? 'Outstanding > 30d'
       : filters.overdue === 'over14' ? 'Outstanding > 14d'
       : 'Contracts outstanding';
-    pill('overdue', label, Clock, 'bg-amber-500/20 text-amber-300 border-amber-400/30');
+    pill('overdue', label, Clock, 'bg-amber-50 text-amber-700 border-amber-200');
   }
 
   return <>{chips}</>;
@@ -245,12 +245,12 @@ function SmallIcon({ icon: Icon }: { icon: React.ElementType }) {
 export function SalesTrackerFiltersHeader({ activeCount }: { activeCount: number }) {
   return (
     <div className="col-span-full flex items-center gap-2 -mb-1">
-      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-orange-500/40 to-amber-500/40 ring-1 ring-white/10">
-        <Sparkles className="w-3.5 h-3.5 text-orange-200" />
+      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-orange-400 to-pink-500 shadow-sm">
+        <Sparkles className="w-3.5 h-3.5 text-white" />
       </div>
-      <span className="text-[11px] font-bold uppercase tracking-wider text-white/70">Sales Tracker filters</span>
+      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Sales Tracker filters</span>
       {activeCount > 0 && (
-        <span className="ml-0.5 rounded-md bg-orange-500/30 border border-orange-400/40 px-1.5 py-0.5 text-[10px] font-bold text-orange-100">
+        <span className="ml-0.5 rounded-md bg-orange-100 border border-orange-200 px-1.5 py-0.5 text-[10px] font-bold text-orange-700">
           {activeCount}
         </span>
       )}
