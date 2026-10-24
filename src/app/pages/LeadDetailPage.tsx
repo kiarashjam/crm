@@ -59,6 +59,7 @@ import AiNextActionCard from '@/app/components/AiNextActionCard';
 import SaveLeadAsContactDialog from '@/app/components/SaveLeadAsContactDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
+import { Confetti } from '@/app/components/Confetti';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 
@@ -183,6 +184,8 @@ export default function LeadDetailPage() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDue, setNewTaskDue] = useState('');
   const [creatingTask, setCreatingTask] = useState(false);
+  // The task just ticked off, so its box can throw a little confetti.
+  const [taskBurst, setTaskBurst] = useState<{ id: string; at: number } | null>(null);
 
   // ----- Initial load -----
   // Each id-keyed effect uses a `cancelled` flag so a quick A → B navigation
@@ -581,6 +584,7 @@ export default function LeadDetailPage() {
 
   const toggleTask = async (task: TaskItem) => {
     const nextStatus = task.status === 'completed' ? 'todo' : 'completed';
+    if (nextStatus === 'completed') setTaskBurst({ id: task.id, at: Date.now() });
     const updated = await updateTask(task.id, { status: nextStatus, completed: nextStatus === 'completed' });
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)));
@@ -1031,8 +1035,14 @@ export default function LeadDetailPage() {
                 <div className="space-y-5">
                   {/* Quick note composer — writers only */}
                   {!isReadOnly && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Add a note</label>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-[border-color,box-shadow] duration-300 focus-within:border-amber-300 focus-within:shadow-lg focus-within:shadow-amber-500/15 focus-within:ring-4 focus-within:ring-amber-200/40">
+                    {/* Warms up while writing: an amber border and a soft glow. */}
+                    <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-sm" aria-hidden>
+                        <FileText className="h-3.5 w-3.5" />
+                      </span>
+                      Add a note
+                    </label>
                     <textarea
                       value={noteDraft}
                       onChange={(e) => setNoteDraft(e.target.value)}
@@ -1041,10 +1051,10 @@ export default function LeadDetailPage() {
                       }}
                       rows={2}
                       placeholder="Capture a quick thought — Cmd/Ctrl+Enter to save."
-                      className="mt-1.5 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30"
+                      className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-amber-50/30 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-amber-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-300/40"
                     />
                     <div className="mt-2 flex items-center justify-end">
-                      <Button size="sm" onClick={handleAddNote} disabled={!noteDraft.trim() || savingNote} className="gap-1.5">
+                      <Button size="sm" onClick={handleAddNote} disabled={!noteDraft.trim() || savingNote} className="gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow shadow-orange-500/25 hover:opacity-95">
                         {savingNote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                         Save note
                       </Button>
@@ -1057,7 +1067,9 @@ export default function LeadDetailPage() {
                     <details className="rounded-2xl border border-slate-200 bg-white shadow-sm group">
                       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                         <span className="inline-flex items-center gap-2">
-                          <Mail className="w-4 h-4 text-purple-600" />
+                          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-fuchsia-600 text-white shadow-sm" aria-hidden>
+                            <Mail className="h-3.5 w-3.5" />
+                          </span>
                           Compose email to {lead.name}
                         </span>
                         <Pencil className="w-3.5 h-3.5 text-slate-300 group-open:rotate-90 transition-transform" />
@@ -1077,7 +1089,7 @@ export default function LeadDetailPage() {
                           className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30"
                         />
                         <div className="flex items-center justify-end">
-                          <Button size="sm" onClick={handleSendEmail} disabled={!emailBody.trim() || sendingEmail} className="gap-1.5 bg-purple-600 hover:bg-purple-700">
+                          <Button size="sm" onClick={handleSendEmail} disabled={!emailBody.trim() || sendingEmail} className="gap-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white shadow shadow-fuchsia-500/25 hover:opacity-95">
                             {sendingEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
                             Log & open in mail client
                           </Button>
@@ -1093,8 +1105,13 @@ export default function LeadDetailPage() {
               {tab === 'tasks' && (
                 <div className="space-y-4">
                   {!isReadOnly && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">New task</label>
+                  <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-orange-50/40 p-4 shadow-sm transition-shadow focus-within:shadow-md focus-within:shadow-orange-500/10">
+                    <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-pink-500 text-white shadow-sm" aria-hidden>
+                        <Plus className="h-3.5 w-3.5" />
+                      </span>
+                      New task
+                    </label>
                     <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
                       <input
                         value={newTaskTitle}
@@ -1109,7 +1126,7 @@ export default function LeadDetailPage() {
                         onChange={(e) => setNewTaskDue(e.target.value)}
                         className="rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30"
                       />
-                      <Button size="sm" onClick={handleAddTask} disabled={!newTaskTitle.trim() || creatingTask} className="gap-1.5">
+                      <Button size="sm" onClick={handleAddTask} disabled={!newTaskTitle.trim() || creatingTask} className="gap-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 text-white shadow shadow-pink-500/25 hover:opacity-95">
                         {creatingTask ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                         Add
                       </Button>
@@ -1118,8 +1135,17 @@ export default function LeadDetailPage() {
                   )}
 
                   {tasks.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/40 px-6 py-10 text-center text-sm text-slate-500">
-                      No tasks yet. Add one above to get started.
+                    <div className="rounded-2xl border border-dashed border-orange-200 bg-gradient-to-br from-white via-orange-50/40 to-pink-50/40 px-6 py-10 text-center">
+                      <motion.span
+                        aria-hidden
+                        className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-pink-500 text-white shadow-lg shadow-pink-500/25"
+                        animate={reduce ? undefined : { y: [0, -6, 0], rotate: [0, -6, 6, 0] }}
+                        transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+                      >
+                        <CheckCircle2 className="h-6 w-6" />
+                      </motion.span>
+                      <p className="mt-3 text-sm font-medium text-slate-600">No tasks yet.</p>
+                      <p className="mt-0.5 text-xs text-slate-400">Add one above, and tick it off here when it is done.</p>
                     </div>
                   ) : (
                     <ul className="space-y-2">
@@ -1135,18 +1161,29 @@ export default function LeadDetailPage() {
                             exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, x: 32, transition: { duration: 0.2 } }}
                             transition={{ duration: 0.3, ease: EASE }}
                             className={cn(
-                            'group flex items-start gap-3 rounded-2xl border bg-white px-4 py-3 transition-[border-color,box-shadow] hover:shadow-sm',
-                            overdue ? 'border-red-200' : 'border-slate-200',
+                            'group flex items-start gap-3 rounded-2xl border border-l-4 px-4 py-3 transition-[border-color,box-shadow,background-color] hover:shadow-md',
+                            t.status === 'completed'
+                              ? 'border-emerald-200 border-l-emerald-400 bg-emerald-50/40'
+                              : overdue
+                                ? 'border-red-200 border-l-red-500 bg-gradient-to-r from-red-50/60 to-white'
+                                : t.priority === 'high'
+                                  ? 'border-slate-200 border-l-pink-500 bg-white'
+                                  : t.priority === 'medium'
+                                    ? 'border-slate-200 border-l-amber-400 bg-white'
+                                    : 'border-slate-200 border-l-sky-300 bg-white',
                           )}>
-                            <button
+                            <span className="relative mt-0.5 flex shrink-0">
+                            <Confetti fire={taskBurst?.id === t.id ? taskBurst.at : 0} count={14} spread={42} />
+                            <motion.button
                               type="button"
+                              whileTap={reduce ? undefined : { scale: 0.85 }}
                               onClick={() => toggleTask(t)}
                               aria-label={t.status === 'completed' ? 'Mark task as not done' : 'Mark task as done'}
                               className={cn(
-                                'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors',
+                                'flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors',
                                 t.status === 'completed'
-                                  ? 'border-emerald-500 bg-emerald-500 text-white'
-                                  : 'border-slate-300 bg-white hover:border-emerald-400',
+                                  ? 'border-emerald-500 bg-gradient-to-br from-emerald-400 to-teal-500 text-white'
+                                  : 'border-slate-300 bg-white hover:border-emerald-400 hover:bg-emerald-50',
                               )}
                             >
                               <AnimatePresence initial={false}>
@@ -1162,7 +1199,8 @@ export default function LeadDetailPage() {
                                   </motion.span>
                                 )}
                               </AnimatePresence>
-                            </button>
+                            </motion.button>
+                            </span>
                             <div className="min-w-0 flex-1">
                               <p className={cn('text-sm font-medium text-slate-800', t.status === 'completed' && 'line-through text-slate-500')}>
                                 {t.title}
@@ -1179,8 +1217,12 @@ export default function LeadDetailPage() {
                             </div>
                             <div className="flex shrink-0 items-center gap-1">
                               <span className={cn(
-                                'text-[10px] font-semibold uppercase tracking-wider rounded-md px-1.5 py-0.5',
-                                t.priority === 'high' ? 'bg-red-50 text-red-600' : t.priority === 'medium' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500',
+                                'text-[10px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5',
+                                t.priority === 'high'
+                                  ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-sm shadow-pink-500/30'
+                                  : t.priority === 'medium'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-sky-50 text-sky-600',
                               )}>{t.priority}</span>
                               <button
                                 type="button"
@@ -1214,6 +1256,7 @@ export default function LeadDetailPage() {
                   <ActivityTimeline
                     activities={noteActivities}
                     emptyHint="No notes yet. Click ‘Add a note’ on the Activity tab."
+                    emptyDetail="Notes you save show up here, newest first."
                   />
                 </div>
               )}

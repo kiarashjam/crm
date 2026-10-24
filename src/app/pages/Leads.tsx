@@ -1,18 +1,17 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Search, Plus, Building2, User, ArrowRightCircle, Link2,
-  Mail, Phone, Sparkles, Check, Tag, UserPlus, Info, CircleDot,
-  Upload, RefreshCw, Users, Handshake, ArrowRight, CheckCircle2,
-  SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, X, Download,
-  Target, Clock, Zap, Calendar, AlertCircle, Activity as ActivityIcon,
-  MessageSquarePlus, UserCircle, ChevronDown, AlertTriangle,
+  Search, Plus, Building2, User, ArrowRightCircle, Sparkles, Check,
+  Tag, UserPlus, Info, CircleDot, Upload, RefreshCw, Users, Handshake,
+  ArrowRight, CheckCircle2, SlidersHorizontal, ArrowUpDown, ArrowUp,
+  ArrowDown, X, Target, Clock, Zap, AlertCircle, UserCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
 import { createLeadOrOfferDuplicate } from './leads/createLeadOrOfferDuplicate';
 import AppHeader from '@/app/components/AppHeader';
-import { PageEnter, Reveal } from '@/app/components/motion/PageEnter';
+import { PageEnter } from '@/app/components/motion/PageEnter';
 import { LeadsListSkeleton } from './leads/components/LeadsListSkeleton';
 import { LeadPipelineStrip } from './leads/LeadPipelineStrip';
 import DataPagination from '@/app/components/DataPagination';
@@ -65,13 +64,10 @@ import {
 // Import extracted components from leads folder
 import { AddLeadDialog } from './leads/AddLeadDialog';
 import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
-import { DerivedStatusBadge } from './leads/components/DerivedStatusBadge';
-import { QuickLogPopover } from './leads/components/QuickLogPopover';
-import { AssignPopover } from './leads/components/AssignPopover';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
-import { SalesTrackerBadges } from './leads/components/SalesTrackerBadges';
-import { InlineSalesEditorPopover } from './leads/components/InlineSalesEditorPopover';
+import { LeadGalleryCard } from './leads/LeadGalleryCard';
+import { LeadsHero } from './leads/LeadsHero';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
 import {
   SalesTrackerFilters,
@@ -89,78 +85,16 @@ import {
 } from './salesTracker/computed';
 import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignmentMigrationDialog';
 import { LeadReferralMigrationDialog } from './leads/components/LeadReferralMigrationDialog';
-import { Checkbox } from '@/app/components/ui/checkbox';
-import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, ACTIVITY_TYPES } from './leads/config';
+import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM } from './leads/config';
 import { QUALIFIED_OR_BEYOND, statusIn } from './leads/leadStatusSync';
 import { findStatusFixes } from './leads/bulkStatusReconcile';
 import StatusReconcileDialog from './leads/components/StatusReconcileDialog';
 import { isValidGuid } from './leads/utils';
 import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignmentStore';
-import { parsePipeline, pipelineBadge } from './leads/leadPipeline';
-import { matchesLeadSearch, leadInitials } from './leads/leadText';
+import { matchesLeadSearch } from './leads/leadText';
 import type { LeadForm } from './leads/types';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
-
-/** Fallback row style when activity type is unknown (matches `note` in config). */
-const DEFAULT_ACTIVITY_TYPE = ACTIVITY_TYPES[3]!;
-
-// --- Lead card display constants & formatters (module-level so they are not
-//     re-allocated for every card on every render). ---
-type StatusStyle = { bg: string; text: string; border: string; dot: string };
-const LEAD_STATUS_COLORS: Record<string, StatusStyle> = {
-  New: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', dot: 'bg-blue-500' },
-  Contacted: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' },
-  Qualified: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-  Lost: { bg: 'bg-slate-100', text: 'text-slate-500', border: 'border-slate-200', dot: 'bg-slate-400' },
-};
-const DEFAULT_STATUS_STYLE: StatusStyle = { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', dot: 'bg-slate-400' };
-
-const LEAD_AVATAR_GRADIENTS: Record<string, string> = {
-  New: 'from-blue-500 to-cyan-400',
-  Contacted: 'from-amber-500 to-orange-400',
-  Qualified: 'from-emerald-500 to-teal-400',
-  Lost: 'from-slate-400 to-slate-300',
-};
-
-const LEAD_SOURCE_ICONS: Record<string, string> = {
-  website: '🌐',
-  referral: '🤝',
-  ads: '📢',
-  events: '🎯',
-  manual: '✏️',
-  linkedin: '💼',
-  cold_call: '📞',
-  email_campaign: '📧',
-};
-
-const LEAD_SOURCE_BADGE_STYLES: Record<string, string> = {
-  website: 'bg-gradient-to-r from-sky-50 via-blue-50 to-indigo-50 text-blue-900 border-blue-200/70 shadow-sm shadow-blue-500/10',
-  referral: 'bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-900 border-emerald-200/70 shadow-sm',
-  ads: 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border-amber-200/70 shadow-sm',
-  events: 'bg-gradient-to-r from-violet-50 to-fuchsia-50 text-violet-900 border-violet-200/60 shadow-sm',
-  manual: 'bg-gradient-to-r from-slate-100 to-slate-50 text-slate-800 border-slate-200/80 shadow-sm',
-  linkedin: 'bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-900 border-sky-200/70 shadow-sm',
-  cold_call: 'bg-gradient-to-r from-rose-50 to-orange-50 text-rose-900 border-rose-200/60 shadow-sm',
-  email_campaign: 'bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-900 border-indigo-200/70 shadow-sm',
-};
-const DEFAULT_SOURCE_BADGE_CLASS = 'bg-gradient-to-r from-slate-50 to-slate-100 text-slate-700 border-slate-200/70 shadow-sm';
-
-const safeDate = (dateStr?: string): Date | null => {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
-const fmtAddedAt = (dateStr?: string) =>
-  safeDate(dateStr)?.toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit',
-  }) ?? null;
-const fmtDateShort = (dateStr?: string) =>
-  safeDate(dateStr)?.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) ?? null;
-const fmtDateFull = (dateStr?: string) =>
-  safeDate(dateStr)?.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) ?? null;
-const fmtActivityWhen = (dateStr: string) =>
-  safeDate(dateStr)?.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) ?? '';
 
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
 /** Session-scoped scroll position so returning from a lead detail restores it. */
@@ -1404,6 +1338,11 @@ export default function Leads() {
 
   const companyName = (lead: Lead) =>
     lead.companyName ?? (lead.companyId ? companies.find((c) => c.id === lead.companyId)?.name : undefined) ?? '—';
+  /** The company a card names, or null when there is none to name. */
+  const cardCompany = (lead: Lead) => {
+    const name = companyName(lead);
+    return name === '—' ? null : name;
+  };
 
   const stats = leadStats ?? {
     total: totalCount,
@@ -1462,62 +1401,16 @@ export default function Leads() {
               </Button>
             </div>
           )}
-          {/* Enhanced Header Section with Dark Decorative Elements */}
-          <Reveal index={0} className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-          {/* Decorative blur elements */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-            <div className="absolute inset-0 opacity-5" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l9.9-9.9h-2.83zM32 0l-3.486 3.485-1.414-1.414L30.586 0H32zM0 5.373l.828-.83 1.415 1.415L0 8.2V5.374zm0 5.656l.828-.829 5.657 5.657-1.414 1.414L0 11.03v-.001zm0 5.656l.828-.828 8.485 8.485-1.414 1.414L0 16.686v-.001zm0 5.657l.828-.828 11.314 11.314-1.414 1.414L0 22.343v-.001zM60 5.373l-.828-.83-1.415 1.415L60 8.2V5.374zm0 5.656l-.828-.829-5.657 5.657 1.414 1.414L60 11.03v-.001zm0 5.656l-.828-.828-8.485 8.485 1.414 1.414L60 16.686v-.001zm0 5.657l-.828-.828-11.314 11.314 1.414 1.414L60 22.343v-.001z' fill='%23fff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E")` }} />
-          </div>
-          
-          <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                  <Users className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Leads</h1>
-                  <p className="text-slate-400 mt-1">
-                    {loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage and qualify your sales leads'}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex flex-wrap items-center gap-3">
-                {!isReadOnly && (
-                  <>
-                    <Button onClick={() => navigate('/leads/routing')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
-                      <SlidersHorizontal className="w-4 h-4" />
-                      <span className="hidden sm:inline">Routing</span>
-                    </Button>
-                    <Button onClick={() => navigate('/leads/webhook')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
-                      <Link2 className="w-4 h-4" />
-                      <span className="hidden sm:inline">Webhook</span>
-                    </Button>
-                    <Button onClick={() => navigate('/leads/import')} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30">
-                      <Upload className="w-4 h-4" />
-                      <span className="hidden sm:inline">Import</span>
-                    </Button>
-                  </>
-                )}
-                {/* Export is read-only, so viewers keep it. */}
-                <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30 disabled:opacity-60">
-                  <Download className={`w-4 h-4 ${exporting ? 'animate-pulse' : ''}`} />
-                  <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export CSV'}</span>
-                </Button>
-                {!isReadOnly && (
-                  <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
-                    <Plus className="w-4 h-4" />
-                    Add Lead
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </Reveal>
+          <LeadsHero
+            status={loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage and qualify your sales leads'}
+            readOnly={isReadOnly}
+            exporting={exporting}
+            onRouting={() => navigate('/leads/routing')}
+            onWebhook={() => navigate('/leads/webhook')}
+            onImport={() => navigate('/leads/import')}
+            onExport={handleExportLeads}
+            onAdd={openCreate}
+          />
           <NextActionsSlot />
 
           {!loading && totalCount > 0 && (
@@ -1584,19 +1477,19 @@ export default function Leads() {
             it's the first thing a user sees when opening Leads. */}
         <SalesTrackerPanel leads={leads} />
 
-        {/* Search, Filter & Sort Bar - Modern Dark Theme */}
-        <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-4 mb-6 shadow-xl overflow-hidden">
+        {/* Search, filter and sort */}
+        <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
           {/* Decorative elements */}
-          <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
-          <div className="absolute bottom-0 left-0 w-24 h-24 bg-violet-500/10 rounded-full blur-2xl -ml-10 -mb-10" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-orange-300/25 rounded-full blur-2xl -mr-10 -mt-10" />
+          <div className="absolute bottom-0 left-0 w-24 h-24 bg-violet-300/25 rounded-full blur-2xl -ml-10 -mb-10" />
           
           <div className="relative flex flex-col sm:flex-row gap-3">
             {/* Search Input - Enhanced */}
             <div className="relative flex-1 group">
               <div className="absolute inset-0 bg-gradient-to-r from-orange-500/20 via-amber-500/20 to-orange-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
               <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center group-focus-within:from-orange-500/40 group-focus-within:to-amber-500/40 transition-all duration-300">
-                  <Search className="w-4 h-4 text-orange-300 group-focus-within:text-orange-200 transition-colors" aria-hidden />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-orange-100 to-pink-100 flex items-center justify-center group-focus-within:from-orange-200 group-focus-within:to-pink-200 transition-all duration-300">
+                  <Search className="w-4 h-4 text-orange-500 group-focus-within:text-orange-600 transition-colors" aria-hidden />
                 </div>
                 <Input
                   ref={searchInputRef}
@@ -1604,14 +1497,14 @@ export default function Leads() {
                   placeholder="Search by name, email, or phone…  (press / )"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-14 pr-10 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white placeholder:text-slate-400 shadow-xl shadow-black/10 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 focus:bg-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300"
+                  className="pl-14 pr-10 h-11 rounded-xl border border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400 focus:border-orange-300 focus:ring-4 focus:ring-orange-200/50 focus:bg-white hover:bg-white hover:border-slate-300 transition-all duration-300"
                   aria-label="Search leads"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-white/10 hover:bg-red-500/30 flex items-center justify-center text-slate-400 hover:text-red-300 transition-all duration-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -1626,19 +1519,19 @@ export default function Leads() {
                 <div className={`absolute inset-0 rounded-xl blur-lg transition-all duration-300 ${
                   showFilters || activeFilterCount > 0 
                     ? 'bg-gradient-to-r from-orange-500/40 to-amber-500/40 opacity-100' 
-                    : 'bg-white/10 opacity-0 group-hover/btn:opacity-50'
+                    : 'bg-orange-200/50 opacity-0 group-hover/btn:opacity-60'
                 }`} />
                 <Button
                   variant="outline"
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`relative h-11 px-4 rounded-xl border shadow-xl shadow-black/10 transition-all duration-300 ${
+                  className={`relative h-11 px-4 rounded-xl border shadow-sm transition-all duration-300 ${
                     showFilters || activeFilterCount > 0
                       ? 'bg-gradient-to-r from-orange-500 to-amber-500 border-orange-400/50 text-white hover:from-orange-400 hover:to-amber-400 hover:shadow-orange-500/25'
-                      : 'bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 hover:border-white/20'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-orange-50 hover:border-orange-300 hover:text-orange-700'
                   }`}
                 >
                   <div className={`w-6 h-6 rounded-lg flex items-center justify-center mr-2 transition-all duration-300 ${
-                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-white/10'
+                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-orange-100 text-orange-600'
                   }`}>
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </div>
@@ -1653,7 +1546,7 @@ export default function Leads() {
 
               {/* Sort Dropdown - Enhanced */}
               <div className="relative group/sort">
-                <div className="absolute inset-0 bg-white/10 rounded-xl blur-lg opacity-0 group-hover/sort:opacity-50 transition-all duration-300" />
+                <div className="absolute inset-0 bg-violet-200/50 rounded-xl blur-lg opacity-0 group-hover/sort:opacity-60 transition-all duration-300" />
                 <Select
                   value={`${sortField}-${sortDirection}`}
                   onValueChange={(v) => {
@@ -1662,10 +1555,10 @@ export default function Leads() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[190px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
+                  <SelectTrigger className="relative h-11 w-[190px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                     <div className="flex min-w-0 items-center gap-2">
-                      <div className="w-6 h-6 shrink-0 rounded-lg bg-white/10 flex items-center justify-center">
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-300" />
+                      <div className="w-6 h-6 shrink-0 rounded-lg bg-violet-100 flex items-center justify-center">
+                        <ArrowUpDown className="w-3.5 h-3.5 text-violet-600" />
                       </div>
                       <span className="min-w-0 truncate text-sm">
                         {SORT_LABELS[`${sortField}-${sortDirection}`] ?? 'Sort by…'}
@@ -1729,15 +1622,15 @@ export default function Leads() {
 
           {/* Expandable Filter Panel */}
           {showFilters && (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.09] to-white/[0.04] backdrop-blur-md p-4 sm:p-5 shadow-lg shadow-black/20 animate-in slide-in-from-top-2 duration-200">
+            <div className="mt-4 rounded-2xl border border-orange-100 bg-gradient-to-b from-orange-50/70 via-white to-white p-4 sm:p-5 shadow-sm animate-in slide-in-from-top-2 duration-200">
               {/* Panel header */}
               <div className="flex items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-500/30 to-amber-500/30 ring-1 ring-white/10 flex items-center justify-center shrink-0">
-                    <SlidersHorizontal className="w-4 h-4 text-orange-200" />
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-orange-400 to-pink-500 shadow-sm shadow-pink-500/20 flex items-center justify-center shrink-0">
+                    <SlidersHorizontal className="w-4 h-4 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-semibold text-white leading-none">Refine results</h3>
+                    <h3 className="text-sm font-semibold text-slate-900 leading-none">Refine results</h3>
                     <p className="text-[11px] text-slate-400 mt-1.5 leading-none">
                       {activeFilterCount > 0
                         ? `${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active`
@@ -1750,7 +1643,7 @@ export default function Leads() {
                     variant="ghost"
                     size="sm"
                     onClick={clearFilters}
-                    className="h-8 px-3 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 shrink-0"
+                    className="h-8 px-3 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 shrink-0"
                   >
                     <X className="w-3.5 h-3.5 mr-1" />
                     Clear all
@@ -1762,8 +1655,8 @@ export default function Leads() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                 {/* Status Filter (multi-select) */}
                 <div className="min-w-0">
-                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    <Tag className="w-3.5 h-3.5 text-orange-300/80" />
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    <Tag className="w-3.5 h-3.5 text-orange-500" />
                     Status
                   </label>
                   <StatusFilterMultiSelect
@@ -1775,12 +1668,12 @@ export default function Leads() {
 
                 {/* Source Filter */}
                 <div className="min-w-0">
-                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-orange-300/80" />
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-orange-500" />
                     Source
                   </label>
                   <Select value={filterSource} onValueChange={setFilterSource}>
-                    <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
                       <SelectValue placeholder="All sources" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1796,12 +1689,12 @@ export default function Leads() {
 
                 {/* Converted Filter */}
                 <div className="min-w-0">
-                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    <RefreshCw className="w-3.5 h-3.5 text-orange-300/80" />
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 text-orange-500" />
                     Conversion
                   </label>
                   <Select value={filterConverted} onValueChange={(v) => setFilterConverted(v as typeof filterConverted)}>
-                    <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
                       <SelectValue placeholder="All leads" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1824,12 +1717,12 @@ export default function Leads() {
 
                 {/* Assignment Filter */}
                 <div className="min-w-0">
-                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    <User className="w-3.5 h-3.5 text-orange-300/80" />
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    <User className="w-3.5 h-3.5 text-orange-500" />
                     Assignment
                   </label>
                   <Select value={filterAssignment} onValueChange={setFilterAssignment}>
-                    <SelectTrigger className="w-full h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
                       <SelectValue placeholder="All assignments" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1867,7 +1760,7 @@ export default function Leads() {
                 </div>
 
                 {/* Sales Tracker filters — one axis per Excel enum */}
-                <div className="col-span-full pt-3 border-t border-white/10">
+                <div className="col-span-full pt-3 border-t border-slate-200/80">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     <SalesTrackerFiltersHeader activeCount={activeSalesFilterCount} />
                     <SalesTrackerFilters value={salesFilters} onChange={patchSalesFilters} />
@@ -1882,21 +1775,21 @@ export default function Leads() {
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className="text-xs text-slate-400">Showing:</span>
               {searchQuery && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-white text-xs font-medium border border-white/10">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                   <Search className="w-3 h-3" />
                   &quot;{searchQuery}&quot;
-                  <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-orange-300 transition-colors">
+                  <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-orange-600 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
               {filterStatuses.map((status) => (
-                <span key={status} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-400/30">
+                <span key={status} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-200">
                   <Tag className="w-3 h-3" />
                   {status}
                   <button
                     onClick={() => setFilterStatuses((prev) => prev.filter((s) => s !== status))}
-                    className="ml-0.5 hover:text-blue-100 transition-colors"
+                    className="ml-0.5 hover:text-blue-900 transition-colors"
                     aria-label={`Remove ${status} filter`}
                   >
                     <X className="w-3 h-3" />
@@ -1904,32 +1797,32 @@ export default function Leads() {
                 </span>
               ))}
               {filterSource !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-medium border border-amber-400/30">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
                   <Sparkles className="w-3 h-3" />
                   {filterSource}
-                  <button onClick={() => setFilterSource('all')} className="ml-0.5 hover:text-amber-100 transition-colors">
+                  <button onClick={() => setFilterSource('all')} className="ml-0.5 hover:text-amber-900 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
               {filterConverted !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-medium border border-emerald-400/30">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
                   <RefreshCw className="w-3 h-3" />
                   {filterConverted === 'converted' ? 'Converted' : 'Active'}
-                  <button onClick={() => setFilterConverted('all')} className="ml-0.5 hover:text-emerald-100 transition-colors">
+                  <button onClick={() => setFilterConverted('all')} className="ml-0.5 hover:text-emerald-900 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
               {filterAssignment !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-medium border border-indigo-400/30">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-xs font-medium border border-indigo-200">
                   <User className="w-3 h-3" />
                   {filterAssignment === 'me'
                     ? 'Assigned to me'
                     : filterAssignment === 'unassigned'
                       ? 'Unassigned'
                       : `Assigned to ${orgMembersById.get(filterAssignment)?.name ?? 'member'}`}
-                  <button onClick={() => setFilterAssignment('all')} className="ml-0.5 hover:text-indigo-100 transition-colors">
+                  <button onClick={() => setFilterAssignment('all')} className="ml-0.5 hover:text-indigo-900 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -1946,15 +1839,15 @@ export default function Leads() {
 
           {/* No results message */}
           {filteredLeads.length === 0 && !loading && totalCount > 0 && (
-            <div className="mt-4 flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10">
-              <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+            <div className="mt-4 flex items-center gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center">
                 <Search className="w-5 h-5 text-slate-400" />
               </div>
               <div>
-                <p className="text-sm font-medium text-white">No leads match your filters</p>
+                <p className="text-sm font-medium text-slate-800">No leads match your filters</p>
                 <p className="text-xs text-slate-400 mt-0.5">Try adjusting your search or filter criteria</p>
               </div>
-              <Button variant="outline" size="sm" onClick={clearFilters} className="ml-auto border-white/20 text-white hover:bg-white/10">
+              <Button variant="outline" size="sm" onClick={clearFilters} className="ml-auto border-slate-200 text-slate-700 hover:bg-white">
                 Clear filters
               </Button>
             </div>
@@ -2033,471 +1926,34 @@ export default function Leads() {
               onBulkApply={runBulkApply}
             />
           )}
-          <div className="space-y-3">
-            {filteredLeads.map((lead, leadIndex) => {
-              const statusStyle = LEAD_STATUS_COLORS[lead.status] || DEFAULT_STATUS_STYLE;
-              const phaseBadge = pipelineBadge(parsePipeline(lead.pipelineState));
-
-              const avatarGradient = lead.isConverted
-                ? 'from-emerald-600 to-teal-500'
-                : (LEAD_AVATAR_GRADIENTS[lead.status] || 'from-slate-500 to-slate-400');
-
-              const sourceIcons = LEAD_SOURCE_ICONS;
-              const sourceKey = (lead.source || '').toLowerCase();
-              const sourceBadgeClass = LEAD_SOURCE_BADGE_STYLES[sourceKey] ?? DEFAULT_SOURCE_BADGE_CLASS;
-
-              // Get initials
-              // Same reason as the search filter: `lead.name.split(' ')` throws
-              // outright on a record without one, and the old version also
-              // produced a blank avatar for "Jean  Dupont", whose split yields an
-              // empty middle element.
-              const initials = leadInitials(lead.name);
-
-              // Get assignee info (orgMembers indexed once per render via useMemo below)
-              const assignee = lead.assignedToId ? orgMembersById.get(lead.assignedToId) ?? null : null;
-
-              const formatAddedAt = fmtAddedAt;
-              const formatDateShort = fmtDateShort;
-              const formatDateFull = fmtDateFull;
-              const formatActivityWhen = fmtActivityWhen;
-
-              const leadInteractions = pageActivities.get(lead.id) ?? [];
-
-              return (
-                <Reveal
-                  key={lead.id}
-                  index={leadIndex}
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    // Don't navigate when the click came from an interactive control
-                    // inside the card (e.g. the Log button / its popover, checkbox, links).
-                    if ((e.target as HTMLElement).closest('button, a, input, textarea, label, [role="dialog"], [data-radix-popper-content-wrapper]')) return;
-                    openDetail(lead);
-                  }}
-                  onKeyDown={(e) => {
-                    // Only the card itself (not a focused child control) navigates on Enter/Space.
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      openDetail(lead);
-                    }
-                  }}
-                  className="group relative rounded-2xl border border-slate-200 bg-white shadow-[0_2px_3px_rgba(15,23,42,0.04),0_8px_16px_-6px_rgba(15,23,42,0.10),0_24px_48px_-16px_rgba(15,23,42,0.16)] hover:shadow-[0_3px_6px_rgba(15,23,42,0.06),0_14px_28px_-8px_rgba(99,102,241,0.18),0_32px_64px_-20px_rgba(15,23,42,0.22)] hover:border-indigo-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 overflow-hidden ring-1 ring-black/[0.03]"
-                >
-                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-slate-300/50 to-transparent" />
-
-                  <div className={`absolute left-0 top-0 bottom-0 w-2 rounded-r-full shadow-[3px_0_14px_-3px_rgba(0,0,0,0.12)] ${
-                    lead.isConverted ? 'bg-gradient-to-b from-emerald-500 via-teal-400 to-cyan-400' :
-                    lead.status === 'New' ? 'bg-gradient-to-b from-blue-600 via-indigo-500 to-cyan-400' :
-                    lead.status === 'Contacted' ? 'bg-gradient-to-b from-amber-500 via-orange-500 to-rose-400' :
-                    statusIn(lead.status, QUALIFIED_OR_BEYOND) ? 'bg-gradient-to-b from-emerald-500 via-teal-400 to-cyan-300' :
-                    'bg-gradient-to-b from-slate-500 to-slate-300'
-                  }`} />
-
-                  {/* Bulk-select checkbox: visible on hover, or always when any are selected.
-                      Hidden for view-only members since every bulk action is a write. */}
-                  <div
-                    className={`absolute top-3 left-3 z-20 transition-opacity ${isReadOnly ? 'hidden' : ''} ${
-                      selectedIds.size > 0 || selectedIds.has(lead.id)
-                        ? 'opacity-100'
-                        : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
-                    }`}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Checkbox
-                      checked={selectedIds.has(lead.id)}
-                      onCheckedChange={() => toggleSelected(lead.id)}
-                      aria-label={`Select ${lead.name}`}
-                      className="bg-white shadow"
-                    />
-                  </div>
-
-                  <div className="relative flex gap-5 p-5 pl-7">
-                    {/* Left Section: Avatar & Score */}
-                    <div className="shrink-0 flex flex-col items-center gap-3 rounded-2xl border border-slate-100/90 bg-gradient-to-b from-slate-50/95 via-white to-indigo-50/30 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-                      {/* Avatar */}
-                      <div className="relative">
-                        <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${avatarGradient} flex items-center justify-center text-white font-bold text-xl shadow-[0_4px_8px_-2px_rgba(15,23,42,0.25),0_8px_16px_-4px_rgba(15,23,42,0.2)] ring-4 ring-white`}>
-                          {initials || <User className="w-7 h-7" />}
-                        </div>
-                        {/* Status indicator */}
-                        <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full ${
-                          lead.isConverted ? 'bg-gradient-to-br from-emerald-500 to-teal-500' : statusStyle.dot
-                        } border-[3px] border-white shadow-md flex items-center justify-center`}>
-                          {lead.isConverted ? (
-                            <Check className="w-3.5 h-3.5 text-white" />
-                          ) : (
-                            <span className="w-2 h-2 rounded-full bg-white/90" />
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Lead Score Circle */}
-                      {(lead.leadScore !== undefined && lead.leadScore !== null) && (
-                        <div className="relative">
-                          <div className={`w-14 h-14 rounded-xl flex flex-col items-center justify-center shadow-inner ${
-                            lead.leadScore >= 70 ? 'bg-gradient-to-br from-amber-100 via-orange-50 to-rose-50 border-2 border-amber-300/80' :
-                            lead.leadScore >= 40 ? 'bg-gradient-to-br from-blue-100 via-cyan-50 to-sky-50 border-2 border-blue-300/70' :
-                            'bg-gradient-to-br from-slate-100 to-slate-50 border-2 border-slate-200'
-                          }`}>
-                            <span className={`text-lg font-bold ${
-                              lead.leadScore >= 70 ? 'text-amber-600' :
-                              lead.leadScore >= 40 ? 'text-blue-600' :
-                              'text-slate-500'
-                            }`}>
-                              {lead.leadScore}
-                            </span>
-                            <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Score</span>
-                          </div>
-                          {lead.leadScore >= 70 && (
-                            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md">
-                              <Zap className="w-3 h-3 text-white" />
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Right Section: Main Content */}
-                    <div className="min-w-0 flex-1 flex flex-col gap-3">
-                      {/* Header: Name, Company & Status Badges */}
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-slate-900 text-lg truncate tracking-tight">
-                              {lead.name}
-                            </h3>
-                            {lead.lifecycleStage && (
-                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                                lead.lifecycleStage === 'Hot' ? 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-sm' :
-                                lead.lifecycleStage === 'SQL' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-sm' :
-                                lead.lifecycleStage === 'MQL' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-sm' :
-                                'bg-slate-200 text-slate-600'
-                              }`}>
-                                {lead.lifecycleStage === 'Hot' && <Zap className="w-2.5 h-2.5" />}
-                                {lead.lifecycleStage}
-                              </span>
-                            )}
-                          </div>
-                          {lead.companyId && (
-                            <p className="flex items-center gap-1.5 text-sm text-slate-500 mt-0.5">
-                              <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                              <span className="truncate">{companyName(lead)}</span>
-                            </p>
-                          )}
-                        </div>
-                        
-                        {/* Status Badges */}
-                        <div className="flex flex-wrap items-center gap-2 shrink-0">
-                          {lead.source && (
-                            <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border backdrop-blur-sm font-semibold ${sourceBadgeClass}`}>
-                              <span className="text-sm drop-shadow-sm">{sourceIcons[sourceKey] || '📌'}</span>
-                              <span className="capitalize">{(lead.source || '').replace(/_/g, ' ')}</span>
-                            </span>
-                          )}
-                          {!lead.isConverted && phaseBadge.tone !== 'idle' && (
-                            <span
-                              className={`inline-flex items-center text-xs font-bold px-2.5 py-1.5 rounded-lg border shadow-sm ${
-                                phaseBadge.tone === 'lost'
-                                  ? 'bg-rose-50 text-rose-600 border-rose-200'
-                                  : phaseBadge.tone === 'complete'
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                              }`}
-                              title="Lead lifecycle phase"
-                            >
-                              {phaseBadge.label}
-                            </span>
-                          )}
-                          {/* Read-only. The status comes from the lead's pipeline;
-                              open the lead to change the step that set it. */}
-                          <DerivedStatusBadge
-                            status={lead.status}
-                            pipeline={parsePipeline(lead.pipelineState)}
-                            className="px-2.5 py-1.5"
-                            statusesUnavailable={statusesUnavailable}
-                          />
-                          {lead.isConverted && (
-                            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-white shadow-lg shadow-emerald-300/40 ring-1 ring-white/30">
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              Converted
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Contact Info Row */}
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        {lead.email?.trim() ? (
-                          <a 
-                            href={`mailto:${lead.email.trim()}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-900 border border-blue-200/60 hover:border-blue-300 shadow-sm hover:shadow-md transition-all font-medium"
-                          >
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-blue-600 shadow-sm ring-1 ring-blue-100">
-                              <Mail className="w-4 h-4" />
-                            </span>
-                            <span className="truncate max-w-[180px]">{lead.email.trim()}</span>
-                          </a>
-                        ) : null}
-                        {lead.phone && (
-                          <a 
-                            href={`tel:${lead.phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-teal-50 to-cyan-50 hover:from-teal-100 hover:to-cyan-100 text-teal-900 border border-teal-200/60 hover:border-teal-300 shadow-sm hover:shadow-md transition-all font-medium"
-                          >
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-teal-600 shadow-sm ring-1 ring-teal-100">
-                              <Phone className="w-4 h-4" />
-                            </span>
-                            <span>{lead.phone}</span>
-                          </a>
-                        )}
-                        {lead.referredByContactName && lead.referredByContactId && (
-                          <Link
-                            to={`/contacts/${lead.referredByContactId}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-xl bg-gradient-to-r from-fuchsia-50 to-pink-50 hover:from-fuchsia-100 hover:to-pink-100 text-fuchsia-900 border border-fuchsia-200/60 hover:border-fuchsia-300 shadow-sm hover:shadow-md transition-all font-medium"
-                          >
-                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-fuchsia-600 shadow-sm ring-1 ring-fuchsia-100">
-                              <UserPlus className="w-4 h-4" />
-                            </span>
-                            <span>Referred by {lead.referredByContactName}</span>
-                          </Link>
-                        )}
-                      </div>
-
-                      {/* Sales Tracker Badges (only rendered when populated) */}
-                      <SalesTrackerBadges lead={lead} />
-
-                      {/* Tags Row */}
-                      {lead.tags && lead.tags.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {lead.tags.slice(0, 4).map((tag, idx) => (
-                            <span 
-                              key={idx}
-                              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-gradient-to-r from-purple-50 to-pink-50 text-purple-700 border border-purple-100/80"
-                            >
-                              <Tag className="w-3 h-3" />
-                              {tag}
-                            </span>
-                          ))}
-                          {lead.tags.length > 4 && (
-                            <span className="text-xs text-slate-400 font-medium">+{lead.tags.length - 4} more</span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Description Preview */}
-                      {lead.description && (
-                        <div className="relative overflow-hidden rounded-xl border border-slate-200/60 bg-gradient-to-r from-white via-slate-50/80 to-indigo-50/40 shadow-sm">
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-orange-400 via-amber-400 to-rose-400" aria-hidden />
-                          <p className="text-sm text-slate-700 line-clamp-2 pl-4 pr-4 py-3 font-medium leading-relaxed">
-                            <span className="text-orange-400/90 font-serif text-lg leading-none mr-0.5">“</span>
-                            {lead.description}
-                            <span className="text-orange-400/90 font-serif text-lg leading-none">”</span>
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Interactions (activities) — stopPropagation on click so using the list does not open the card */}
-                      <div
-                        className="rounded-2xl border border-indigo-200/50 bg-gradient-to-br from-white via-indigo-50/50 to-violet-50/60 p-3.5 shadow-[0_8px_30px_-18px_rgba(79,70,229,0.25)] ring-1 ring-indigo-500/[0.06]"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-2.5">
-                          <span className="inline-flex items-center gap-2">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/35">
-                              <ActivityIcon className="w-4 h-4" />
-                            </span>
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-950/80">Interactions</span>
-                          </span>
-                          <span className="rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-bold text-indigo-700 border border-indigo-200/70 tabular-nums shadow-sm">
-                            {leadInteractions.length} total
-                          </span>
-                        </div>
-                        {leadInteractions.length === 0 ? (
-                          <p className="text-xs text-indigo-600/70 pl-0.5">No interactions logged yet — open the lead to add notes and calls.</p>
-                        ) : (
-                          <ul className="max-h-52 overflow-y-auto space-y-2 pr-1">
-                            {leadInteractions.map((activity) => {
-                              const typeKey = (activity.type || '').toLowerCase();
-                              const typeConfig =
-                                ACTIVITY_TYPES.find((t) => t.id === typeKey) ?? DEFAULT_ACTIVITY_TYPE;
-                              const TypeIcon = typeConfig.icon;
-                              const isSystem = typeKey === 'system';
-                              const whenLabel = formatActivityWhen(activity.createdAt);
-                              const iconWrapClass = isSystem
-                                ? 'w-7 h-7 rounded-lg bg-slate-100 text-slate-500 shrink-0 flex items-center justify-center'
-                                : typeConfig.color === 'blue'
-                                  ? 'w-7 h-7 rounded-lg bg-blue-100 text-blue-600 shrink-0 flex items-center justify-center'
-                                  : typeConfig.color === 'purple'
-                                    ? 'w-7 h-7 rounded-lg bg-purple-100 text-purple-600 shrink-0 flex items-center justify-center'
-                                    : typeConfig.color === 'green'
-                                      ? 'w-7 h-7 rounded-lg bg-emerald-100 text-emerald-600 shrink-0 flex items-center justify-center'
-                                      : typeConfig.color === 'slate'
-                                        ? 'w-7 h-7 rounded-lg bg-slate-100 text-slate-500 shrink-0 flex items-center justify-center'
-                                        : 'w-7 h-7 rounded-lg bg-amber-100 text-amber-600 shrink-0 flex items-center justify-center';
-                              return (
-                                <li
-                                  key={activity.id}
-                                  className="flex gap-2.5 rounded-lg border border-slate-200/60 bg-white/90 px-2.5 py-2 text-left"
-                                >
-                                  <div className={iconWrapClass}>
-                                    <TypeIcon className="w-3.5 h-3.5" />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                                      <span
-                                        className={`text-xs font-medium text-slate-800 ${isSystem ? 'italic text-slate-600' : ''}`}
-                                      >
-                                        {activity.subject || typeConfig.label}
-                                      </span>
-                                      {isSystem && (
-                                        <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                                          system
-                                        </span>
-                                      )}
-                                    </div>
-                                    {activity.body && (
-                                      <p className="mt-0.5 text-[11px] text-slate-600 line-clamp-3 whitespace-pre-wrap">
-                                        {activity.body}
-                                      </p>
-                                    )}
-                                    {whenLabel ? (
-                                      <p className="mt-1 text-[10px] text-slate-400">{whenLabel}</p>
-                                    ) : null}
-                                  </div>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
-                      </div>
-
-                      {/* Meta Info Row */}
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        {lead.lastContactedAt && (
-                          <div className="inline-flex items-center gap-2 rounded-full border border-amber-200/70 bg-gradient-to-r from-amber-50 to-orange-50 px-3 py-1.5 text-amber-900 shadow-sm">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-amber-600 shadow-sm ring-1 ring-amber-100">
-                              <Clock className="w-3.5 h-3.5" />
-                            </span>
-                            <span className="font-medium text-amber-950/80">Last contact <span className="font-bold text-amber-950">{formatDateShort(lead.lastContactedAt)}</span></span>
-                          </div>
-                        )}
-                        <div className="inline-flex items-center gap-2 rounded-full border border-blue-200/70 bg-gradient-to-r from-blue-50 to-sky-50 px-3 py-1.5 text-blue-950 shadow-sm">
-                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-blue-600 shadow-sm ring-1 ring-blue-100">
-                            <Calendar className="w-3.5 h-3.5" />
-                          </span>
-                          <span className="font-medium text-blue-950/80">Added <span className="font-bold text-blue-950">{formatAddedAt(lead.createdAtUtc) ?? 'Unknown'}</span></span>
-                        </div>
-                        {lead.isConverted && lead.convertedAtUtc && (
-                          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/70 bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-1.5 text-emerald-950 shadow-sm">
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm ring-1 ring-emerald-100">
-                              <Check className="w-3.5 h-3.5" />
-                            </span>
-                            <span className="font-medium text-emerald-950/80">Converted <span className="font-bold text-emerald-950">{formatDateFull(lead.convertedAtUtc)}</span></span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Card actions: owner assignment + quick-log. Edit /
-                          Convert / Delete live on the detail page. */}
-                      <div
-                        className="flex items-center justify-between gap-2 pt-3 mt-0.5 border-t border-slate-200/70 -mx-1 px-1 pb-0.5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {isReadOnly ? (
-                          /* View-only: the owner is still shown (that is information a
-                             viewer needs) but is not changeable, and logging is hidden. */
-                          <span
-                            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 text-sm text-slate-600 shadow-sm"
-                            title={assignee ? `Assigned to ${assignee.name}` : 'Unassigned'}
-                          >
-                            {assignee ? (
-                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white ring-2 ring-white">
-                                {assignee.name.charAt(0).toUpperCase()}
-                              </span>
-                            ) : (
-                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                                <UserCircle className="h-4 w-4" />
-                              </span>
-                            )}
-                            <span className="truncate font-medium">{assignee ? assignee.name : 'Unassigned'}</span>
-                          </span>
-                        ) : (
-                          <>
-                            <AssignPopover
-                              assigneeId={lead.assignedToId}
-                              members={orgMembers}
-                              onAssign={(userId) => handleAssignLead(lead, userId)}
-                              trigger={
-                                <button
-                                  type="button"
-                                  aria-label={assignee ? `Assigned to ${assignee.name} — change owner` : 'Assign owner'}
-                                  className="group/assign inline-flex max-w-[55%] items-center gap-1.5 rounded-full border border-slate-200 bg-white py-1 pl-1 pr-2.5 text-sm text-slate-600 shadow-sm hover:border-indigo-300 hover:bg-indigo-50/50"
-                                >
-                                  {assignee ? (
-                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-[10px] font-bold text-white ring-2 ring-white">
-                                      {assignee.name.charAt(0).toUpperCase()}
-                                    </span>
-                                  ) : (
-                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                                      <UserCircle className="h-4 w-4" />
-                                    </span>
-                                  )}
-                                  <span className="truncate font-medium">{assignee ? assignee.name : 'Unassigned'}</span>
-                                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                                </button>
-                              }
-                            />
-                            <div className="flex items-center gap-2 shrink-0">
-                              <InlineSalesEditorPopover
-                                lead={lead}
-                                leadName={lead.name}
-                                statusSync={statusSync}
-                                onSaved={(updated) => {
-                                  // Merge in place and deliberately do NOT re-apply
-                                  // the client filters: an auto status change could
-                                  // otherwise drop this row (and the popover the
-                                  // user is still typing in) out of a filtered list.
-                                  setLeads((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
-                                }}
-                                trigger={
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="gap-1.5 bg-white hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-indigo-200/70 hover:border-indigo-300 shadow-sm font-medium rounded-lg"
-                                    aria-label={`Lead pipeline for ${lead.name}`}
-                                  >
-                                    <Sparkles className="w-4 h-4" />
-                                    Track
-                                  </Button>
-                                }
-                              />
-                              <QuickLogPopover
-                                onSubmit={(payload) => handleQuickLogActivity(lead, payload)}
-                                trigger={
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="gap-1.5 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-emerald-200/70 hover:border-emerald-300 shadow-sm font-medium rounded-lg"
-                                    aria-label={`Log activity for ${lead.name}`}
-                                  >
-                                    <MessageSquarePlus className="w-4 h-4" />
-                                    Log
-                                  </Button>
-                                }
-                              />
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </Reveal>
-              );
-            })}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredLeads.map((lead, leadIndex) => (
+              <LeadGalleryCard
+                key={lead.id}
+                lead={lead}
+                index={leadIndex}
+                company={cardCompany(lead)}
+                assignee={lead.assignedToId ? orgMembersById.get(lead.assignedToId) ?? null : null}
+                members={orgMembers}
+                interactions={pageActivities.get(lead.id) ?? []}
+                readOnly={isReadOnly}
+                selected={selectedIds.has(lead.id)}
+                selecting={selectedIds.size > 0}
+                statusesUnavailable={statusesUnavailable}
+                statusSync={statusSync}
+                onOpen={openDetail}
+                onToggleSelected={toggleSelected}
+                onAssign={handleAssignLead}
+                onQuickLog={handleQuickLogActivity}
+                onSaved={(updated) => {
+                  // Merge in place and deliberately do NOT re-apply the client
+                  // filters: an auto status change could otherwise drop this card
+                  // (and the popover the user is still typing in) out of a
+                  // filtered list.
+                  setLeads((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
+                }}
+              />
+            ))}
           </div>
           <DataPagination
             currentPage={currentPage}
