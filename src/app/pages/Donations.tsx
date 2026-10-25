@@ -47,7 +47,8 @@ import {
 } from '@/app/api/donations';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 const CAUSE_COLOR: Record<DonationCause, string> = {
   StaffSupport: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -175,58 +176,29 @@ export default function Donations() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-rose-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-orange-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center shadow-2xl shadow-rose-500/30">
-                    <HeartHandshake className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Donations</h1>
-                    <p className="text-slate-400 mt-1">
-                      Member contributions to staff support, scholarship, and community causes.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openCreate}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600 shadow-lg shadow-rose-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" /> Record donation
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<DollarSign className="w-5 h-5 text-rose-600" />}
-              label="Total raised"
-              value={formatCurrency(stats.totalRaised)}
-            />
-            <StatCard
-              icon={<Users className="w-5 h-5 text-blue-600" />}
-              label="Donors"
-              value={String(stats.donorCount)}
-            />
-            <StatCard
-              icon={<HeartHandshake className="w-5 h-5 text-amber-600" />}
-              label="Top cause"
-              value={stats.topCause ? CAUSE_LABELS[stats.topCause.cause] : '—'}
-              hint={stats.topCause ? formatCurrency(stats.topCause.amount) : undefined}
-            />
-            <StatCard
-              icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
-              label="To acknowledge"
-              value={String(stats.awaitingAcknowledgement)}
-            />
-          </div>
+          <PageHero
+            icon={HeartHandshake}
+            tone="rose"
+            title="Donations"
+            subtitle="Member contributions to staff support, scholarship, and community causes."
+            actions={
+              <Button onClick={openCreate} className={heroPrimary('rose')}>
+                <Plus className="h-4 w-4" /> Record donation
+              </Button>
+            }
+            stats={[
+              { label: 'Total raised', value: stats.totalRaised, icon: DollarSign, tone: 'rose', format: formatCurrency },
+              { label: 'Donors', value: stats.donorCount, icon: Users, tone: 'blue' },
+              {
+                label: 'Top cause',
+                value: stats.topCause ? CAUSE_LABELS[stats.topCause.cause] : '—',
+                icon: HeartHandshake,
+                tone: 'amber',
+                hint: stats.topCause ? formatCurrency(stats.topCause.amount) : undefined,
+              },
+              { label: 'To acknowledge', value: stats.awaitingAcknowledgement, icon: CheckCircle2, tone: 'emerald' },
+            ]}
+          />
 
           <div className="flex flex-col md:flex-row gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
@@ -287,8 +259,8 @@ export default function Donations() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((d) => (
-                    <tr key={d.id} className="border-b border-slate-100 hover:bg-slate-50">
+                  {filtered.map((d, index) => (
+                    <StaggerItem as="tr" key={d.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
                       <td className="px-4 py-3">
                         <p className="font-medium text-slate-900">
                           {d.isAnonymous ? 'Anonymous' : d.memberName}
@@ -330,7 +302,7 @@ export default function Donations() {
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </td>
-                    </tr>
+                    </StaggerItem>
                   ))}
                 </tbody>
               </table>
@@ -426,29 +398,6 @@ export default function Donations() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

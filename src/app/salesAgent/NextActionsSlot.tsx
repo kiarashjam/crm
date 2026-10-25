@@ -34,7 +34,7 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
-export function NextActionsSlot({ className = 'mb-8' }: { className?: string }) {
+export function NextActionsSlot({ className = 'mb-5' }: { className?: string }) {
   const [element, setElement] = useState<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {

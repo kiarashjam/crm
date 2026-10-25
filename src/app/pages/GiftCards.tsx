@@ -55,7 +55,8 @@ import {
 } from '@/app/api/giftCards';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -256,64 +257,24 @@ export default function GiftCards() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-rose-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-pink-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center shadow-2xl shadow-rose-500/30">
-                    <Gift className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Gift Cards</h1>
-                    <p className="text-slate-400 mt-1">
-                      Issue, track, and redeem house gift cards.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openIssueDialog}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 shadow-lg shadow-rose-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  Issue gift card
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<TrendingUp className="w-5 h-5 text-rose-600" />}
-              label="Total issued"
-              value={formatCurrency(stats.totalIssued)}
-              hint="All-time face value"
-            />
-            <StatCard
-              icon={<Sparkles className="w-5 h-5 text-amber-600" />}
-              label="Outstanding"
-              value={formatCurrency(stats.outstandingBalance)}
-              hint={`${stats.activeCount} active cards`}
-            />
-            <StatCard
-              icon={<CreditCard className="w-5 h-5 text-emerald-600" />}
-              label="Redeemed"
-              value={formatCurrency(stats.redeemedAllTime)}
-              hint="All-time redemptions"
-            />
-            <StatCard
-              icon={<Gift className="w-5 h-5 text-violet-600" />}
-              label="Cards"
-              value={String(cards.length)}
-              hint="Issued cards on file"
-            />
-          </div>
+          <PageHero
+            icon={Gift}
+            tone="rose"
+            title="Gift Cards"
+            subtitle="Issue, track, and redeem house gift cards."
+            actions={
+              <Button onClick={openIssueDialog} className={heroPrimary('rose')}>
+                <Plus className="h-4 w-4" />
+                Issue gift card
+              </Button>
+            }
+            stats={[
+              { label: 'Total issued', value: stats.totalIssued, icon: TrendingUp, tone: 'rose', hint: 'all-time face value', format: formatCurrency },
+              { label: 'Outstanding', value: stats.outstandingBalance, icon: Sparkles, tone: 'amber', hint: `${stats.activeCount} active cards`, format: formatCurrency },
+              { label: 'Redeemed', value: stats.redeemedAllTime, icon: CreditCard, tone: 'emerald', hint: 'all-time redemptions', format: formatCurrency },
+              { label: 'Cards', value: cards.length, icon: Gift, tone: 'violet', hint: 'issued cards on file' },
+            ]}
+          />
 
           <Tabs defaultValue="cards">
             <TabsList className="mb-4">
@@ -369,13 +330,15 @@ export default function GiftCards() {
                 />
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {filtered.map((c) => {
+                  {filtered.map((c, index) => {
                     const used = c.faceValue - c.remainingValue;
                     const usedPct = c.faceValue > 0 ? (used / c.faceValue) * 100 : 0;
                     return (
-                      <article
+                      <StaggerItem
+                        as="article"
                         key={c.id}
-                        className="rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                        index={index}
+                        className={`rounded-2xl border border-slate-200 bg-white shadow-sm hover:border-rose-200 overflow-hidden ${liftOnHover}`}
                       >
                         <div className="relative bg-gradient-to-br from-rose-500 via-pink-500 to-fuchsia-500 p-5 text-white">
                           <div className="absolute top-3 right-3">
@@ -450,7 +413,7 @@ export default function GiftCards() {
                             )}
                           </div>
                         </div>
-                      </article>
+                      </StaggerItem>
                     );
                   })}
                 </div>
@@ -477,8 +440,8 @@ export default function GiftCards() {
                       </tr>
                     </thead>
                     <tbody>
-                      {redemptions.map((r) => (
-                        <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      {redemptions.map((r, index) => (
+                        <StaggerItem as="tr" key={r.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
                           <td className="px-4 py-3 font-mono text-xs text-slate-700">{r.giftCardCode}</td>
                           <td className="px-4 py-3 text-slate-700">{r.redeemedByName}</td>
                           <td className="px-4 py-3 text-slate-500">{r.appliedTo ?? '—'}</td>
@@ -488,7 +451,7 @@ export default function GiftCards() {
                           <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
                             {formatDate(r.redeemedAtUtc)}
                           </td>
-                        </tr>
+                        </StaggerItem>
                       ))}
                     </tbody>
                   </table>
@@ -660,29 +623,6 @@ export default function GiftCards() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

@@ -51,7 +51,8 @@ import {
 } from '@/app/api/applications';
 import { MEMBER_TIERS, TIER_DUES, type MemberTier } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -241,64 +242,24 @@ export default function Applications() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-cyan-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-2xl shadow-blue-500/30">
-                    <ClipboardList className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Applications</h1>
-                    <p className="text-slate-400 mt-1">
-                      Review prospective members, approve to onboard, or waitlist.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openCreate}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 shadow-lg shadow-blue-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  New application
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<Clock className="w-5 h-5 text-amber-600" />}
-              label="Awaiting decision"
-              value={String(stats.submitted + stats.underReview)}
-              hint={`${stats.submitted} submitted · ${stats.underReview} reviewing`}
-            />
-            <StatCard
-              icon={<UserCheck className="w-5 h-5 text-emerald-600" />}
-              label="Approved · 30d"
-              value={String(stats.approvedThisMonth)}
-              hint="New members onboarded"
-            />
-            <StatCard
-              icon={<AlertTriangle className="w-5 h-5 text-violet-600" />}
-              label="Waitlisted"
-              value={String(stats.waitlisted)}
-              hint="Active waitlist"
-            />
-            <StatCard
-              icon={<X className="w-5 h-5 text-rose-600" />}
-              label="Rejected · 30d"
-              value={String(stats.rejectedThisMonth)}
-              hint="Closed in last 30 days"
-            />
-          </div>
+          <PageHero
+            icon={ClipboardList}
+            tone="blue"
+            title="Applications"
+            subtitle="Review prospective members, approve to onboard, or waitlist."
+            actions={
+              <Button onClick={openCreate} className={heroPrimary('blue')}>
+                <Plus className="h-4 w-4" />
+                New application
+              </Button>
+            }
+            stats={[
+              { label: 'Awaiting decision', value: stats.submitted + stats.underReview, icon: Clock, tone: 'amber', hint: `${stats.submitted} submitted · ${stats.underReview} reviewing` },
+              { label: 'Approved · 30d', value: stats.approvedThisMonth, icon: UserCheck, tone: 'emerald', hint: 'new members onboarded' },
+              { label: 'Waitlisted', value: stats.waitlisted, icon: AlertTriangle, tone: 'violet', hint: 'active waitlist' },
+              { label: 'Rejected · 30d', value: stats.rejectedThisMonth, icon: X, tone: 'rose', hint: 'closed in last 30 days' },
+            ]}
+          />
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row gap-3 mb-6">
@@ -349,10 +310,11 @@ export default function Applications() {
             />
           ) : (
             <div className="space-y-3">
-              {filtered.map((a) => (
-                <div
+              {filtered.map((a, index) => (
+                <StaggerItem
                   key={a.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+                  index={index}
+                  className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-blue-200 ${liftOnHover}`}
                 >
                   <div className="flex flex-col lg:flex-row gap-4">
                     <div className="flex items-start gap-4 min-w-0 flex-1">
@@ -459,7 +421,7 @@ export default function Applications() {
                       )}
                     </div>
                   </div>
-                </div>
+                </StaggerItem>
               ))}
             </div>
           )}
@@ -611,29 +573,6 @@ export default function Applications() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

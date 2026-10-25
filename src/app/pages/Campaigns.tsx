@@ -55,7 +55,8 @@ import {
 } from '@/app/api/members';
 import { CHANNELS, CATEGORIES, type CommChannel, type CommCategory } from '@/app/api/communications';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const STATUS_BADGE: Record<Campaign['status'], string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -207,41 +208,23 @@ export default function Campaigns() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-fuchsia-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-purple-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-purple-500 flex items-center justify-center shadow-2xl shadow-fuchsia-500/30">
-                    <Megaphone className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Campaigns</h1>
-                    <p className="text-slate-400 mt-1">
-                      Segment members and send bulk emails, SMS, or push.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openCreate}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-fuchsia-500 to-purple-500 hover:from-fuchsia-600 hover:to-purple-600 shadow-lg shadow-fuchsia-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" /> New campaign
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard icon={<Megaphone className="w-5 h-5 text-fuchsia-600" />} label="Drafts" value={String(stats.drafts)} />
-            <StatCard icon={<Clock className="w-5 h-5 text-blue-600" />} label="Scheduled" value={String(stats.scheduled)} />
-            <StatCard icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />} label="Sent" value={String(stats.sent)} />
-            <StatCard icon={<Users className="w-5 h-5 text-amber-600" />} label="Recipients" value={String(stats.totalRecipients)} hint="All campaigns" />
-          </div>
+          <PageHero
+            icon={Megaphone}
+            tone="fuchsia"
+            title="Campaigns"
+            subtitle="Segment members and send bulk emails, SMS, or push."
+            actions={
+              <Button onClick={openCreate} className={heroPrimary('fuchsia')}>
+                <Plus className="h-4 w-4" /> New campaign
+              </Button>
+            }
+            stats={[
+              { label: 'Drafts', value: stats.drafts, icon: Megaphone, tone: 'fuchsia' },
+              { label: 'Scheduled', value: stats.scheduled, icon: Clock, tone: 'blue' },
+              { label: 'Sent', value: stats.sent, icon: CheckCircle2, tone: 'emerald' },
+              { label: 'Recipients', value: stats.totalRecipients, icon: Users, tone: 'amber', hint: 'all campaigns' },
+            ]}
+          />
 
           <div className="flex gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
@@ -274,12 +257,14 @@ export default function Campaigns() {
             />
           ) : (
             <div className="space-y-3">
-              {filtered.map((c) => {
+              {filtered.map((c, index) => {
                 const ChIcon = CHANNEL_ICON[c.channel];
                 return (
-                  <article
+                  <StaggerItem
+                    as="article"
                     key={c.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                    index={index}
+                    className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-fuchsia-200 ${liftOnHover}`}
                   >
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-fuchsia-100 to-purple-100 flex items-center justify-center text-fuchsia-700 shrink-0">
@@ -334,7 +319,7 @@ export default function Campaigns() {
                         </button>
                       </div>
                     </div>
-                  </article>
+                  </StaggerItem>
                 );
               })}
             </div>
@@ -497,29 +482,6 @@ export default function Campaigns() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

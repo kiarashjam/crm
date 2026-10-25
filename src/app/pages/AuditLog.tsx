@@ -8,6 +8,7 @@ import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import PageHero from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 import { cn } from '@/app/components/ui/utils';
 import { getAuditLog, type AuditEvent, type AuditEntity, type AuditAction } from '@/app/api';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
@@ -74,13 +75,13 @@ export default function AuditLog() {
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           <PageHero
             icon={History}
-            iconGradient="from-slate-500 to-slate-700"
+            tone="slate"
             title="Audit log"
             subtitle="A chronological record of changes across your CRM."
             stats={[
-              { label: 'Total events', value: events.length, icon: History, tone: 'slate' },
-              { label: 'Last 7 days', value: events.filter((e) => Date.now() - Date.parse(e.createdAtUtc) <= 7 * 86_400_000).length, icon: CalendarDays, tone: 'indigo' },
-              { label: 'Today', value: events.filter((e) => Date.now() - Date.parse(e.createdAtUtc) <= 86_400_000).length, icon: Clock, tone: 'emerald' },
+              { label: 'Total events', value: events.length, icon: History, tone: 'slate', hint: `${shown.length} shown` },
+              { label: 'Last 7 days', value: events.filter((e) => Date.now() - Date.parse(e.createdAtUtc) <= 7 * 86_400_000).length, icon: CalendarDays, tone: 'indigo', hint: 'this week' },
+              { label: 'Today', value: events.filter((e) => Date.now() - Date.parse(e.createdAtUtc) <= 86_400_000).length, icon: Clock, tone: 'emerald', hint: 'last 24 hours' },
             ]}
           />
 
@@ -109,14 +110,14 @@ export default function AuditLog() {
           ) : (
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <ul className="divide-y divide-slate-50">
-                {shown.map((e) => {
+                {shown.map((e, index) => {
                   const M = ACTION_META[e.action] ?? ACTION_META.updated;
                   const link = detailLink(e);
                   const label = (
                     <span className="font-medium text-slate-800">{e.entityLabel ?? e.entityType}</span>
                   );
                   return (
-                    <li key={e.id} className="flex items-start gap-3 px-4 py-3">
+                    <StaggerItem as="li" key={e.id} index={index} className="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-slate-50">
                       <span className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full', M.tone)}>
                         <M.icon className="h-4 w-4" />
                       </span>
@@ -129,7 +130,7 @@ export default function AuditLog() {
                           {e.actorName ? <> · by {e.actorName}</> : null} · {relTime(e.createdAtUtc)}
                         </p>
                       </div>
-                    </li>
+                    </StaggerItem>
                   );
                 })}
               </ul>

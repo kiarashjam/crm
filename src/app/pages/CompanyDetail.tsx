@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  ArrowLeft, Pencil, Trash2, Building2, Clock, Users, Briefcase, Globe, MapPin,
+  Pencil, Trash2, Building2, Clock, Users, Briefcase, Globe, MapPin,
   ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,14 +10,13 @@ import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
-import { authFetchJson } from '@/app/api/apiClient';
+import { getCompanies, getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
+import { authFetchJson, servesDemoData } from '@/app/api/apiClient';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import type { Company, Contact, Deal } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Badge } from '@/app/components/ui/badge';
-import { Card } from '@/app/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -25,10 +24,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/app/components/ui/dialog';
-import { getCurrencySymbol } from './pipeline/DealCard';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { RecordAvatar, RecordCard, initialsOf } from '@/app/components/RecordCard';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { cn } from '@/app/components/ui/utils';
+import { currencyOf, formatDealSum, formatMoney, parseAmount } from '@/app/lib/money';
 
 type CompanyRaw = Company & Record<string, unknown>;
 
@@ -65,7 +67,11 @@ export default function CompanyDetail() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    authFetchJson<CompanyRaw>(`/api/companies/${id}`)
+    // Demo mode has no server to ask; its companies live in the browser.
+    const load = servesDemoData()
+      ? getCompanies().then((list) => list.find((c) => c.id === id) ?? null)
+      : authFetchJson<CompanyRaw>(`/api/companies/${id}`);
+    load
       .then((c) => {
         if (c) {
           setCompany(c as Company);
@@ -189,243 +195,209 @@ export default function CompanyDetail() {
     );
   }
 
+  const createdLabel = company.createdAtUtc
+    ? new Date(company.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+  const websiteHref = company.website
+    ? (company.website.startsWith('http') ? company.website : `https://${company.website}`)
+    : undefined;
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
-        <main id={MAIN_CONTENT_ID} className="flex-1 w-full max-w-5xl mx-auto px-6 py-8" tabIndex={-1}>
-          {/* Back + Actions */}
-          <div className="flex items-center justify-between mb-6">
-            <Button variant="ghost" onClick={() => navigate('/companies')} className="gap-2 text-slate-600">
-              <ArrowLeft className="w-4 h-4" /> Back to Companies
-            </Button>
-            <div className="flex gap-2">
-              <WriteOnly>
-                <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} className="gap-1">
-                  <Pencil className="w-3.5 h-3.5" /> Edit
-                </Button>
-              </WriteOnly>
-              <WriteOnly>
-                <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </WriteOnly>
-            </div>
-          </div>
-
-          {/* Company Header */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{company.name}</h1>
-                <div className="flex items-center gap-4 mt-3 flex-wrap">
-                  {company.domain && (
-                    <Badge variant="outline" className="gap-1">
-                      <Globe className="w-3 h-3" />
-                      {company.domain}
-                    </Badge>
-                  )}
-                  {company.industry && (
-                    <Badge variant="outline" className="gap-1">
-                      <Briefcase className="w-3 h-3" />
-                      {company.industry}
-                    </Badge>
-                  )}
-                  {company.size && (
-                    <Badge variant="outline">{company.size}</Badge>
-                  )}
-                  {company.location && (
-                    <Badge variant="outline" className="gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {company.location}
-                    </Badge>
-                  )}
-                  {company.website && (
-                    <a
-                      href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sm text-emerald-600 hover:underline"
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      Website
-                    </a>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Description */}
-            {company.description && (
-              <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700">
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Description</p>
-                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{company.description}</p>
-              </div>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <PageHero
+            icon={Building2}
+            avatar={<RecordAvatar name={company.name} tone="blue" />}
+            tone="blue"
+            back={{ to: '/companies', label: 'Back to Companies' }}
+            title={company.name}
+            badges={company.industry && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                <Briefcase className="h-3 w-3" aria-hidden /> {company.industry}
+              </span>
             )}
-
-            {/* Timestamps */}
-            <div className="mt-4 flex gap-4 text-xs text-slate-400">
-              {company.createdAtUtc && <span>Created {new Date(company.createdAtUtc).toLocaleDateString()}</span>}
-              {company.updatedAtUtc && <span>Updated {new Date(company.updatedAtUtc).toLocaleDateString()}</span>}
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Overview Section */}
-          <Card className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6">
-            <h2 className="text-lg font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-slate-500" />
-              Overview
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Name</p>
-                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{company.name}</p>
-              </div>
-              {company.domain && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Domain</p>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{company.domain}</p>
-                </div>
-              )}
-              {company.industry && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Industry</p>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{company.industry}</p>
-                </div>
-              )}
-              {company.size && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Size</p>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{company.size}</p>
-                </div>
-              )}
-              {company.location && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Location</p>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{company.location}</p>
-                </div>
-              )}
-              {company.website && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Website</p>
+            subtitle={
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {company.domain && (
+                  <span className="inline-flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" aria-hidden /> {company.domain}</span>
+                )}
+                {company.location && (
+                  <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" aria-hidden /> {company.location}</span>
+                )}
+                {company.size && <span>{company.size} people</span>}
+                {company.website && (
                   <a
-                    href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                    href={websiteHref}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm font-medium text-emerald-600 hover:underline inline-flex items-center gap-1"
+                    className="inline-flex items-center gap-1 font-medium text-blue-600 hover:underline"
                   >
-                    {company.website}
-                    <ExternalLink className="w-3 h-3" />
+                    <ExternalLink className="h-3.5 w-3.5" aria-hidden /> Website
                   </a>
-                </div>
-              )}
-            </div>
-          </Card>
-
-          {/* Contacts Section */}
-          <Card className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Users className="w-5 h-5 text-slate-500" />
-              <h2 className="text-lg font-semibold text-slate-800 dark:text-white">Contacts</h2>
-              <Badge variant="secondary" className="ml-2">{contacts.length}</Badge>
-            </div>
-
-            {contactsLoading ? (
-              <div className="py-6 text-center">
-                <Clock className="w-5 h-5 text-slate-400 animate-spin mx-auto mb-2" />
-                <p className="text-sm text-slate-500">Loading contacts...</p>
-              </div>
-            ) : contacts.length === 0 ? (
-              <div className="py-6 text-center">
-                <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">No contacts linked to this company</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {contacts.map((contact) => (
-                  <Link
-                    key={contact.id}
-                    to={`/contacts/${contact.id}`}
-                    className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-100 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
+                )}
+              </span>
+            }
+            actions={
+              <>
+                <WriteOnly>
+                  <Button variant="outline" onClick={() => setEditOpen(true)} className={heroSecondary}>
+                    <Pencil className="h-4 w-4" /> Edit
+                  </Button>
+                </WriteOnly>
+                <WriteOnly>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDeleteOpen(true)}
+                    aria-label="Delete company"
+                    className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
                   >
-                    <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
-                      <Users className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{contact.name}</p>
-                      <p className="text-xs text-slate-500">{contact.email}</p>
-                      {contact.jobTitle && <p className="text-xs text-slate-400">{contact.jobTitle}</p>}
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </Card>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </WriteOnly>
+              </>
+            }
+            stats={[
+              { label: 'Contacts', value: contacts.length, icon: Users, tone: 'emerald', hint: contacts[0] ? `incl. ${contacts[0].name}` : 'none yet' },
+              { label: 'Deals', value: deals.length, icon: Briefcase, tone: 'violet', hint: deals.length > 0 ? `${formatDealSum(deals)} in all` : 'none yet' },
+              { label: 'Industry', value: company.industry || '—', icon: Building2, tone: 'blue', hint: company.size ? `${company.size} people` : undefined },
+              { label: 'Since', value: createdLabel ?? '—', icon: Clock, tone: 'amber', hint: company.updatedAtUtc ? `updated ${new Date(company.updatedAtUtc).toLocaleDateString()}` : undefined },
+            ]}
+          />
 
-          {/* Deals Section */}
-          <Card className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg p-8">
-            <div className="flex items-center gap-2 mb-4">
-              <Briefcase className="w-5 h-5 text-slate-500" />
-              <h2 className="text-lg font-semibold text-slate-800 dark:text-white">Deals</h2>
-              <Badge variant="secondary" className="ml-2">{deals.length}</Badge>
-            </div>
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="min-w-0 space-y-5">
+              <RecordCard title="Contacts" icon={<Users className="h-3.5 w-3.5" />} tone="emerald" count={contacts.length} index={0}>
+                {contactsLoading ? (
+                  <div className="py-6 text-center">
+                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <p className="text-sm text-slate-500">Loading contacts...</p>
+                  </div>
+                ) : contacts.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <Users className="mx-auto mb-2 h-10 w-10 text-slate-300" />
+                    <p className="text-sm text-slate-500">No contacts linked to this company</p>
+                  </div>
+                ) : (
+                  <ul className="grid gap-2 sm:grid-cols-2">
+                    {contacts.map((contact, index) => (
+                      <StaggerItem as="li" key={contact.id} index={index}>
+                        <Link
+                          to={`/contacts/${contact.id}`}
+                          className={cn('group flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 hover:border-emerald-200 hover:bg-white dark:border-slate-600 dark:bg-slate-700/50 dark:hover:bg-slate-700', liftOnHover)}
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-xs font-bold text-white shadow-sm transition-transform group-hover:-rotate-6" aria-hidden>
+                            {initialsOf(contact.name)}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-slate-800 group-hover:text-emerald-700 dark:text-slate-200">{contact.name}</p>
+                            <p className="truncate text-xs text-slate-500">{contact.email}</p>
+                            {contact.jobTitle && <p className="truncate text-xs text-slate-400">{contact.jobTitle}</p>}
+                          </div>
+                        </Link>
+                      </StaggerItem>
+                    ))}
+                  </ul>
+                )}
+              </RecordCard>
 
-            {dealsLoading ? (
-              <div className="py-6 text-center">
-                <Clock className="w-5 h-5 text-slate-400 animate-spin mx-auto mb-2" />
-                <p className="text-sm text-slate-500">Loading deals...</p>
-              </div>
-            ) : deals.length === 0 ? (
-              <div className="py-6 text-center">
-                <Briefcase className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">No deals linked to this company</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {deals.map((deal) => (
-                  <Link
-                    key={deal.id}
-                    to={`/deals/${deal.id}`}
-                    className="flex items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-100 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
-                        <Briefcase className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{deal.name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {deal.dealStageName && (
-                            <Badge variant="outline" className="text-xs">{deal.dealStageName}</Badge>
-                          )}
+              <RecordCard title="Deals" icon={<Briefcase className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={1}>
+                {dealsLoading ? (
+                  <div className="py-6 text-center">
+                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <p className="text-sm text-slate-500">Loading deals...</p>
+                  </div>
+                ) : deals.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <Briefcase className="mx-auto mb-2 h-10 w-10 text-slate-300" />
+                    <p className="text-sm text-slate-500">No deals linked to this company</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {deals.map((deal, index) => (
+                      <StaggerItem as="li" key={deal.id} index={index}>
+                        <Link
+                          to={`/deals/${deal.id}`}
+                          className={cn('group flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 hover:border-violet-200 hover:bg-white dark:border-slate-600 dark:bg-slate-700/50 dark:hover:bg-slate-700', liftOnHover)}
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-sm" aria-hidden>
+                              <Briefcase className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-slate-800 group-hover:text-violet-700 dark:text-slate-200">{deal.name}</p>
+                              {deal.dealStageName && (
+                                <Badge variant="outline" className="mt-0.5 text-xs">{deal.dealStageName}</Badge>
+                              )}
+                            </div>
+                          </div>
                           {deal.value && (
-                            <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                              {getCurrencySymbol(deal.currency || 'USD')}{deal.value}
+                            <span className="shrink-0 text-sm font-bold text-emerald-600">
+                              {formatMoney(parseAmount(deal.value), currencyOf(deal))}
                             </span>
                           )}
-                        </div>
-                      </div>
+                        </Link>
+                      </StaggerItem>
+                    ))}
+                  </ul>
+                )}
+              </RecordCard>
+            </div>
+
+            <aside className="min-w-0 space-y-5">
+              <RecordCard title="Overview" icon={<Building2 className="h-3.5 w-3.5" />} tone="blue" index={2}>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                  {[
+                    ['Name', company.name],
+                    ['Domain', company.domain],
+                    ['Industry', company.industry],
+                    ['Size', company.size],
+                    ['Location', company.location],
+                  ].filter(([, value]) => value).map(([label, value]) => (
+                    <div key={label} className="min-w-0">
+                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</dt>
+                      <dd className="mt-0.5 truncate font-medium text-slate-800 dark:text-slate-200">{value}</dd>
                     </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </Card>
+                  ))}
+                  {company.website && (
+                    <div className="col-span-2 min-w-0">
+                      <dt className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Website</dt>
+                      <dd className="mt-0.5 truncate">
+                        <a href={websiteHref} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-600 hover:underline">
+                          {company.website}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+                {company.description && (
+                  <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-700">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Description</p>
+                    <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{company.description}</p>
+                  </div>
+                )}
+                <div className="mt-3 flex gap-4 text-xs text-slate-400">
+                  {company.createdAtUtc && <span>Created {new Date(company.createdAtUtc).toLocaleDateString()}</span>}
+                  {company.updatedAtUtc && <span>Updated {new Date(company.updatedAtUtc).toLocaleDateString()}</span>}
+                </div>
+              </RecordCard>
 
-          {/* Custom fields (renders only when defined for companies) */}
-          <CustomFieldsCard
-            entityType="company"
-            recordId={company.id}
-            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6"
-          />
+              {/* Custom fields (renders only when defined for companies) */}
+              <CustomFieldsCard
+                entityType="company"
+                recordId={company.id}
+                className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+              />
 
-          {/* Attachments */}
-          <AttachmentsCard
-            entityType="company"
-            recordId={company.id}
-            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6"
-          />
+              <AttachmentsCard
+                entityType="company"
+                recordId={company.id}
+                className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+              />
+            </aside>
+          </div>
         </main>
       </PageTransition>
 

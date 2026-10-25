@@ -52,7 +52,8 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 // Common industries for filtering
 const INDUSTRIES = [
@@ -399,40 +400,41 @@ export default function Companies() {
     return `$${value.toFixed(0)}`;
   };
 
+  // The page's numbers, in its header. Top Industry opens the filters with
+  // that industry set, as its card did.
+  const topIndustryName = companyStats.topIndustry?.[0];
+  const topIndustryCount = companyStats.topIndustry?.[1] || 0;
+  const companyHeroStats: PageStat[] = [
+    { label: 'Total Companies', value: companyStats.total, icon: BarChart3, tone: 'blue' },
+    { label: 'With Contacts', value: companyStats.withContacts, icon: UserCircle, tone: 'sky' },
+    { label: 'With Deals', value: companyStats.withDeals, icon: Target, tone: 'emerald' },
+    { label: 'Total Pipeline', value: companyStats.totalDealValue, icon: DollarSign, tone: 'amber', format: formatCurrency },
+    { label: 'This Week', value: companyStats.thisWeek, icon: Calendar, tone: 'violet', hint: 'added' },
+    {
+      label: 'Top Industry', value: topIndustryName || 'N/A', icon: Factory, tone: 'cyan', hint: `${topIndustryCount} ${topIndustryCount === 1 ? 'company' : 'companies'}`,
+      onClick: topIndustryName ? () => { setFilterIndustry(topIndustryName); setShowFilters(true); } : undefined,
+      actionLabel: topIndustryName
+        ? `Top industry, ${topIndustryName}, ${topIndustryCount} companies. Activate to filter the list to ${topIndustryName}.`
+        : undefined,
+    },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          {/* Enhanced Header Section with Dark Decorative Elements */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-          {/* Decorative blur elements */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-            <div className="absolute inset-0 opacity-5" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l9.9-9.9h-2.83zM32 0l-3.486 3.485-1.414-1.414L30.586 0H32zM0 5.373l.828-.83 1.415 1.415L0 8.2V5.374zm0 5.656l.828-.829 5.657 5.657-1.414 1.414L0 11.03v-.001zm0 5.656l.828-.828 8.485 8.485-1.414 1.414L0 16.686v-.001zm0 5.657l.828-.828 11.314 11.314-1.414 1.414L0 22.343v-.001zM60 5.373l-.828-.83-1.415 1.415L60 8.2V5.374zm0 5.656l-.828-.829-5.657 5.657 1.414 1.414L60 11.03v-.001zm0 5.656l-.828-.828-8.485 8.485 1.414 1.414L60 16.686v-.001zm0 5.657l-.828-.828-11.314 11.314 1.414 1.414L60 22.343v-.001z' fill='%23fff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E")` }} />
-          </div>
-          
-          <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                  <Building2 className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Companies</h1>
-                  <p className="text-slate-400 mt-1">
-                    {loading ? 'Loading…' : 'Manage your business accounts'}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
+          <PageHero
+            icon={Building2}
+            tone="blue"
+            title="Companies"
+            subtitle={loading ? 'Loading…' : 'Manage your business accounts'}
+            actions={
+              <>
                 <ExportCsvButton
                   rows={filteredCompanies}
                   filename="companies"
-                  className="h-10 rounded-xl"
+                  className={heroSecondary}
                   columns={[
                     { header: 'Name', value: (c) => c.name },
                     { header: 'Domain', value: (c) => c.domain },
@@ -444,141 +446,56 @@ export default function Companies() {
                   ]}
                 />
                 <WriteOnly>
-                  <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
-                    <Plus className="w-4 h-4" />
+                  <Button onClick={openCreate} className={heroPrimary('blue')}>
+                    <Plus className="h-4 w-4" />
                     Add Company
                   </Button>
                 </WriteOnly>
+              </>
+            }
+            stats={!loading && companies.length > 0 ? companyHeroStats : undefined}
+          >
+            {/* Quick insight: accounts with nobody linked yet. */}
+            {!loading && companies.length > 0 && companyStats.withContacts < companyStats.total * 0.5 && (
+              <div className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50/80 px-3 py-2 sm:items-center">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 sm:mt-0" aria-hidden />
+                <p className="min-w-0 text-sm text-violet-700">
+                  <span className="font-semibold text-violet-800">Opportunity to Expand</span>
+                  {' · '}
+                  {companyStats.total - companyStats.withContacts} companies don't have any contacts yet.
+                  <span className="hidden sm:inline"> Add contacts to build stronger relationships.</span>
+                </p>
               </div>
-            </div>
-          </div>
-        </div>
-          <NextActionsSlot />
+            )}
+          </PageHero>
 
-          {/* Stats Cards */}
-          {!loading && companies.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-              {/* Total Companies */}
-              <div className="group relative bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-50 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <BarChart3 className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-slate-900 tracking-tight">{companyStats.total}</p>
-                  <p className="text-xs font-medium text-slate-500 mt-1">Total Companies</p>
-                </div>
-              </div>
-
-              {/* With Contacts */}
-              <div className="group relative bg-white rounded-2xl border border-blue-100 p-5 shadow-sm hover:shadow-xl hover:shadow-blue-100 hover:border-blue-200 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-50 to-blue-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <UserCircle className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-blue-600 tracking-tight">{companyStats.withContacts}</p>
-                  <p className="text-xs font-medium text-blue-600/70 mt-1">With Contacts</p>
-                </div>
-              </div>
-
-              {/* With Deals */}
-              <div className="group relative bg-white rounded-2xl border border-emerald-100 p-5 shadow-sm hover:shadow-xl hover:shadow-emerald-100 hover:border-emerald-200 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Target className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-emerald-600 tracking-tight">{companyStats.withDeals}</p>
-                  <p className="text-xs font-medium text-emerald-600/70 mt-1">With Deals</p>
-                </div>
-              </div>
-
-              {/* Total Deal Value */}
-              <div className="group relative bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-5 shadow-lg shadow-amber-500/20 hover:shadow-xl hover:shadow-amber-500/30 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-bl-[60px] -mr-2 -mt-2" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3">
-                    <DollarSign className="w-5 h-5 text-white" />
-                  </div>
-                  <p className="text-3xl font-bold text-white tracking-tight">{formatCurrency(companyStats.totalDealValue)}</p>
-                  <p className="text-xs font-medium text-white/80 mt-1">Total Pipeline</p>
-                </div>
-              </div>
-
-              {/* New This Week */}
-              <div className="group relative bg-white rounded-2xl border border-purple-100 p-5 shadow-sm hover:shadow-xl hover:shadow-purple-100 hover:border-purple-200 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-purple-50 to-purple-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Calendar className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-purple-600 tracking-tight">{companyStats.thisWeek}</p>
-                  <p className="text-xs font-medium text-purple-600/70 mt-1">This Week</p>
-                </div>
-              </div>
-
-              {/* Top Industry */}
-              <div 
-                className="group relative bg-white rounded-2xl border border-cyan-100 p-5 shadow-sm hover:shadow-xl hover:shadow-cyan-100 hover:border-cyan-200 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { if (companyStats.topIndustry) { setFilterIndustry(companyStats.topIndustry[0]); setShowFilters(true); } }}
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-100 to-cyan-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Factory className="w-5 h-5 text-cyan-600" />
-                  </div>
-                  <p className="text-2xl font-bold text-cyan-600 tracking-tight truncate">{companyStats.topIndustry?.[0] || 'N/A'}</p>
-                  <p className="text-xs font-medium text-cyan-600/70 mt-1">Top Industry ({companyStats.topIndustry?.[1] || 0})</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Quick Insights Banner */}
-          {!loading && companies.length > 0 && companyStats.withContacts < companyStats.total * 0.5 && (
-            <div className="mt-4 bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl border border-violet-200 p-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
-                  <AlertCircle className="w-4 h-4 text-violet-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-violet-800">Opportunity to Expand</p>
-                  <p className="mt-1 text-sm text-violet-700">
-                    {companyStats.total - companyStats.withContacts} companies don't have any contacts yet. Add contacts to build stronger relationships.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-        {/* Search, Filter & Sort Bar - Modern Dark Theme */}
-        <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-4 mb-6 shadow-xl overflow-hidden">
+        {/* Search, filter and sort */}
+        <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
           {/* Decorative elements */}
-          <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
-          <div className="absolute bottom-0 left-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl -ml-10 -mb-10" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-300/25 rounded-full blur-2xl -mr-10 -mt-10" />
+          <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-300/25 rounded-full blur-2xl -ml-10 -mb-10" />
           
           <div className="relative flex flex-col sm:flex-row gap-3">
             {/* Search Input - Enhanced */}
             <div className="relative flex-1 group">
-              <div className="absolute inset-0 bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-violet-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 via-indigo-500/20 to-blue-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
               <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-500/20 flex items-center justify-center group-focus-within:from-violet-500/40 group-focus-within:to-purple-500/40 transition-all duration-300">
-                  <Search className="w-4 h-4 text-violet-300 group-focus-within:text-violet-200 transition-colors" aria-hidden />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center group-focus-within:from-blue-200 group-focus-within:to-indigo-200 transition-all duration-300">
+                  <Search className="w-4 h-4 text-blue-600 group-focus-within:text-blue-700 transition-colors" aria-hidden />
                 </div>
                 <Input
                   type="search"
                   placeholder="Search by name, domain, or industry..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-14 pr-10 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white placeholder:text-slate-400 shadow-xl shadow-black/10 focus:border-violet-400/50 focus:ring-2 focus:ring-violet-400/20 focus:bg-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300"
+                  className="pl-14 pr-10 h-11 rounded-xl border border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400 focus:border-orange-300 focus:ring-4 focus:ring-orange-200/50 focus:bg-white hover:bg-white hover:border-slate-300 transition-all duration-300"
                   aria-label="Search companies"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-white/10 hover:bg-red-500/30 flex items-center justify-center text-slate-400 hover:text-red-300 transition-all duration-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -592,20 +509,20 @@ export default function Companies() {
               <div className="relative group/btn">
                 <div className={`absolute inset-0 rounded-xl blur-lg transition-all duration-300 ${
                   showFilters || activeFilterCount > 0 
-                    ? 'bg-gradient-to-r from-violet-500/40 to-purple-500/40 opacity-100' 
-                    : 'bg-white/10 opacity-0 group-hover/btn:opacity-50'
+                    ? 'bg-gradient-to-r from-blue-500/40 to-indigo-500/40 opacity-100' 
+                    : 'bg-blue-200/50 opacity-0 group-hover/btn:opacity-60'
                 }`} />
                 <Button
                   variant="outline"
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`relative h-11 px-4 rounded-xl border shadow-xl shadow-black/10 transition-all duration-300 ${
+                  className={`relative h-11 px-4 rounded-xl border shadow-sm transition-all duration-300 ${
                     showFilters || activeFilterCount > 0
-                      ? 'bg-gradient-to-r from-violet-500 to-purple-500 border-violet-400/50 text-white hover:from-violet-400 hover:to-purple-400 hover:shadow-violet-500/25'
-                      : 'bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 hover:border-white/20'
+                      ? 'bg-gradient-to-r from-blue-500 to-indigo-500 border-blue-400/50 text-white hover:from-blue-400 hover:to-indigo-400 hover:shadow-blue-500/25'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700'
                   }`}
                 >
                   <div className={`w-6 h-6 rounded-lg flex items-center justify-center mr-2 transition-all duration-300 ${
-                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-white/10'
+                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-blue-100 text-blue-600'
                   }`}>
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </div>
@@ -620,7 +537,7 @@ export default function Companies() {
 
               {/* Sort Dropdown - Enhanced */}
               <div className="relative group/sort">
-                <div className="absolute inset-0 bg-white/10 rounded-xl blur-lg opacity-0 group-hover/sort:opacity-50 transition-all duration-300" />
+                <div className="absolute inset-0 bg-violet-200/50 rounded-xl blur-lg opacity-0 group-hover/sort:opacity-60 transition-all duration-300" />
                 <Select
                   value={`${sortField}-${sortDirection}`}
                   onValueChange={(v) => {
@@ -629,10 +546,10 @@ export default function Companies() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[180px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-violet-400/50 focus:ring-2 focus:ring-violet-400/20 transition-all duration-300">
+                  <SelectTrigger className="relative h-11 w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-300" />
+                      <div className="w-6 h-6 rounded-lg bg-violet-100 flex items-center justify-center">
+                        <ArrowUpDown className="w-3.5 h-3.5 text-violet-600" />
                       </div>
                       <SelectValue placeholder="Sort by..." />
                     </div>
@@ -676,16 +593,16 @@ export default function Companies() {
 
           {/* Expandable Filter Panel */}
           {showFilters && (
-            <div className="mt-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/10 p-4 animate-in slide-in-from-top-2 duration-200">
+            <div className="mt-4 rounded-xl border border-blue-100 bg-gradient-to-b from-blue-50/70 via-white to-white p-4 shadow-sm animate-in slide-in-from-top-2 duration-200">
               <div className="flex flex-wrap gap-4">
                 {/* Industry Filter */}
                 <div className="min-w-[180px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">
                     <Factory className="w-3.5 h-3.5" />
                     Industry
                   </label>
                   <Select value={filterIndustry} onValueChange={setFilterIndustry}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-blue-300 transition-colors">
                       <SelectValue placeholder="All industries" />
                     </SelectTrigger>
                     <SelectContent>
@@ -704,12 +621,12 @@ export default function Companies() {
 
                 {/* Size Filter */}
                 <div className="min-w-[180px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">
                     <Users className="w-3.5 h-3.5" />
                     Company Size
                   </label>
                   <Select value={filterSize} onValueChange={setFilterSize}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-blue-300 transition-colors">
                       <SelectValue placeholder="All sizes" />
                     </SelectTrigger>
                     <SelectContent>
@@ -730,7 +647,7 @@ export default function Companies() {
                       variant="ghost"
                       size="sm"
                       onClick={clearFilters}
-                      className="h-10 text-slate-300 hover:text-white hover:bg-white/10"
+                      className="h-10 text-slate-500 hover:text-red-600 hover:bg-red-50"
                     >
                       <X className="w-4 h-4 mr-1" />
                       Clear all
@@ -744,35 +661,35 @@ export default function Companies() {
           {/* Active Filter Pills */}
           {(activeFilterCount > 0 || searchQuery) && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-400">Showing:</span>
+              <span className="text-xs text-slate-500">Showing:</span>
               {searchQuery && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-white text-xs font-medium border border-white/10">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                   <Search className="w-3 h-3" />
                   &quot;{searchQuery}&quot;
-                  <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-violet-300 transition-colors">
+                  <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-blue-600 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
               {filterIndustry !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-medium border border-cyan-400/30">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium border border-cyan-200">
                   <Factory className="w-3 h-3" />
                   {filterIndustry}
-                  <button onClick={() => setFilterIndustry('all')} className="ml-0.5 hover:text-cyan-100 transition-colors">
+                  <button onClick={() => setFilterIndustry('all')} className="ml-0.5 hover:text-cyan-900 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
               {filterSize !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium border border-purple-400/30">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-medium border border-purple-200">
                   <Users className="w-3 h-3" />
                   {filterSize}
-                  <button onClick={() => setFilterSize('all')} className="ml-0.5 hover:text-purple-100 transition-colors">
+                  <button onClick={() => setFilterSize('all')} className="ml-0.5 hover:text-purple-900 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-slate-500">
                 {filteredCompanies.length} of {totalCount || companies.length} companies
               </span>
             </div>
@@ -855,7 +772,7 @@ export default function Companies() {
           <>
           {/* Company Cards Grid */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredCompanies.map((company) => {
+            {filteredCompanies.map((company, index) => {
               const initials = getInitials(company.name);
               const gradient = getCompanyGradient(company.name);
               const contactCount = getContactCount(company.id);
@@ -863,9 +780,10 @@ export default function Companies() {
               const dealValue = getDealValue(company.id);
               
               return (
-                <div
+                <StaggerItem
                   key={company.id}
-                  className="group relative bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-slate-300 transition-all duration-300 overflow-hidden"
+                  index={index}
+                  className={`group relative bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-slate-300 overflow-hidden ${liftOnHover}`}
                 >
                   <div className="p-5">
                     {/* Header with logo and actions */}
@@ -1022,7 +940,7 @@ export default function Companies() {
                       </div>
                     )}
                   </div>
-                </div>
+                </StaggerItem>
               );
             })}
           </div>

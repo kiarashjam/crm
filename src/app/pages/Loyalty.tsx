@@ -56,7 +56,8 @@ import {
 } from '@/app/api/loyalty';
 import { getMembers, MEMBER_TIERS, type Member, type MemberTier } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const KIND_BADGE: Record<LoyaltyEntryKind, string> = {
   Earned: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -214,64 +215,24 @@ export default function Loyalty() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-yellow-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-amber-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-yellow-500/30">
-                    <Gift className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Loyalty</h1>
-                    <p className="text-slate-400 mt-1">
-                      Points, tier multipliers, redemptions, and house credit.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openCreate}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 shadow-lg shadow-yellow-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add entry
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
-              label="Total issued"
-              value={formatPoints(stats.totalIssued)}
-              hint="All-time earned points"
-            />
-            <StatCard
-              icon={<TrendingDown className="w-5 h-5 text-rose-600" />}
-              label="Total redeemed"
-              value={formatPoints(stats.totalRedeemed)}
-              hint="All-time spent points"
-            />
-            <StatCard
-              icon={<Trophy className="w-5 h-5 text-yellow-600" />}
-              label="Outstanding"
-              value={formatPoints(stats.outstanding)}
-              hint={`≈ $${stats.outstandingDollarValue.toLocaleString()} in liability`}
-            />
-            <StatCard
-              icon={<Star className="w-5 h-5 text-violet-600" />}
-              label="Active members"
-              value={String(stats.activeMembers)}
-              hint="Earning or redeeming"
-            />
-          </div>
+          <PageHero
+            icon={Gift}
+            tone="amber"
+            title="Loyalty"
+            subtitle="Points, tier multipliers, redemptions, and house credit."
+            actions={
+              <Button onClick={openCreate} className={heroPrimary('amber')}>
+                <Plus className="h-4 w-4" />
+                Add entry
+              </Button>
+            }
+            stats={[
+              { label: 'Total issued', value: stats.totalIssued, icon: TrendingUp, tone: 'emerald', hint: 'all-time earned points' },
+              { label: 'Total redeemed', value: stats.totalRedeemed, icon: TrendingDown, tone: 'rose', hint: 'all-time spent points' },
+              { label: 'Outstanding', value: stats.outstanding, icon: Trophy, tone: 'amber', hint: `≈ $${stats.outstandingDollarValue.toLocaleString()} in liability` },
+              { label: 'Active members', value: stats.activeMembers, icon: Star, tone: 'violet', hint: 'earning or redeeming' },
+            ]}
+          />
 
           {/* Tier overview */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
@@ -351,8 +312,8 @@ export default function Loyalty() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredEntries.map((e) => (
-                        <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      {filteredEntries.map((e, index) => (
+                        <StaggerItem as="tr" key={e.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
                           <td className="px-4 py-3">
                             <p className="font-medium text-slate-900">{e.memberName}</p>
                             {e.note && <p className="text-xs text-slate-500 mt-0.5">{e.note}</p>}
@@ -385,7 +346,7 @@ export default function Loyalty() {
                               )}
                             </button>
                           </td>
-                        </tr>
+                        </StaggerItem>
                       ))}
                     </tbody>
                   </table>
@@ -403,9 +364,10 @@ export default function Loyalty() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {balances.map((b, idx) => (
-                    <div
+                    <StaggerItem
                       key={b.memberId}
-                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm"
+                      index={idx}
+                      className={`bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-amber-200 ${liftOnHover}`}
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
@@ -430,7 +392,7 @@ export default function Loyalty() {
                           ≈ ${(b.points / POINTS_PER_DOLLAR).toFixed(2)}
                         </span>
                       </div>
-                    </div>
+                    </StaggerItem>
                   ))}
                 </div>
               )}
@@ -566,29 +528,6 @@ export default function Loyalty() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

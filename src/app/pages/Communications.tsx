@@ -49,7 +49,8 @@ import {
 } from '@/app/api/communications';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const CHANNEL_ICON: Record<CommChannel, React.ElementType> = {
   Email: Mail,
@@ -203,64 +204,24 @@ export default function Communications() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-violet-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-purple-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center shadow-2xl shadow-violet-500/30">
-                    <MessageSquareText className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Communications</h1>
-                    <p className="text-slate-400 mt-1">
-                      Every email, SMS, and push sent to members — with open and click tracking.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openSend}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 shadow-lg shadow-violet-500/30 font-semibold text-white"
-                >
-                  <Send className="w-4 h-4" />
-                  Send message
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<Send className="w-5 h-5 text-violet-600" />}
-              label="Sent · 7d"
-              value={String(stats.sentThisWeek)}
-              hint="Total in last week"
-            />
-            <StatCard
-              icon={<Eye className="w-5 h-5 text-emerald-600" />}
-              label="Open rate"
-              value={formatRate(stats.openRate)}
-              hint="All-time emails opened"
-            />
-            <StatCard
-              icon={<MousePointerClick className="w-5 h-5 text-amber-600" />}
-              label="Click rate"
-              value={formatRate(stats.clickRate)}
-              hint="Clicks per message"
-            />
-            <StatCard
-              icon={<AlertCircle className="w-5 h-5 text-rose-600" />}
-              label="Bounce rate"
-              value={formatRate(stats.bounceRate)}
-              hint="Bounced or failed"
-            />
-          </div>
+          <PageHero
+            icon={MessageSquareText}
+            tone="violet"
+            title="Communications"
+            subtitle="Every email, SMS, and push sent to members — with open and click tracking."
+            actions={
+              <Button onClick={openSend} className={heroPrimary('violet')}>
+                <Send className="h-4 w-4" />
+                Send message
+              </Button>
+            }
+            stats={[
+              { label: 'Sent · 7d', value: stats.sentThisWeek, icon: Send, tone: 'violet', hint: 'total in last week' },
+              { label: 'Open rate', value: stats.openRate, icon: Eye, tone: 'emerald', hint: 'all-time emails opened', format: formatRate },
+              { label: 'Click rate', value: stats.clickRate, icon: MousePointerClick, tone: 'amber', hint: 'clicks per message', format: formatRate },
+              { label: 'Bounce rate', value: stats.bounceRate, icon: AlertCircle, tone: 'rose', hint: 'bounced or failed', format: formatRate },
+            ]}
+          />
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row gap-3 mb-6">
@@ -327,12 +288,13 @@ export default function Communications() {
             />
           ) : (
             <div className="space-y-2">
-              {filtered.map((c) => {
+              {filtered.map((c, index) => {
                 const Icon = CHANNEL_ICON[c.channel];
                 return (
-                  <div
+                  <StaggerItem
                     key={c.id}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
+                    index={index}
+                    className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-violet-200 ${liftOnHover}`}
                   >
                     <div className="flex items-start gap-3">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${CHANNEL_COLOR[c.channel]}`}>
@@ -381,7 +343,7 @@ export default function Communications() {
                         )}
                       </button>
                     </div>
-                  </div>
+                  </StaggerItem>
                 );
               })}
             </div>
@@ -480,29 +442,6 @@ export default function Communications() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

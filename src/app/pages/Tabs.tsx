@@ -47,7 +47,8 @@ import {
 } from '@/app/api/tabs';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -181,44 +182,29 @@ export default function Tabs() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-amber-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-orange-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-2xl shadow-amber-500/30">
-                    <Wine className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Open Tabs</h1>
-                    <p className="text-slate-400 mt-1">
-                      Running checks at the bar and restaurant. Closing a tab posts a charge and awards points.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={() => {
-                    setOpenForm({ memberId: '', venue: 'Bar', serverName: '' });
-                    setOpenDialog(true);
-                  }}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" /> Open tab
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard icon={<Wine className="w-5 h-5 text-amber-600" />} label="Open tabs" value={String(stats.openCount)} />
-            <StatCard icon={<DollarSign className="w-5 h-5 text-rose-600" />} label="Open value" value={formatCurrency(stats.openValue)} />
-            <StatCard icon={<Receipt className="w-5 h-5 text-emerald-600" />} label="Closed today" value={String(stats.closedToday)} />
-            <StatCard icon={<DollarSign className="w-5 h-5 text-blue-600" />} label="Revenue today" value={formatCurrency(stats.revenueToday)} />
-          </div>
+          <PageHero
+            icon={Wine}
+            tone="amber"
+            title="Open Tabs"
+            subtitle="Running checks at the bar and restaurant. Closing a tab posts a charge and awards points."
+            actions={
+              <Button
+                onClick={() => {
+                  setOpenForm({ memberId: '', venue: 'Bar', serverName: '' });
+                  setOpenDialog(true);
+                }}
+                className={heroPrimary('amber')}
+              >
+                <Plus className="h-4 w-4" /> Open tab
+              </Button>
+            }
+            stats={[
+              { label: 'Open tabs', value: stats.openCount, icon: Wine, tone: 'amber' },
+              { label: 'Open value', value: stats.openValue, icon: DollarSign, tone: 'rose', format: formatCurrency },
+              { label: 'Closed today', value: stats.closedToday, icon: Receipt, tone: 'emerald' },
+              { label: 'Revenue today', value: stats.revenueToday, icon: DollarSign, tone: 'blue', format: formatCurrency },
+            ]}
+          />
 
           {loading ? (
             <div className="flex items-center justify-center py-20 text-slate-400">
@@ -235,10 +221,12 @@ export default function Tabs() {
             />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
-              {openTabs.map((t) => (
-                <article
+              {openTabs.map((t, index) => (
+                <StaggerItem
+                  as="article"
                   key={t.id}
-                  className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+                  index={index}
+                  className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:border-amber-200 ${liftOnHover}`}
                 >
                   <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 px-5 py-3 flex items-center justify-between border-b border-slate-100">
                     <div>
@@ -321,12 +309,12 @@ export default function Tabs() {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="text-xs text-slate-500 uppercase tracking-wide">Running total</p>
                           <p className="text-xl font-bold text-slate-900">{formatCurrency(t.total)}</p>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           <Button size="sm" variant="outline" onClick={() => setAddingTo(t.id)}>
                             <Plus className="w-3.5 h-3.5 mr-1" /> Item
                           </Button>
@@ -349,7 +337,7 @@ export default function Tabs() {
                       </div>
                     )}
                   </div>
-                </article>
+                </StaggerItem>
               ))}
             </div>
           )}
@@ -360,8 +348,8 @@ export default function Tabs() {
                 <Clock className="w-4 h-4" /> Recently closed
               </h2>
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
-                {recentClosed.map((t) => (
-                  <div key={t.id} className="px-4 py-3 flex items-center justify-between">
+                {recentClosed.map((t, index) => (
+                  <StaggerItem key={t.id} index={index} className="px-4 py-3 flex items-center justify-between transition-colors hover:bg-slate-50">
                     <div>
                       <p className="text-sm font-medium text-slate-900">{t.memberName}</p>
                       <p className="text-xs text-slate-500">
@@ -377,7 +365,7 @@ export default function Tabs() {
                         </p>
                       ) : null}
                     </div>
-                  </div>
+                  </StaggerItem>
                 ))}
               </div>
             </section>
@@ -454,26 +442,6 @@ export default function Tabs() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
     </div>
   );
 }

@@ -53,7 +53,8 @@ import {
   type EventVisibility,
 } from '@/app/api/events';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -267,64 +268,28 @@ export default function Events() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-pink-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-fuchsia-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-pink-500 to-fuchsia-500 flex items-center justify-center shadow-2xl shadow-pink-500/30">
-                    <CalendarHeart className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Events</h1>
-                    <p className="text-slate-400 mt-1">
-                      Ticketing, capacity, waitlists, and member pricing.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openCreate}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-pink-500 to-fuchsia-500 hover:from-pink-600 hover:to-fuchsia-600 shadow-lg shadow-pink-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  New event
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<CalendarHeart className="w-5 h-5 text-pink-600" />}
-              label="Upcoming"
-              value={String(stats.upcoming)}
-              hint={`${stats.draftCount} in draft`}
-            />
-            <StatCard
-              icon={<Ticket className="w-5 h-5 text-fuchsia-600" />}
-              label="Total RSVPs"
-              value={String(stats.totalRsvps)}
-              hint={`${stats.totalWaitlist} on waitlist`}
-            />
-            <StatCard
-              icon={<DollarSign className="w-5 h-5 text-emerald-600" />}
-              label="Ticket revenue"
-              value={formatCurrency(stats.projectedRevenue)}
-              hint="Member tier × RSVPs"
-            />
-            <StatCard
-              icon={<Users className="w-5 h-5 text-indigo-600" />}
-              label="Members-only"
-              value={String(events.filter((e) => e.visibility === 'MembersOnly').length)}
-              hint="Restricted events"
-            />
-          </div>
+          <PageHero
+            icon={CalendarHeart}
+            tone="pink"
+            title="Events"
+            subtitle="Ticketing, capacity, waitlists, and member pricing."
+            actions={
+              <Button onClick={openCreate} className={heroPrimary('pink')}>
+                <Plus className="h-4 w-4" />
+                New event
+              </Button>
+            }
+            stats={[
+              { label: 'Upcoming', value: stats.upcoming, icon: CalendarHeart, tone: 'pink', hint: `${stats.draftCount} in draft` },
+              { label: 'Total RSVPs', value: stats.totalRsvps, icon: Ticket, tone: 'fuchsia', hint: `${stats.totalWaitlist} on waitlist` },
+              {
+                label: 'Ticket revenue', value: stats.projectedRevenue, icon: DollarSign, tone: 'emerald', hint: 'member tier × RSVPs',
+                // At rest it reads as before ("Free" at zero); on the way up, as money.
+                format: (n) => (n === stats.projectedRevenue ? formatCurrency(n) : formatCurrency(Math.max(1, n))),
+              },
+              { label: 'Members-only', value: events.filter((e) => e.visibility === 'MembersOnly').length, icon: Users, tone: 'indigo', hint: 'restricted events' },
+            ]}
+          />
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row gap-3 mb-6">
@@ -375,13 +340,15 @@ export default function Events() {
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              {filtered.map((e) => {
+              {filtered.map((e, index) => {
                 const capacityPct = e.capacity > 0 ? Math.min(100, (e.registeredCount / e.capacity) * 100) : 0;
                 const atCapacity = e.registeredCount >= e.capacity;
                 return (
-                  <article
+                  <StaggerItem
+                    as="article"
                     key={e.id}
-                    className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                    index={index}
+                    className={`bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-pink-200 overflow-hidden ${liftOnHover}`}
                   >
                     <div className="relative h-28 bg-gradient-to-br from-pink-100 via-fuchsia-100 to-violet-100 flex items-center justify-center">
                       <span className="text-6xl">{e.coverEmoji}</span>
@@ -486,7 +453,7 @@ export default function Events() {
                         </button>
                       </div>
                     </div>
-                  </article>
+                  </StaggerItem>
                 );
               })}
             </div>
@@ -648,29 +615,6 @@ export default function Events() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

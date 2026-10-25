@@ -113,6 +113,7 @@ export default function Reports() {
   );
   const days = useMemo(() => activityByDay(activities, 14), [activities]);
   const weeks = useMemo(() => newLeadsByWeek(leads, 8), [leads]);
+  const recentActivity = days.reduce((s, x) => s + x.value, 0);
 
   /**
    * Gaps in the underlying data, stated openly at the top of the page.
@@ -163,14 +164,28 @@ export default function Reports() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <Reveal index={0}>
-            <PageHero
-              icon={BarChart3}
-              iconGradient="from-indigo-500 to-violet-500"
-              title="Reports"
-              subtitle="Pipeline, leads, lifecycle and activity — every figure computed from your own records."
-            />
-          </Reveal>
+          <PageHero
+            icon={BarChart3}
+            tone="indigo"
+            title="Reports"
+            subtitle="Pipeline, leads, lifecycle and activity — every figure computed from your own records."
+            badges={!failed && (
+              <>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Live
+                </span>
+                <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                  {d.currency}
+                </span>
+              </>
+            )}
+            stats={failed ? undefined : [
+              { label: 'Deals', value: deals.length, icon: Kanban, tone: 'sky', hint: `${d.openCount} open` },
+              { label: 'Leads', value: l.total, icon: Users, tone: 'violet', hint: `${l.converted} became deals` },
+              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'rose', hint: `${recentActivity} in 14 days` },
+            ]}
+          />
 
           {failed && (
             <div className="mt-5 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">

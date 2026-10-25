@@ -51,7 +51,8 @@ import {
 } from '@/app/api/subscriptions';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 const STATUS_BADGE: Record<SubscriptionStatus, string> = {
   Active: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -212,77 +213,41 @@ export default function Subscriptions() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-indigo-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-2xl shadow-blue-500/30">
-                    <Repeat2 className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Subscriptions</h1>
-                    <p className="text-slate-400 mt-1">
-                      Recurring dues and add-ons. Bill the cycle to drop a charge automatically.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    onClick={chargeDue}
-                    disabled={runningAll}
-                    variant="outline"
-                    className="bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white"
-                  >
-                    {runningAll ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Running
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-4 h-4 mr-2" /> Run due cycles
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={openCreate}
-                    className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 shadow-lg shadow-blue-500/30 font-semibold text-white"
-                  >
-                    <Plus className="w-4 h-4" /> New subscription
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<Repeat2 className="w-5 h-5 text-blue-600" />}
-              label="Active"
-              value={String(stats.activeCount)}
-              hint={`${stats.cancelledCount} cancelled`}
-            />
-            <StatCard
-              icon={<DollarSign className="w-5 h-5 text-emerald-600" />}
-              label="MRR"
-              value={formatCurrency(stats.mrr)}
-              hint="Normalized recurring"
-            />
-            <StatCard
-              icon={<Clock className="w-5 h-5 text-amber-600" />}
-              label="Due in 14d"
-              value={String(stats.dueSoonCount)}
-            />
-            <StatCard
-              icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
-              label="Past due"
-              value={String(stats.pastDueCount)}
-            />
-          </div>
+          <PageHero
+            icon={Repeat2}
+            tone="blue"
+            title="Subscriptions"
+            subtitle="Recurring dues and add-ons. Bill the cycle to drop a charge automatically."
+            actions={
+              <>
+                <Button
+                  onClick={chargeDue}
+                  disabled={runningAll}
+                  variant="outline"
+                  className={`${heroSecondary} disabled:opacity-60`}
+                >
+                  {runningAll ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Running
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4" /> Run due cycles
+                    </>
+                  )}
+                </Button>
+                <Button onClick={openCreate} className={heroPrimary('blue')}>
+                  <Plus className="h-4 w-4" /> New subscription
+                </Button>
+              </>
+            }
+            stats={[
+              { label: 'Active', value: stats.activeCount, icon: Repeat2, tone: 'blue', hint: `${stats.cancelledCount} cancelled` },
+              { label: 'MRR', value: stats.mrr, icon: DollarSign, tone: 'emerald', hint: 'normalized recurring', format: formatCurrency },
+              { label: 'Due in 14d', value: stats.dueSoonCount, icon: Clock, tone: 'amber' },
+              { label: 'Past due', value: stats.pastDueCount, icon: AlertTriangle, tone: 'rose' },
+            ]}
+          />
 
           <div className="flex flex-col md:flex-row gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
@@ -344,10 +309,10 @@ export default function Subscriptions() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((s) => {
+                  {filtered.map((s, index) => {
                     const days = daysUntil(s.nextChargeAtUtc);
                     return (
-                      <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <StaggerItem as="tr" key={s.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
                         <td className="px-4 py-3 font-medium text-slate-900">{s.memberName}</td>
                         <td className="px-4 py-3">
                           <p className="text-slate-700">{s.name}</p>
@@ -425,7 +390,7 @@ export default function Subscriptions() {
                             </button>
                           </div>
                         </td>
-                      </tr>
+                      </StaggerItem>
                     );
                   })}
                 </tbody>
@@ -512,29 +477,6 @@ export default function Subscriptions() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

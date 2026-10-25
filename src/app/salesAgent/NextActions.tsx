@@ -440,6 +440,60 @@ function ClosedPanel({ label, count, refreshing, onOpen, onAsk }: {
   );
 }
 
+/** The chat, closed: a pill on the panel's title row rather than a bar of its own. */
+function AskPill({ onAsk }: { onAsk: () => void }) {
+  const reduce = useMotionPreference();
+  return (
+    <motion.button
+      type="button"
+      onClick={onAsk}
+      aria-label="Ask Cadence AI"
+      aria-expanded={false}
+      whileHover={reduce ? undefined : { y: -1 }}
+      whileTap={reduce ? undefined : { scale: 0.97 }}
+      className={cn('inline-flex h-9 shrink-0 items-center gap-2 rounded-full border border-fuchsia-200/80 bg-gradient-to-r from-white to-fuchsia-50 pl-1 pr-3 text-sm font-semibold text-slate-800 shadow-sm transition-shadow hover:shadow-md dark:border-fuchsia-900/60 dark:from-slate-900 dark:to-fuchsia-950/40 dark:text-slate-100', focusRing)}
+    >
+      <AiOrb size={26} reduce={reduce} />
+      <span className="hidden sm:inline">Ask AI</span>
+    </motion.button>
+  );
+}
+
+/**
+ * Nothing waiting and the chat closed: one slim line instead of a whole card, so
+ * a quiet page does not spend its first screen saying so. Asking opens the chat.
+ */
+function QuietRow({ message, refreshing, onAsk, onClose }: {
+  message: string;
+  refreshing: boolean;
+  onAsk: () => void;
+  onClose: () => void;
+}) {
+  const reduce = useMotionPreference();
+  return (
+    <Card className="flex items-center gap-3 px-3 py-2" labelledBy="next-actions-heading">
+      <IconTile busy={refreshing} small />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <h2 id="next-actions-heading" className="text-sm font-semibold text-slate-900 dark:text-white">Do this next</h2>
+        <p className="flex min-w-0 items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
+          <motion.span
+            initial={reduce ? false : { scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.15 }}
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400"
+            aria-hidden="true"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </motion.span>
+          <span className="truncate">{message}</span>
+        </p>
+      </div>
+      <AskPill onAsk={onAsk} />
+      <CloseButton onClose={onClose} />
+    </Card>
+  );
+}
+
 // ── the record strip ─────────────────────────────────────────────────────────
 
 const STEP_TONE: Record<PlanLine['state'], string> = {
@@ -473,13 +527,15 @@ function Ladder({ lines }: { lines: PlanLine[] }) {
   );
 }
 
-function RecordStrip({ href, step, items, lists, gaps, refreshing, onClose }: {
+function RecordStrip({ href, step, items, lists, gaps, refreshing, chatOpen, onAsk, onClose }: {
   href: string;
   step: WorkSuggestion;
   items: WorkSuggestion[];
   lists: AgentLists;
   gaps: string[];
   refreshing: boolean;
+  chatOpen: boolean;
+  onAsk: () => void;
   onClose: () => void;
 }) {
   const reduce = useMotionPreference();
@@ -505,11 +561,12 @@ function RecordStrip({ href, step, items, lists, gaps, refreshing, onClose }: {
         </div>
         <div className="flex items-center gap-2">
           <DraftLink item={step} />
+          {!chatOpen && <AskPill onAsk={onAsk} />}
           <CloseButton onClose={onClose} />
         </div>
       </div>
       {ladder && <Ladder lines={ladder} />}
-      <AskBox lists={lists} gaps={gaps} items={items} scope={{ mode: 'record', href }} />
+      {chatOpen && <AskBox lists={lists} gaps={gaps} items={items} scope={{ mode: 'record', href }} />}
     </Card>
   );
 }
@@ -526,6 +583,7 @@ export function NextActions() {
   const slot = useNextActionsSlot();
   const reduce = useMotionPreference();
   const [panelOpen, setPanelOpen] = useStoredFlag(PANEL_OPEN_KEY, true);
+  const [chatOpen] = useStoredFlag(CHAT_OPEN_KEY, false);
   const openPanel = () => setPanelOpen(true);
   const closePanel = () => setPanelOpen(false);
   const askFromClosed = () => {
@@ -587,7 +645,7 @@ export function NextActions() {
     if (!panelOpen) {
       return place(<ClosedPanel label={`Next for this ${recordNoun(scope.href)}`} count={1} refreshing={data.refreshing} onOpen={openPanel} onAsk={askFromClosed} />);
     }
-    return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} gaps={data.gaps} refreshing={data.refreshing} onClose={closePanel} />);
+    return place(<RecordStrip href={scope.href} step={step} items={allItems} lists={data.lists} gaps={data.gaps} refreshing={data.refreshing} chatOpen={chatOpen} onAsk={askFromClosed} onClose={closePanel} />);
   }
 
   const scoped = scope.mode === 'list' ? allItems.filter((item) => inList(item, scope.list)) : allItems;
@@ -602,6 +660,17 @@ export function NextActions() {
 
   if (!panelOpen) {
     return place(<ClosedPanel label="Do this next" count={scoped.length} refreshing={data.refreshing} onOpen={openPanel} onAsk={askFromClosed} />);
+  }
+
+  if (scoped.length === 0 && !chatOpen) {
+    return place(
+      <QuietRow
+        message={scope.mode === 'list' ? 'Nothing on this page is waiting.' : 'You are all caught up.'}
+        refreshing={data.refreshing}
+        onAsk={askFromClosed}
+        onClose={closePanel}
+      />,
+    );
   }
 
   return place(
@@ -639,6 +708,7 @@ export function NextActions() {
             </motion.span>
           </button>
         )}
+        {!chatOpen && <AskPill onAsk={askFromClosed} />}
         <CloseButton onClose={closePanel} />
       </div>
 
@@ -683,7 +753,7 @@ export function NextActions() {
           </AnimatePresence>
         </>
       )}
-      <AskBox lists={data.lists} gaps={data.gaps} items={scoped} scope={scope} />
+      {chatOpen && <AskBox lists={data.lists} gaps={data.gaps} items={scoped} scope={scope} />}
     </Card>,
   );
 }

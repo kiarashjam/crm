@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { CheckCircle, Paperclip, Search } from 'lucide-react';
+import { CheckCircle, Lock, MailX, Paperclip, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -10,7 +10,8 @@ import { getContacts, getDeals, getLeads, sendCopyToCrm } from '@/app/api';
 import type { Contact, Deal, Lead } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 type ObjectType = 'lead' | 'contact' | 'deal';
 
@@ -173,21 +174,27 @@ export default function SendToCrm() {
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           {!isSent ? (
             <div className="w-full max-w-6xl">
-              <div className="mb-8 flex items-start gap-4">
-                <div className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700" aria-hidden>
-                  <Paperclip className="h-5 w-5" />
-                </div>
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Attach copy</h1>
-                  <p className="mt-2 max-w-2xl text-slate-600">
-                    Save this writing on a lead, contact, or deal. It stays in Cadence and shows up in History. It is not emailed, and it does not leave this workspace.
-                  </p>
-                </div>
-              </div>
-              <NextActionsSlot />
+              <PageHero
+                icon={Paperclip}
+                tone="violet"
+                title="Attach copy"
+                subtitle="Save this writing on a lead, contact, or deal. It stays in Cadence and shows up in History."
+                badges={
+                  <>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                      <MailX className="h-3 w-3" aria-hidden />
+                      Not emailed
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                      <Lock className="h-3 w-3" aria-hidden />
+                      Stays in this workspace
+                    </span>
+                  </>
+                }
+              />
 
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                <StaggerItem as="section" index={0} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                   <div className="mb-4 flex items-baseline justify-between gap-3">
                     <label htmlFor="attach-copy" className="text-sm font-medium text-slate-700">
                       Writing
@@ -211,9 +218,9 @@ export default function SendToCrm() {
                     </Link>
                     , then come back here. History can also open a past draft on this page.
                   </p>
-                </section>
+                </StaggerItem>
 
-                <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+                <StaggerItem as="section" index={1} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                   <fieldset>
                     <legend className="text-sm font-medium text-slate-700">Save it on</legend>
                     <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -281,26 +288,27 @@ export default function SendToCrm() {
                       </div>
                     ) : (
                       <div role="radiogroup" aria-label={`Choose a ${typeLabel.toLowerCase()}`} className="max-h-72 divide-y overflow-y-auto rounded-xl border border-slate-200">
-                        {orderedRecords.map((record) => {
+                        {orderedRecords.map((record, index) => {
                           const selected = selectedRecord?.id === record.id;
                           return (
-                            <label
-                              key={record.id}
-                              className={`flex min-h-11 cursor-pointer items-center px-4 py-3 transition-colors ${selected ? 'bg-orange-50' : 'hover:bg-slate-50'}`}
-                            >
-                              <input
-                                type="radio"
-                                name="attach-record"
-                                value={record.id}
-                                checked={selected}
-                                onChange={() => setSelectedRecord({ id: record.id, name: record.name })}
-                                className="h-4 w-4 text-orange-600 focus:ring-orange-500 focus:ring-offset-0"
-                              />
-                              <span className="ml-3 min-w-0">
-                                <span className="block truncate font-medium text-slate-900">{record.name}</span>
-                                <span className="block truncate text-sm text-slate-600">{record.sub}</span>
-                              </span>
-                            </label>
+                            <StaggerItem key={record.id} index={index}>
+                              <label
+                                className={`flex min-h-11 cursor-pointer items-center px-4 py-3 transition-colors ${selected ? 'bg-orange-50' : 'hover:bg-slate-50'}`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="attach-record"
+                                  value={record.id}
+                                  checked={selected}
+                                  onChange={() => setSelectedRecord({ id: record.id, name: record.name })}
+                                  className="h-4 w-4 text-orange-600 focus:ring-orange-500 focus:ring-offset-0"
+                                />
+                                <span className="ml-3 min-w-0">
+                                  <span className="block truncate font-medium text-slate-900">{record.name}</span>
+                                  <span className="block truncate text-sm text-slate-600">{record.sub}</span>
+                                </span>
+                              </label>
+                            </StaggerItem>
                           );
                         })}
                         {orderedRecords.length === 0 && (
@@ -341,7 +349,7 @@ export default function SendToCrm() {
                   >
                     {sending ? 'Saving…' : selectedRecord ? `Save on ${selectedRecord.name}` : 'Choose a record to save'}
                   </button>
-                </section>
+                </StaggerItem>
               </div>
             </div>
           ) : (

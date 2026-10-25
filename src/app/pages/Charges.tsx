@@ -57,7 +57,8 @@ import {
 } from '@/app/api/charges';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 const STATUS_BADGE: Record<ChargeStatus, string> = {
   Pending: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
@@ -261,64 +262,24 @@ export default function Charges() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-lime-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-lime-500 flex items-center justify-center shadow-2xl shadow-emerald-500/30">
-                    <Receipt className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">House Accounts</h1>
-                    <p className="text-slate-400 mt-1">
-                      Charges, payments, and outstanding balances across all members.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openChargeDialog}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-lime-500 hover:from-emerald-600 hover:to-lime-600 shadow-lg shadow-emerald-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  Post charge
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<DollarSign className="w-5 h-5 text-amber-600" />}
-              label="Outstanding"
-              value={formatCurrency(stats.outstanding)}
-              hint={`${stats.pendingCount} open charges`}
-            />
-            <StatCard
-              icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
-              label="Overdue"
-              value={formatCurrency(stats.overdue)}
-              hint="Past due date"
-            />
-            <StatCard
-              icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
-              label="Paid · 30d"
-              value={formatCurrency(stats.paidThisMonth)}
-              hint="Collected in last 30d"
-            />
-            <StatCard
-              icon={<CreditCard className="w-5 h-5 text-indigo-600" />}
-              label="Payments"
-              value={String(payments.length)}
-              hint="All-time recorded"
-            />
-          </div>
+          <PageHero
+            icon={Receipt}
+            tone="emerald"
+            title="House Accounts"
+            subtitle="Charges, payments, and outstanding balances across all members."
+            actions={
+              <Button onClick={openChargeDialog} className={heroPrimary('emerald')}>
+                <Plus className="h-4 w-4" />
+                Post charge
+              </Button>
+            }
+            stats={[
+              { label: 'Outstanding', value: stats.outstanding, icon: DollarSign, tone: 'amber', hint: `${stats.pendingCount} open charges`, format: formatCurrency },
+              { label: 'Overdue', value: stats.overdue, icon: AlertTriangle, tone: 'rose', hint: 'past due date', format: formatCurrency },
+              { label: 'Paid · 30d', value: stats.paidThisMonth, icon: CheckCircle2, tone: 'emerald', hint: 'collected in last 30d', format: formatCurrency },
+              { label: 'Payments', value: payments.length, icon: CreditCard, tone: 'indigo', hint: 'all-time recorded' },
+            ]}
+          />
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row gap-3 mb-6">
@@ -401,10 +362,10 @@ export default function Charges() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredCharges.map((c) => {
+                      {filteredCharges.map((c, index) => {
                         const remaining = c.amount - c.paidAmount;
                         return (
-                          <tr key={c.id} className="border-b border-slate-100 hover:bg-slate-50">
+                          <StaggerItem as="tr" key={c.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
                             <td className="px-4 py-3">
                               <p className="font-medium text-slate-900">{c.memberName}</p>
                             </td>
@@ -455,7 +416,7 @@ export default function Charges() {
                                 </button>
                               </div>
                             </td>
-                          </tr>
+                          </StaggerItem>
                         );
                       })}
                     </tbody>
@@ -484,8 +445,8 @@ export default function Charges() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredPayments.map((p) => (
-                        <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      {filteredPayments.map((p, index) => (
+                        <StaggerItem as="tr" key={p.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
                           <td className="px-4 py-3 font-medium text-slate-900">{p.memberName}</td>
                           <td className="px-4 py-3 text-slate-600">
                             {PAYMENT_METHOD_LABELS[p.method]}
@@ -499,7 +460,7 @@ export default function Charges() {
                           <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
                             {formatDate(p.receivedAtUtc)}
                           </td>
-                        </tr>
+                        </StaggerItem>
                       ))}
                     </tbody>
                   </table>
@@ -669,29 +630,6 @@ export default function Charges() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

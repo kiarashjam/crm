@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Copy, Loader2, Lock, RotateCw, Trash2 } from 'lucide-react';
+import {
+  Copy, Loader2, Lock, RotateCw, Trash2, SlidersHorizontal, Timer, Gauge, Shuffle, FileText,
+} from 'lucide-react';
 import AppHeader from '@/app/components/AppHeader';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -32,7 +33,8 @@ import {
   saveSla,
   saveTerritory,
 } from '@/app/api/leadOps';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { type PageStat } from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 /**
  * Lead routing: response deadline, scoring, assignment, territories, queues, capture
@@ -84,7 +86,6 @@ function errorText(err: unknown, fallback: string): string {
 }
 
 export default function LeadRouting() {
-  const navigate = useNavigate();
   const org = useOrgOptional();
   const live = !servesDemoData();
   // Writes need an owner or a manager; the server refuses anyone else.
@@ -115,30 +116,52 @@ export default function LeadRouting() {
     [members],
   );
 
+  const subtitle = 'Who gets each new lead, how fast they should reply, and how leads are scored.';
+  const back = { to: '/leads', label: 'Back to leads' };
+
   if (!live) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
         <AppHeader />
         <main className="mx-auto max-w-5xl px-4 py-8">
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Lead routing</h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Lead routing runs on the live workspace and is not available in demo mode.</p>
+          <PageHero icon={SlidersHorizontal} tone="orange" title="Lead routing" subtitle={subtitle} back={back}>
+            <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-900" role="note">
+              <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Lead routing runs on the live workspace and is not available in demo mode.
+            </p>
+          </PageHero>
         </main>
       </div>
     );
   }
 
+  const ready = (status: Section<unknown>['status'], n: number) => (status === 'ready' ? n : '—');
+  const activeScoring = scoring.data.filter((r) => r.isActive).length;
+  const routingStats: PageStat[] = [
+    {
+      label: 'First response', value: ready(sla.status, sla.data), icon: Timer, tone: 'orange', hint: 'hours to reply',
+      format: (n) => `${Math.round(n)}h`,
+    },
+    { label: 'Score rules', value: ready(scoring.status, scoring.data.length), icon: Gauge, tone: 'violet', hint: `${activeScoring} active` },
+    {
+      label: 'Assignment rules', value: ready(assignment.status, assignment.data.length), icon: Shuffle, tone: 'sky',
+      hint: `${territories.data.length} territories · ${queues.data.length} queues`,
+    },
+    { label: 'Capture forms', value: ready(forms.status, forms.data.length), icon: FileText, tone: 'emerald', hint: 'public' },
+  ];
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <AppHeader />
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Lead routing</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Who gets each new lead, how fast they should reply, and how leads are scored.</p>
-          </div>
-          <Button variant="outline" onClick={() => navigate('/leads')}>Back to leads</Button>
-        </div>
-        <NextActionsSlot className="" />
+        <PageHero
+          icon={SlidersHorizontal}
+          tone="orange"
+          title="Lead routing"
+          subtitle={subtitle}
+          back={back}
+          stats={routingStats}
+        />
 
         {!canManage && (
           <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" role="note">
@@ -147,15 +170,15 @@ export default function LeadRouting() {
           </p>
         )}
 
-        <Panel title="First response" status={sla.status} onRetry={sla.reload}>
+        <Panel index={0} title="First response" status={sla.status} onRetry={sla.reload}>
           <SlaEditor hours={sla.data} disabled={!canManage || sla.status !== 'ready'} onSaved={sla.set} />
         </Panel>
 
-        <Panel title="Score rules" status={scoring.status} onRetry={scoring.reload}>
+        <Panel index={1} title="Score rules" status={scoring.status} onRetry={scoring.reload}>
           <ScoreRulesEditor rules={scoring.data} disabled={!canManage || scoring.status !== 'ready'} onSaved={scoring.set} />
         </Panel>
 
-        <Panel title="Assignment rules" status={assignment.status} onRetry={assignment.reload}>
+        <Panel index={2} title="Assignment rules" status={assignment.status} onRetry={assignment.reload}>
           <AssignmentEditor
             rules={assignment.data}
             territories={territories.data}
@@ -165,19 +188,19 @@ export default function LeadRouting() {
           />
         </Panel>
 
-        <Panel title="Territories" status={territories.status} onRetry={territories.reload}>
+        <Panel index={3} title="Territories" status={territories.status} onRetry={territories.reload}>
           <TerritoryEditor items={territories.data} disabled={!canManage || territories.status !== 'ready'} onChange={territories.set} />
         </Panel>
 
-        <Panel title="Queues" status={queues.status} onRetry={queues.reload}>
+        <Panel index={4} title="Queues" status={queues.status} onRetry={queues.reload}>
           <QueueEditor items={queues.data} workers={workers} nameOf={nameOf} disabled={!canManage || queues.status !== 'ready'} onChange={queues.set} />
         </Panel>
 
-        <Panel title="Public capture forms" status={forms.status} onRetry={forms.reload}>
+        <Panel index={5} title="Public capture forms" status={forms.status} onRetry={forms.reload}>
           <FormsEditor items={forms.data} disabled={!canManage || forms.status !== 'ready'} onChange={forms.set} />
         </Panel>
 
-        <Panel title="How leads convert" status={report.status} onRetry={report.reload}>
+        <Panel index={6} title="How leads convert" status={report.status} onRetry={report.reload}>
           <ReportTable caption="By source" rows={report.data?.bySource ?? []} keyLabel={(k) => k} />
           <ReportTable
             caption="By owner"
@@ -566,9 +589,9 @@ function FormsEditor({ items, disabled, onChange }: { items: CaptureForm[]; disa
 
 // ── shared ──────────────────────────────────────────────────────────────────
 
-function Panel({ title, status, onRetry, children }: { title: string; status: Section<unknown>['status']; onRetry: () => void; children: ReactNode }) {
+function Panel({ index, title, status, onRetry, children }: { index: number; title: string; status: Section<unknown>['status']; onRetry: () => void; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900" aria-busy={status === 'loading'}>
+    <StaggerItem as="section" index={index} className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900" aria-busy={status === 'loading'}>
       <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
         {title}
         {status === 'loading' && <Loader2 className="h-4 w-4 animate-spin text-slate-400" aria-label="Loading" />}
@@ -581,7 +604,7 @@ function Panel({ title, status, onRetry, children }: { title: string; status: Se
           </Button>
         </div>
       ) : children}
-    </section>
+    </StaggerItem>
   );
 }
 
