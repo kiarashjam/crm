@@ -121,9 +121,9 @@ export default function LeadRouting() {
 
   if (!live) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
-        <main className="mx-auto max-w-5xl px-4 py-8">
+        <main className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]">
           <PageHero icon={SlidersHorizontal} tone="orange" title="Lead routing" subtitle={subtitle} back={back}>
             <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-900" role="note">
               <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
@@ -151,9 +151,9 @@ export default function LeadRouting() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
-      <main className="mx-auto max-w-5xl space-y-6 px-4 py-8">
+      <main className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]">
         <PageHero
           icon={SlidersHorizontal}
           tone="orange"
@@ -163,52 +163,55 @@ export default function LeadRouting() {
           stats={routingStats}
         />
 
-        {!canManage && (
-          <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" role="note">
-            <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
-            Only owners and managers can change lead routing. You can see how it is set up.
-          </p>
-        )}
+        <div className="max-w-5xl space-y-6">
 
-        <Panel index={0} title="First response" status={sla.status} onRetry={sla.reload}>
-          <SlaEditor hours={sla.data} disabled={!canManage || sla.status !== 'ready'} onSaved={sla.set} />
-        </Panel>
+          {!canManage && (
+            <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200" role="note">
+              <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Only owners and managers can change lead routing. You can see how it is set up.
+            </p>
+          )}
 
-        <Panel index={1} title="Score rules" status={scoring.status} onRetry={scoring.reload}>
-          <ScoreRulesEditor rules={scoring.data} disabled={!canManage || scoring.status !== 'ready'} onSaved={scoring.set} />
-        </Panel>
+          <Panel index={0} title="First response" status={sla.status} onRetry={sla.reload}>
+            <SlaEditor hours={sla.data} disabled={!canManage || sla.status !== 'ready'} onSaved={sla.set} />
+          </Panel>
 
-        <Panel index={2} title="Assignment rules" status={assignment.status} onRetry={assignment.reload}>
-          <AssignmentEditor
-            rules={assignment.data}
-            territories={territories.data}
-            queues={queues.data}
-            disabled={!canManage || assignment.status !== 'ready'}
-            onChange={assignment.set}
-          />
-        </Panel>
+          <Panel index={1} title="Score rules" status={scoring.status} onRetry={scoring.reload}>
+            <ScoreRulesEditor rules={scoring.data} disabled={!canManage || scoring.status !== 'ready'} onSaved={scoring.set} />
+          </Panel>
 
-        <Panel index={3} title="Territories" status={territories.status} onRetry={territories.reload}>
-          <TerritoryEditor items={territories.data} disabled={!canManage || territories.status !== 'ready'} onChange={territories.set} />
-        </Panel>
+          <Panel index={2} title="Assignment rules" status={assignment.status} onRetry={assignment.reload}>
+            <AssignmentEditor
+              rules={assignment.data}
+              territories={territories.data}
+              queues={queues.data}
+              disabled={!canManage || assignment.status !== 'ready'}
+              onChange={assignment.set}
+            />
+          </Panel>
 
-        <Panel index={4} title="Queues" status={queues.status} onRetry={queues.reload}>
-          <QueueEditor items={queues.data} workers={workers} nameOf={nameOf} disabled={!canManage || queues.status !== 'ready'} onChange={queues.set} />
-        </Panel>
+          <Panel index={3} title="Territories" status={territories.status} onRetry={territories.reload}>
+            <TerritoryEditor items={territories.data} disabled={!canManage || territories.status !== 'ready'} onChange={territories.set} />
+          </Panel>
 
-        <Panel index={5} title="Public capture forms" status={forms.status} onRetry={forms.reload}>
-          <FormsEditor items={forms.data} disabled={!canManage || forms.status !== 'ready'} onChange={forms.set} />
-        </Panel>
+          <Panel index={4} title="Queues" status={queues.status} onRetry={queues.reload}>
+            <QueueEditor items={queues.data} workers={workers} nameOf={nameOf} disabled={!canManage || queues.status !== 'ready'} onChange={queues.set} />
+          </Panel>
 
-        <Panel index={6} title="How leads convert" status={report.status} onRetry={report.reload}>
-          <ReportTable caption="By source" rows={report.data?.bySource ?? []} keyLabel={(k) => k} />
-          <ReportTable
-            caption="By owner"
-            rows={report.data?.byOwner ?? []}
-            // The report groups by user id; it used to print the raw GUIDs.
-            keyLabel={(k) => (k === 'Unassigned' ? k : nameOf(k))}
-          />
-        </Panel>
+          <Panel index={5} title="Public capture forms" status={forms.status} onRetry={forms.reload}>
+            <FormsEditor items={forms.data} disabled={!canManage || forms.status !== 'ready'} onChange={forms.set} />
+          </Panel>
+
+          <Panel index={6} title="How leads convert" status={report.status} onRetry={report.reload}>
+            <ReportTable caption="By source" rows={report.data?.bySource ?? []} keyLabel={(k) => k} />
+            <ReportTable
+              caption="By owner"
+              rows={report.data?.byOwner ?? []}
+              // The report groups by user id; it used to print the raw GUIDs.
+              keyLabel={(k) => (k === 'Unassigned' ? k : nameOf(k))}
+            />
+          </Panel>
+        </div>
       </main>
     </div>
   );

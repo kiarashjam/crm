@@ -675,9 +675,10 @@ export function NextActions() {
 
   return place(
     <Card className="px-4 pb-3 pt-5 sm:px-5" labelledBy="next-actions-heading">
-      <div className="flex items-center gap-3">
+      {/* On a narrow screen the controls wrap under the title rather than squeezing it. */}
+      <div className="flex flex-wrap items-center gap-3">
         <IconTile busy={data.refreshing} />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[10rem] flex-1">
           <div className="flex items-center gap-2">
             <h2 id="next-actions-heading" className="bg-gradient-to-r from-slate-900 via-fuchsia-600 to-slate-900 bg-[length:200%_100%] bg-clip-text text-base font-semibold text-transparent motion-safe:animate-[shimmer_6s_linear_infinite] dark:from-white dark:via-fuchsia-300 dark:to-white">Do this next</h2>
             <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>

@@ -173,7 +173,7 @@ export default function SendToCrm() {
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           {!isSent ? (
-            <div className="w-full max-w-6xl">
+            <>
               <PageHero
                 icon={Paperclip}
                 tone="violet"
@@ -193,7 +193,7 @@ export default function SendToCrm() {
                 }
               />
 
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+              <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
                 <StaggerItem as="section" index={0} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                   <div className="mb-4 flex items-baseline justify-between gap-3">
                     <label htmlFor="attach-copy" className="text-sm font-medium text-slate-700">
@@ -351,7 +351,7 @@ export default function SendToCrm() {
                   </button>
                 </StaggerItem>
               </div>
-            </div>
+            </>
           ) : (
             <div className="mx-auto max-w-lg text-center">
               <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100" aria-hidden>

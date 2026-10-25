@@ -1355,6 +1355,8 @@ export default function Leads() {
   };
 
   const conversionRate = Math.max(0, Math.min(100, stats.conversionRate));
+  /** A figure's share of every lead, for the bar along its tile. */
+  const shareOf = (n: number) => (stats.total > 0 ? n / stats.total : 0);
   const activeOn = filterConverted === 'active';
   const convertedOn = filterConverted === 'converted';
   const qualifiedOn = qualifiedFilterNames.length > 0
@@ -1366,9 +1368,9 @@ export default function Leads() {
   // The page's numbers, in its header. Active, Converted and Qualified switch
   // their filter on and off, and say which is on.
   const leadHeroStats: PageStat[] = [
-    { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString()} active` },
+    { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString()} active`, progress: shareOf(stats.active) },
     {
-      label: 'Active', value: stats.active, icon: Target, tone: 'sky', hint: 'still open', pressed: activeOn,
+      label: 'Active', value: stats.active, icon: Target, tone: 'sky', hint: 'still open', pressed: activeOn, progress: shareOf(stats.active),
       onClick: () => {
         setFilterConverted((current) => (current === 'active' ? 'all' : 'active'));
         setShowFilters(true);
@@ -1377,9 +1379,9 @@ export default function Leads() {
         ? `Active, ${stats.active}. Filter is on. Activate to show every lead.`
         : `Active, ${stats.active}. Still open. Activate to filter the list.`,
     },
-    { label: 'Hot', value: stats.hotLeads, icon: Zap, tone: 'rose', hint: 'score 70+' },
+    { label: 'Hot', value: stats.hotLeads, icon: Zap, tone: 'rose', hint: 'score 70+', progress: shareOf(stats.hotLeads) },
     {
-      label: 'Converted', value: conversionRate, icon: CheckCircle2, tone: 'teal', hint: convertedHint, pressed: convertedOn,
+      label: 'Converted', value: conversionRate, icon: CheckCircle2, tone: 'teal', hint: convertedHint, pressed: convertedOn, progress: conversionRate / 100,
       format: (n) => `${n === conversionRate ? conversionRate.toLocaleString() : Math.round(n)}%`,
       onClick: () => {
         setFilterConverted((current) => (current === 'converted' ? 'all' : 'converted'));
@@ -1389,9 +1391,9 @@ export default function Leads() {
         ? `Converted, ${conversionRate} percent. Filter is on. Activate to show every lead.`
         : `Converted, ${conversionRate} percent. ${convertedHint}. Activate to filter the list.`,
     },
-    { label: 'This week', value: stats.thisWeek, icon: Sparkles, tone: 'violet', hint: 'added in 7 days' },
+    { label: 'This week', value: stats.thisWeek, icon: Sparkles, tone: 'violet', hint: 'added in 7 days', progress: shareOf(stats.thisWeek) },
     {
-      label: 'Qualified', value: stats.qualified, icon: Handshake, tone: 'emerald', hint: 'or further', pressed: qualifiedOn,
+      label: 'Qualified', value: stats.qualified, icon: Handshake, tone: 'emerald', hint: 'or further', pressed: qualifiedOn, progress: shareOf(stats.qualified),
       onClick: qualifiedFilterNames.length > 0
         ? () => {
           setFilterStatuses((current) => {

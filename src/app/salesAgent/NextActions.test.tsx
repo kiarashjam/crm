@@ -286,7 +286,11 @@ describe('every page places the panel after its title', () => {
       .filter(({ source }) => !source.includes('<NextActionsSlot') && !source.includes('<PageHero') && !source.includes('<DashboardHero'))
       .map(({ file }) => file);
     expect(missing).toEqual([]);
-    const optedOut = withHeader.filter(({ source }) => source.includes('noAgentSlot')).map(({ file }) => file);
+    // The lead page leaves the header's slot out only to place the panel in its own
+    // main column; the till and the portal preview leave the panel out altogether.
+    const optedOut = withHeader
+      .filter(({ source }) => source.includes('noAgentSlot') && !source.includes('<NextActionsSlot'))
+      .map(({ file }) => file);
     expect(optedOut.sort()).toEqual(['MemberPortal.tsx', 'PosTerminal.tsx']);
     expect(readFileSync(resolve(__dirname, '../components/PageHero.tsx'), 'utf8')).toContain('<NextActionsSlot');
     expect(readFileSync(resolve(pages, 'dashboard/DashboardHero.tsx'), 'utf8')).toContain('<PageHero');
