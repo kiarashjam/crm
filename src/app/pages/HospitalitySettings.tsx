@@ -33,7 +33,8 @@ import {
 import { MEMBER_TIERS, type MemberTier } from '@/app/api/members';
 import { VISIT_VENUES, type VisitVenue } from '@/app/api/visits';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const TIER_COLOR: Record<MemberTier, string> = {
   Bronze: 'from-amber-400 to-amber-600',
@@ -138,59 +139,34 @@ export default function HospitalitySettings() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-fuchsia-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 flex items-center justify-center shadow-2xl shadow-indigo-500/30">
-                    <Settings className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">
-                      Hospitality Settings
-                    </h1>
-                    <p className="text-slate-400 mt-1">
-                      Configure tiers, dues, loyalty multipliers, and venue point values.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={reset}
-                    disabled={resetting}
-                    className="bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white"
-                  >
-                    {resetting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <RotateCcw className="w-4 h-4 mr-1.5" /> Reset to defaults
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={save}
-                    disabled={saving}
-                    className="bg-white text-slate-900 hover:bg-slate-100"
-                  >
-                    {saving ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4 mr-1.5" /> Save changes
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
+          <PageHero
+            icon={Settings}
+            tone="indigo"
+            title="Hospitality Settings"
+            subtitle="Configure tiers, dues, loyalty multipliers, and venue point values."
+            actions={
+              <>
+                <Button variant="outline" onClick={reset} disabled={resetting} className={heroSecondary}>
+                  {resetting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <RotateCcw className="h-4 w-4" /> Reset to defaults
+                    </>
+                  )}
+                </Button>
+                <Button onClick={save} disabled={saving} className={heroPrimary('indigo')}>
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" /> Save changes
+                    </>
+                  )}
+                </Button>
+              </>
+            }
+          />
 
           <Tabs defaultValue="tiers">
             <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
@@ -201,13 +177,15 @@ export default function HospitalitySettings() {
 
             <TabsContent value="tiers">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {MEMBER_TIERS.map((tier) => {
+                {MEMBER_TIERS.map((tier, index) => {
                   const cfg = settings.tiers.find((t) => t.tier === tier);
                   if (!cfg) return null;
                   return (
-                    <article
+                    <StaggerItem
+                      as="article"
                       key={tier}
-                      className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+                      index={index}
+                      className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:border-indigo-200 ${liftOnHover}`}
                     >
                       <div className={`h-3 bg-gradient-to-r ${TIER_COLOR[tier]}`} />
                       <div className="p-5">
@@ -291,7 +269,7 @@ export default function HospitalitySettings() {
                           </Button>
                         </div>
                       </div>
-                    </article>
+                    </StaggerItem>
                   );
                 })}
               </div>

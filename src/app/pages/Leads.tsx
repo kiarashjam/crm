@@ -1,19 +1,19 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Search, Plus, Building2, User, ArrowRightCircle, Sparkles, Check,
+  Search, Plus, Building2, User, ArrowRightCircle, Sparkles, Link2, Download, Check,
   Tag, UserPlus, Info, CircleDot, Upload, RefreshCw, Users, Handshake,
   ArrowRight, CheckCircle2, SlidersHorizontal, ArrowUpDown, ArrowUp,
-  ArrowDown, X, Target, Clock, Zap, AlertCircle, UserCircle,
+  ArrowDown, X, Target, Clock, Zap, UserCircle,
   AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
 import { createLeadOrOfferDuplicate } from './leads/createLeadOrOfferDuplicate';
 import AppHeader from '@/app/components/AppHeader';
+import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
 import { PageEnter } from '@/app/components/motion/PageEnter';
 import { LeadsListSkeleton } from './leads/components/LeadsListSkeleton';
-import { LeadPipelineStrip } from './leads/LeadPipelineStrip';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
@@ -67,7 +67,6 @@ import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSel
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
 import { LeadGalleryCard } from './leads/LeadGalleryCard';
-import { LeadsHero } from './leads/LeadsHero';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
 import {
   SalesTrackerFilters,
@@ -94,7 +93,6 @@ import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignment
 import { matchesLeadSearch } from './leads/leadText';
 import type { LeadForm } from './leads/types';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
 /** Session-scoped scroll position so returning from a lead detail restores it. */
@@ -1356,6 +1354,62 @@ export default function Leads() {
     hotLeads: 0,
   };
 
+  const conversionRate = Math.max(0, Math.min(100, stats.conversionRate));
+  /** A figure's share of every lead, for the bar along its tile. */
+  const shareOf = (n: number) => (stats.total > 0 ? n / stats.total : 0);
+  const activeOn = filterConverted === 'active';
+  const convertedOn = filterConverted === 'converted';
+  const qualifiedOn = qualifiedFilterNames.length > 0
+    && filterStatuses.length === qualifiedFilterNames.length
+    && qualifiedFilterNames.every((name) => filterStatuses.includes(name));
+  const convertedHint = stats.converted === 0
+    ? 'none became deals'
+    : `${stats.converted.toLocaleString()} became ${stats.converted === 1 ? 'a deal' : 'deals'}`;
+  // The page's numbers, in its header. Active, Converted and Qualified switch
+  // their filter on and off, and say which is on.
+  const leadHeroStats: PageStat[] = [
+    { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString()} active`, progress: shareOf(stats.active) },
+    {
+      label: 'Active', value: stats.active, icon: Target, tone: 'sky', hint: 'still open', pressed: activeOn, progress: shareOf(stats.active),
+      onClick: () => {
+        setFilterConverted((current) => (current === 'active' ? 'all' : 'active'));
+        setShowFilters(true);
+      },
+      actionLabel: activeOn
+        ? `Active, ${stats.active}. Filter is on. Activate to show every lead.`
+        : `Active, ${stats.active}. Still open. Activate to filter the list.`,
+    },
+    { label: 'Hot', value: stats.hotLeads, icon: Zap, tone: 'rose', hint: 'score 70+', progress: shareOf(stats.hotLeads) },
+    {
+      label: 'Converted', value: conversionRate, icon: CheckCircle2, tone: 'teal', hint: convertedHint, pressed: convertedOn, progress: conversionRate / 100,
+      format: (n) => `${n === conversionRate ? conversionRate.toLocaleString() : Math.round(n)}%`,
+      onClick: () => {
+        setFilterConverted((current) => (current === 'converted' ? 'all' : 'converted'));
+        setShowFilters(true);
+      },
+      actionLabel: convertedOn
+        ? `Converted, ${conversionRate} percent. Filter is on. Activate to show every lead.`
+        : `Converted, ${conversionRate} percent. ${convertedHint}. Activate to filter the list.`,
+    },
+    { label: 'This week', value: stats.thisWeek, icon: Sparkles, tone: 'violet', hint: 'added in 7 days', progress: shareOf(stats.thisWeek) },
+    {
+      label: 'Qualified', value: stats.qualified, icon: Handshake, tone: 'emerald', hint: 'or further', pressed: qualifiedOn, progress: shareOf(stats.qualified),
+      onClick: qualifiedFilterNames.length > 0
+        ? () => {
+          setFilterStatuses((current) => {
+            const on = current.length === qualifiedFilterNames.length
+              && qualifiedFilterNames.every((name) => current.includes(name));
+            return on ? [] : qualifiedFilterNames;
+          });
+          setShowFilters(true);
+        }
+        : undefined,
+      actionLabel: qualifiedOn
+        ? `Qualified, ${stats.qualified}. Filter is on. Activate to clear it.`
+        : `Qualified, ${stats.qualified}. Qualified or further. Activate to filter the list.`,
+    },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -1401,76 +1455,60 @@ export default function Leads() {
               </Button>
             </div>
           )}
-          <LeadsHero
-            status={loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage and qualify your sales leads'}
-            readOnly={isReadOnly}
-            exporting={exporting}
-            onRouting={() => navigate('/leads/routing')}
-            onWebhook={() => navigate('/leads/webhook')}
-            onImport={() => navigate('/leads/import')}
-            onExport={handleExportLeads}
-            onAdd={openCreate}
+          <PageHero
+            icon={Users}
+            tone="orange"
+            title="Leads"
+            subtitle={loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage and qualify your sales leads'}
+            badges={!loading && totalCount > 0 && (
+              <>
+                {stats.hotLeads > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                    <Zap className="h-3 w-3" aria-hidden />
+                    {stats.hotLeads} hot, ready for outreach
+                  </span>
+                )}
+                {stats.newLeads > 3 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                    <Clock className="h-3 w-3" aria-hidden />
+                    {stats.newLeads} awaiting first contact
+                  </span>
+                )}
+              </>
+            )}
+            actions={
+              <>
+                {!isReadOnly && (
+                  <>
+                    <Button onClick={() => navigate('/leads/routing')} variant="outline" className={heroSecondary}>
+                      <SlidersHorizontal className="h-4 w-4" />
+                      <span className="hidden sm:inline">Routing</span>
+                    </Button>
+                    <Button onClick={() => navigate('/leads/webhook')} variant="outline" className={heroSecondary}>
+                      <Link2 className="h-4 w-4" />
+                      <span className="hidden sm:inline">Webhook</span>
+                    </Button>
+                    <Button onClick={() => navigate('/leads/import')} variant="outline" className={heroSecondary}>
+                      <Upload className="h-4 w-4" />
+                      <span className="hidden sm:inline">Import</span>
+                    </Button>
+                  </>
+                )}
+                {/* Export is read-only, so viewers keep it. */}
+                <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className={`${heroSecondary} disabled:opacity-60`}>
+                  <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
+                  <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export CSV'}</span>
+                </Button>
+                {!isReadOnly && (
+                  <Button onClick={openCreate} className={heroPrimary('orange')}>
+                    <Plus className="h-4 w-4" />
+                    Add Lead
+                  </Button>
+                )}
+              </>
+            }
+            stats={!loading && totalCount > 0 ? leadHeroStats : undefined}
           />
-          <NextActionsSlot />
-
-          {!loading && totalCount > 0 && (
-            <LeadPipelineStrip
-              stats={stats}
-              activeOn={filterConverted === 'active'}
-              convertedOn={filterConverted === 'converted'}
-              qualifiedOn={
-                qualifiedFilterNames.length > 0
-                && filterStatuses.length === qualifiedFilterNames.length
-                && qualifiedFilterNames.every((name) => filterStatuses.includes(name))
-              }
-              qualifiedFilterable={qualifiedFilterNames.length > 0}
-              onActive={() => {
-                setFilterConverted((current) => (current === 'active' ? 'all' : 'active'));
-                setShowFilters(true);
-              }}
-              onConverted={() => {
-                setFilterConverted((current) => (current === 'converted' ? 'all' : 'converted'));
-                setShowFilters(true);
-              }}
-              onQualified={() => {
-                setFilterStatuses((current) => {
-                  const on = qualifiedFilterNames.length > 0
-                    && current.length === qualifiedFilterNames.length
-                    && qualifiedFilterNames.every((name) => current.includes(name));
-                  return on ? [] : qualifiedFilterNames;
-                });
-                setShowFilters(true);
-              }}
-            />
-          )}
-
-          {/* Quick Insights Banner */}
-          {!loading && totalCount > 0 && (stats.hotLeads > 0 || stats.newLeads > 3) && (
-            <div className="mt-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 p-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-amber-800">Quick Insights</p>
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-amber-700">
-                    {stats.hotLeads > 0 && (
-                      <span className="flex items-center gap-1">
-                        <Zap className="w-3.5 h-3.5" />
-                        {stats.hotLeads} hot lead{stats.hotLeads > 1 ? 's' : ''} ready for outreach
-                      </span>
-                    )}
-                    {stats.newLeads > 3 && (
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        {stats.newLeads} new leads awaiting first contact
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
         {/* Sales Tracker dashboard — collapsible KPI + charts panel that
             mirrors the P46 Excel workbook. Sits above the filter bar so

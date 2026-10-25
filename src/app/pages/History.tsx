@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, RotateCcw, Search, Mail, MessageSquare, FileText, Briefcase, History as HistoryIcon, Paperclip } from 'lucide-react';
+import { Copy, RotateCcw, Search, Mail, MessageSquare, FileText, Briefcase, History as HistoryIcon, Paperclip, Users, CalendarDays, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -11,7 +11,8 @@ import { getCopyHistory } from '@/app/api';
 import type { CopyHistoryItem } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const typeIcons: Record<string, typeof Mail> = {
   'Sales Email': Mail,
@@ -93,67 +94,60 @@ export default function History() {
       item.recipientName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // The history's numbers, for the header.
+  const weekAgo = Date.now() - 7 * 86400000;
+  const thisWeekCount = items.filter((item) => new Date(item.createdAt).getTime() >= weekAgo).length;
+  const recipientCount = new Set(items.map((item) => item.recipientName)).size;
+  const typeCount = new Set(items.map((item) => item.type)).size;
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
 
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          {/* Enhanced Header Section with Dark Decorative Elements */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-          {/* Decorative blur elements */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-            <div className="absolute inset-0 opacity-5" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l9.9-9.9h-2.83zM32 0l-3.486 3.485-1.414-1.414L30.586 0H32zM0 5.373l.828-.83 1.415 1.415L0 8.2V5.374zm0 5.656l.828-.829 5.657 5.657-1.414 1.414L0 11.03v-.001zm0 5.656l.828-.828 8.485 8.485-1.414 1.414L0 16.686v-.001zm0 5.657l.828-.828 11.314 11.314-1.414 1.414L0 22.343v-.001zM60 5.373l-.828-.83-1.415 1.415L60 8.2V5.374zm0 5.656l-.828-.829-5.657 5.657 1.414 1.414L60 11.03v-.001zm0 5.656l-.828-.828-8.485 8.485 1.414 1.414L60 16.686v-.001zm0 5.657l-.828-.828-11.314 11.314 1.414 1.414L60 22.343v-.001z' fill='%23fff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E")` }} />
-          </div>
-          
-          <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                  <HistoryIcon className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Copy History</h1>
-                  <p className="text-slate-400 mt-1">View and reuse your previously generated copy</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-          <NextActionsSlot />
+          <PageHero
+            icon={HistoryIcon}
+            tone="cyan"
+            title="Copy History"
+            subtitle="View and reuse your previously generated copy"
+            stats={loading ? undefined : [
+              { label: 'Saved copy', value: items.length, icon: HistoryIcon, tone: 'cyan', hint: 'all time' },
+              { label: 'This week', value: thisWeekCount, icon: CalendarDays, tone: 'violet', hint: 'last 7 days' },
+              { label: 'Recipients', value: recipientCount, icon: Users, tone: 'amber', hint: 'people written to' },
+              { label: 'Kinds of copy', value: typeCount, icon: Layers, tone: 'emerald', hint: 'emails, notes, messages' },
+            ]}
+          />
 
         <div className="w-full">
 
-          {/* Search Bar - Modern Dark Theme */}
-          <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-4 mb-6 shadow-xl overflow-hidden">
+          {/* Search bar */}
+          <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
             {/* Decorative elements */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl -ml-10 -mb-10" />
+            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-300/25 rounded-full blur-2xl -mr-10 -mt-10" />
+            <div className="absolute bottom-0 left-0 w-24 h-24 bg-teal-300/25 rounded-full blur-2xl -ml-10 -mb-10" />
             
             <div className="relative">
               {/* Search Input - Enhanced */}
               <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-teal-500/20 via-cyan-500/20 to-teal-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 via-teal-500/20 to-cyan-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
                 <div className="relative">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-teal-500/20 to-cyan-500/20 flex items-center justify-center group-focus-within:from-teal-500/40 group-focus-within:to-cyan-500/40 transition-all duration-300">
-                    <Search className="w-4 h-4 text-teal-300 group-focus-within:text-teal-200 transition-colors" aria-hidden />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-100 to-sky-100 flex items-center justify-center group-focus-within:from-cyan-200 group-focus-within:to-sky-200 transition-all duration-300">
+                    <Search className="w-4 h-4 text-cyan-600 group-focus-within:text-cyan-700 transition-colors" aria-hidden />
                   </div>
                   <input
                     type="search"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search your copy history..."
-                    className="w-full h-11 pl-14 pr-10 border border-white/10 rounded-xl bg-white/5 backdrop-blur-md text-white placeholder:text-slate-400 shadow-xl shadow-black/10 focus:ring-2 focus:ring-teal-400/20 focus:border-teal-400/50 focus:bg-white/10 hover:bg-white/[0.07] hover:border-white/20 outline-none transition-all duration-300"
+                    className="w-full h-11 pl-14 pr-10 border border-slate-200 rounded-xl bg-slate-50/80 text-slate-900 placeholder:text-slate-400 focus:border-cyan-300 focus:ring-4 focus:ring-cyan-200/50 focus:bg-white hover:bg-white hover:border-slate-300 outline-none transition-all duration-300"
                     aria-label="Search copy history"
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-white/10 hover:bg-red-500/30 flex items-center justify-center text-slate-400 hover:text-red-300 transition-all duration-200"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
                     >
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 6 6 18" /><path d="m6 6 12 12" />
@@ -164,17 +158,17 @@ export default function History() {
               </div>
               {!loading && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-slate-400">
+                  <span className="text-sm text-slate-500">
                     {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
                   </span>
                   {searchQuery.trim() && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-white text-xs font-medium border border-white/10">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium border border-cyan-200">
                       <Search className="w-3 h-3" />
                       &quot;{searchQuery.trim()}&quot;
                     </span>
                   )}
                   {searchQuery.trim() && filteredItems.length === 0 && items.length > 0 && (
-                    <span className="text-sm text-slate-400">
+                    <span className="text-sm text-slate-500">
                       — No results. Try a different search.
                     </span>
                   )}
@@ -187,12 +181,14 @@ export default function History() {
             <ContentSkeleton rows={5} />
           ) : filteredItems.length > 0 ? (
             <div className="space-y-4">
-              {filteredItems.map((item) => {
+              {filteredItems.map((item, index) => {
                 const Icon = typeIcons[item.type] ?? FileText;
                 return (
-                  <article
+                  <StaggerItem
+                    as="article"
                     key={item.id}
-                    className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-shadow"
+                    index={index}
+                    className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:border-cyan-200 ${liftOnHover}`}
                   >
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center flex-shrink-0 text-teal-600">
@@ -243,7 +239,7 @@ export default function History() {
                         </div>
                       </div>
                     </div>
-                  </article>
+                  </StaggerItem>
                 );
               })}
             </div>

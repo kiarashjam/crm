@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import PageHero from '@/app/components/PageHero';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -80,6 +81,10 @@ export default function Automations() {
     }
   };
 
+  const enabledCount = rules.filter((r) => r.enabled).length;
+  const totalRuns = rules.reduce((s, r) => s + (r.runCount ?? 0), 0);
+  const triggerCount = new Set(rules.map((r) => r.trigger)).size;
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -87,20 +92,20 @@ export default function Automations() {
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           <PageHero
             icon={Zap}
-            iconGradient="from-amber-500 to-orange-500"
+            tone="amber"
             title="Automations"
             subtitle="Run actions automatically when something happens in your CRM."
             actions={canChange && (
               <WriteOnly>
-                <Button onClick={() => { setEditing(null); setEditorOpen(true); }} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
+                <Button onClick={() => { setEditing(null); setEditorOpen(true); }} className={heroPrimary('amber')}>
                   <Plus className="h-4 w-4" /> New automation
                 </Button>
               </WriteOnly>
             )}
             stats={[
-              { label: 'Automations', value: rules.length, icon: Zap, tone: 'amber' },
-              { label: 'Active', value: rules.filter((r) => r.enabled).length, icon: CheckSquare, tone: 'emerald' },
-              { label: 'Total runs', value: rules.reduce((s, r) => s + (r.runCount ?? 0), 0), icon: ArrowRight, tone: 'indigo' },
+              { label: 'Automations', value: rules.length, icon: Zap, tone: 'amber', hint: `${triggerCount} ${triggerCount === 1 ? 'trigger' : 'triggers'}` },
+              { label: 'Active', value: enabledCount, icon: CheckSquare, tone: 'emerald', hint: `${rules.length - enabledCount} off` },
+              { label: 'Total runs', value: totalRuns, icon: ArrowRight, tone: 'indigo', hint: 'all time' },
             ]}
           />
 
@@ -114,8 +119,8 @@ export default function Automations() {
             </div>
           ) : (
             <div className="space-y-3">
-              {rules.map((r) => (
-                <div key={r.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              {rules.map((r, index) => (
+                <StaggerItem key={r.id} index={index} className={cn('rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-amber-200', liftOnHover)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -145,7 +150,7 @@ export default function Automations() {
                       </div>
                     </WriteOnly>}
                   </div>
-                </div>
+                </StaggerItem>
               ))}
             </div>
           )}

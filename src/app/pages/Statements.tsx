@@ -22,7 +22,8 @@ import {
 import { getMembers, type Member } from '@/app/api/members';
 import { getCharges, getPayments, type Charge, type Payment, PAYMENT_METHOD_LABELS } from '@/app/api/charges';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -139,56 +140,45 @@ export default function Statements() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-6 print:hidden">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-slate-400/20 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10 flex flex-wrap items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-500 to-slate-700 flex items-center justify-center shadow-2xl shadow-slate-500/30">
-                <FileText className="w-8 h-8 text-white" />
+          <div className="print:hidden">
+            <PageHero
+              icon={FileText}
+              tone="slate"
+              title="Statements"
+              subtitle="Monthly billing summary — charges, payments, and ending balance."
+              actions={
+                <Button onClick={print} disabled={!member} className={heroPrimary('slate')}>
+                  <Printer className="h-4 w-4" /> Print
+                </Button>
+              }
+            >
+              <div className="flex flex-col md:flex-row md:items-center gap-3">
+                <Select value={memberId} onValueChange={setMemberId}>
+                  <SelectTrigger className="h-9 rounded-xl border-slate-200/80 bg-white/80 text-slate-700 shadow-sm backdrop-blur hover:border-slate-300 hover:bg-white md:w-64">
+                    <SelectValue placeholder="Pick a member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.firstName} {m.lastName} — {m.tier}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-1.5">
+                  <Button variant="outline" onClick={goPrev} className={heroSecondary}>
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Button variant="outline" onClick={goCurrent} className={heroSecondary}>
+                    Current
+                  </Button>
+                  <Button variant="outline" onClick={goNext} className={heroSecondary}>
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                  <span className="ml-3 text-sm font-medium text-slate-700">{monthLabel(cursor)}</span>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Statements</h1>
-                <p className="text-slate-400 mt-1">
-                  Monthly billing summary — charges, payments, and ending balance.
-                </p>
-              </div>
-              <Button
-                onClick={print}
-                disabled={!member}
-                className="bg-white text-slate-900 hover:bg-slate-100"
-              >
-                <Printer className="w-4 h-4 mr-2" /> Print
-              </Button>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          <div className="flex flex-col md:flex-row gap-3 mb-6 print:hidden">
-            <Select value={memberId} onValueChange={setMemberId}>
-              <SelectTrigger className="h-11 rounded-xl md:w-64">
-                <SelectValue placeholder="Pick a member" />
-              </SelectTrigger>
-              <SelectContent>
-                {members.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.firstName} {m.lastName} — {m.tier}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-1.5">
-              <Button variant="outline" onClick={goPrev}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" onClick={goCurrent}>
-                Current
-              </Button>
-              <Button variant="outline" onClick={goNext}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-              <span className="ml-3 text-sm font-medium text-slate-700">{monthLabel(cursor)}</span>
-            </div>
+            </PageHero>
           </div>
 
           {loading ? (
@@ -198,7 +188,7 @@ export default function Statements() {
           ) : !member ? (
             <p className="text-slate-500">Select a member to view their statement.</p>
           ) : (
-            <article className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-8 print:shadow-none print:border-0">
+            <StaggerItem as="article" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-8 print:shadow-none print:border-0">
               <header className="border-b border-slate-200 pb-6 mb-6 flex flex-wrap justify-between items-start gap-4">
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900">Account Statement</h2>
@@ -237,13 +227,13 @@ export default function Statements() {
                       </tr>
                     </thead>
                     <tbody>
-                      {inPeriod.charges.map((c) => (
-                        <tr key={c.id} className="border-b border-slate-100">
+                      {inPeriod.charges.map((c, index) => (
+                        <StaggerItem as="tr" key={c.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
                           <td className="py-2 text-slate-500">{formatDate(c.postedAtUtc)}</td>
                           <td className="py-2 text-slate-800">{c.description}</td>
                           <td className="py-2 text-slate-500">{c.kind}</td>
                           <td className="py-2 text-right font-medium">{formatCurrency(c.amount)}</td>
-                        </tr>
+                        </StaggerItem>
                       ))}
                       <tr>
                         <td colSpan={3} className="py-2 text-right text-xs uppercase tracking-wide text-slate-400">
@@ -271,15 +261,15 @@ export default function Statements() {
                       </tr>
                     </thead>
                     <tbody>
-                      {inPeriod.payments.map((p) => (
-                        <tr key={p.id} className="border-b border-slate-100">
+                      {inPeriod.payments.map((p, index) => (
+                        <StaggerItem as="tr" key={p.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
                           <td className="py-2 text-slate-500">{formatDate(p.receivedAtUtc)}</td>
                           <td className="py-2 text-slate-800">{PAYMENT_METHOD_LABELS[p.method]}</td>
                           <td className="py-2 text-slate-500 font-mono text-xs">{p.reference ?? '—'}</td>
                           <td className="py-2 text-right font-medium text-emerald-700">
                             -{formatCurrency(p.amount)}
                           </td>
-                        </tr>
+                        </StaggerItem>
                       ))}
                       <tr>
                         <td colSpan={3} className="py-2 text-right text-xs uppercase tracking-wide text-slate-400">
@@ -311,7 +301,7 @@ export default function Statements() {
                   </div>
                 </div>
               </footer>
-            </article>
+            </StaggerItem>
           )}
         </main>
       </PageTransition>

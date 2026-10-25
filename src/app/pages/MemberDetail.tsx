@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft,
   Mail,
   Phone,
   CalendarClock,
@@ -16,6 +15,7 @@ import {
   Loader2,
   ChevronRight,
   AlertCircle,
+  Crown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -42,7 +42,8 @@ import { getLoyaltyLedger, type LoyaltyEntry, REASON_LABELS } from '@/app/api/lo
 import { getCommunications, type Communication } from '@/app/api/communications';
 import { getGiftCards, type GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { RecordAvatar } from '@/app/components/RecordCard';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -240,115 +241,60 @@ export default function MemberDetail() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Back link */}
-          <Link
-            to="/members"
-            className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" /> All members
-          </Link>
-
-          {/* Hero */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
-            <div className="flex flex-col lg:flex-row lg:items-start gap-6">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-2xl font-bold shrink-0">
-                {(member.firstName[0] ?? '?') + (member.lastName[0] ?? '')}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <h1 className="text-2xl font-bold text-slate-900">
-                    {member.firstName} {member.lastName}
-                  </h1>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TIER_BADGE[member.tier]}`}>
-                    {member.tier}
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[member.status]}`}>
-                    {member.status}
-                  </span>
-                  {overdue && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-50 text-rose-700 ring-1 ring-rose-200">
-                      Renewal overdue
-                    </span>
-                  )}
-                  {renewSoon && (
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200">
-                      Renews soon
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
-                  <span className="inline-flex items-center gap-1">
-                    <Mail className="w-3.5 h-3.5" /> {member.email}
-                  </span>
-                  {member.phone && (
-                    <span className="inline-flex items-center gap-1">
-                      <Phone className="w-3.5 h-3.5" /> {member.phone}
-                    </span>
-                  )}
-                  <span className="inline-flex items-center gap-1">
-                    <CalendarClock className="w-3.5 h-3.5" /> Member since {formatDate(member.joinedAtUtc)}
-                  </span>
-                </div>
-                {member.notes && (
-                  <div className="mt-3 text-sm text-slate-600 bg-slate-50 rounded-lg p-3">
-                    {member.notes}
-                  </div>
+          <PageHero
+            icon={Crown}
+            avatar={<RecordAvatar name={`${member.firstName} ${member.lastName}`} tone="indigo" />}
+            tone="indigo"
+            back={{ to: '/members', label: 'All members' }}
+            title={`${member.firstName} ${member.lastName}`}
+            badges={
+              <>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${TIER_BADGE[member.tier]}`}>{member.tier}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[member.status]}`}>{member.status}</span>
+                {overdue && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-rose-50 text-rose-700 ring-1 ring-rose-200">Renewal overdue</span>
                 )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button variant="outline" asChild>
+                {renewSoon && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200">Renews soon</span>
+                )}
+              </>
+            }
+            subtitle={
+              <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="inline-flex items-center gap-1"><Mail className="w-3.5 h-3.5" aria-hidden /> {member.email}</span>
+                {member.phone && <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5" aria-hidden /> {member.phone}</span>}
+                <span className="inline-flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" aria-hidden /> Member since {formatDate(member.joinedAtUtc)}</span>
+              </span>
+            }
+            actions={
+              <>
+                <Button variant="outline" asChild className={heroSecondary}>
                   <Link to="/members" state={{ editMemberId: member.id }}>
-                    <Pencil className="w-4 h-4 mr-1.5" /> Edit
+                    <Pencil className="h-4 w-4" /> Edit
                   </Link>
                 </Button>
                 <Button
                   variant="outline"
                   onClick={remove}
                   disabled={deleting}
-                  className="text-rose-600 hover:bg-rose-50"
+                  aria-label="Delete member"
+                  className={`${heroSecondary} text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700`}
                 >
-                  {deleting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
-                  )}
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Key metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <MetricCard
-              icon={<Receipt className="w-4 h-4 text-rose-600" />}
-              label="House balance"
-              value={formatCurrency(member.houseAccountBalance)}
-              tone={member.houseAccountBalance < 0 ? 'rose' : 'slate'}
-              hint={outstandingBalance > 0 ? `${formatCurrency(outstandingBalance)} outstanding` : 'No open charges'}
-            />
-            <MetricCard
-              icon={<Sparkles className="w-4 h-4 text-amber-600" />}
-              label="Loyalty points"
-              value={loyaltyBalance.toLocaleString()}
-              tone="amber"
-              hint={`${memberLedger.length} ledger entries`}
-            />
-            <MetricCard
-              icon={<ScanLine className="w-4 h-4 text-cyan-600" />}
-              label="Visits"
-              value={String(memberVisits.length)}
-              tone="cyan"
-              hint="All-time check-ins"
-            />
-            <MetricCard
-              icon={<Receipt className="w-4 h-4 text-emerald-600" />}
-              label="Lifetime spend"
-              value={formatCurrency(lifetimeSpend)}
-              tone="emerald"
-              hint="Paid charges"
-            />
-          </div>
+              </>
+            }
+            stats={[
+              { label: 'House balance', value: member.houseAccountBalance, icon: Receipt, tone: member.houseAccountBalance < 0 ? 'rose' : 'slate', format: formatCurrency, hint: outstandingBalance > 0 ? `${formatCurrency(outstandingBalance)} outstanding` : 'no open charges' },
+              { label: 'Loyalty points', value: loyaltyBalance, icon: Sparkles, tone: 'amber', hint: `${memberLedger.length} ledger entries` },
+              { label: 'Visits', value: memberVisits.length, icon: ScanLine, tone: 'cyan', hint: 'all-time check-ins' },
+              { label: 'Lifetime spend', value: lifetimeSpend, icon: Receipt, tone: 'emerald', format: formatCurrency, hint: 'paid charges' },
+            ]}
+          >
+            {member.notes && (
+              <p className="rounded-xl border-l-4 border-indigo-300 bg-white/70 px-3 py-2 text-sm text-slate-600">{member.notes}</p>
+            )}
+          </PageHero>
 
           <Tabs defaultValue="overview">
             <TabsList className="mb-4 flex-wrap h-auto">
@@ -643,37 +589,6 @@ export default function MemberDetail() {
           </p>
         </main>
       </PageTransition>
-    </div>
-  );
-}
-
-function MetricCard({
-  icon,
-  label,
-  value,
-  tone,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  tone: 'rose' | 'amber' | 'cyan' | 'emerald' | 'slate';
-  hint?: string;
-}) {
-  const toneClass = {
-    rose: 'text-rose-600',
-    amber: 'text-amber-700',
-    cyan: 'text-cyan-700',
-    emerald: 'text-emerald-700',
-    slate: 'text-slate-900',
-  }[tone];
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-      <div className="flex items-center gap-2 text-xs text-slate-500 uppercase tracking-wide mb-1">
-        {icon} {label}
-      </div>
-      <p className={`text-2xl font-bold ${toneClass}`}>{value}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

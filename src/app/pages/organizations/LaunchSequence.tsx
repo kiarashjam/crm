@@ -44,6 +44,11 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
   const hue = hueFor(org.id);
   const from = `hsl(${hue} 82% 58%)`;
   const to = `hsl(${(hue + 42) % 360} 78% 48%)`;
+  // Translucent versions of the same hue. Appending hex alpha ("…22") to an
+  // hsl() string is not a colour at all, so the wash never showed and the rings
+  // fell back to the text colour.
+  const wash = `hsl(${hue} 82% 58% / 0.16)`;
+  const ring = `hsl(${hue} 82% 58% / 0.55)`;
   const duration = reduceMotion ? REDUCED_FLIGHT : FLIGHT;
 
   const fired = useRef(false);
@@ -62,7 +67,7 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
 
   return (
     <motion.div
-      className="fixed inset-0 z-[60] flex items-center justify-center overflow-hidden bg-[#07080f]"
+      className="fixed inset-0 z-[60] flex items-center justify-center overflow-hidden bg-[#fdfbf5]"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: reduceMotion ? 0.1 : 0.25 }}
@@ -75,7 +80,7 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
       <motion.div
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ background: `radial-gradient(60% 55% at 50% 45%, ${from}22, transparent 70%)` }}
+        style={{ background: `radial-gradient(60% 55% at 50% 45%, ${wash}, transparent 70%)` }}
         initial={{ opacity: 0, scale: 0.85 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration, ease: 'easeOut' }}
@@ -84,7 +89,7 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
       {/* The tile itself, arriving from wherever it was in the grid. */}
       <motion.div
         layoutId={plateLayoutId(org.id)}
-        className="absolute inset-0 bg-[#0d0f18]"
+        className="absolute inset-0 bg-white"
         style={{ borderRadius: 0 }}
         transition={reduceMotion ? { duration: REDUCED_FLIGHT } : PLATE}
       />
@@ -97,7 +102,7 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
             key={i}
             aria-hidden
             className="absolute top-1/2 left-1/2 -mt-24 -ml-24 h-48 w-48 rounded-full border-2"
-            style={{ borderColor: `${from}99` }}
+            style={{ borderColor: ring }}
             initial={{ scale: 0.45, opacity: 0 }}
             animate={{ scale: 2.8, opacity: [0, 0.7, 0] }}
             // Delayed past the expansion: rings pushing out of a card that is
@@ -119,7 +124,7 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
         </motion.div>
 
         <motion.p
-          className="mt-8 text-[11px] font-semibold uppercase tracking-[0.35em] text-white/45"
+          className="mt-8 text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: reduceMotion ? 0 : 0.26 }}
@@ -128,7 +133,7 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
         </motion.p>
 
         <motion.h2
-          className="mt-3 max-w-2xl text-3xl font-bold text-white sm:text-4xl"
+          className="mt-3 max-w-2xl text-3xl font-bold text-slate-900 sm:text-4xl"
           initial={{ opacity: 0, y: 14, letterSpacing: reduceMotion ? '0em' : '0.12em' }}
           animate={{ opacity: 1, y: 0, letterSpacing: '-0.01em' }}
           transition={{ duration: reduceMotion ? REDUCED_FLIGHT : 0.8, delay: reduceMotion ? 0 : 0.3, ease: [0.16, 1, 0.3, 1] }}
@@ -137,7 +142,7 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
         </motion.h2>
 
         {/* Progress rail. Its completion is what triggers navigation. */}
-        <div className="mt-9 h-[3px] w-56 overflow-hidden rounded-full bg-white/10">
+        <div className="mt-9 h-[3px] w-56 overflow-hidden rounded-full bg-slate-200">
           <motion.div
             className="h-full w-full origin-left rounded-full"
             style={{ background: `linear-gradient(90deg, ${from}, ${to})` }}
@@ -151,7 +156,7 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
         </div>
 
         <motion.p
-          className="mt-5 inline-flex items-center gap-2 text-xs text-white/40"
+          className="mt-5 inline-flex items-center gap-2 text-xs text-slate-500"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: reduceMotion ? 0 : 0.4 }}

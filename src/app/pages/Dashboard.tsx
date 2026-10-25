@@ -34,7 +34,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 
 // Import extracted components and config
 import { DashboardHero } from './dashboard/DashboardHero';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 import { PipelineChart } from './dashboard/PipelineChart';
 import { QuickNav } from './dashboard/QuickNav';
 import { CopyStatsWidget } from './dashboard/CopyStatsWidget';
@@ -282,14 +282,13 @@ export default function Dashboard() {
 
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          {/* Hero Section - Extracted Component */}
+          {/* Hero Section - Extracted Component (it places the agent's next step after itself) */}
           <DashboardHero
             displayName={displayName}
             stats={crmStats}
             loaded={loaded.crm}
             failed={failed.crm}
           />
-          <NextActionsSlot />
 
         {/* Main Content Grid */}
         <div className="space-y-8">
@@ -298,9 +297,12 @@ export default function Dashboard() {
             <div className="lg:col-span-2 space-y-6">
               
               {/* Pipeline by Stage - Extracted Component */}
-              <PipelineChart stages={pipelineByStage} loaded={loaded.stages} failed={failed.stages} />
+              <StaggerItem index={0}>
+                <PipelineChart stages={pipelineByStage} loaded={loaded.stages} failed={failed.stages} />
+              </StaggerItem>
 
               {/* Intelligent Sales Writer - Extracted Component */}
+              <StaggerItem index={1}>
               <div id="sales-writer" ref={writerAnchor} className="scroll-mt-24">
               <SalesWriter
                 selectedType={selectedType}
@@ -328,10 +330,11 @@ export default function Dashboard() {
                 setRecipientSearch={setRecipientSearch}
               />
               </div>
+              </StaggerItem>
 
               {/* Generated Copy Display */}
               {generatedCopy && (
-                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                <StaggerItem className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                       Generated {generatedCopy.copyTypeLabel}
@@ -405,18 +408,26 @@ export default function Dashboard() {
                       </button>
                     )}
                   </div>
-                </div>
+                </StaggerItem>
               )}
 
               {/* Team Performance - Extracted Component */}
-              <TeamPerformance members={pipelineByAssignee} loaded={loaded.team} failed={failed.team} />
+              <StaggerItem index={2}>
+                <TeamPerformance members={pipelineByAssignee} loaded={loaded.team} failed={failed.team} />
+              </StaggerItem>
             </div>
 
             {/* Right Column - Sidebar with Extracted Components */}
             <div className="space-y-6">
-              <QuickNav />
-              <CopyStatsWidget stats={stats} />
-              <RecentActivity items={recentActivity} loaded={loaded.activity} failed={failed.activity} />
+              <StaggerItem index={1}>
+                <QuickNav />
+              </StaggerItem>
+              <StaggerItem index={2}>
+                <CopyStatsWidget stats={stats} />
+              </StaggerItem>
+              <StaggerItem index={3}>
+                <RecentActivity items={recentActivity} loaded={loaded.activity} failed={failed.activity} />
+              </StaggerItem>
             </div>
           </div>
         </div>

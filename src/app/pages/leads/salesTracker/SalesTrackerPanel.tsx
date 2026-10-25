@@ -33,6 +33,8 @@ import {
 const FUNNEL_COLORS = ['#3b82f6', '#8b5cf6', '#a855f7', '#d946ef', '#f59e0b', '#10b981', '#14b8a6'];
 const PIE_COLORS = ['#6366f1', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
+const COLLAPSED_KEY = 'crm.salesTracker.panel.collapsed.v2';
+
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const fmtNum = (n: number | null | undefined) => (n == null || Number.isNaN(n) ? '—' : Math.round(n).toString());
 const fmtDate = (d: Date) =>
@@ -92,10 +94,12 @@ function RateBar({
 export function SalesTrackerPanel({ leads }: Props) {
   // Always compute against the full lead list (paged `leads` prop is only the current page).
   const [allLeads, setAllLeads] = useState<Lead[]>(leads);
+  // Collapsed unless you opened it: the leads themselves come first. A new key, so
+  // everyone starts collapsed once after the page got its compact header.
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('crm.salesTracker.panel.collapsed') === '1';
-    } catch { return false; }
+      return localStorage.getItem(COLLAPSED_KEY) !== '0';
+    } catch { return true; }
   });
   const [expanded, setExpanded] = useState<boolean>(() => {
     try {
@@ -116,7 +120,7 @@ export function SalesTrackerPanel({ leads }: Props) {
   }, [leads]);
 
   useEffect(() => {
-    try { localStorage.setItem('crm.salesTracker.panel.collapsed', collapsed ? '1' : '0'); } catch { /* ignore */ }
+    try { localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
   }, [collapsed]);
   useEffect(() => {
     try { localStorage.setItem('crm.salesTracker.panel.expanded', expanded ? '1' : '0'); } catch { /* ignore */ }
@@ -141,29 +145,48 @@ export function SalesTrackerPanel({ leads }: Props) {
 
   const notYetContacted = Math.max(waitlistTotal - kpis.outreachAttempts, 0);
 
-  // Collapsed pill view (opt-in tiny footprint).
+  // Collapsed: one bright line with the funnel in it, a click away from the charts.
   if (collapsed) {
+    const steps = [
+      { label: 'Contacted', value: kpis.contactedSuccessfully, dot: 'bg-sky-500' },
+      { label: 'Meetings', value: kpis.meetingsHeld, dot: 'bg-violet-500' },
+      { label: 'Interested', value: kpis.interested, dot: 'bg-fuchsia-500' },
+      { label: 'Contracts', value: kpis.contractsSent, dot: 'bg-amber-500' },
+      { label: 'Signed', value: kpis.signed, dot: 'bg-emerald-500' },
+    ];
     return (
-      <div className="mb-6 rounded-2xl border border-slate-200/70 bg-white/70 backdrop-blur-md p-3 shadow-sm flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm">
-          <Sparkles className="w-4 h-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-slate-800 truncate">Sales Tracker</p>
-          <p className="text-[11px] text-slate-500 truncate">
-            {trackedCount} tracked · {kpis.contactedSuccessfully} contacted · {kpis.signed} signed · {fmtPct(rates.closeRate)} close rate
-          </p>
-        </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setCollapsed(false)}
-          className="h-8 rounded-lg gap-1 text-xs border-slate-200"
-        >
-          <ChevronDown className="w-3.5 h-3.5" />
-          Expand
-        </Button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setCollapsed(false)}
+        aria-expanded={false}
+        className="group mb-5 flex w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50 via-white to-violet-50 px-3 py-2.5 text-left shadow-sm transition-[box-shadow,border-color] hover:border-orange-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-pink-500 text-white shadow-sm transition-transform duration-300 group-hover:-rotate-6">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-slate-800">Lead funnel</span>
+            <span className="block truncate text-[11px] text-slate-500">
+              {trackedCount} tracked · {fmtPct(rates.closeRate)} close rate
+            </span>
+          </span>
+        </span>
+        <span className="flex flex-1 flex-wrap items-center gap-1.5">
+          {steps.map((step, i) => (
+            <span key={step.label} className="inline-flex items-center gap-1.5 text-xs text-slate-600">
+              {i > 0 && <span className="text-slate-300" aria-hidden>›</span>}
+              <span className={cn('h-2 w-2 rounded-full', step.dot)} aria-hidden />
+              <span className="font-semibold tabular-nums text-slate-900">{step.value}</span>
+              {step.label}
+            </span>
+          ))}
+        </span>
+        <span className="ml-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm transition-colors group-hover:border-orange-300 group-hover:text-orange-700">
+          <ChevronDown className="h-3.5 w-3.5" />
+          Show charts
+        </span>
+      </button>
     );
   }
 

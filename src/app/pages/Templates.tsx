@@ -18,7 +18,8 @@ import {
 import type { Template, CopyTypeId } from '@/app/api/types';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const categoryIcons: Record<string, typeof Mail> = {
   Sales: Mail,
@@ -192,6 +193,12 @@ export default function Templates() {
     }
   };
 
+  // The library's numbers, for the header.
+  const sharedCount = templates.filter((t) => t.isSharedWithOrganization).length;
+  const systemCount = templates.filter((t) => t.isSystemTemplate).length;
+  const categoryCount = new Set(templates.map((t) => t.category)).size;
+  const totalUses = templates.reduce((sum, t) => sum + (t.useCount ?? 0), 0);
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -199,60 +206,46 @@ export default function Templates() {
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           <div className="w-full">
-          {/* Enhanced Header Section with Dark Decorative Elements */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            {/* Decorative blur elements */}
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-              <div className="absolute inset-0 opacity-5" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l9.9-9.9h-2.83zM32 0l-3.486 3.485-1.414-1.414L30.586 0H32zM0 5.373l.828-.83 1.415 1.415L0 8.2V5.374zm0 5.656l.828-.829 5.657 5.657-1.414 1.414L0 11.03v-.001zm0 5.656l.828-.828 8.485 8.485-1.414 1.414L0 16.686v-.001zm0 5.657l.828-.828 11.314 11.314-1.414 1.414L0 22.343v-.001zM60 5.373l-.828-.83-1.415 1.415L60 8.2V5.374zm0 5.656l-.828-.829-5.657 5.657 1.414 1.414L60 11.03v-.001zm0 5.656l-.828-.828-8.485 8.485 1.414 1.414L60 16.686v-.001zm0 5.657l-.828-.828-11.314 11.314 1.414 1.414L60 22.343v-.001z' fill='%23fff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E")` }} />
-            </div>
-            
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                    <Mail className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Templates</h1>
-                    <p className="text-slate-400 mt-1">
-                      Quick-start templates for common scenarios
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3">
-                  <WriteOnly>
-                    <button
-                      type="button"
-                      onClick={openCreateModal}
-                      className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Create Template
-                    </button>
-                  </WriteOnly>
-                </div>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
+          <PageHero
+            icon={Mail}
+            tone="fuchsia"
+            title="Templates"
+            subtitle="Quick-start templates for common scenarios"
+            actions={
+              <WriteOnly>
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className={`inline-flex items-center text-sm transition-opacity ${heroPrimary('fuchsia')}`}
+                >
+                  <Plus className="h-4 w-4" />
+                  Create Template
+                </button>
+              </WriteOnly>
+            }
+            stats={loading ? undefined : [
+              { label: 'Templates', value: templates.length, icon: Mail, tone: 'fuchsia', hint: `${categoryCount} ${categoryCount === 1 ? 'category' : 'categories'}` },
+              { label: 'Shared with team', value: sharedCount, icon: Users, tone: 'violet', hint: 'whole team' },
+              { label: 'Custom', value: templates.length - systemCount, icon: Sparkles, tone: 'teal', hint: `${systemCount} system` },
+              { label: 'Times used', value: totalUses, icon: Handshake, tone: 'orange', hint: 'all templates' },
+            ]}
+          />
 
           {loading ? (
             <ContentSkeleton rows={6} />
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {templates.map((template) => {
+              {templates.map((template, index) => {
                 const Icon = categoryIcons[template.category] ?? Handshake;
                 const isSystemTemplate = template.isSystemTemplate;
                 const isShared = template.isSharedWithOrganization;
                 
                 return (
-                  <article
+                  <StaggerItem
+                    as="article"
                     key={template.id}
-                    className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-shadow relative group"
+                    index={index}
+                    className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:border-fuchsia-200 relative group ${liftOnHover}`}
                   >
                     {/* Edit/Delete buttons (only for non-system templates) */}
                     {!isSystemTemplate && (
@@ -318,7 +311,7 @@ export default function Templates() {
                         Use template →
                       </button>
                     </div>
-                  </article>
+                  </StaggerItem>
                 );
               })}
             </div>

@@ -55,7 +55,8 @@ import {
   AlertDialogTitle,
 } from '@/app/components/ui/alert-dialog';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 // Role mapping
 const ROLES = {
@@ -67,46 +68,6 @@ const ROLES = {
 
 function getRoleInfo(role: number) {
   return ROLES[role as keyof typeof ROLES] || ROLES[1];
-}
-
-// Stat Card Component
-function StatCard({ 
-  icon: Icon, 
-  label, 
-  value, 
-  subtext, 
-  gradient,
-  colorClass = 'slate'
-}: { 
-  icon: React.ElementType; 
-  label: string; 
-  value: number | string; 
-  subtext?: string;
-  gradient: string;
-  colorClass?: string;
-}) {
-  const colorMap: Record<string, { border: string; bg: string; text: string; shadow: string }> = {
-    violet: { border: 'border-violet-100', bg: 'from-violet-50 to-violet-100', text: 'text-violet-600', shadow: 'hover:shadow-violet-100' },
-    amber: { border: 'border-amber-100', bg: 'from-amber-50 to-amber-100', text: 'text-amber-600', shadow: 'hover:shadow-amber-100' },
-    blue: { border: 'border-blue-100', bg: 'from-blue-50 to-blue-100', text: 'text-blue-600', shadow: 'hover:shadow-blue-100' },
-    emerald: { border: 'border-emerald-100', bg: 'from-emerald-50 to-emerald-100', text: 'text-emerald-600', shadow: 'hover:shadow-emerald-100' },
-    slate: { border: 'border-slate-200/80', bg: 'from-slate-100 to-slate-50', text: 'text-slate-600', shadow: 'hover:shadow-slate-100' },
-  };
-  const colors = colorMap[colorClass] || colorMap.slate!;
-  
-  return (
-    <div className={`group relative bg-white rounded-2xl border ${colors.border} p-5 shadow-sm hover:shadow-xl ${colors.shadow} transition-all duration-300 overflow-hidden`}>
-      <div className={`absolute top-0 right-0 w-20 h-20 bg-gradient-to-br ${colors.bg} rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform`} />
-      <div className="relative">
-        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg`}>
-          <Icon className="w-5 h-5 text-white" />
-        </div>
-        <p className={`text-3xl font-bold ${colors.text === 'text-slate-600' ? 'text-slate-900' : colors.text} tracking-tight`}>{value}</p>
-        <p className="text-xs font-medium text-slate-500 mt-1">{label}</p>
-        {subtext && <p className="text-[10px] text-slate-400 mt-0.5">{subtext}</p>}
-      </div>
-    </div>
-  );
 }
 
 // Member Detail Panel Component
@@ -600,101 +561,38 @@ export default function Team() {
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          {/* Enhanced Header Section with Dark Decorative Elements */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-          {/* Decorative blur elements */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-            <div className="absolute inset-0 opacity-5" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l9.9-9.9h-2.83zM32 0l-3.486 3.485-1.414-1.414L30.586 0H32zM0 5.373l.828-.83 1.415 1.415L0 8.2V5.374zm0 5.656l.828-.829 5.657 5.657-1.414 1.414L0 11.03v-.001zm0 5.656l.828-.828 8.485 8.485-1.414 1.414L0 16.686v-.001zm0 5.657l.828-.828 11.314 11.314-1.414 1.414L0 22.343v-.001zM60 5.373l-.828-.83-1.415 1.415L60 8.2V5.374zm0 5.656l-.828-.829-5.657 5.657 1.414 1.414L60 11.03v-.001zm0 5.656l-.828-.828-8.485 8.485 1.414 1.414L60 16.686v-.001zm0 5.657l-.828-.828-11.314 11.314 1.414 1.414L60 22.343v-.001z' fill='%23fff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E")` }} />
-          </div>
-          
-          <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                  <Users className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Team</h1>
-                  <p className="text-slate-400 mt-1">
-                    {currentOrg ? `Manage members of ${currentOrg.name}` : 'Manage your organization members'}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex flex-wrap items-center gap-3">
-                <Button 
-                  variant="outline"
-                  onClick={loadData}
-                  className="gap-2 h-10 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30"
-                >
-                  <RefreshCw className="w-4 h-4" />
+          <PageHero
+            icon={Users}
+            tone="indigo"
+            title="Team"
+            subtitle={currentOrg ? `Manage members of ${currentOrg.name}` : 'Manage your organization members'}
+            actions={
+              <>
+                <Button variant="outline" onClick={loadData} className={heroSecondary}>
+                  <RefreshCw className="h-4 w-4" />
                   Refresh
                 </Button>
                 {isAdmin && (
-                  <Button
-                    onClick={() => setAddOpen(true)}
-                    variant="outline"
-                    className="gap-2 h-10 px-4 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30"
-                  >
-                    <UserPlus className="w-4 h-4" />
+                  <Button onClick={() => setAddOpen(true)} variant="outline" className={heroSecondary}>
+                    <UserPlus className="h-4 w-4" />
                     Add existing user
                   </Button>
                 )}
                 {isAdmin && (
-                  <Button
-                    onClick={() => setInviteDialogOpen(true)}
-                    className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white"
-                  >
-                    <UserPlus className="w-4 h-4" />
+                  <Button onClick={() => setInviteDialogOpen(true)} className={heroPrimary('indigo')}>
+                    <UserPlus className="h-4 w-4" />
                     Invite members
                   </Button>
                 )}
-              </div>
-            </div>
-          </div>
-        </div>
-          <NextActionsSlot />
-
-          {/* Stats Cards */}
-          {!loading && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              <StatCard 
-                icon={Users} 
-                label="Total Members" 
-                value={stats.total}
-                subtext="Active team members"
-                gradient="from-violet-500 to-purple-500"
-                colorClass="violet"
-              />
-              <StatCard 
-                icon={Crown} 
-                label="Owners" 
-                value={stats.owners}
-                subtext="Full admin access"
-                gradient="from-amber-500 to-orange-500"
-                colorClass="amber"
-              />
-              <StatCard 
-                icon={ShieldCheck} 
-                label="Managers" 
-                value={stats.managers}
-                subtext="Can manage resources"
-                gradient="from-blue-500 to-indigo-500"
-                colorClass="blue"
-              />
-              <StatCard 
-                icon={Mail} 
-                label="Pending Invites" 
-                value={pendingInvites.length}
-                subtext="Awaiting response"
-                gradient="from-emerald-500 to-teal-500"
-                colorClass="emerald"
-              />
-            </div>
-          )}
+              </>
+            }
+            stats={loading ? undefined : [
+              { label: 'Total Members', value: stats.total, icon: Users, tone: 'violet', hint: 'active team members' },
+              { label: 'Owners', value: stats.owners, icon: Crown, tone: 'amber', hint: 'full admin access' },
+              { label: 'Managers', value: stats.managers, icon: ShieldCheck, tone: 'blue', hint: 'can manage resources' },
+              { label: 'Pending Invites', value: pendingInvites.length, icon: Mail, tone: 'emerald', hint: 'awaiting response' },
+            ]}
+          />
 
         {loading ? (
           <ContentSkeleton rows={5} />
@@ -761,32 +659,32 @@ export default function Team() {
               </div>
             )}
 
-            {/* Search and Filter Bar - Modern Dark Theme */}
-            <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-4 mb-6 shadow-xl overflow-hidden">
+            {/* Search and filter bar */}
+            <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
               {/* Decorative elements */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
-              <div className="absolute bottom-0 left-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl -ml-10 -mb-10" />
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-300/25 rounded-full blur-2xl -mr-10 -mt-10" />
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-violet-300/25 rounded-full blur-2xl -ml-10 -mb-10" />
               
               <div className="relative flex flex-col sm:flex-row gap-3">
                 {/* Search Input - Enhanced */}
                 <div className="relative flex-1 group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-violet-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 via-violet-500/20 to-indigo-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
                   <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-500/20 flex items-center justify-center group-focus-within:from-violet-500/40 group-focus-within:to-purple-500/40 transition-all duration-300">
-                      <Search className="w-4 h-4 text-violet-300 group-focus-within:text-violet-200 transition-colors" />
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center group-focus-within:from-indigo-200 group-focus-within:to-violet-200 transition-all duration-300">
+                      <Search className="w-4 h-4 text-indigo-500 group-focus-within:text-indigo-600 transition-colors" />
                     </div>
                     <Input
                       type="search"
                       placeholder="Search by name or email..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-14 pr-10 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white placeholder:text-slate-400 shadow-xl shadow-black/10 focus:border-violet-400/50 focus:ring-2 focus:ring-violet-400/20 focus:bg-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300"
+                      className="pl-14 pr-10 h-11 rounded-xl border border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-200/50 focus:bg-white hover:bg-white hover:border-slate-300 transition-all duration-300"
                     />
                     {searchQuery && (
                       <button
                         type="button"
                         onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-white/10 hover:bg-red-500/30 flex items-center justify-center text-slate-400 hover:text-red-300 transition-all duration-200"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -796,12 +694,12 @@ export default function Team() {
                 
                 {/* Role Filter - Enhanced */}
                 <div className="relative group/filter">
-                  <div className="absolute inset-0 bg-white/10 rounded-xl blur-lg opacity-0 group-hover/filter:opacity-50 transition-all duration-300" />
+                  <div className="absolute inset-0 bg-violet-200/50 rounded-xl blur-lg opacity-0 group-hover/filter:opacity-60 transition-all duration-300" />
                   <Select value={roleFilter} onValueChange={setRoleFilter}>
-                    <SelectTrigger className="relative w-full sm:w-[180px] h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-violet-400/50 focus:ring-2 focus:ring-violet-400/20 transition-all duration-300">
+                    <SelectTrigger className="relative w-full sm:w-[180px] h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
-                          <Filter className="w-3.5 h-3.5 text-slate-300" />
+                        <div className="w-6 h-6 rounded-lg bg-violet-100 flex items-center justify-center">
+                          <Filter className="w-3.5 h-3.5 text-violet-600" />
                         </div>
                         <SelectValue placeholder="Filter by role" />
                       </div>
@@ -840,26 +738,26 @@ export default function Team() {
               {/* Active Filter Pills */}
               {(searchQuery || roleFilter !== 'all') && (
                 <div className="relative mt-4 flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-slate-400">Showing:</span>
+                  <span className="text-xs text-slate-500">Showing:</span>
                   {searchQuery && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-white text-xs font-medium border border-white/10">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                       <Search className="w-3 h-3" />
                       &quot;{searchQuery}&quot;
-                      <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-violet-300 transition-colors">
+                      <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-indigo-600 transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
                   )}
                   {roleFilter !== 'all' && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-500/20 text-violet-300 text-xs font-medium border border-violet-400/30">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 text-xs font-medium border border-violet-200">
                       <Filter className="w-3 h-3" />
                       {roleFilter === '0' ? 'Owners' : roleFilter === '2' ? 'Managers' : roleFilter === '3' ? 'Viewers' : 'Members'}
-                      <button onClick={() => setRoleFilter('all')} className="ml-0.5 hover:text-violet-100 transition-colors">
+                      <button onClick={() => setRoleFilter('all')} className="ml-0.5 hover:text-violet-900 transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
                   )}
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-slate-500">
                     {filteredMembers.length} members
                   </span>
                 </div>
@@ -890,14 +788,15 @@ export default function Team() {
                 />
               ) : (
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredMembers.map(member => {
+                  {filteredMembers.map((member, index) => {
                     const roleInfo = getRoleInfo(member.role);
                     const RoleIcon = roleInfo.icon;
                     
                     return (
-                      <div 
+                      <StaggerItem
                         key={member.userId}
-                        className="group relative bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-violet-200 transition-all cursor-pointer overflow-hidden"
+                        index={index}
+                        className={`group relative bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-violet-200 cursor-pointer overflow-hidden ${liftOnHover}`}
                         onClick={() => setSelectedMember(member)}
                       >
                         {/* Role color strip */}
@@ -946,7 +845,7 @@ export default function Team() {
                             </span>
                           </div>
                         </div>
-                      </div>
+                      </StaggerItem>
                     );
                   })}
                 </div>
@@ -964,9 +863,10 @@ export default function Team() {
                   </span>
                 </h2>
                 <div className="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100">
-                  {pendingInvites.map(invite => (
-                    <div 
+                  {pendingInvites.map((invite, index) => (
+                    <StaggerItem
                       key={invite.id}
+                      index={index}
                       className="flex items-center justify-between gap-4 p-4"
                     >
                       <div className="flex items-center gap-3">
@@ -999,7 +899,7 @@ export default function Team() {
                           </Button>
                         )}
                       </div>
-                    </div>
+                    </StaggerItem>
                   ))}
                 </div>
               </section>

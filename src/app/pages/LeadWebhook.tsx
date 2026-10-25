@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Copy, Eye, EyeOff, Key, Code, CheckCircle, Link2, Globe, Mail, ShoppingCart, Smartphone, Zap, BarChart3, RefreshCw, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Copy, Eye, EyeOff, Key, Code, CheckCircle, Link2, Globe, Mail, ShoppingCart, Smartphone, Zap, BarChart3, RefreshCw, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
@@ -21,7 +21,8 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const CODE_EXAMPLES = {
   curl: `curl -X POST \\
@@ -192,30 +193,27 @@ export default function LeadWebhook() {
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        <Link
-          to="/leads"
-          className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-orange-600 mb-6 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Leads
-        </Link>
-
-        {/* Hero Section */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white shadow-lg">
-              <Link2 className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Lead Webhook Integration</h1>
-              <p className="text-slate-600 mt-1">Automatically capture leads from external sources</p>
-            </div>
-          </div>
-        </div>
-        <NextActionsSlot />
+        <PageHero
+          icon={Link2}
+          tone="orange"
+          title="Lead Webhook Integration"
+          subtitle="Automatically capture leads from external sources"
+          back={{ to: '/leads', label: 'Back to Leads' }}
+          badges={apiKey || webhookInfo?.hasApiKey ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+              <Key className="h-3 w-3" aria-hidden />
+              API key set
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+              <Key className="h-3 w-3" aria-hidden />
+              No API key yet
+            </span>
+          )}
+        />
 
         {/* Webhook URL Section */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
+        <StaggerItem index={0} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-4">Webhook Endpoint</h2>
           <div className="flex gap-2">
             <Input
@@ -235,10 +233,10 @@ export default function LeadWebhook() {
             </Button>
           </div>
           <p className="text-sm text-slate-600 mt-2">POST requests to this URL will create leads</p>
-        </div>
+        </StaggerItem>
 
         {/* API Key Section */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
+        <StaggerItem index={1} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
             <Key className="w-5 h-5 text-orange-600" />
             API Key
@@ -298,10 +296,10 @@ export default function LeadWebhook() {
               </Button>
             </div>
           )}
-        </div>
+        </StaggerItem>
 
         {/* Step-by-Step Guide */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
+        <StaggerItem index={2} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-6 flex items-center gap-2">
             <span className="text-2xl">🚀</span>
             Get Started in 3 Steps
@@ -339,7 +337,7 @@ export default function LeadWebhook() {
               <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
                 <Key className="w-5 h-5 text-orange-600" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-slate-900 mb-2">Step 1: Copy your API Key</h3>
                 <p className="text-sm text-slate-600 mb-3">Scroll up and copy your unique API key. Keep it secure - treat it like a password.</p>
                 <div className="bg-slate-900 text-slate-100 p-3 rounded-lg font-mono text-xs">
@@ -355,7 +353,7 @@ export default function LeadWebhook() {
               <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
                 <Code className="w-5 h-5 text-orange-600" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-slate-900 mb-2">Step 2: Build your request</h3>
                 <p className="text-sm text-slate-600 mb-3">Send lead data as JSON to our endpoint.</p>
                 <Tabs value={selectedLanguage} onValueChange={(v) => setSelectedLanguage(v as keyof typeof CODE_EXAMPLES)}>
@@ -393,7 +391,7 @@ export default function LeadWebhook() {
               <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
                 <CheckCircle className="w-5 h-5 text-orange-600" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-slate-900 mb-2">Step 3: Check the response</h3>
                 <div className="space-y-3">
                   <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
@@ -425,10 +423,10 @@ export default function LeadWebhook() {
               </div>
             </div>
           </div>
-        </div>
+        </StaggerItem>
 
         {/* Field Reference */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
+        <StaggerItem index={3} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-4">📋 Field Reference</h2>
           <div className="grid md:grid-cols-2 gap-4">
             <div className="border border-slate-200 rounded-lg p-4">
@@ -467,10 +465,10 @@ export default function LeadWebhook() {
               </div>
             </div>
           </div>
-        </div>
+        </StaggerItem>
 
         {/* Integration Ideas */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <StaggerItem index={4} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-4">💡 Integration Ideas</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {[
@@ -480,10 +478,11 @@ export default function LeadWebhook() {
               { icon: Smartphone, label: 'Mobile Apps', color: 'indigo' },
               { icon: Zap, label: 'Zapier/Make', color: 'yellow' },
               { icon: BarChart3, label: 'Ad Platforms', color: 'pink' },
-            ].map((item) => (
-              <div
+            ].map((item, index) => (
+              <StaggerItem
                 key={item.label}
-                className="flex flex-col items-center p-4 border border-slate-200 rounded-xl hover:border-orange-200 hover:shadow-md transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                index={index}
+                className={`flex flex-col items-center p-4 border border-slate-200 rounded-xl hover:border-orange-200 ${liftOnHover} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2`}
                 tabIndex={0}
                 role="button"
                 aria-label={`Integration idea: ${item.label}`}
@@ -495,11 +494,11 @@ export default function LeadWebhook() {
               >
                 <item.icon className={`w-8 h-8 text-slate-600 mb-2`} />
                 <span className="text-sm font-medium text-slate-700 text-center">{item.label}</span>
-              </div>
+              </StaggerItem>
             ))}
           </div>
           <p className="text-sm text-slate-600 mt-4 text-center">Connect any system that can make HTTP requests!</p>
-        </div>
+        </StaggerItem>
 
         {/* Regenerate Confirmation Dialog */}
         <AlertDialog open={regenerateConfirm} onOpenChange={setRegenerateConfirm}>

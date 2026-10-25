@@ -2,11 +2,10 @@
 // them in one batch. Useful for migrations from another club system.
 
 import { useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Upload,
   Crown,
-  ArrowLeft,
   Check,
   AlertTriangle,
   Loader2,
@@ -28,7 +27,8 @@ import {
   type MemberTier,
   type MemberStatus,
 } from '@/app/api/members';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 interface ParsedRow {
   rowIndex: number;
@@ -181,37 +181,17 @@ export default function MemberImport() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <Link
-            to="/members"
-            className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back to members
-          </Link>
-
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10 flex items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center shadow-2xl shadow-indigo-500/30">
-                <Upload className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">
-                  Import members
-                </h1>
-                <p className="text-slate-400 mt-1">
-                  Paste a CSV or upload a file. Each row becomes a new member record.
-                </p>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
+          <PageHero
+            icon={Upload}
+            tone="indigo"
+            title="Import members"
+            subtitle="Paste a CSV or upload a file. Each row becomes a new member record."
+            back={{ to: '/members', label: 'Back to members' }}
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <StaggerItem index={0} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                 <div className="flex items-center justify-between mb-3">
                   <Label className="text-sm font-semibold text-slate-900">CSV data</Label>
                   <div className="flex gap-2">
@@ -246,7 +226,7 @@ export default function MemberImport() {
                   <code>email</code>. Optional: <code>phone</code>, <code>tier</code>,{' '}
                   <code>status</code>. Dues default to the tier's monthly rate.
                 </p>
-              </div>
+              </StaggerItem>
 
               {rows.length > 0 && (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -271,8 +251,8 @@ export default function MemberImport() {
                         </tr>
                       </thead>
                       <tbody>
-                        {rows.map((r) => (
-                          <tr key={r.rowIndex} className="border-b border-slate-100">
+                        {rows.map((r, index) => (
+                          <StaggerItem as="tr" key={r.rowIndex} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
                             <td className="px-4 py-2">
                               {r.error ? (
                                 <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
@@ -293,7 +273,7 @@ export default function MemberImport() {
                               </span>
                             </td>
                             <td className="px-4 py-2 text-slate-500">{r.status}</td>
-                          </tr>
+                          </StaggerItem>
                         ))}
                       </tbody>
                     </table>
@@ -303,7 +283,7 @@ export default function MemberImport() {
             </div>
 
             {/* Summary panel */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 self-start">
+            <StaggerItem index={1} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 self-start">
               <h3 className="font-semibold text-slate-900 mb-3">Ready to import</h3>
               <dl className="space-y-2 text-sm mb-4">
                 <div className="flex justify-between">
@@ -355,7 +335,7 @@ export default function MemberImport() {
                 Members start at Pending unless you set status. Dues match the tier defaults; tune
                 per-member afterwards.
               </p>
-            </div>
+            </StaggerItem>
           </div>
         </main>
       </PageTransition>

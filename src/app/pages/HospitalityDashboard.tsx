@@ -3,7 +3,7 @@
 // Dashboard.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   ScanLine,
@@ -33,7 +33,9 @@ import { getCharges, type Charge } from '@/app/api/charges';
 import { getSubscriptions, type Subscription } from '@/app/api/subscriptions';
 import { getTabs, VENUE_LABELS as TAB_VENUE_LABELS, type OpenTab } from '@/app/api/tabs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import { Button } from '@/app/components/ui/button';
+import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const day = 86_400_000;
 
@@ -99,6 +101,7 @@ export default function HospitalityDashboard() {
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
+  const navigate = useNavigate();
 
   const load = async () => {
     try {
@@ -192,88 +195,55 @@ export default function HospitalityDashboard() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-cyan-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10 flex items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-2xl shadow-emerald-500/30">
-                <LayoutDashboard className="w-8 h-8 text-white" />
-              </div>
-              <div className="flex-1">
-                <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">
-                  Today at the Club
-                </h1>
-                <p className="text-slate-400 mt-1">
-                  {new Date().toLocaleDateString(undefined, {
-                    weekday: 'long',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </p>
-              </div>
+          <PageHero
+            icon={LayoutDashboard}
+            tone="teal"
+            title="Today at the Club"
+            subtitle={new Date().toLocaleDateString(undefined, {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+            })}
+            actions={
               <div className="hidden md:flex gap-2">
-                <QuickLinkButton to="/pos" icon={<Calculator className="w-4 h-4" />} label="POS" />
-                <QuickLinkButton to="/visits" icon={<ScanLine className="w-4 h-4" />} label="Check in" />
-                <QuickLinkButton to="/tabs" icon={<Wine className="w-4 h-4" />} label="Tabs" />
+                <QuickLinkButton to="/pos" icon={<Calculator className="h-4 w-4" />} label="POS" />
+                <QuickLinkButton to="/visits" icon={<ScanLine className="h-4 w-4" />} label="Check in" />
+                <QuickLinkButton to="/tabs" icon={<Wine className="h-4 w-4" />} label="Tabs" />
               </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Top KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-            <KPI
-              icon={<ScanLine className="w-4 h-4" />}
-              label="Check-ins"
-              value={String(todayVisits.length)}
-              tone="cyan"
-              href="/visits"
-            />
-            <KPI
-              icon={<CalendarClock className="w-4 h-4" />}
-              label="Reservations"
-              value={String(todayReservations.length)}
-              tone="emerald"
-              href="/reservations"
-            />
-            <KPI
-              icon={<Wine className="w-4 h-4" />}
-              label="Open tabs"
-              value={String(openTabs.length)}
-              hint={formatCurrency(todayRevenueOpenTabs)}
-              tone="amber"
-              href="/tabs"
-            />
-            <KPI
-              icon={<ClipboardList className="w-4 h-4" />}
-              label="Applications"
-              value={String(pendingApplications.length)}
-              hint="Awaiting decision"
-              tone="blue"
-              href="/applications"
-            />
-            <KPI
-              icon={<AlertTriangle className="w-4 h-4" />}
-              label="Past due"
-              value={String(overdueSubscriptions.length + overdueCharges.length)}
-              hint={`${overdueSubscriptions.length} subs · ${overdueCharges.length} charges`}
-              tone="rose"
-              href="/charges"
-            />
-            <KPI
-              icon={<CalendarHeart className="w-4 h-4" />}
-              label="Events · 7d"
-              value={String(thisWeekEvents.length)}
-              tone="pink"
-              href="/events"
-            />
-          </div>
+            }
+            stats={[
+              {
+                label: 'Check-ins', hint: 'today', value: todayVisits.length, icon: ScanLine, tone: 'cyan',
+                onClick: () => navigate('/visits'), actionLabel: `Check-ins today, ${todayVisits.length}. Open visits.`,
+              },
+              {
+                label: 'Reservations', hint: 'today', value: todayReservations.length, icon: CalendarClock, tone: 'emerald',
+                onClick: () => navigate('/reservations'), actionLabel: `Reservations today, ${todayReservations.length}. Open reservations.`,
+              },
+              {
+                label: 'Open tabs', hint: formatCurrency(todayRevenueOpenTabs), value: openTabs.length, icon: Wine, tone: 'amber',
+                onClick: () => navigate('/tabs'), actionLabel: `Open tabs, ${openTabs.length}, ${formatCurrency(todayRevenueOpenTabs)}. Open tabs.`,
+              },
+              {
+                label: 'Applications', hint: 'awaiting decision', value: pendingApplications.length, icon: ClipboardList, tone: 'blue',
+                onClick: () => navigate('/applications'), actionLabel: `Applications awaiting decision, ${pendingApplications.length}. Open applications.`,
+              },
+              {
+                label: 'Past due', hint: `${overdueSubscriptions.length} subs · ${overdueCharges.length} charges`,
+                value: overdueSubscriptions.length + overdueCharges.length, icon: AlertTriangle, tone: 'rose',
+                onClick: () => navigate('/charges'),
+                actionLabel: `Past due, ${overdueSubscriptions.length + overdueCharges.length}: ${overdueSubscriptions.length} subscriptions and ${overdueCharges.length} charges. Open house accounts.`,
+              },
+              {
+                label: 'Events', hint: '7d', value: thisWeekEvents.length, icon: CalendarHeart, tone: 'pink',
+                onClick: () => navigate('/events'), actionLabel: `Events in the next 7 days, ${thisWeekEvents.length}. Open events.`,
+              },
+            ]}
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Today's reservations */}
-            <Card title="Today's reservations" icon={<CalendarClock />} href="/reservations">
+            <Card index={0} title="Today's reservations" icon={<CalendarClock />} href="/reservations">
               {todayReservations.length === 0 ? (
                 <Empty text="No reservations today." />
               ) : (
@@ -301,7 +271,7 @@ export default function HospitalityDashboard() {
             </Card>
 
             {/* Open tabs */}
-            <Card title="Open tabs" icon={<Wine />} href="/tabs">
+            <Card index={1} title="Open tabs" icon={<Wine />} href="/tabs">
               {openTabs.length === 0 ? (
                 <Empty text="No open tabs." />
               ) : (
@@ -324,7 +294,7 @@ export default function HospitalityDashboard() {
             </Card>
 
             {/* Anniversaries / birthdays */}
-            <Card title="Anniversaries this fortnight" icon={<Cake />} href="/members">
+            <Card index={2} title="Anniversaries this fortnight" icon={<Cake />} href="/members">
               {anniversaries.length === 0 ? (
                 <Empty text="No upcoming anniversaries." />
               ) : (
@@ -350,7 +320,7 @@ export default function HospitalityDashboard() {
             </Card>
 
             {/* Pending applications */}
-            <Card title="Pending applications" icon={<ClipboardList />} href="/applications">
+            <Card index={3} title="Pending applications" icon={<ClipboardList />} href="/applications">
               {pendingApplications.length === 0 ? (
                 <Empty text="No applications awaiting review." />
               ) : (
@@ -375,7 +345,7 @@ export default function HospitalityDashboard() {
             </Card>
 
             {/* This week events */}
-            <Card title="Events this week" icon={<CalendarHeart />} href="/events">
+            <Card index={4} title="Events this week" icon={<CalendarHeart />} href="/events">
               {thisWeekEvents.length === 0 ? (
                 <Empty text="No events scheduled this week." />
               ) : (
@@ -405,7 +375,7 @@ export default function HospitalityDashboard() {
             </Card>
 
             {/* Past due */}
-            <Card title="Needs attention" icon={<AlertTriangle />} href="/charges">
+            <Card index={5} title="Needs attention" icon={<AlertTriangle />} href="/charges">
               <div className="space-y-3">
                 {overdueCharges.length === 0 && overdueSubscriptions.length === 0 && (
                   <Empty text="Everything is on track." />
@@ -444,12 +414,12 @@ export default function HospitalityDashboard() {
 
           {/* Quick links footer */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mt-8">
-            <QuickLink to="/members" icon={<Crown />} label="Members" />
-            <QuickLink to="/calendar" icon={<CalendarHeart />} label="Calendar" />
-            <QuickLink to="/loyalty" icon={<Sparkles />} label="Loyalty" />
-            <QuickLink to="/charges" icon={<Receipt />} label="House Accounts" />
-            <QuickLink to="/campaigns" icon={<DollarSign />} label="Campaigns" />
-            <QuickLink to="/club-reports" icon={<LayoutDashboard />} label="Club Reports" />
+            <QuickLink index={0} to="/members" icon={<Crown />} label="Members" />
+            <QuickLink index={1} to="/calendar" icon={<CalendarHeart />} label="Calendar" />
+            <QuickLink index={2} to="/loyalty" icon={<Sparkles />} label="Loyalty" />
+            <QuickLink index={3} to="/charges" icon={<Receipt />} label="House Accounts" />
+            <QuickLink index={4} to="/campaigns" icon={<DollarSign />} label="Campaigns" />
+            <QuickLink index={5} to="/club-reports" icon={<LayoutDashboard />} label="Club Reports" />
           </div>
         </main>
       </PageTransition>
@@ -457,57 +427,21 @@ export default function HospitalityDashboard() {
   );
 }
 
-function KPI({
-  icon,
-  label,
-  value,
-  hint,
-  tone,
-  href,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-  tone: 'cyan' | 'emerald' | 'amber' | 'blue' | 'rose' | 'pink';
-  href: string;
-}) {
-  const toneClass = {
-    cyan: 'text-cyan-700 bg-cyan-50',
-    emerald: 'text-emerald-700 bg-emerald-50',
-    amber: 'text-amber-700 bg-amber-50',
-    blue: 'text-blue-700 bg-blue-50',
-    rose: 'text-rose-700 bg-rose-50',
-    pink: 'text-pink-700 bg-pink-50',
-  }[tone];
-  return (
-    <Link
-      to={href}
-      className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition group"
-    >
-      <div className={`w-9 h-9 rounded-xl ${toneClass} flex items-center justify-center mb-2`}>
-        {icon}
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400">{hint}</p>}
-    </Link>
-  );
-}
-
 function Card({
   title,
   icon,
   href,
+  index,
   children,
 }: {
   title: string;
   icon: React.ReactNode;
   href?: string;
+  index: number;
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <StaggerItem index={index} className={`bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-teal-200 ${liftOnHover}`}>
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold text-slate-900 inline-flex items-center gap-2">
           <span className="text-slate-400">{icon}</span> {title}
@@ -522,7 +456,7 @@ function Card({
         )}
       </div>
       {children}
-    </div>
+    </StaggerItem>
   );
 }
 
@@ -530,27 +464,28 @@ function Empty({ text }: { text: string }) {
   return <p className="text-sm text-slate-400 py-3">{text}</p>;
 }
 
-function QuickLink({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
+function QuickLink({ to, icon, label, index }: { to: string; icon: React.ReactNode; label: string; index: number }) {
   return (
-    <Link
-      to={to}
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition flex flex-col items-start gap-2"
-    >
-      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-700 flex items-center justify-center">
-        {icon}
-      </div>
-      <span className="text-sm font-medium text-slate-900">{label}</span>
-    </Link>
+    <StaggerItem index={index}>
+      <Link
+        to={to}
+        className={`h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-200 flex flex-col items-start gap-2 ${liftOnHover}`}
+      >
+        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-700 flex items-center justify-center">
+          {icon}
+        </div>
+        <span className="text-sm font-medium text-slate-900">{label}</span>
+      </Link>
+    </StaggerItem>
   );
 }
 
 function QuickLinkButton({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
   return (
-    <Link
-      to={to}
-      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/10 text-white text-sm font-medium hover:bg-white/20 transition backdrop-blur-sm border border-white/20"
-    >
-      {icon} {label}
-    </Link>
+    <Button asChild variant="outline" className={heroSecondary}>
+      <Link to={to}>
+        {icon} {label}
+      </Link>
+    </Button>
   );
 }

@@ -17,6 +17,7 @@ import {
   ScanLine,
   Building2,
   ChevronRight,
+  Crown,
   Loader2,
 } from 'lucide-react';
 import AppHeader from '@/app/components/AppHeader';
@@ -41,6 +42,8 @@ import { getLoyaltyLedger, type LoyaltyEntry, POINTS_PER_DOLLAR } from '@/app/ap
 import { getEvents, type ClubEvent } from '@/app/api/events';
 import { getVisits, type Visit } from '@/app/api/visits';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import PageHero from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const TIER_BAR: Record<MemberTier, string> = {
   Bronze: 'from-amber-300 to-amber-500',
@@ -187,16 +190,16 @@ export default function MemberPortal() {
           tabIndex={-1}
         >
           {/* Staff impersonation banner */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-6 flex items-center gap-3">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
             <Building2 className="w-5 h-5 text-amber-600 shrink-0" />
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-[12rem]">
               <p className="text-sm font-medium text-amber-900">Staff preview — Member Portal</p>
               <p className="text-xs text-amber-700">
                 This is what a member sees after logging in. Pick a member to preview their account.
               </p>
             </div>
             <Select value={selectedId} onValueChange={setSelectedId}>
-              <SelectTrigger className="w-56 bg-white">
+              <SelectTrigger className="w-full bg-white sm:w-56">
                 <SelectValue placeholder="Member" />
               </SelectTrigger>
               <SelectContent>
@@ -215,74 +218,51 @@ export default function MemberPortal() {
             </div>
           ) : (
             <>
-              {/* Welcome card */}
-              <div className="relative bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-                <div className={`h-3 bg-gradient-to-r ${TIER_BAR[member.tier]}`} />
-                <div className="p-6">
-                  <p className="text-xs uppercase tracking-wider text-slate-400">
-                    Welcome back
-                  </p>
-                  <h1 className="text-3xl font-bold text-slate-900 mt-1">
-                    {member.firstName}
-                  </h1>
-                  <p className="text-sm text-slate-500 mt-1">
-                    {member.tier} member · joined {formatDate(member.joinedAtUtc)}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 text-sm text-slate-600">
-                    <span className="inline-flex items-center gap-1">
-                      <Mail className="w-3.5 h-3.5 text-slate-400" /> {member.email}
+              {/* Welcome: who they are, and their balance, points and visits */}
+              <PageHero
+                icon={Crown}
+                iconGradient={`${TIER_BAR[member.tier]} shadow-slate-400/30`}
+                tone="pink"
+                title={`Welcome back, ${member.firstName}`}
+                subtitle={`${member.tier} member · joined ${formatDate(member.joinedAtUtc)}`}
+                noAgentSlot
+                stats={[
+                  {
+                    label: 'House account',
+                    value: member.houseAccountBalance,
+                    icon: Receipt,
+                    tone: member.houseAccountBalance < 0 ? 'rose' : 'slate',
+                    format: formatCurrency,
+                    hint: outstanding > 0 ? `${formatCurrency(outstanding)} outstanding` : 'no open charges',
+                  },
+                  {
+                    label: 'Loyalty points',
+                    value: loyaltyBalance,
+                    icon: Sparkles,
+                    tone: 'amber',
+                    hint: `≈ ${formatCurrency(loyaltyBalance / POINTS_PER_DOLLAR)} in redemption value`,
+                  },
+                  { label: 'Visits', value: memberVisits.length, icon: ScanLine, tone: 'sky', hint: 'all-time' },
+                ]}
+              >
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+                  <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 ring-1 ring-slate-200/70">
+                    <Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                    <span className="truncate">{member.email}</span>
+                  </span>
+                  {member.phone && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 ring-1 ring-slate-200/70">
+                      <Phone className="h-3.5 w-3.5 text-slate-400" aria-hidden /> {member.phone}
                     </span>
-                    {member.phone && (
-                      <span className="inline-flex items-center gap-1">
-                        <Phone className="w-3.5 h-3.5 text-slate-400" /> {member.phone}
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1">
-                      <CalendarClock className="w-3.5 h-3.5 text-slate-400" /> Renews {formatDate(member.renewsAtUtc)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Balance + points + visits */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">House account</p>
-                  <p
-                    className={`text-3xl font-bold mt-1 ${
-                      member.houseAccountBalance < 0 ? 'text-rose-600' : 'text-slate-900'
-                    }`}
-                  >
-                    {formatCurrency(member.houseAccountBalance)}
-                  </p>
-                  {outstanding > 0 ? (
-                    <p className="text-sm text-amber-700 mt-1">
-                      {formatCurrency(outstanding)} outstanding — see below
-                    </p>
-                  ) : (
-                    <p className="text-sm text-slate-500 mt-1">No open charges</p>
                   )}
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 ring-1 ring-slate-200/70">
+                    <CalendarClock className="h-3.5 w-3.5 text-slate-400" aria-hidden /> Renews {formatDate(member.renewsAtUtc)}
+                  </span>
                 </div>
-                <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-yellow-50 p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-amber-700">Loyalty points</p>
-                  <p className="text-3xl font-bold mt-1 text-amber-900">
-                    {loyaltyBalance.toLocaleString()}
-                  </p>
-                  <p className="text-sm text-amber-700 mt-1">
-                    ≈ {formatCurrency(loyaltyBalance / POINTS_PER_DOLLAR)} in redemption value
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Visits</p>
-                  <p className="text-3xl font-bold mt-1 text-slate-900">
-                    {memberVisits.length}
-                  </p>
-                  <p className="text-sm text-slate-500 mt-1">All-time</p>
-                </div>
-              </div>
+              </PageHero>
 
               {/* Upcoming for me */}
-              <Section title="My upcoming reservations" icon={<CalendarClock className="w-4 h-4" />}>
+              <Section index={0} title="My upcoming reservations" icon={<CalendarClock className="w-4 h-4" />}>
                 {memberReservations.length === 0 ? (
                   <p className="text-sm text-slate-500">
                     No upcoming reservations.{' '}
@@ -310,7 +290,7 @@ export default function MemberPortal() {
               </Section>
 
               {/* Open charges */}
-              <Section title="My open charges" icon={<Receipt className="w-4 h-4" />}>
+              <Section index={1} title="My open charges" icon={<Receipt className="w-4 h-4" />}>
                 {memberCharges.filter((c) => c.status !== 'Paid' && c.status !== 'Voided').length === 0 ? (
                   <p className="text-sm text-slate-500">All paid up. Thank you!</p>
                 ) : (
@@ -341,31 +321,32 @@ export default function MemberPortal() {
               </Section>
 
               {/* Discover events */}
-              <Section title="Upcoming events" icon={<CalendarHeart className="w-4 h-4" />}>
+              <Section index={2} title="Upcoming events" icon={<CalendarHeart className="w-4 h-4" />}>
                 {upcomingEvents.length === 0 ? (
                   <p className="text-sm text-slate-500">No upcoming events on the calendar.</p>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {upcomingEvents.map((e) => {
+                    {upcomingEvents.map((e, index) => {
                       const available = e.capacity - e.registeredCount;
                       return (
-                        <Link
-                          key={e.id}
-                          to={`/events/${e.id}`}
-                          className="rounded-xl border border-slate-200 bg-white p-3 hover:shadow-md transition flex items-start gap-3"
-                        >
-                          <span className="text-3xl">{e.coverEmoji}</span>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-900 truncate">{e.name}</p>
-                            <p className="text-xs text-slate-500">{formatDateTime(e.startAtUtc)}</p>
-                            <p className="text-xs mt-1">
-                              <span className="font-medium text-pink-600">
-                                {formatCurrency(e.memberPrice)}
-                              </span>{' '}
-                              · {available > 0 ? `${available} spots` : 'Waitlist'}
-                            </p>
-                          </div>
-                        </Link>
+                        <StaggerItem key={e.id} index={index}>
+                          <Link
+                            to={`/events/${e.id}`}
+                            className={`h-full rounded-xl border border-slate-200 bg-white p-3 hover:border-pink-200 flex items-start gap-3 ${liftOnHover}`}
+                          >
+                            <span className="text-3xl">{e.coverEmoji}</span>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-900 truncate">{e.name}</p>
+                              <p className="text-xs text-slate-500">{formatDateTime(e.startAtUtc)}</p>
+                              <p className="text-xs mt-1">
+                                <span className="font-medium text-pink-600">
+                                  {formatCurrency(e.memberPrice)}
+                                </span>{' '}
+                                · {available > 0 ? `${available} spots` : 'Waitlist'}
+                              </p>
+                            </div>
+                          </Link>
+                        </StaggerItem>
                       );
                     })}
                   </div>
@@ -373,7 +354,7 @@ export default function MemberPortal() {
               </Section>
 
               {/* Recent loyalty */}
-              <Section title="Recent loyalty activity" icon={<Sparkles className="w-4 h-4" />}>
+              <Section index={3} title="Recent loyalty activity" icon={<Sparkles className="w-4 h-4" />}>
                 {memberLedger.length === 0 ? (
                   <p className="text-sm text-slate-500">No loyalty activity yet.</p>
                 ) : (
@@ -402,10 +383,10 @@ export default function MemberPortal() {
 
               {/* Quick links */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-                <QuickLink href="/reservations" icon={<CalendarClock />} label="Book a room" />
-                <QuickLink href="/events" icon={<CalendarHeart />} label="Browse events" />
-                <QuickLink href="/gift-cards" icon={<Gift />} label="Send a gift card" />
-                <QuickLink href="/visits" icon={<ScanLine />} label="Recent visits" />
+                <QuickLink index={0} href="/reservations" icon={<CalendarClock />} label="Book a room" />
+                <QuickLink index={1} href="/events" icon={<CalendarHeart />} label="Browse events" />
+                <QuickLink index={2} href="/gift-cards" icon={<Gift />} label="Send a gift card" />
+                <QuickLink index={3} href="/visits" icon={<ScanLine />} label="Recent visits" />
               </div>
 
               <p className="text-xs text-slate-400 text-center mt-10">
@@ -422,33 +403,37 @@ export default function MemberPortal() {
 function Section({
   title,
   icon,
+  index,
   children,
 }: {
   title: string;
   icon: React.ReactNode;
+  index: number;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm mb-4">
+    <StaggerItem as="section" index={index} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm mb-4">
       <h2 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-3">
         {icon} {title}
       </h2>
       {children}
-    </section>
+    </StaggerItem>
   );
 }
 
-function QuickLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+function QuickLink({ href, icon, label, index }: { href: string; icon: React.ReactNode; label: string; index: number }) {
   return (
-    <Link
-      to={href}
-      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition flex flex-col items-start gap-2"
-    >
-      <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-700 flex items-center justify-center">
-        {icon}
-      </div>
-      <span className="text-sm font-medium text-slate-900">{label}</span>
-    </Link>
+    <StaggerItem index={index}>
+      <Link
+        to={href}
+        className={`h-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-indigo-200 flex flex-col items-start gap-2 ${liftOnHover}`}
+      >
+        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-700 flex items-center justify-center">
+          {icon}
+        </div>
+        <span className="text-sm font-medium text-slate-900">{label}</span>
+      </Link>
+    </StaggerItem>
   );
 }
 

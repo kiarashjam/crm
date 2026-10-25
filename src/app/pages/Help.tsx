@@ -3,7 +3,23 @@ import { HelpCircle, Shield, Mail } from 'lucide-react';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+
+const TOC = [
+  { href: '#what-heading', label: 'What Cadence does' },
+  { href: '#generate-heading', label: 'Generating copy (4 steps)' },
+  { href: '#crm-heading', label: 'Your data in Cadence' },
+  { href: '#privacy-help-heading', label: 'Data & privacy' },
+  { href: '#support-heading', label: 'Contact support' },
+];
+
+const STEPS = [
+  { title: 'Pick what you’re writing', body: 'Sales email, follow-up, CRM note, deal message, or workflow copy. You can also start from a template.' },
+  { title: 'Set the goal', body: 'Choose an outcome—e.g. schedule a meeting, follow up after a demo, close the deal—and add any extra context. We use your company name and brand tone from Settings.' },
+  { title: 'Generate and tweak', body: 'Hit generate, then review the draft. Use the controls to make it shorter, friendlier, or more persuasive—then copy it or send it on.' },
+  { title: 'Attach it to a record', body: 'Open Attach copy, pick a lead, contact, or deal, and save. The writing stays in Cadence and in History. Nothing is emailed.' },
+];
 
 export default function Help() {
   return (
@@ -12,44 +28,30 @@ export default function Help() {
 
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          {/* Enhanced Header Section with Dark Decorative Elements */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-          {/* Decorative blur elements */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-            <div className="absolute inset-0 opacity-5" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l9.9-9.9h-2.83zM32 0l-3.486 3.485-1.414-1.414L30.586 0H32zM0 5.373l.828-.83 1.415 1.415L0 8.2V5.374zm0 5.656l.828-.829 5.657 5.657-1.414 1.414L0 11.03v-.001zm0 5.656l.828-.828 8.485 8.485-1.414 1.414L0 16.686v-.001zm0 5.657l.828-.828 11.314 11.314-1.414 1.414L0 22.343v-.001zM60 5.373l-.828-.83-1.415 1.415L60 8.2V5.374zm0 5.656l-.828-.829-5.657 5.657 1.414 1.414L60 11.03v-.001zm0 5.656l-.828-.828-8.485 8.485 1.414 1.414L60 16.686v-.001zm0 5.657l-.828-.828-11.314 11.314 1.414 1.414L60 22.343v-.001z' fill='%23fff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E")` }} />
-          </div>
-          
-          <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                  <HelpCircle className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">How It Works</h1>
-                  <p className="text-slate-400 mt-1">A quick guide to getting the most out of Cadence</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-          <NextActionsSlot />
+          <PageHero
+            icon={HelpCircle}
+            tone="orange"
+            title="How It Works"
+            subtitle="A quick guide to getting the most out of Cadence"
+          >
+            <nav className="flex flex-wrap items-center gap-x-2 gap-y-1.5" aria-label="Table of contents">
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">On this page</h2>
+              <ul className="flex flex-wrap gap-1.5">
+                {TOC.map((item) => (
+                  <li key={item.href}>
+                    <a
+                      href={item.href}
+                      className="inline-flex rounded-full border border-slate-200/80 bg-white/80 px-2.5 py-1 text-xs font-medium text-teal-700 shadow-sm backdrop-blur transition-colors hover:border-teal-200 hover:bg-white hover:text-teal-800"
+                    >
+                      {item.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </PageHero>
 
         <div className="w-full">
-
-          <nav className="mb-12 glass-strong rounded-2xl p-6" aria-label="Table of contents">
-            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">On this page</h2>
-            <ul className="space-y-2">
-              <li><a href="#what-heading" className="text-teal-600 hover:text-teal-700 font-medium">What Cadence does</a></li>
-              <li><a href="#generate-heading" className="text-teal-600 hover:text-teal-700 font-medium">Generating copy (4 steps)</a></li>
-              <li><a href="#crm-heading" className="text-teal-600 hover:text-teal-700 font-medium">Your data in Cadence</a></li>
-              <li><a href="#privacy-help-heading" className="text-teal-600 hover:text-teal-700 font-medium">Data & privacy</a></li>
-              <li><a href="#support-heading" className="text-teal-600 hover:text-teal-700 font-medium">Contact support</a></li>
-            </ul>
-          </nav>
 
           {/* What Cadence does */}
           <section className="mb-12" aria-labelledby="what-heading">
@@ -72,53 +74,23 @@ export default function Help() {
           <section className="mb-12" aria-labelledby="generate-heading">
             <h2 id="generate-heading" className="text-2xl font-bold text-slate-900 mb-6">Generating Copy (4 Steps)</h2>
             <div className="space-y-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">
-                    1
+              {STEPS.map((step, index) => (
+                <StaggerItem
+                  key={step.title}
+                  index={index}
+                  className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 hover:border-orange-200 ${liftOnHover}`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg text-slate-900 mb-2">{step.title}</h3>
+                      <p className="text-slate-700">{step.body}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Pick what you’re writing</h3>
-                    <p className="text-slate-700">Sales email, follow-up, CRM note, deal message, or workflow copy. You can also start from a template.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">
-                    2
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Set the goal</h3>
-                    <p className="text-slate-700">Choose an outcome—e.g. schedule a meeting, follow up after a demo, close the deal—and add any extra context. We use your company name and brand tone from Settings.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">
-                    3
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Generate and tweak</h3>
-                    <p className="text-slate-700">Hit generate, then review the draft. Use the controls to make it shorter, friendlier, or more persuasive—then copy it or send it on.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold">
-                    4
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg text-slate-900 mb-2">Attach it to a record</h3>
-                    <p className="text-slate-700">Open Attach copy, pick a lead, contact, or deal, and save. The writing stays in Cadence and in History. Nothing is emailed.</p>
-                  </div>
-                </div>
-              </div>
+                </StaggerItem>
+              ))}
             </div>
           </section>
 

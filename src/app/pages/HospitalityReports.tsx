@@ -24,7 +24,10 @@ import { getVisits, type VisitVenue } from '@/app/api/visits';
 import { getLoyaltyLedger } from '@/app/api/loyalty';
 import { getEvents } from '@/app/api/events';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { motion } from 'motion/react';
+import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -62,6 +65,7 @@ const VENUE_COLOR: Record<VisitVenue, string> = {
 };
 
 export default function HospitalityReports() {
+  const reduce = useMotionPreference();
   const [members, setMembers] = useState<Member[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
   const [visits, setVisits] = useState<Awaited<ReturnType<typeof getVisits>>>([]);
@@ -228,40 +232,24 @@ export default function HospitalityReports() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-blue-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10 flex items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-emerald-500/30">
-                <BarChart3 className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">
-                  Club Reports
-                </h1>
-                <p className="text-slate-400 mt-1">
-                  Revenue, attendance, retention, and loyalty — the operational picture.
-                </p>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* KPIs */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-            <Kpi icon={<DollarSign className="w-4 h-4" />} label="Revenue · 30d" value={formatCurrency(kpis.revenue30d)} />
-            <Kpi icon={<Crown className="w-4 h-4" />} label="Active members" value={String(kpis.activeCount)} />
-            <Kpi icon={<TrendingUp className="w-4 h-4" />} label="Churn rate" value={`${Math.round(kpis.churn * 100)}%`} />
-            <Kpi icon={<ScanLine className="w-4 h-4" />} label="Visits · 30d" value={String(kpis.recentVisits)} />
-            <Kpi icon={<Crown className="w-4 h-4" />} label="New · 180d" value={String(kpis.newMembers180d)} />
-            <Kpi icon={<Sparkles className="w-4 h-4" />} label="Points outstanding" value={kpis.pointsOutstanding.toLocaleString()} />
-          </div>
+          <PageHero
+            icon={BarChart3}
+            tone="emerald"
+            title="Club Reports"
+            subtitle="Revenue, attendance, retention, and loyalty — the operational picture."
+            stats={[
+              { label: 'Revenue', hint: '30d', value: kpis.revenue30d, icon: DollarSign, tone: 'emerald', format: formatCurrency },
+              { label: 'Active members', value: kpis.activeCount, icon: Crown, tone: 'indigo' },
+              { label: 'Churn rate', value: kpis.churn * 100, icon: TrendingUp, tone: 'rose', format: (n) => `${Math.round(n)}%` },
+              { label: 'Visits', hint: '30d', value: kpis.recentVisits, icon: ScanLine, tone: 'sky' },
+              { label: 'New', hint: '180d', value: kpis.newMembers180d, icon: Crown, tone: 'violet' },
+              { label: 'Points outstanding', value: kpis.pointsOutstanding, icon: Sparkles, tone: 'amber' },
+            ]}
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             {/* Revenue by kind */}
-            <Card title="Revenue by category" icon={<DollarSign className="w-4 h-4" />}>
+            <Card index={0} title="Revenue by category" icon={<DollarSign className="w-4 h-4" />}>
               {revenueByKind.entries.length === 0 ? (
                 <Empty />
               ) : (
@@ -288,7 +276,7 @@ export default function HospitalityReports() {
             </Card>
 
             {/* Visits by venue */}
-            <Card title="Visits by venue · 30d" icon={<ScanLine className="w-4 h-4" />}>
+            <Card index={1} title="Visits by venue · 30d" icon={<ScanLine className="w-4 h-4" />}>
               {visitsByVenue.entries.length === 0 ? (
                 <Empty />
               ) : (
@@ -315,7 +303,7 @@ export default function HospitalityReports() {
             </Card>
 
             {/* Tier distribution */}
-            <Card title="Active tier distribution" icon={<Crown className="w-4 h-4" />}>
+            <Card index={2} title="Active tier distribution" icon={<Crown className="w-4 h-4" />}>
               <ul className="space-y-2">
                 {tierDistribution.entries.map(([tier, count]) => {
                   const pct = (count / tierDistribution.total) * 100;
@@ -338,15 +326,19 @@ export default function HospitalityReports() {
             </Card>
 
             {/* Member growth */}
-            <Card title="New members · last 6 months" icon={<TrendingUp className="w-4 h-4" />}>
+            <Card index={3} title="New members · last 6 months" icon={<TrendingUp className="w-4 h-4" />}>
               <div className="flex items-end gap-2 h-32 mb-2">
-                {memberGrowth.buckets.map((b) => {
-                  const h = (b.count / memberGrowth.max) * 100;
+                {memberGrowth.buckets.map((b, i) => {
+                  const h = memberGrowth.max > 0 ? (b.count / memberGrowth.max) * 100 : 0;
                   return (
-                    <div key={b.label} className="flex-1 flex flex-col items-center justify-end">
-                      <div
-                        className="w-full bg-emerald-500 rounded-t-lg"
-                        style={{ height: `${h}%`, minHeight: b.count > 0 ? 4 : 0 }}
+                    // Full height, so the bar's percentage has something to be a percentage of.
+                    <div key={b.label} className="flex h-full flex-1 flex-col items-center justify-end">
+                      <motion.div
+                        className="w-full rounded-t-lg bg-gradient-to-t from-emerald-500 to-teal-400"
+                        style={{ minHeight: b.count > 0 ? 4 : 0 }}
+                        initial={reduce ? false : { height: 0 }}
+                        animate={{ height: `${h}%` }}
+                        transition={{ duration: reduce ? 0 : 0.6, ease: [0.16, 1, 0.3, 1], delay: reduce ? 0 : 0.2 + i * 0.06 }}
                         title={`${b.count} member${b.count === 1 ? '' : 's'}`}
                       />
                     </div>
@@ -363,7 +355,7 @@ export default function HospitalityReports() {
             </Card>
 
             {/* Top spenders */}
-            <Card title="Top spenders" icon={<DollarSign className="w-4 h-4" />}>
+            <Card index={4} title="Top spenders" icon={<DollarSign className="w-4 h-4" />}>
               {topSpenders.length === 0 ? (
                 <Empty />
               ) : (
@@ -390,7 +382,7 @@ export default function HospitalityReports() {
             </Card>
 
             {/* Event utilization */}
-            <Card title="Event utilization" icon={<CalendarHeart className="w-4 h-4" />}>
+            <Card index={5} title="Event utilization" icon={<CalendarHeart className="w-4 h-4" />}>
               <div className="text-center py-4">
                 <p className="text-5xl font-bold text-pink-600">
                   {Math.round(eventAttendance.utilization * 100)}%
@@ -410,33 +402,24 @@ export default function HospitalityReports() {
   );
 }
 
-function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-      <div className="flex items-center gap-1.5 text-xs text-slate-500 uppercase tracking-wide mb-1">
-        <span className="text-slate-400">{icon}</span> {label}
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-    </div>
-  );
-}
-
 function Card({
   title,
   icon,
+  index,
   children,
 }: {
   title: string;
   icon: React.ReactNode;
+  index: number;
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <StaggerItem index={index} className={`bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-emerald-200 ${liftOnHover}`}>
       <h2 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-4">
         {icon} {title}
       </h2>
       {children}
-    </div>
+    </StaggerItem>
   );
 }
 

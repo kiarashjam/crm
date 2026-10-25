@@ -89,7 +89,13 @@ import { TaskGroupSection } from './tasks/components/TaskGroupSection';
 import { TaskDetailModal } from './tasks/components/TaskDetailModal';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
+import { cn } from '@/app/components/ui/utils';
+
+/** Board / List switch in the header: white on the band, the page's colour when on. */
+const VIEW_TOGGLE = 'h-8 gap-2 rounded-lg px-3 text-slate-600 transition-all hover:bg-white hover:text-slate-900';
+const VIEW_TOGGLE_ON = 'bg-amber-50 text-amber-800 shadow-sm ring-1 ring-amber-200 hover:bg-amber-50 hover:text-amber-900';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -754,241 +760,121 @@ export default function Tasks() {
     }
   };
 
+  // The page's numbers, in its header.
+  const completionRate = stats && stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0;
+  const taskHeroStats: PageStat[] | undefined = stats ? [
+    { label: 'Total Tasks', value: stats.total, icon: ListTodo, tone: 'amber' },
+    { label: 'To Do', value: stats.todo, icon: Circle, tone: 'slate' },
+    { label: 'In Progress', value: stats.inProgress, icon: Play, tone: 'blue' },
+    { label: 'Due Today', value: stats.dueToday, icon: Target, tone: 'orange' },
+    { label: 'Overdue', value: stats.overdue, icon: AlertTriangle, tone: 'rose' },
+    { label: 'High Priority', value: stats.highPriority, icon: Zap, tone: 'pink' },
+    { label: 'Completed', value: stats.completed, icon: CheckCheck, tone: 'emerald' },
+    {
+      label: 'Completion', value: completionRate, icon: CheckCircle2, tone: 'violet',
+      hint: `${stats.completed}/${stats.total}`, format: (n) => `${Math.round(n)}%`,
+    },
+  ] : undefined;
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          {/* Modern Hero Header */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-          {/* Animated background elements */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-            {/* Subtle grid pattern */}
-            <div className="absolute inset-0 opacity-5" style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l9.9-9.9h-2.83zM32 0l-3.486 3.485-1.414-1.414L30.586 0H32zM0 5.373l.828-.83 1.415 1.415L0 8.2V5.374zm0 5.656l.828-.829 5.657 5.657-1.414 1.414L0 11.03v-.001zm0 5.656l.828-.828 8.485 8.485-1.414 1.414L0 16.686v-.001zm0 5.657l.828-.828 11.314 11.314-1.414 1.414L0 22.343v-.001zM60 5.373l-.828-.83-1.415 1.415L60 8.2V5.374zm0 5.656l-.828-.829-5.657 5.657 1.414 1.414L60 11.03v-.001zm0 5.656l-.828-.828-8.485 8.485 1.414 1.414L60 16.686v-.001zm0 5.657l-.828-.828-11.314 11.314 1.414 1.414L60 22.343v-.001z' fill='%23fff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E")`,
-            }} />
-          </div>
-
-          <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                  <ListTodo className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Task Manager</h1>
-                  <p className="text-slate-400 mt-1">Organize, prioritize, and track your work efficiently</p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
+          <PageHero
+            icon={ListTodo}
+            tone="amber"
+            title="Task Manager"
+            subtitle="Organize, prioritize, and track your work efficiently"
+            actions={
+              <>
                 {/* View Toggle */}
-                <div className="flex items-center bg-white/10 backdrop-blur-sm rounded-xl p-1 border border-white/10">
+                <div className="flex items-center gap-0.5 rounded-xl border border-slate-200/80 bg-white/80 p-0.5 shadow-sm backdrop-blur">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setViewMode('kanban')}
-                    className={`gap-2 rounded-lg transition-all ${viewMode === 'kanban' 
-                      ? 'bg-white text-slate-900 shadow-lg hover:bg-white' 
-                      : 'text-white/80 hover:text-white hover:bg-white/10'
-                    }`}
+                    aria-pressed={viewMode === 'kanban'}
+                    className={cn(VIEW_TOGGLE, viewMode === 'kanban' && VIEW_TOGGLE_ON)}
                   >
-                    <Columns3 className="w-4 h-4" />
+                    <Columns3 className="h-4 w-4" />
                     Board
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => setViewMode('list')}
-                    className={`gap-2 rounded-lg transition-all ${viewMode === 'list' 
-                      ? 'bg-white text-slate-900 shadow-lg hover:bg-white' 
-                      : 'text-white/80 hover:text-white hover:bg-white/10'
-                    }`}
+                    aria-pressed={viewMode === 'list'}
+                    className={cn(VIEW_TOGGLE, viewMode === 'list' && VIEW_TOGGLE_ON)}
                   >
-                    <LayoutList className="w-4 h-4" />
+                    <LayoutList className="h-4 w-4" />
                     List
                   </Button>
                 </div>
 
                 {/* HP-9: Bulk mode toggle (list view only) */}
                 {viewMode === 'list' && (
-                  <Button 
+                  <Button
                     variant={bulkMode ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
-                    className={`gap-2 h-10 rounded-xl ${bulkMode ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'text-white/80 border-white/30 hover:bg-white/10 hover:text-white'}`}
+                    className={cn(
+                      heroSecondary,
+                      bulkMode && 'border-orange-600 bg-orange-600 text-white hover:border-orange-700 hover:bg-orange-700 hover:text-white',
+                    )}
                   >
-                    <CheckCheck className="w-4 h-4" />
+                    <CheckCheck className="h-4 w-4" />
                     {bulkMode ? 'Exit Bulk' : 'Bulk'}
                   </Button>
                 )}
 
                 <WriteOnly>
-                  <Button 
-                    onClick={() => openCreate()} 
-                    className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold"
-                  >
-                    <Plus className="w-4 h-4" />
+                  <Button onClick={() => openCreate()} className={heroPrimary('amber')}>
+                    <Plus className="h-4 w-4" />
                     New Task
                   </Button>
                 </WriteOnly>
-              </div>
-            </div>
-          </div>
-        </div>
-          <NextActionsSlot />
+              </>
+            }
+            stats={!loading ? taskHeroStats : undefined}
+          />
 
         {loading ? (
           <KanbanSkeleton columns={4} />
         ) : (
           <>
-            {/* Modern Stats Cards */}
-            {stats && (
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
-                {/* Total Tasks */}
-                <div className="group relative bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-50 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                      <ListTodo className="w-5 h-5 text-slate-600" />
-                    </div>
-                    <p className="text-3xl font-bold text-slate-900 tracking-tight">{stats.total}</p>
-                    <p className="text-xs font-medium text-slate-500 mt-1">Total Tasks</p>
-                  </div>
-                </div>
-
-                {/* To Do */}
-                <div className="group relative bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-slate-50 to-slate-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                      <Circle className="w-5 h-5 text-slate-500" />
-                    </div>
-                    <p className="text-3xl font-bold text-slate-700 tracking-tight">{stats.todo}</p>
-                    <p className="text-xs font-medium text-slate-500 mt-1">To Do</p>
-                  </div>
-                </div>
-
-                {/* In Progress */}
-                <div className="group relative bg-white rounded-2xl border border-blue-100 p-5 shadow-sm hover:shadow-xl hover:shadow-blue-100 hover:border-blue-200 transition-all duration-300 overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-50 to-blue-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                      <Play className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <p className="text-3xl font-bold text-blue-600 tracking-tight">{stats.inProgress}</p>
-                    <p className="text-xs font-medium text-blue-600/70 mt-1">In Progress</p>
-                  </div>
-                </div>
-
-                {/* Due Today */}
-                <div className="group relative bg-white rounded-2xl border border-orange-100 p-5 shadow-sm hover:shadow-xl hover:shadow-orange-100 hover:border-orange-200 transition-all duration-300 overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-orange-50 to-orange-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                      <Target className="w-5 h-5 text-orange-600" />
-                    </div>
-                    <p className="text-3xl font-bold text-orange-600 tracking-tight">{stats.dueToday}</p>
-                    <p className="text-xs font-medium text-orange-600/70 mt-1">Due Today</p>
-                  </div>
-                </div>
-
-                {/* Overdue */}
-                <div className="group relative bg-white rounded-2xl border border-red-100 p-5 shadow-sm hover:shadow-xl hover:shadow-red-100 hover:border-red-200 transition-all duration-300 overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-red-50 to-red-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-100 to-red-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                      <AlertTriangle className="w-5 h-5 text-red-600" />
-                    </div>
-                    <p className="text-3xl font-bold text-red-600 tracking-tight">{stats.overdue}</p>
-                    <p className="text-xs font-medium text-red-600/70 mt-1">Overdue</p>
-                  </div>
-                </div>
-
-                {/* High Priority */}
-                <div className="group relative bg-white rounded-2xl border border-rose-100 p-5 shadow-sm hover:shadow-xl hover:shadow-rose-100 hover:border-rose-200 transition-all duration-300 overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-rose-50 to-rose-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-100 to-rose-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                      <Zap className="w-5 h-5 text-rose-600" />
-                    </div>
-                    <p className="text-3xl font-bold text-rose-600 tracking-tight">{stats.highPriority}</p>
-                    <p className="text-xs font-medium text-rose-600/70 mt-1">High Priority</p>
-                  </div>
-                </div>
-
-                {/* Completed */}
-                <div className="group relative bg-white rounded-2xl border border-emerald-100 p-5 shadow-sm hover:shadow-xl hover:shadow-emerald-100 hover:border-emerald-200 transition-all duration-300 overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                      <CheckCheck className="w-5 h-5 text-emerald-600" />
-                    </div>
-                    <p className="text-3xl font-bold text-emerald-600 tracking-tight">{stats.completed}</p>
-                    <p className="text-xs font-medium text-emerald-600/70 mt-1">Completed</p>
-                  </div>
-                </div>
-
-                {/* Progress */}
-                <div className="group relative bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl p-5 shadow-lg shadow-violet-500/20 hover:shadow-xl hover:shadow-violet-500/30 transition-all duration-300 overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-bl-[60px] -mr-2 -mt-2" />
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3">
-                      <CheckCircle2 className="w-5 h-5 text-white" />
-                    </div>
-                    <p className="text-3xl font-bold text-white tracking-tight">
-                      {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
-                    </p>
-                    <p className="text-xs font-medium text-white/80 mt-1">Completion</p>
-                    <div className="mt-3">
-                      <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-white rounded-full transition-all duration-500"
-                          style={{ width: `${stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Modern Filters Bar - Dark Theme */}
-            <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-4 mb-6 shadow-xl overflow-hidden">
+            {/* Search and filters */}
+            <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
               {/* Decorative elements */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
-              <div className="absolute bottom-0 left-0 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl -ml-10 -mb-10" />
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-300/25 rounded-full blur-2xl -mr-10 -mt-10" />
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-orange-300/25 rounded-full blur-2xl -ml-10 -mb-10" />
               
               <div className="relative flex flex-wrap items-center gap-3">
                 {/* Search - Enhanced */}
                 <div className="relative flex-1 min-w-[240px] max-w-md group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-orange-500/20 via-amber-500/20 to-orange-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
                   <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center group-focus-within:from-orange-500/40 group-focus-within:to-amber-500/40 transition-all duration-300">
-                      <Search className="w-4 h-4 text-orange-300 group-focus-within:text-orange-200 transition-colors" />
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-amber-100 to-orange-100 flex items-center justify-center group-focus-within:from-amber-200 group-focus-within:to-orange-200 transition-all duration-300">
+                      <Search className="w-4 h-4 text-amber-600 group-focus-within:text-amber-700 transition-colors" />
                     </div>
                     <Input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Search tasks by title or description..."
-                      className="pl-14 pr-10 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white placeholder:text-slate-400 shadow-xl shadow-black/10 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 focus:bg-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300"
+                      className="pl-14 pr-10 h-11 rounded-xl border border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400 focus:border-orange-300 focus:ring-4 focus:ring-orange-200/50 focus:bg-white hover:bg-white hover:border-slate-300 transition-all duration-300"
                     />
                   </div>
                 </div>
 
                 {/* Filters */}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-2 text-slate-400 mr-1">
+                  <div className="flex items-center gap-2 text-slate-500 mr-1">
                     <Filter className="w-4 h-4" />
                     <span className="text-sm font-medium hidden sm:inline">Filters:</span>
                   </div>
 
                   <Select value={priorityFilter} onValueChange={(v) => setPriorityFilter(v as TaskPriorityType | 'all')}>
-                    <SelectTrigger className="w-36 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
+                    <SelectTrigger className="w-36 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
                       <SelectValue placeholder="Priority" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1017,7 +903,7 @@ export default function Tasks() {
 
                   {orgMembers.length > 0 && (
                     <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-                      <SelectTrigger className="w-40 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
+                      <SelectTrigger className="w-40 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
                         <SelectValue placeholder="Assignee" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1031,7 +917,7 @@ export default function Tasks() {
 
                   {leads.length > 0 && (
                     <Select value={leadFilter} onValueChange={setLeadFilter}>
-                      <SelectTrigger className="w-32 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
+                      <SelectTrigger className="w-32 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
                         <SelectValue placeholder="Lead" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1045,7 +931,7 @@ export default function Tasks() {
 
                   {deals.length > 0 && (
                     <Select value={dealFilter} onValueChange={setDealFilter}>
-                      <SelectTrigger className="w-32 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-orange-400/50 focus:ring-2 focus:ring-orange-400/20 transition-all duration-300">
+                      <SelectTrigger className="w-32 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
                         <SelectValue placeholder="Deal" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1069,7 +955,7 @@ export default function Tasks() {
                         setLeadFilter('all');
                         setDealFilter('all');
                       }}
-                      className="h-11 px-4 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 transition-all duration-300"
+                      className="h-11 px-4 rounded-xl text-slate-500 hover:text-red-600 hover:bg-red-50 transition-all duration-300"
                     >
                       <RotateCcw className="w-4 h-4 mr-2" />
                       Clear
@@ -1105,7 +991,7 @@ export default function Tasks() {
             ) : viewMode === 'kanban' ? (
               /* Kanban View with Drag and Drop */
               <DndProvider backend={HTML5Backend}>
-                <div className="grid grid-cols-3 gap-6 w-full">
+                <div className="grid grid-cols-1 gap-6 w-full md:grid-cols-3">
                   {kanbanColumns.map((column) => (
                     <KanbanColumnComponent
                       key={column.id}
@@ -1151,33 +1037,35 @@ export default function Tasks() {
                   </div>
                 )}
 
-                {(['overdue', 'today', 'tomorrow', 'thisWeek', 'later', 'noDue', 'completed'] as const).map((group) => (
-                  <TaskGroupSection 
-                    key={group}
-                    group={group} 
-                    tasks={groupedTasks[group]}
-                    isCollapsed={collapsedGroups.has(group)}
-                    onToggle={() => toggleGroupCollapse(group)}
-                    openEdit={openEdit}
-                    handleDelete={setDeleteConfirmTask}
-                    handleStatusChange={handleStatusChange}
-                    handlePriorityChange={handlePriorityChange}
-                    statusConfig={statusConfig}
-                    priorityConfig={priorityConfig}
-                    contacts={contacts}
-                    members={orgMembers}
-                    getInitials={getInitials}
-                    formatDue={formatDue}
-                    onViewDetails={openTaskDetail}
-                    onAssigneeChange={handleInlineAssigneeChange}
-                    onDealChange={handleInlineDealChange}
-                    onLeadChange={handleInlineLeadChange}
-                    leads={leads}
-                    deals={deals}
-                    selectedTaskIds={selectedTaskIds}
-                    onSelectionToggle={toggleTaskSelection}
-                    bulkMode={bulkMode}
-                  />
+                {(['overdue', 'today', 'tomorrow', 'thisWeek', 'later', 'noDue', 'completed'] as const).map((group, index) => (
+                  // A group with nothing to show renders nothing, so its wrapper hides too.
+                  <StaggerItem key={group} index={index} className="empty:hidden">
+                    <TaskGroupSection 
+                      group={group} 
+                      tasks={groupedTasks[group]}
+                      isCollapsed={collapsedGroups.has(group)}
+                      onToggle={() => toggleGroupCollapse(group)}
+                      openEdit={openEdit}
+                      handleDelete={setDeleteConfirmTask}
+                      handleStatusChange={handleStatusChange}
+                      handlePriorityChange={handlePriorityChange}
+                      statusConfig={statusConfig}
+                      priorityConfig={priorityConfig}
+                      contacts={contacts}
+                      members={orgMembers}
+                      getInitials={getInitials}
+                      formatDue={formatDue}
+                      onViewDetails={openTaskDetail}
+                      onAssigneeChange={handleInlineAssigneeChange}
+                      onDealChange={handleInlineDealChange}
+                      onLeadChange={handleInlineLeadChange}
+                      leads={leads}
+                      deals={deals}
+                      selectedTaskIds={selectedTaskIds}
+                      onSelectionToggle={toggleTaskSelection}
+                      bulkMode={bulkMode}
+                    />
+                  </StaggerItem>
                 ))}
               </div>
             )}

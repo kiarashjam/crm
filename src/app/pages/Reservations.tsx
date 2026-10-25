@@ -54,7 +54,8 @@ import {
   type ResourceKind,
 } from '@/app/api/reservations';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const KIND_ICON: Record<ResourceKind, React.ElementType> = {
   Dining: Coffee,
@@ -277,64 +278,24 @@ export default function Reservations() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-teal-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-2xl shadow-emerald-500/30">
-                    <CalendarClock className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Reservations</h1>
-                    <p className="text-slate-400 mt-1">
-                      Book dining rooms, spa, courts, and meeting spaces.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openCreate}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-lg shadow-emerald-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  New booking
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<CalendarClock className="w-5 h-5 text-emerald-600" />}
-              label="Today"
-              value={String(stats.today)}
-              hint={`${stats.totalGuestsToday} guests`}
-            />
-            <StatCard
-              icon={<Clock className="w-5 h-5 text-teal-600" />}
-              label="This week"
-              value={String(stats.upcomingWeek)}
-              hint="Bookings in next 7 days"
-            />
-            <StatCard
-              icon={<Users className="w-5 h-5 text-amber-600" />}
-              label="Pending"
-              value={String(stats.pending)}
-              hint="Awaiting confirmation"
-            />
-            <StatCard
-              icon={<MapPin className="w-5 h-5 text-violet-600" />}
-              label="Resources"
-              value={String(resources.length)}
-              hint="Bookable spaces"
-            />
-          </div>
+          <PageHero
+            icon={CalendarClock}
+            tone="emerald"
+            title="Reservations"
+            subtitle="Book dining rooms, spa, courts, and meeting spaces."
+            actions={
+              <Button onClick={openCreate} className={heroPrimary('emerald')}>
+                <Plus className="h-4 w-4" />
+                New booking
+              </Button>
+            }
+            stats={[
+              { label: 'Today', value: stats.today, icon: CalendarClock, tone: 'emerald', hint: `${stats.totalGuestsToday} guests` },
+              { label: 'This week', value: stats.upcomingWeek, icon: Clock, tone: 'teal', hint: 'next 7 days' },
+              { label: 'Pending', value: stats.pending, icon: Users, tone: 'amber', hint: 'awaiting confirmation' },
+              { label: 'Resources', value: resources.length, icon: MapPin, tone: 'violet', hint: 'bookable spaces' },
+            ]}
+          />
 
           {/* Resource quick-look */}
           {resources.length > 0 && (
@@ -427,12 +388,13 @@ export default function Reservations() {
             />
           ) : (
             <div className="space-y-3">
-              {filtered.map((r) => {
+              {filtered.map((r, index) => {
                 const today = isToday(r.startAtUtc);
                 return (
-                  <div
+                  <StaggerItem
                     key={r.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+                    index={index}
+                    className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-emerald-200 ${liftOnHover}`}
                   >
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="flex items-start gap-4 min-w-0 flex-1">
@@ -508,7 +470,7 @@ export default function Reservations() {
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </StaggerItem>
                 );
               })}
             </div>
@@ -630,29 +592,6 @@ export default function Reservations() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

@@ -46,7 +46,8 @@ import {
 } from '@/app/api/visits';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const VENUE_COLOR: Record<VisitVenue, string> = {
   Dining: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -192,64 +193,24 @@ export default function Visits() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-cyan-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-blue-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center shadow-2xl shadow-cyan-500/30">
-                    <ScanLine className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Visits</h1>
-                    <p className="text-slate-400 mt-1">
-                      Check-ins, attendance, and the touchpoints that earn loyalty.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openCheckIn}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 shadow-lg shadow-cyan-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  Check in
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<ScanLine className="w-5 h-5 text-cyan-600" />}
-              label="Today"
-              value={String(stats.today)}
-              hint={`${stats.uniqueMembersToday} unique members`}
-            />
-            <StatCard
-              icon={<Clock className="w-5 h-5 text-blue-600" />}
-              label="This week"
-              value={String(stats.thisWeek)}
-              hint="Last 7 days"
-            />
-            <StatCard
-              icon={<Sparkles className="w-5 h-5 text-amber-600" />}
-              label="Points · today"
-              value={stats.pointsAwardedToday.toLocaleString()}
-              hint="Loyalty awarded"
-            />
-            <StatCard
-              icon={<MapPin className="w-5 h-5 text-violet-600" />}
-              label="Top venue · 7d"
-              value={stats.topVenue ?? '—'}
-              hint="Most visited area"
-            />
-          </div>
+          <PageHero
+            icon={ScanLine}
+            tone="cyan"
+            title="Visits"
+            subtitle="Check-ins, attendance, and the touchpoints that earn loyalty."
+            actions={
+              <Button onClick={openCheckIn} className={heroPrimary('cyan')}>
+                <Plus className="h-4 w-4" />
+                Check in
+              </Button>
+            }
+            stats={[
+              { label: 'Today', value: stats.today, icon: ScanLine, tone: 'cyan', hint: `${stats.uniqueMembersToday} unique members` },
+              { label: 'This week', value: stats.thisWeek, icon: Clock, tone: 'blue', hint: 'last 7 days' },
+              { label: 'Points · today', value: stats.pointsAwardedToday, icon: Sparkles, tone: 'amber', hint: 'loyalty awarded' },
+              { label: 'Top venue · 7d', value: stats.topVenue ?? '—', icon: MapPin, tone: 'violet', hint: 'most visited area' },
+            ]}
+          />
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row gap-3 mb-6">
@@ -300,10 +261,11 @@ export default function Visits() {
             />
           ) : (
             <div className="space-y-2">
-              {filtered.map((v) => (
-                <div
+              {filtered.map((v, index) => (
+                <StaggerItem
                   key={v.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow flex items-center gap-4"
+                  index={index}
+                  className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-cyan-200 flex items-center gap-4 ${liftOnHover}`}
                 >
                   <div
                     className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${VENUE_COLOR[v.venue]}`}
@@ -356,7 +318,7 @@ export default function Visits() {
                       <Trash2 className="h-4 w-4" />
                     )}
                   </button>
-                </div>
+                </StaggerItem>
               ))}
             </div>
           )}
@@ -454,29 +416,6 @@ export default function Visits() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
     </div>
   );
 }

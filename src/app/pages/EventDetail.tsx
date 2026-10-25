@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft,
   CalendarHeart,
   Clock,
   MapPin,
@@ -53,7 +52,9 @@ import { createMockStore, mockId } from '@/app/api/mockStore';
 import { getMembers, type Member } from '@/app/api/members';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from '@/app/api/loyalty';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
+import { motion } from 'motion/react';
+import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 
 // Attendees live entirely in the demo store — there's no real-backend endpoint
 // for them yet, but the structure is server-friendly when one shows up.
@@ -172,6 +173,7 @@ function formatCurrency(n: number): string {
 export default function EventDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const reduce = useMotionPreference();
   const [event, setEvent] = useState<ClubEvent | null>(null);
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -431,109 +433,94 @@ export default function EventDetail() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <Link
-            to="/events"
-            className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4"
+          <PageHero
+            icon={CalendarHeart}
+            avatar={
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-pink-200 via-fuchsia-200 to-violet-200 text-2xl shadow-lg ring-4 ring-white/80 transition-transform duration-300 hover:-rotate-6 hover:scale-105 motion-reduce:transition-none" aria-hidden>
+                {event.coverEmoji}
+              </span>
+            }
+            tone="pink"
+            back={{ to: '/events', label: 'All events' }}
+            title={event.name}
+            badges={
+              <>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[event.status]}`}>{event.status}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-white/80 text-slate-600 ring-1 ring-slate-200">{VISIBILITY_LABELS[event.visibility]}</span>
+              </>
+            }
+            subtitle={
+              <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" aria-hidden /> {formatDateTime(event.startAtUtc)}</span>
+                {event.location && <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" aria-hidden /> {event.location}</span>}
+                <span className="inline-flex items-center gap-1">
+                  <DollarSign className="w-3.5 h-3.5" aria-hidden />
+                  {formatCurrency(event.memberPrice)} member
+                  {event.visibility !== 'MembersOnly' && event.guestPrice > 0 && <> · {formatCurrency(event.guestPrice)} guest</>}
+                </span>
+              </span>
+            }
+            actions={
+              <>
+                {event.status === 'Draft' && (
+                  <Button onClick={() => changeStatus('Published')} className={heroPrimary('emerald')}>Publish</Button>
+                )}
+                {event.status === 'Published' && Date.parse(event.endAtUtc) < Date.now() && (
+                  <Button onClick={() => changeStatus('Completed')} className={heroPrimary('pink')}>Mark completed</Button>
+                )}
+                {event.status !== 'Cancelled' && event.status !== 'Completed' && (
+                  <Button
+                    variant="outline"
+                    onClick={() => changeStatus('Cancelled')}
+                    className={`${heroSecondary} text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700`}
+                  >
+                    Cancel event
+                  </Button>
+                )}
+                <Button variant="outline" asChild className={heroSecondary}>
+                  <Link to="/events">
+                    <Pencil className="h-4 w-4" /> Edit
+                  </Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={removeEvent}
+                  aria-label="Delete event"
+                  className={`${heroSecondary} text-rose-600 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            }
+            stats={[
+              { label: 'Reserved', value: reserved.length, icon: Ticket, tone: 'pink', hint: `of ${event.capacity}` },
+              { label: 'Checked in', value: checkedInCount, icon: UserCheck, tone: 'emerald' },
+              { label: 'Waitlist', value: waitlisted.length, icon: Users, tone: 'amber' },
+              { label: 'Revenue', value: revenue, icon: DollarSign, tone: 'violet', format: formatCurrency },
+            ]}
           >
-            <ArrowLeft className="w-4 h-4" /> All events
-          </Link>
-
-          {/* Hero */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
-            <div className="relative h-40 bg-gradient-to-br from-pink-200 via-fuchsia-200 to-violet-200 flex items-center justify-center">
-              <span className="text-7xl">{event.coverEmoji}</span>
-            </div>
-            <div className="p-6">
-              <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    <h1 className="text-2xl font-bold text-slate-900">{event.name}</h1>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[event.status]}`}>
-                      {event.status}
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">
-                      {VISIBILITY_LABELS[event.visibility]}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600 mb-2">
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-slate-400" /> {formatDateTime(event.startAtUtc)}
-                    </span>
-                    {event.location && (
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> {event.location}
-                      </span>
-                    )}
-                    <span className="inline-flex items-center gap-1">
-                      <DollarSign className="w-3.5 h-3.5 text-slate-400" />
-                      {formatCurrency(event.memberPrice)} member
-                      {event.visibility !== 'MembersOnly' && event.guestPrice > 0 && (
-                        <> · {formatCurrency(event.guestPrice)} guest</>
-                      )}
-                    </span>
-                  </div>
-                  {event.description && (
-                    <p className="text-sm text-slate-600 mb-3">{event.description}</p>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2 shrink-0">
-                  {event.status === 'Draft' && (
-                    <Button onClick={() => changeStatus('Published')} className="bg-emerald-600 hover:bg-emerald-700">
-                      Publish
-                    </Button>
-                  )}
-                  {event.status === 'Published' && Date.parse(event.endAtUtc) < Date.now() && (
-                    <Button onClick={() => changeStatus('Completed')}>Mark completed</Button>
-                  )}
-                  {event.status !== 'Cancelled' && event.status !== 'Completed' && (
-                    <Button
-                      variant="outline"
-                      onClick={() => changeStatus('Cancelled')}
-                      className="text-rose-600 hover:bg-rose-50"
-                    >
-                      Cancel event
-                    </Button>
-                  )}
-                  <Button variant="outline" asChild>
-                    <Link to="/events">
-                      <Pencil className="w-4 h-4 mr-1.5" /> Edit
-                    </Link>
-                  </Button>
-                  <Button variant="outline" onClick={removeEvent} className="text-rose-600 hover:bg-rose-50">
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
+            {event.description && <p className="mb-3 text-sm text-slate-600">{event.description}</p>}
+            {/* Capacity bar */}
+            <div>
+              <div className="mb-1.5 flex items-center justify-between text-sm text-slate-600">
+                <span>
+                  <strong>{reserved.length}</strong> / {event.capacity} registered ·{' '}
+                  <strong>{checkedInCount}</strong> checked in
+                </span>
+                {waitlisted.length > 0 && (
+                  <span className="font-medium text-amber-700">{waitlisted.length} on waitlist</span>
+                )}
               </div>
-
-              {/* Capacity bar */}
-              <div className="mt-4">
-                <div className="flex items-center justify-between text-sm text-slate-600 mb-1.5">
-                  <span>
-                    <strong>{reserved.length}</strong> / {event.capacity} registered ·{' '}
-                    <strong>{checkedInCount}</strong> checked in
-                  </span>
-                  {waitlisted.length > 0 && (
-                    <span className="text-amber-700 font-medium">{waitlisted.length} on waitlist</span>
-                  )}
-                </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full ${atCapacity ? 'bg-amber-500' : 'bg-pink-500'}`}
-                    style={{ width: `${capacityPct}%` }}
-                  />
-                </div>
+              <div className="h-2 overflow-hidden rounded-full bg-white/80 ring-1 ring-slate-200/70">
+                <motion.div
+                  className={`h-full rounded-full ${atCapacity ? 'bg-gradient-to-r from-amber-400 to-orange-500' : 'bg-gradient-to-r from-pink-500 to-fuchsia-500'}`}
+                  initial={reduce ? false : { width: 0 }}
+                  animate={{ width: `${Math.min(100, capacityPct)}%` }}
+                  transition={{ duration: reduce ? 0 : 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.2 }}
+                />
               </div>
             </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <MetricCard icon={<Ticket />} label="Reserved" value={String(reserved.length)} />
-            <MetricCard icon={<UserCheck />} label="Checked in" value={String(checkedInCount)} />
-            <MetricCard icon={<Users />} label="Waitlist" value={String(waitlisted.length)} />
-            <MetricCard icon={<DollarSign />} label="Revenue" value={formatCurrency(revenue)} />
-          </div>
+          </PageHero>
 
           {/* Attendee tabs */}
           <div className="flex items-center justify-between mb-3">
@@ -690,26 +677,6 @@ export default function EventDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function MetricCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-      <div className="flex items-center gap-2 text-xs text-slate-500 uppercase tracking-wide mb-1">
-        <span className="text-slate-400">{icon}</span>
-        {label}
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
     </div>
   );
 }

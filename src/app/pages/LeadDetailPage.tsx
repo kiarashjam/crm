@@ -5,6 +5,7 @@ import {
   ArrowLeft, Mail, Phone, Building2, Sparkles, Trash2,
   User as UserIcon, CheckCircle2, Loader2, Pencil, Plus, Calendar,
   MessageSquarePlus, FileText, Clock, UserPlus, Copy, Check, AlertCircle,
+  ArrowRightCircle, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
@@ -37,7 +38,7 @@ import {
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
 import { DerivedStatusBadge } from './leads/components/DerivedStatusBadge';
-import { LeadDetailToolbar } from './leads/components/LeadDetailToolbar';
+import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { QuickLogPopover } from './leads/components/QuickLogPopover';
 import { LeadPipelineTracker } from './leads/components/LeadPipelineTracker';
 import { ContractPanel } from './contracts/ContractPanel';
@@ -784,199 +785,191 @@ export default function LeadDetailPage() {
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
-        <main id={MAIN_CONTENT_ID} className="flex-1 w-full" tabIndex={-1}>
-          <LeadDetailToolbar
-            name={lead.name}
-            backUrl={backUrl}
-            readOnly={isReadOnly}
-            hasEmail={Boolean(lead.email)}
-            converted={Boolean(lead.isConverted)}
-            onBack={() => navigate(backUrl)}
-            onEmail={() => setEmailOpen(true)}
-            onEdit={openEdit}
-            onSaveContact={() => setSaveContactOpen(true)}
-            onConvert={() => navigate(`/leads?convertLeadId=${lead.id}`)}
-            onDelete={() => setDeleteOpen(true)}
-          />
-
-          {/* Hero: the one full-width band. Who the person is, how to reach them, and the
-              numbers that matter, in one compact strip. Everything below sits in two columns. */}
-          <section className="relative isolate overflow-hidden border-b border-slate-200/70 bg-gradient-to-br from-white via-slate-50/70 to-white">
-            <motion.div
-              aria-hidden
-              className={cn('pointer-events-none absolute -top-28 right-[8%] h-72 w-72 rounded-full bg-gradient-to-br opacity-30 blur-3xl', gradient)}
-              animate={reduce ? undefined : { x: [0, -40, 0], y: [0, 18, 0], scale: [1, 1.08, 1] }}
-              transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut' }}
-            />
-            <motion.div
-              aria-hidden
-              className="pointer-events-none absolute -bottom-32 left-[12%] h-72 w-72 rounded-full bg-gradient-to-br from-fuchsia-300/30 via-violet-300/25 to-sky-300/20 blur-3xl"
-              animate={reduce ? undefined : { x: [0, 36, 0], y: [0, -14, 0] }}
-              transition={{ duration: 19, repeat: Infinity, ease: 'easeInOut' }}
-            />
-            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/60 to-transparent" />
-
-            <div className="relative w-full px-[var(--page-padding)] py-5">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-8">
-                <div className="flex min-w-0 items-center gap-4">
-                  <motion.div
-                    className="relative shrink-0"
-                    initial={reduce ? false : { opacity: 0, scale: 0.8, rotate: -6 }}
-                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                    transition={{ type: 'spring', stiffness: 320, damping: 20 }}
-                  >
-                    {/* A turning ring of colour around the initials. */}
-                    <span aria-hidden className="absolute -inset-1 overflow-hidden rounded-[20px]">
-                      <motion.span
-                        className="absolute left-1/2 top-1/2 aspect-square w-[220%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(from_0deg,#f97316,#ec4899,#8b5cf6,#0ea5e9,#10b981,#f97316)]"
-                        animate={reduce ? undefined : { rotate: 360 }}
-                        transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
-                      />
-                    </span>
-                    <div
-                      className={cn(
-                        'relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br text-xl font-bold text-white shadow-lg ring-2 ring-white',
-                        gradient,
-                      )}
-                    >
-                      {initialsOf(lead.name) || <UserIcon className="w-7 h-7" />}
-                    </div>
-                    {lead.isConverted && (
-                      <span
-                        aria-hidden
-                        className="absolute -right-1.5 -bottom-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow ring-2 ring-white"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      </span>
-                    )}
-                  </motion.div>
-                  <motion.div className="min-w-0 flex-1" {...rise(0.06)}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h1 className="truncate text-2xl font-bold leading-tight tracking-tight text-slate-900 sm:text-[28px]">
-                        {lead.name}
-                      </h1>
-                      {/* Read-only: the status is derived from the pipeline below,
-                          and the badge carries its own cause so "why does this say
-                          Qualified?" is answerable without a picker. */}
-                      <DerivedStatusBadge
-                        status={lead.status}
-                        pipeline={pipeline}
-                        statusesUnavailable={statusesUnavailable}
-                      />
-                      {lead.isConverted && (
-                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Converted
-                        </span>
-                      )}
-                      {lead.lifecycleStage && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-indigo-700 ring-1 ring-indigo-100">
-                          {lead.lifecycleStage}
-                        </span>
-                      )}
-                    </div>
-                    {/* How to reach them, and who they belong to, as coloured chips. */}
-                    <motion.div
-                      className="mt-2 flex flex-wrap items-center gap-1.5"
-                      initial={reduce ? false : 'hidden'}
-                      animate="shown"
-                      variants={{ hidden: {}, shown: { transition: { staggerChildren: 0.05, delayChildren: 0.12 } } }}
-                    >
-                      {company && (
-                        <InfoChip tone="indigo" icon={<Building2 className="w-3 h-3" />} to={`/companies/${company.id}`}>{company.name}</InfoChip>
-                      )}
-                      {lead.email && (
-                        <InfoChip
-                          tone="sky"
-                          icon={<Mail className="w-3 h-3" />}
-                          href={`mailto:${lead.email}`}
-                          trailing={<CopyButton label="Copy email" copied={copiedField === 'Email'} onClick={() => copyToClipboard(lead.email!, 'Email')} />}
-                        >
-                          {lead.email}
-                        </InfoChip>
-                      )}
-                      {lead.phone && (
-                        <InfoChip
-                          tone="teal"
-                          icon={<Phone className="w-3 h-3" />}
-                          href={`tel:${lead.phone}`}
-                          trailing={<CopyButton label="Copy phone" copied={copiedField === 'Phone'} onClick={() => copyToClipboard(lead.phone!, 'Phone')} />}
-                        >
-                          {lead.phone}
-                        </InfoChip>
-                      )}
-                      {assignee && (
-                        <InfoChip tone="purple" icon={<UserIcon className="w-3 h-3" />}>{assignee.name}</InfoChip>
-                      )}
-                      {referredByName && (
-                        <InfoChip
-                          tone="violet"
-                          icon={<UserPlus className="w-3 h-3" />}
-                          to={lead.referredByContactId ? `/contacts/${lead.referredByContactId}` : undefined}
-                        >
-                          Referred by {referredByName}
-                        </InfoChip>
-                      )}
-                    </motion.div>
-                  </motion.div>
-                </div>
-
-                {/* The numbers, then the quick actions. A tile that names a tab opens it. */}
-                <motion.div
-                  className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:flex-nowrap xl:justify-end"
-                  initial={reduce ? false : { opacity: 0, x: 16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.45, ease: EASE, delay: 0.12 }}
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          {/* The same header as every page: who the person is, how to reach them, the
+              numbers that matter and what you can do, in one band. The panel with the
+              next step stays in the main column below, beside the sidebar. */}
+          <PageHero
+            icon={UserIcon}
+            tone="orange"
+            noAgentSlot
+            back={{ to: backUrl, label: 'Back to Leads' }}
+            avatar={
+              <motion.div
+                className="relative shrink-0"
+                initial={reduce ? false : { opacity: 0, scale: 0.8, rotate: -6 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 20 }}
+              >
+                {/* A turning ring of colour around the initials. */}
+                <span aria-hidden className="absolute -inset-1 overflow-hidden rounded-[20px]">
+                  <motion.span
+                    className="absolute left-1/2 top-1/2 aspect-square w-[220%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(from_0deg,#f97316,#ec4899,#8b5cf6,#0ea5e9,#10b981,#f97316)]"
+                    animate={reduce ? undefined : { rotate: 360 }}
+                    transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
+                  />
+                </span>
+                <div
+                  className={cn(
+                    'relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br text-lg font-bold text-white shadow-lg ring-2 ring-white',
+                    gradient,
+                  )}
                 >
-                  {/* One swipeable row on a phone, wrapping from small screens up. */}
-                  <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:items-stretch sm:overflow-visible sm:px-0 sm:pb-0">
-                    <div className="flex shrink-0 items-center gap-2.5 rounded-xl border border-slate-200/80 bg-white/80 px-2.5 py-1.5 shadow-sm backdrop-blur">
-                      <ScoreEditor score={lead.leadScore ?? 0} onSave={saveScore} readOnly={isReadOnly} size={44} />
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Score</span>
-                    </div>
-                    <StatTile tone="amber" icon={<Clock className="w-3.5 h-3.5" />} label="Last contact" title={formatFull(lead.lastContactedAt) ?? undefined}>
-                      {formatRelative(lead.lastContactedAt) ?? 'Never'}
-                    </StatTile>
-                    <StatTile tone="orange" icon={<CheckCircle2 className="w-3.5 h-3.5" />} label="Open tasks" onClick={() => setTab('tasks')}>
-                      {openTaskCount}
-                    </StatTile>
-                    <StatTile tone="indigo" icon={<MessageSquarePlus className="w-3.5 h-3.5" />} label="Activity" onClick={() => setTab('activity')}>
-                      {activities.length}
-                    </StatTile>
-                    <StatTile tone="slate" icon={<Calendar className="w-3.5 h-3.5" />} label="Added" title={formatFull(lead.createdAtUtc) ?? undefined}>
-                      {formatRelative(lead.createdAtUtc) ?? '—'}
-                    </StatTile>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {lead.email && (
-                      <Button asChild size="sm" variant="outline" className="gap-1.5 rounded-xl">
-                        <a href={`mailto:${lead.email}`}><Mail className="w-4 h-4" /> Email</a>
+                  {initialsOf(lead.name) || <UserIcon className="w-6 h-6" />}
+                </div>
+                {lead.isConverted && (
+                  <span
+                    aria-hidden
+                    className="absolute -right-1.5 -bottom-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow ring-2 ring-white"
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                  </span>
+                )}
+              </motion.div>
+            }
+            title={lead.name}
+            badges={
+              <>
+                {/* Read-only: the status is derived from the pipeline below, and the
+                    badge carries its own cause so "why does this say Qualified?" is
+                    answerable without a picker. */}
+                <DerivedStatusBadge
+                  status={lead.status}
+                  pipeline={pipeline}
+                  statusesUnavailable={statusesUnavailable}
+                />
+                {lead.isConverted && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Converted
+                  </span>
+                )}
+                {lead.lifecycleStage && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-indigo-700 ring-1 ring-indigo-100">
+                    {lead.lifecycleStage}
+                  </span>
+                )}
+                {isReadOnly && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-800 ring-1 ring-violet-200">
+                    <Eye className="w-3 h-3" />
+                    View only
+                  </span>
+                )}
+              </>
+            }
+            subtitle={[company?.name, lead.source ? `from ${lead.source.replace(/_/g, ' ')}` : null].filter(Boolean).join(' · ') || undefined}
+            actions={
+              <>
+                {lead.phone && (
+                  <Button asChild variant="outline" className={heroSecondary}>
+                    <a href={`tel:${lead.phone}`}><Phone className="h-4 w-4" /> Call</a>
+                  </Button>
+                )}
+                {lead.email && (isReadOnly ? (
+                  <Button asChild variant="outline" className={heroSecondary}>
+                    <a href={`mailto:${lead.email}`}><Mail className="h-4 w-4" /> Email</a>
+                  </Button>
+                ) : (
+                  <Button type="button" variant="outline" onClick={() => setEmailOpen(true)} className={heroSecondary}>
+                    <Mail className="h-4 w-4" /> Email
+                  </Button>
+                ))}
+                {!isReadOnly && (
+                  <>
+                    <QuickLogPopover
+                      onSubmit={(p) => logActivity(p)}
+                      trigger={
+                        <Button type="button" variant="outline" className={heroSecondary}>
+                          <MessageSquarePlus className="h-4 w-4" />
+                          Log activity
+                        </Button>
+                      }
+                    />
+                    <Button type="button" variant="outline" onClick={openEdit} className={heroSecondary} aria-label="Edit">
+                      <Pencil className="h-4 w-4" />
+                      <span className="hidden md:inline">Edit</span>
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setSaveContactOpen(true)} className={heroSecondary} aria-label="Save as contact">
+                      <UserPlus className="h-4 w-4" />
+                      <span className="hidden 2xl:inline">Save as contact</span>
+                    </Button>
+                    {!lead.isConverted && (
+                      <Button type="button" onClick={() => navigate(`/leads?convertLeadId=${lead.id}`)} className={heroPrimary('orange')}>
+                        <ArrowRightCircle className="h-4 w-4" />
+                        Convert
                       </Button>
                     )}
-                    {lead.phone && (
-                      <Button asChild size="sm" variant="outline" className="gap-1.5 rounded-xl">
-                        <a href={`tel:${lead.phone}`}><Phone className="w-4 h-4" /> Call</a>
-                      </Button>
-                    )}
-                    {!isReadOnly && (
-                      <QuickLogPopover
-                        onSubmit={(p) => logActivity(p)}
-                        trigger={
-                          <Button size="sm" className="gap-1.5 rounded-xl bg-gradient-to-r from-orange-500 via-pink-500 to-fuchsia-500 text-white shadow shadow-fuchsia-500/25 hover:opacity-95">
-                            <MessageSquarePlus className="w-4 h-4" />
-                            Log activity
-                          </Button>
-                        }
-                      />
-                    )}
-                  </div>
-                </motion.div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setDeleteOpen(true)}
+                      aria-label="Delete"
+                      className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+              </>
+            }
+            stats={[
+              { label: 'Last contact', value: formatRelative(lead.lastContactedAt) ?? 'Never', icon: Clock, tone: lead.lastContactedAt ? 'amber' : 'rose', hint: formatFull(lead.lastContactedAt) ?? 'no outreach yet' },
+              { label: 'Open tasks', value: openTaskCount, icon: CheckCircle2, tone: 'orange', hint: `${tasks.length} in all`, onClick: () => setTab('tasks'), actionLabel: `Open tasks, ${openTaskCount}. Show the tasks tab.` },
+              { label: 'Activity', value: activities.length, icon: MessageSquarePlus, tone: 'indigo', hint: noteActivities.length ? `${noteActivities.length} notes` : 'none yet', onClick: () => setTab('activity'), actionLabel: `Activity, ${activities.length}. Show the activity tab.` },
+              { label: 'Added', value: formatRelative(lead.createdAtUtc) ?? '—', icon: Calendar, tone: 'sky', hint: formatFull(lead.createdAtUtc) ?? undefined },
+            ]}
+          >
+            {/* The score, then how to reach them and who they belong to, as coloured chips. */}
+            <motion.div
+              className="flex flex-wrap items-center gap-1.5"
+              initial={reduce ? false : 'hidden'}
+              animate="shown"
+              variants={{ hidden: {}, shown: { transition: { staggerChildren: 0.05, delayChildren: 0.12 } } }}
+            >
+              <div className="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-white/85 px-2 py-1 shadow-sm backdrop-blur">
+                <ScoreEditor score={lead.leadScore ?? 0} onSave={saveScore} readOnly={isReadOnly} size={36} />
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Score</span>
               </div>
-            </div>
-          </section>
+              {company && (
+                <InfoChip tone="indigo" icon={<Building2 className="w-3 h-3" />} to={`/companies/${company.id}`}>{company.name}</InfoChip>
+              )}
+              {lead.email && (
+                <InfoChip
+                  tone="sky"
+                  icon={<Mail className="w-3 h-3" />}
+                  href={`mailto:${lead.email}`}
+                  trailing={<CopyButton label="Copy email" copied={copiedField === 'Email'} onClick={() => copyToClipboard(lead.email!, 'Email')} />}
+                >
+                  {lead.email}
+                </InfoChip>
+              )}
+              {lead.phone && (
+                <InfoChip
+                  tone="teal"
+                  icon={<Phone className="w-3 h-3" />}
+                  href={`tel:${lead.phone}`}
+                  trailing={<CopyButton label="Copy phone" copied={copiedField === 'Phone'} onClick={() => copyToClipboard(lead.phone!, 'Phone')} />}
+                >
+                  {lead.phone}
+                </InfoChip>
+              )}
+              {assignee && (
+                <InfoChip tone="purple" icon={<UserIcon className="w-3 h-3" />}>{assignee.name}</InfoChip>
+              )}
+              {referredByName && (
+                <InfoChip
+                  tone="violet"
+                  icon={<UserPlus className="w-3 h-3" />}
+                  to={lead.referredByContactId ? `/contacts/${lead.referredByContactId}` : undefined}
+                >
+                  Referred by {referredByName}
+                </InfoChip>
+              )}
+            </motion.div>
+          </PageHero>
 
           {/* Body: everything else in two columns, so the page uses its width. */}
-          <div className="grid w-full gap-5 px-[var(--page-padding)] py-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="grid w-full gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
             {/* Main column */}
             <div className="min-w-0 space-y-4">
               <motion.div {...rise(0.14)}>
@@ -1599,54 +1592,6 @@ function InfoChip({ tone, icon, to, href, trailing, children }: {
       {chip}
       {trailing}
     </motion.span>
-  );
-}
-
-const TILE_ICON: Record<Tone, string> = {
-  amber: 'from-amber-400 to-orange-500 shadow-amber-500/30',
-  orange: 'from-orange-500 to-pink-500 shadow-orange-500/30',
-  indigo: 'from-indigo-500 to-violet-500 shadow-indigo-500/30',
-  slate: 'from-slate-400 to-slate-500 shadow-slate-500/20',
-  emerald: 'from-emerald-500 to-teal-500 shadow-emerald-500/30',
-  sky: 'from-sky-400 to-blue-500 shadow-sky-500/30',
-  teal: 'from-teal-400 to-cyan-500 shadow-teal-500/30',
-  purple: 'from-purple-500 to-fuchsia-500 shadow-purple-500/30',
-  violet: 'from-violet-500 to-fuchsia-500 shadow-violet-500/30',
-  rose: 'from-rose-500 to-pink-500 shadow-rose-500/30',
-};
-
-/** One number in the header strip. With a tab to open, it is a button. */
-function StatTile({ tone, icon, label, title, onClick, children }: {
-  tone: Tone;
-  icon: React.ReactNode;
-  label: string;
-  title?: string;
-  onClick?: () => void;
-  children: React.ReactNode;
-}) {
-  const reduce = useMotionPreference();
-  const body = (
-    <>
-      <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-md', TILE_ICON[tone])}>{icon}</span>
-      <span className="min-w-0 text-left">
-        <span className="block truncate text-sm font-bold tabular-nums leading-tight text-slate-900">{children}</span>
-        <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</span>
-      </span>
-    </>
-  );
-  const className = 'flex shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-2.5 py-1.5 shadow-sm backdrop-blur';
-  if (!onClick) return <div className={className} title={title}>{body}</div>;
-  return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      title={title}
-      whileHover={reduce ? undefined : { y: -2 }}
-      whileTap={reduce ? undefined : { scale: 0.97 }}
-      className={cn(className, 'transition-shadow hover:border-slate-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400')}
-    >
-      {body}
-    </motion.button>
   );
 }
 

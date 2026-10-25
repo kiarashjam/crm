@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import PageHero from '@/app/components/PageHero';
+import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { Button } from '@/app/components/ui/button';
 import { Badge } from '@/app/components/ui/badge';
 import { cn } from '@/app/components/ui/utils';
@@ -34,6 +35,8 @@ export default function Duplicates() {
   useEffect(() => { scan(); }, []);
 
   const total = contactGroups.length + companyGroups.length;
+  const contactRecords = contactGroups.reduce((n, g) => n + g.records.length, 0);
+  const companyRecords = companyGroups.reduce((n, g) => n + g.records.length, 0);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -42,18 +45,18 @@ export default function Duplicates() {
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           <PageHero
             icon={Copy}
-            iconGradient="from-rose-500 to-pink-500"
+            tone="rose"
             title="Duplicates"
             subtitle="Find and merge duplicate contacts and companies."
             actions={
-              <Button onClick={scan} disabled={loading} className="gap-2 h-10 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 hover:border-white/30 disabled:opacity-60">
+              <Button onClick={scan} disabled={loading} variant="outline" className={cn(heroSecondary, 'disabled:opacity-60')}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />} Re-scan
               </Button>
             }
             stats={[
-              { label: 'Contact duplicates', value: contactGroups.length, icon: Users, tone: 'rose' },
-              { label: 'Company duplicates', value: companyGroups.length, icon: Building2, tone: 'violet' },
-              { label: 'Groups found', value: contactGroups.length + companyGroups.length, icon: Copy, tone: 'amber' },
+              { label: 'Contact duplicates', value: contactGroups.length, icon: Users, tone: 'rose', hint: `${contactRecords} records` },
+              { label: 'Company duplicates', value: companyGroups.length, icon: Building2, tone: 'violet', hint: `${companyRecords} records` },
+              { label: 'Groups found', value: total, icon: Copy, tone: 'amber', hint: total === 0 ? 'all clean' : 'to review' },
             ]}
           />
 
@@ -73,9 +76,10 @@ export default function Duplicates() {
                     <Users className="h-4 w-4" /> Contacts ({contactGroups.length})
                   </h2>
                   <div className="space-y-3">
-                    {contactGroups.map((g) => (
+                    {contactGroups.map((g, index) => (
                       <GroupCard
                         key={g.key}
+                        index={index}
                         reason={g.reason}
                         rows={g.records.map((c) => ({ id: c.id, title: c.name, subtitle: c.email || c.phone || '—' }))}
                         onMerge={async (primaryId, dupeIds) => {
@@ -93,9 +97,10 @@ export default function Duplicates() {
                     <Building2 className="h-4 w-4" /> Companies ({companyGroups.length})
                   </h2>
                   <div className="space-y-3">
-                    {companyGroups.map((g) => (
+                    {companyGroups.map((g, index) => (
                       <GroupCard
                         key={g.key}
+                        index={index}
                         reason={g.reason}
                         rows={g.records.map((c) => ({ id: c.id, title: c.name, subtitle: c.domain || c.website || c.industry || '—' }))}
                         onMerge={async (primaryId, dupeIds) => {
@@ -115,7 +120,7 @@ export default function Duplicates() {
   );
 }
 
-function GroupCard({ reason, rows, onMerge }: { reason: string; rows: Row[]; onMerge: (primaryId: string, dupeIds: string[]) => Promise<void> }) {
+function GroupCard({ index, reason, rows, onMerge }: { index: number; reason: string; rows: Row[]; onMerge: (primaryId: string, dupeIds: string[]) => Promise<void> }) {
   const [primaryId, setPrimaryId] = useState(rows[0]?.id ?? '');
   const [merging, setMerging] = useState(false);
 
@@ -127,7 +132,7 @@ function GroupCard({ reason, rows, onMerge }: { reason: string; rows: Row[]; onM
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <StaggerItem index={index} className={cn('rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-rose-200', liftOnHover)}>
       <div className="mb-3 flex items-center justify-between">
         <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">{reason}</Badge>
         <WriteOnly>
@@ -154,6 +159,6 @@ function GroupCard({ reason, rows, onMerge }: { reason: string; rows: Row[]; onM
           </li>
         ))}
       </ul>
-    </div>
+    </StaggerItem>
   );
 }

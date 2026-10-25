@@ -45,7 +45,8 @@ import {
 } from '@/app/api/households';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -188,59 +189,24 @@ export default function Households() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-teal-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-cyan-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-500 flex items-center justify-center shadow-2xl shadow-teal-500/30">
-                    <HomeIcon className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Households</h1>
-                    <p className="text-slate-400 mt-1">
-                      Family groupings with primary member, sub-members, and roll-up billing.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openCreate}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 shadow-lg shadow-teal-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  New household
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<HomeIcon className="w-5 h-5 text-teal-600" />}
-              label="Households"
-              value={String(totals.count)}
-            />
-            <StatCard
-              icon={<Users className="w-5 h-5 text-blue-600" />}
-              label="Members linked"
-              value={String(totals.membersInHouseholds)}
-              hint={`${members.length - totals.membersInHouseholds} unlinked`}
-            />
-            <StatCard
-              icon={<DollarSign className="w-5 h-5 text-emerald-600" />}
-              label="Household MRR"
-              value={formatCurrency(totals.mrr)}
-            />
-            <StatCard
-              icon={<DollarSign className="w-5 h-5 text-rose-600" />}
-              label="House balances"
-              value={formatCurrency(totals.balance)}
-            />
-          </div>
+          <PageHero
+            icon={HomeIcon}
+            tone="teal"
+            title="Households"
+            subtitle="Family groupings with primary member, sub-members, and roll-up billing."
+            actions={
+              <Button onClick={openCreate} className={heroPrimary('teal')}>
+                <Plus className="h-4 w-4" />
+                New household
+              </Button>
+            }
+            stats={[
+              { label: 'Households', value: totals.count, icon: HomeIcon, tone: 'teal' },
+              { label: 'Members linked', value: totals.membersInHouseholds, icon: Users, tone: 'blue', hint: `${members.length - totals.membersInHouseholds} unlinked` },
+              { label: 'Household MRR', value: totals.mrr, icon: DollarSign, tone: 'emerald', format: formatCurrency },
+              { label: 'House balances', value: totals.balance, icon: DollarSign, tone: 'rose', format: formatCurrency },
+            ]}
+          />
 
           <div className="flex gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
@@ -273,10 +239,12 @@ export default function Households() {
             />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {filtered.map((r) => (
-                <article
+              {filtered.map((r, index) => (
+                <StaggerItem
+                  as="article"
                   key={r.household.id}
-                  className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5"
+                  index={index}
+                  className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:border-teal-200 ${liftOnHover}`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div>
@@ -363,7 +331,7 @@ export default function Households() {
                       </p>
                     </div>
                   </div>
-                </article>
+                </StaggerItem>
               ))}
             </div>
           )}
@@ -505,27 +473,3 @@ export default function Households() {
     </div>
   );
 }
-
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
-    </div>
-  );
-}
-

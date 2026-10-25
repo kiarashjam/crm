@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  ArrowLeft, Pencil, Trash2, Mail, Phone, Building2,
+  Pencil, Trash2, Mail, Phone, Building2,
   Briefcase, Target, Calendar, Clock, Archive, ArchiveRestore,
-  Plus, User, Activity as ActivityIcon,
-  CheckCircle2, Zap
+  User, Activity as ActivityIcon,
+  CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -40,9 +40,18 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
+import { currencyOf, formatDealSum, formatMoney, parseAmount } from '@/app/lib/money';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { RecordAvatar, RecordCard } from '@/app/components/RecordCard';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { ActivityLogForm, ActivityRow } from '@/app/components/RecordActivity';
+
+/** A deal's amount in its own currency, however the value was typed. */
+function dealAmount(deal: Deal): string {
+  return formatMoney(parseAmount(deal.value), currencyOf(deal));
+}
 
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>();
@@ -263,42 +272,95 @@ export default function ContactDetail() {
     );
   }
 
+  const openTaskCount = contactTasks.filter((t) => t.status !== 'completed').length;
+  const createdLabel = contact.createdAtUtc
+    ? new Date(contact.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+  const dealsHint = deals.length > 0 ? `${formatDealSum(deals)} in all` : 'none yet';
+  const lastActivityHint = activities[0]
+    ? `last ${new Date(activities[0].createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+    : 'none yet';
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
-        <main id={MAIN_CONTENT_ID} className="flex-1 w-full max-w-5xl mx-auto px-6 py-8" tabIndex={-1}>
-          {/* Back + Actions */}
-          <div className="flex items-center justify-between mb-6">
-            <Button variant="ghost" onClick={() => navigate('/contacts')} className="gap-2 text-slate-600">
-              <ArrowLeft className="w-4 h-4" /> Back to Contacts
-            </Button>
-            <div className="flex gap-2">
-              {contact.email && !contact.doNotContact && (
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <PageHero
+            icon={User}
+            avatar={<RecordAvatar name={contact.name} tone="emerald" />}
+            tone="emerald"
+            back={{ to: '/contacts', label: 'Back to Contacts' }}
+            title={contact.name}
+            badges={
+              <>
+                {contact.doNotContact && (
+                  <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700">Do Not Contact</span>
+                )}
+                {contact.isArchived && (
+                  <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-[11px] font-bold text-yellow-700">Archived</span>
+                )}
+              </>
+            }
+            subtitle={
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {contact.email && (
+                  <a href={`mailto:${contact.email}`} className="inline-flex items-center gap-1.5 hover:text-emerald-700">
+                    <Mail className="h-3.5 w-3.5" aria-hidden /> {contact.email}
+                  </a>
+                )}
+                {contact.phone && (
+                  <a href={`tel:${contact.phone}`} className="inline-flex items-center gap-1.5 hover:text-emerald-700">
+                    <Phone className="h-3.5 w-3.5" aria-hidden /> {contact.phone}
+                  </a>
+                )}
+                {(contact.jobTitle || contact.companyName) && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Briefcase className="h-3.5 w-3.5" aria-hidden />
+                    {[contact.jobTitle, contact.companyName].filter(Boolean).join(' · ')}
+                  </span>
+                )}
+              </span>
+            }
+            actions={
+              <>
+                {contact.email && !contact.doNotContact && (
+                  <WriteOnly>
+                    <Button variant="outline" onClick={() => setEmailOpen(true)} className={heroSecondary}>
+                      <Mail className="h-4 w-4" /> Email
+                    </Button>
+                  </WriteOnly>
+                )}
                 <WriteOnly>
-                  <Button variant="outline" size="sm" onClick={() => setEmailOpen(true)} className="gap-1">
-                    <Mail className="w-3.5 h-3.5" /> Email
+                  <Button variant="outline" onClick={openEdit} className={heroSecondary}>
+                    <Pencil className="h-4 w-4" /> Edit
                   </Button>
                 </WriteOnly>
-              )}
-              <WriteOnly>
-                <Button variant="outline" size="sm" onClick={openEdit} className="gap-1">
-                  <Pencil className="w-3.5 h-3.5" /> Edit
-                </Button>
-              </WriteOnly>
-              <WriteOnly>
-                <Button variant="outline" size="sm" onClick={handleArchiveToggle} className="gap-1">
-                  {contact.isArchived ? <ArchiveRestore className="w-3.5 h-3.5" /> : <Archive className="w-3.5 h-3.5" />}
-                  {contact.isArchived ? 'Unarchive' : 'Archive'}
-                </Button>
-              </WriteOnly>
-              <WriteOnly>
-                <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </WriteOnly>
-            </div>
-          </div>
+                <WriteOnly>
+                  <Button variant="outline" onClick={handleArchiveToggle} className={heroSecondary}>
+                    {contact.isArchived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                    {contact.isArchived ? 'Unarchive' : 'Archive'}
+                  </Button>
+                </WriteOnly>
+                <WriteOnly>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDeleteOpen(true)}
+                    aria-label="Delete contact"
+                    className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </WriteOnly>
+              </>
+            }
+            stats={[
+              { label: 'Open tasks', value: openTaskCount, icon: CheckCircle2, tone: 'emerald', hint: `${contactTasks.length} in all` },
+              { label: 'Deals', value: deals.length, icon: Target, tone: 'violet', hint: dealsHint },
+              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: lastActivityHint },
+              { label: 'Contact since', value: createdLabel ?? '—', icon: Calendar, tone: 'amber', hint: contact.preferredContactMethod ? `prefers ${contact.preferredContactMethod}` : undefined },
+            ]}
+          />
 
           {lookalike && !dismissedLookalike && (
             <section className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5" aria-labelledby="same-person-heading">
@@ -360,305 +422,179 @@ export default function ContactDetail() {
             </section>
           )}
 
-          {/* Contact Header */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-3 mb-3">
-                  <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{contact.name}</h1>
-                  {contact.doNotContact && (
-                    <span className="inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-bold bg-red-100 text-red-700">
-                      Do Not Contact
-                    </span>
-                  )}
-                  {contact.isArchived && (
-                    <span className="inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-bold bg-yellow-100 text-yellow-700">
-                      Archived
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-4">
-                  {contact.email && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-slate-400" />
-                      <a href={`mailto:${contact.email}`} className="text-sm text-slate-600 dark:text-slate-300 hover:text-emerald-600">
-                        {contact.email}
-                      </a>
-                    </div>
-                  )}
-                  {contact.phone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-slate-400" />
-                      <a href={`tel:${contact.phone}`} className="text-sm text-slate-600 dark:text-slate-300 hover:text-emerald-600">
-                        {contact.phone}
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="min-w-0 space-y-5">
+              <RecordCard title="Activities" icon={<ActivityIcon className="h-3.5 w-3.5" />} tone="sky" count={activities.length} index={0}>
+                <ActivityLogForm draft={activityForm} onChange={setActivityForm} saving={savingActivity} onSubmit={handleLogActivity} />
 
-            {/* Contact Meta Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-8 pt-6 border-t border-slate-100 dark:border-slate-700">
-              {contact.jobTitle && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <Briefcase className="w-3 h-3" /> Job Title
-                  </p>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{contact.jobTitle}</p>
-                </div>
-              )}
-              {contact.companyName && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <Building2 className="w-3 h-3" /> Company
-                  </p>
-                  <Link
-                    to={contact.companyId ? `/companies/${contact.companyId}` : '/companies'}
-                    className="text-sm font-medium text-emerald-600 hover:underline"
-                  >
-                    {contact.companyName}
-                  </Link>
-                </div>
-              )}
-              {contact.preferredContactMethod && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <Phone className="w-3 h-3" /> Preferred Method
-                  </p>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 capitalize">
-                    {contact.preferredContactMethod}
-                  </p>
-                </div>
-              )}
-              {contact.createdAtUtc && (
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> Created
-                  </p>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                    {new Date(contact.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Description */}
-            {contact.description && (
-              <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-700">
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Description</p>
-                <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{contact.description}</p>
-              </div>
-            )}
-
-            {/* Timestamps */}
-            <div className="mt-4 flex gap-4 text-xs text-slate-400">
-              {contact.createdAtUtc && <span>Created {new Date(contact.createdAtUtc).toLocaleDateString()}</span>}
-              {contact.updatedAtUtc && <span>Updated {new Date(contact.updatedAtUtc).toLocaleDateString()}</span>}
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Tasks Section */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-              <h2 className="text-lg font-semibold text-slate-800 dark:text-white">Tasks</h2>
-              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{contactTasks.length}</span>
-            </div>
-
-            {tasksLoading ? (
-              <div className="py-6 text-center">
-                <Clock className="w-5 h-5 text-slate-400 animate-spin mx-auto mb-2" />
-                <p className="text-sm text-slate-500">Loading tasks...</p>
-              </div>
-            ) : contactTasks.length === 0 ? (
-              <div className="py-6 text-center">
-                <CheckCircle2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">No tasks linked to this contact</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {contactTasks.map((t) => (
-                  <div key={t.id} className={cn(
-                    'flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-100 dark:border-slate-600 transition-all',
-                    t.status === 'completed' && 'opacity-60'
-                  )}>
-                    <div className={cn(
-                      'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0',
-                      t.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300'
-                    )}>
-                      {t.status === 'completed' && <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={cn('text-sm font-medium', t.status === 'completed' ? 'text-slate-500 line-through' : 'text-slate-800 dark:text-slate-200')}>
-                        {t.title}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {t.dueDateUtc && (
-                          <span className={cn('text-xs', new Date(t.dueDateUtc) < new Date() && t.status !== 'completed' ? 'text-red-500' : 'text-slate-400')}>
-                            Due {new Date(t.dueDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                          </span>
-                        )}
-                        {t.priority && t.priority !== 'none' && (
-                          <span className={cn('text-xs px-1.5 py-0.5 rounded',
-                            t.priority === 'high' && 'bg-red-100 text-red-600',
-                            t.priority === 'medium' && 'bg-amber-100 text-amber-600',
-                            t.priority === 'low' && 'bg-blue-100 text-blue-600'
-                          )}>
-                            {t.priority}
-                          </span>
-                        )}
-                        {t.assigneeName && <span className="text-xs text-slate-400">{t.assigneeName}</span>}
-                      </div>
-                    </div>
+                {activitiesLoading ? (
+                  <div className="py-8 text-center">
+                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <p className="text-sm text-slate-500">Loading activities...</p>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                ) : activities.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <ActivityIcon className="mx-auto mb-2 h-10 w-10 text-slate-300" />
+                    <p className="text-sm text-slate-500">No activities yet</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {activities.map((a, index) => <ActivityRow key={a.id} activity={a} index={index} />)}
+                  </ul>
+                )}
+              </RecordCard>
 
-          {/* Deals Section */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Target className="w-5 h-5 text-emerald-500" />
-              <h2 className="text-lg font-semibold text-slate-800 dark:text-white">Deals</h2>
-              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{deals.length}</span>
+              <RecordCard title="Tasks" icon={<CheckCircle2 className="h-3.5 w-3.5" />} tone="emerald" count={contactTasks.length} index={1}>
+                {tasksLoading ? (
+                  <div className="py-6 text-center">
+                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <p className="text-sm text-slate-500">Loading tasks...</p>
+                  </div>
+                ) : contactTasks.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <CheckCircle2 className="mx-auto mb-2 h-10 w-10 text-slate-300" />
+                    <p className="text-sm text-slate-500">No tasks linked to this contact</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {contactTasks.map((t, index) => (
+                      <StaggerItem as="li" key={t.id} index={index} className={cn(
+                        'flex items-center gap-3 rounded-xl border border-slate-100 border-l-4 bg-slate-50 p-3 transition-all dark:border-slate-600 dark:bg-slate-700/50',
+                        t.status === 'completed' ? 'border-l-emerald-400 opacity-60'
+                          : t.priority === 'high' ? 'border-l-pink-500'
+                            : t.priority === 'medium' ? 'border-l-amber-400' : 'border-l-sky-300',
+                      )}>
+                        <div className={cn(
+                          'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2',
+                          t.status === 'completed' ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300'
+                        )}>
+                          {t.status === 'completed' && <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className={cn('text-sm font-medium', t.status === 'completed' ? 'text-slate-500 line-through' : 'text-slate-800 dark:text-slate-200')}>
+                            {t.title}
+                          </p>
+                          <div className="mt-0.5 flex items-center gap-2">
+                            {t.dueDateUtc && (
+                              <span className={cn('text-xs', new Date(t.dueDateUtc) < new Date() && t.status !== 'completed' ? 'text-red-500' : 'text-slate-400')}>
+                                Due {new Date(t.dueDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
+                            {t.priority && t.priority !== 'none' && (
+                              <span className={cn('rounded px-1.5 py-0.5 text-xs',
+                                t.priority === 'high' && 'bg-red-100 text-red-600',
+                                t.priority === 'medium' && 'bg-amber-100 text-amber-600',
+                                t.priority === 'low' && 'bg-blue-100 text-blue-600'
+                              )}>
+                                {t.priority}
+                              </span>
+                            )}
+                            {t.assigneeName && <span className="text-xs text-slate-400">{t.assigneeName}</span>}
+                          </div>
+                        </div>
+                      </StaggerItem>
+                    ))}
+                  </ul>
+                )}
+              </RecordCard>
             </div>
 
-            {dealsLoading ? (
-              <div className="py-6 text-center">
-                <Clock className="w-5 h-5 text-slate-400 animate-spin mx-auto mb-2" />
-                <p className="text-sm text-slate-500">Loading deals...</p>
-              </div>
-            ) : deals.length === 0 ? (
-              <div className="py-6 text-center">
-                <Target className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">No deals linked to this contact</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {deals.map((deal) => (
-                  <Link
-                    key={deal.id}
-                    to={`/deals/${deal.id}`}
-                    className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-100 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200 group-hover:text-emerald-600 truncate">
-                        {deal.name}
-                      </p>
-                      <p className="text-xs text-slate-500">{deal.dealStageName || deal.stage || 'No stage'}</p>
+            <aside className="min-w-0 space-y-5">
+              <RecordCard title="Details" icon={<User className="h-3.5 w-3.5" />} tone="emerald" index={2}>
+                {!contact.jobTitle && !contact.companyName && !contact.preferredContactMethod && !contact.createdAtUtc && !contact.description && (
+                  <p className="text-sm text-slate-500">No job title, company or notes yet. Add them with Edit.</p>
+                )}
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm empty:hidden">
+                  {contact.jobTitle && (
+                    <div className="min-w-0">
+                      <dt className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><Briefcase className="h-3 w-3" /> Job Title</dt>
+                      <dd className="mt-0.5 truncate font-medium text-slate-800 dark:text-slate-200">{contact.jobTitle}</dd>
                     </div>
-                    <p className="text-sm font-bold text-emerald-600">
-                      {deal.currency || '$'}{deal.value}
-                    </p>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
+                  )}
+                  {contact.companyName && (
+                    <div className="min-w-0">
+                      <dt className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><Building2 className="h-3 w-3" /> Company</dt>
+                      <dd className="mt-0.5 truncate">
+                        <Link to={contact.companyId ? `/companies/${contact.companyId}` : '/companies'} className="font-medium text-emerald-600 hover:underline">
+                          {contact.companyName}
+                        </Link>
+                      </dd>
+                    </div>
+                  )}
+                  {contact.preferredContactMethod && (
+                    <div className="min-w-0">
+                      <dt className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><Phone className="h-3 w-3" /> Preferred Method</dt>
+                      <dd className="mt-0.5 font-medium capitalize text-slate-800 dark:text-slate-200">{contact.preferredContactMethod}</dd>
+                    </div>
+                  )}
+                  {contact.createdAtUtc && (
+                    <div className="min-w-0">
+                      <dt className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><Calendar className="h-3 w-3" /> Created</dt>
+                      <dd className="mt-0.5 font-medium text-slate-800 dark:text-slate-200">{createdLabel}</dd>
+                    </div>
+                  )}
+                </dl>
+                {contact.description && (
+                  <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-700">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Description</p>
+                    <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{contact.description}</p>
+                  </div>
+                )}
+                <div className="mt-3 flex gap-4 text-xs text-slate-400">
+                  {contact.createdAtUtc && <span>Created {new Date(contact.createdAtUtc).toLocaleDateString()}</span>}
+                  {contact.updatedAtUtc && <span>Updated {new Date(contact.updatedAtUtc).toLocaleDateString()}</span>}
+                </div>
+              </RecordCard>
 
-          {/* Leads this person referred, each a link to that lead */}
-          <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} className="mb-6" />
+              <RecordCard title="Deals" icon={<Target className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={3}>
+                {dealsLoading ? (
+                  <div className="py-6 text-center">
+                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <p className="text-sm text-slate-500">Loading deals...</p>
+                  </div>
+                ) : deals.length === 0 ? (
+                  <div className="py-6 text-center">
+                    <Target className="mx-auto mb-2 h-10 w-10 text-slate-300" />
+                    <p className="text-sm text-slate-500">No deals linked to this contact</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {deals.map((deal, index) => (
+                      <StaggerItem as="li" key={deal.id} index={index}>
+                        <Link
+                          to={`/deals/${deal.id}`}
+                          className={cn('group flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3 hover:border-violet-200 hover:bg-white dark:border-slate-600 dark:bg-slate-700/50 dark:hover:bg-slate-700', liftOnHover)}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-slate-800 group-hover:text-violet-700 dark:text-slate-200">
+                              {deal.name}
+                            </p>
+                            <p className="text-xs text-slate-500">{deal.dealStageName || deal.stage || 'No stage'}</p>
+                          </div>
+                          <p className="text-sm font-bold text-emerald-600">{dealAmount(deal)}</p>
+                        </Link>
+                      </StaggerItem>
+                    ))}
+                  </ul>
+                )}
+              </RecordCard>
 
-          {/* Custom fields (renders only when fields are defined for contacts) */}
-          <CustomFieldsCard
-            entityType="contact"
-            recordId={contact.id}
-            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8"
-          />
+              {/* Leads this person referred, each a link to that lead */}
+              <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} />
 
-          {/* Attachments */}
-          <AttachmentsCard
-            entityType="contact"
-            recordId={contact.id}
-            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8"
-          />
-
-          {/* Activities Section */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg p-8">
-            <div className="flex items-center gap-2 mb-4">
-              <ActivityIcon className="w-5 h-5 text-slate-500" />
-              <h2 className="text-lg font-semibold text-slate-800 dark:text-white">Activities</h2>
-              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{activities.length}</span>
-            </div>
-
-            <form onSubmit={handleLogActivity} className="mb-6 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600">
-              <div className="flex gap-2 mb-2">
-                <Select value={activityForm.type} onValueChange={(v) => setActivityForm((f) => ({ ...f, type: v }))}>
-                  <SelectTrigger className="w-28 h-9 text-sm bg-white dark:bg-slate-800"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Note">Note</SelectItem>
-                    <SelectItem value="Call">Call</SelectItem>
-                    <SelectItem value="Email">Email</SelectItem>
-                    <SelectItem value="Meeting">Meeting</SelectItem>
-                    <SelectItem value="Task">Task</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  placeholder="Subject..."
-                  value={activityForm.subject}
-                  onChange={(e) => setActivityForm((f) => ({ ...f, subject: e.target.value }))}
-                  className="flex-1 h-9 text-sm bg-white dark:bg-slate-800"
-                />
-              </div>
-              <textarea
-                placeholder="Details (optional)..."
-                value={activityForm.body}
-                onChange={(e) => setActivityForm((f) => ({ ...f, body: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                rows={2}
+              {/* Custom fields (renders only when fields are defined for contacts) */}
+              <CustomFieldsCard
+                entityType="contact"
+                recordId={contact.id}
+                className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
               />
-              <div className="flex justify-end mt-2">
-                <Button type="submit" size="sm" disabled={savingActivity || !activityForm.subject.trim()} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                  <Plus className="w-3 h-3 mr-1" /> Log Activity
-                </Button>
-              </div>
-            </form>
 
-            <div className="space-y-3">
-              {activitiesLoading ? (
-                <div className="py-8 text-center">
-                  <Clock className="w-5 h-5 text-slate-400 animate-spin mx-auto mb-2" />
-                  <p className="text-sm text-slate-500">Loading activities...</p>
-                </div>
-              ) : activities.length === 0 ? (
-                <div className="py-8 text-center">
-                  <ActivityIcon className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                  <p className="text-sm text-slate-500">No activities yet</p>
-                </div>
-              ) : (
-                activities.map((a) => (
-                  <div key={a.id} className="flex gap-3 p-4 bg-white dark:bg-slate-700/50 rounded-xl border border-slate-100 dark:border-slate-600">
-                    <div className={cn(
-                      'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
-                      a.type === 'Call' && 'bg-blue-100 text-blue-600',
-                      a.type === 'Email' && 'bg-purple-100 text-purple-600',
-                      a.type === 'Meeting' && 'bg-amber-100 text-amber-600',
-                      a.type === 'Task' && 'bg-emerald-100 text-emerald-600',
-                      a.type === 'Note' && 'bg-slate-100 text-slate-600',
-                      !['Call', 'Email', 'Meeting', 'Task', 'Note'].includes(a.type) && 'bg-slate-100 text-slate-600'
-                    )}>
-                      {a.type === 'Call' && <Zap className="w-4 h-4" />}
-                      {a.type === 'Email' && <Mail className="w-4 h-4" />}
-                      {a.type === 'Meeting' && <User className="w-4 h-4" />}
-                      {a.type === 'Task' && <CheckCircle2 className="w-4 h-4" />}
-                      {a.type === 'Note' && <Pencil className="w-4 h-4" />}
-                      {!['Call', 'Email', 'Meeting', 'Task', 'Note'].includes(a.type) && <ActivityIcon className="w-4 h-4" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{a.subject || a.type}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {a.type} &middot; {new Date(a.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                        {a.createdByName && <> &middot; by {a.createdByName}</>}
-                      </p>
-                      {a.body && <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">{a.body}</p>}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+              <AttachmentsCard
+                entityType="contact"
+                recordId={contact.id}
+                className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+              />
+            </aside>
           </div>
         </main>
       </PageTransition>

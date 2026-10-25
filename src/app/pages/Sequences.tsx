@@ -7,7 +7,8 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import PageHero from '@/app/components/PageHero';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -118,6 +119,12 @@ export default function Sequences() {
   };
 
   const activeCount = (id: string) => (enrollmentsBySeq[id] ?? []).filter((e) => e.status === 'active').length;
+  const activeSequences = sequences.filter((s) => s.status === 'active').length;
+  const pausedCount = sequences.filter((s) => s.status === 'paused').length;
+  const draftCount = sequences.filter((s) => s.status === 'draft').length;
+  const allEnrollments = Object.values(enrollmentsBySeq).flat();
+  const totalEnrollments = allEnrollments.length;
+  const activeEnrollments = allEnrollments.filter((e) => e.status === 'active').length;
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -126,20 +133,20 @@ export default function Sequences() {
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
           <PageHero
             icon={Workflow}
-            iconGradient="from-indigo-500 to-violet-500"
+            tone="indigo"
             title="Sequences"
             subtitle="Automated, multi-step outreach cadences for leads and contacts."
             actions={
               <WriteOnly>
-                <Button onClick={openNew} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 shadow-lg shadow-indigo-500/30 font-semibold text-white">
+                <Button onClick={openNew} className={heroPrimary('indigo')}>
                   <Plus className="h-4 w-4" /> New sequence
                 </Button>
               </WriteOnly>
             }
             stats={[
-              { label: 'Sequences', value: sequences.length, icon: Workflow, tone: 'indigo' },
-              { label: 'Active', value: sequences.filter((s) => s.status === 'active').length, icon: Play, tone: 'emerald' },
-              { label: 'Active enrollments', value: Object.values(enrollmentsBySeq).flat().filter((e) => e.status === 'active').length, icon: Users, tone: 'blue' },
+              { label: 'Sequences', value: sequences.length, icon: Workflow, tone: 'indigo', hint: `${draftCount} draft` },
+              { label: 'Active', value: activeSequences, icon: Play, tone: 'emerald', hint: `${pausedCount} paused` },
+              { label: 'Active enrollments', value: activeEnrollments, icon: Users, tone: 'blue', hint: `${totalEnrollments} enrolled in total` },
             ]}
           />
 
@@ -156,11 +163,11 @@ export default function Sequences() {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {sequences.map((s) => {
+              {sequences.map((s, index) => {
                 const enrollments = enrollmentsBySeq[s.id] ?? [];
                 const isOpen = expanded === s.id;
                 return (
-                  <div key={s.id} className="flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <StaggerItem key={s.id} index={index} className={cn('flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm hover:border-indigo-200', liftOnHover)}>
                     <div className="border-b border-slate-100 p-4">
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-semibold text-slate-900">{s.name}</h3>
@@ -238,7 +245,7 @@ export default function Sequences() {
                         </Button>
                       </div>
                     </WriteOnly>
-                  </div>
+                  </StaggerItem>
                 );
               })}
             </div>

@@ -52,6 +52,8 @@ import { openTab, TAB_VENUES, VENUE_LABELS as TAB_VENUE_LABELS, type TabVenue } 
 import { createCharge, CHARGE_KINDS, type ChargeKind } from '@/app/api/charges';
 import { getGiftCards, redeemGiftCard, type GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import PageHero from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -253,27 +255,18 @@ export default function PosTerminal() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-cyan-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-emerald-500/15 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10 flex items-center gap-5">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-emerald-500 flex items-center justify-center shadow-2xl shadow-cyan-500/30">
-                <Calculator className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">POS Terminal</h1>
-                <p className="text-slate-400 mt-1">
-                  Lookup a member, check in, redeem, or open a tab — one-screen staff flow.
-                </p>
-              </div>
-            </div>
-          </div>
+          {/* A staff terminal: no agent suggestions between the header and the till. */}
+          <PageHero
+            icon={Calculator}
+            tone="cyan"
+            title="POS Terminal"
+            subtitle="Lookup a member, check in, redeem, or open a tab — one-screen staff flow."
+            noAgentSlot
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Search */}
-            <section className="lg:col-span-1 bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+            <StaggerItem as="section" index={0} className="lg:col-span-1 bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
@@ -323,10 +316,10 @@ export default function PosTerminal() {
                   })}
                 </ul>
               )}
-            </section>
+            </StaggerItem>
 
             {/* Selected member + actions */}
-            <section className="lg:col-span-2">
+            <StaggerItem as="section" index={1} className="lg:col-span-2">
               {!selected ? (
                 <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-16 text-center">
                   <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
@@ -450,7 +443,7 @@ export default function PosTerminal() {
                   </div>
                 </>
               )}
-            </section>
+            </StaggerItem>
           </div>
         </main>
       </PageTransition>
@@ -730,7 +723,7 @@ function ActionTile({
   href?: string;
 }) {
   const cls =
-    'group rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:shadow-md transition disabled:opacity-50';
+    `group rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm hover:border-slate-300 disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${liftOnHover}`;
   const colorClass = COLOR[color] ?? COLOR.slate ?? 'from-slate-500 to-slate-700 text-slate-600';
   const content = (
     <>

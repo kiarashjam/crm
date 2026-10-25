@@ -56,7 +56,9 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroSecondary } from '@/app/components/PageHero';
+import { RecordCard } from '@/app/components/RecordCard';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 const STATUS_OPTIONS: { value: TaskStatusType; label: string; icon: typeof Circle; color: string }[] = [
   { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-400' },
@@ -250,27 +252,106 @@ export default function TaskDetail() {
   }
 
   const statusInfo = STATUS_OPTIONS.find(s => s.value === task.status) ?? STATUS_OPTIONS[0]!;
-  const _priorityInfo = PRIORITY_OPTIONS.find(p => p.value === task.priority) ?? PRIORITY_OPTIONS[0];
-  const StatusIcon = statusInfo!.icon;
+  const priorityInfo = PRIORITY_OPTIONS.find(p => p.value === task.priority) ?? PRIORITY_OPTIONS[0]!;
+  const StatusIcon = statusInfo.icon;
+  const due = task.dueDateUtc ? new Date(task.dueDateUtc) : null;
+  const overdue = !!due && due < new Date() && task.status !== 'completed';
+  const dueLabel = due ? due.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+  const daysLeft = due ? Math.ceil((due.getTime() - Date.now()) / 86400000) : null;
+  const dueHint = daysLeft === null || task.status === 'completed'
+    ? undefined
+    : daysLeft < 0 ? `${-daysLeft}d overdue` : daysLeft === 0 ? 'today' : `in ${daysLeft}d`;
 
   return (
     <div className="min-h-screen bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
-        <main id={MAIN_CONTENT_ID} className="mx-auto max-w-4xl px-6 py-8">
-          {/* Back nav */}
-          <button
-            onClick={() => navigate('/tasks')}
-            className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-orange-600 mb-6 transition-colors"
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]">
+          <PageHero
+            icon={StatusIcon}
+            tone="amber"
+            back={{ to: '/tasks', label: 'Back to Tasks' }}
+            title={task.title}
+            badges={
+              <>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200">
+                  <StatusIcon className={cn('h-3 w-3', statusInfo.color)} aria-hidden />
+                  {statusInfo.label}
+                </span>
+                {overdue && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-red-500 to-rose-500 px-2 py-0.5 text-[11px] font-bold text-white">
+                    <AlertCircle className="h-3 w-3" aria-hidden /> Overdue
+                  </span>
+                )}
+              </>
+            }
+            subtitle={task.description || undefined}
+            actions={!editing && (
+              <WriteOnly>
+                <Button variant="outline" onClick={() => setEditing(true)} className={heroSecondary}>
+                  <Pencil className="h-4 w-4" /> Edit
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteOpen(true)}
+                  className={`${heroSecondary} text-red-600 hover:border-red-200 hover:bg-red-50 hover:text-red-700`}
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+              </WriteOnly>
+            )}
+            stats={[
+              { label: 'Due', value: dueLabel ?? '—', icon: Calendar, tone: overdue ? 'rose' : 'amber', hint: dueHint },
+              { label: 'Priority', value: priorityInfo.label, icon: Flag, tone: task.priority === 'high' ? 'rose' : task.priority === 'medium' ? 'amber' : 'sky' },
+              { label: 'Assignee', value: task.assigneeName || 'Nobody', icon: User, tone: 'violet' },
+              { label: 'Comments', value: comments.length, icon: MessageSquare, tone: 'emerald', hint: comments.length > 0 ? `last ${timeAgo(comments[comments.length - 1]!.createdAtUtc)}` : 'none yet' },
+            ]}
           >
-            <ArrowLeft className="w-4 h-4" /> Back to Tasks
-          </button>
+            {/* Status and priority, changed in place. */}
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <Label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</Label>
+                <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatusType)}>
+                  <SelectTrigger className="h-9 w-[160px] rounded-xl border-slate-200/80 bg-white/80 shadow-sm backdrop-blur">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STATUS_OPTIONS.map(s => (
+                      <SelectItem key={s.value} value={s.value}>
+                        <span className="flex items-center gap-2">
+                          <s.icon className={cn('w-4 h-4', s.color)} />
+                          {s.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Priority</Label>
+                <Select value={task.priority} onValueChange={(v) => handlePriorityChange(v as TaskPriorityType)}>
+                  <SelectTrigger className="h-9 w-[140px] rounded-xl border-slate-200/80 bg-white/80 shadow-sm backdrop-blur">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIORITY_OPTIONS.map(p => (
+                      <SelectItem key={p.value} value={p.value}>
+                        <span className="flex items-center gap-2">
+                          <Flag className={cn('w-4 h-4', p.color)} />
+                          {p.label}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </PageHero>
 
-          {/* Header */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                {editing ? (
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="min-w-0 space-y-5">
+              {editing && (
+                <RecordCard title="Edit task" icon={<Pencil className="h-3.5 w-3.5" />} tone="amber" index={0} className="border-amber-200">
                   <div className="space-y-4">
                     <div>
                       <Label className="text-xs text-slate-500 mb-1">Title</Label>
@@ -289,230 +370,151 @@ export default function TaskDetail() {
                       <Input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} className="w-48" />
                     </div>
                     <div className="flex gap-2">
-                      <Button onClick={handleSaveEdit} disabled={saving} size="sm">
+                      <Button onClick={handleSaveEdit} disabled={saving} size="sm" className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-95">
                         {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null} Save
                       </Button>
                       <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-3 mb-2">
-                      <StatusIcon className={cn('w-6 h-6', statusInfo!.color)} />
-                      <h1 className="text-2xl font-bold text-slate-900 truncate">{task.title}</h1>
-                    </div>
-                    {task.description && <p className="text-slate-600 mt-1">{task.description}</p>}
-                    {task.notes && (
-                      <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
-                        <p className="text-sm text-amber-800"><strong>Notes:</strong> {task.notes}</p>
+                </RecordCard>
+              )}
+
+              {!editing && task.notes && (
+                <RecordCard title="Notes" icon={<Pencil className="h-3.5 w-3.5" />} tone="amber" index={0}>
+                  <p className="whitespace-pre-wrap rounded-xl border-l-4 border-amber-300 bg-amber-50/70 px-3 py-2 text-sm text-amber-900">{task.notes}</p>
+                </RecordCard>
+              )}
+
+              <RecordCard title="Comments" icon={<MessageSquare className="h-3.5 w-3.5" />} tone="emerald" count={comments.length} index={1}>
+                <ul className="mb-4 space-y-2">
+                  {commentsLoading && (
+                    <li className="flex items-center justify-center gap-2 py-4 text-sm text-slate-400">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Loading comments...
+                    </li>
+                  )}
+                  {!commentsLoading && comments.length === 0 && (
+                    <li className="py-4 text-center text-sm text-slate-400">No comments yet. Start a discussion!</li>
+                  )}
+                  {comments.map((c, index) => (
+                    <StaggerItem as="li" key={c.id} index={index} className="group flex gap-3 rounded-xl p-3 transition-colors hover:bg-slate-50">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 to-pink-500 text-xs font-semibold text-white shadow-sm">
+                        {c.authorName.charAt(0).toUpperCase()}
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-              {!editing && (
-                <WriteOnly>
-                  <div className="flex gap-2 shrink-0">
-                    <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                      <Pencil className="w-4 h-4 mr-1" /> Edit
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 flex items-center gap-2">
+                          <span className="text-sm font-medium text-slate-900">{c.authorName}</span>
+                          <span className="text-xs text-slate-400">{timeAgo(c.createdAtUtc)}</span>
+                          <button
+                            onClick={() => handleDeleteComment(c.id)}
+                            className="ml-auto text-slate-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
+                            title="Delete comment"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <p className="whitespace-pre-wrap text-sm text-slate-700">{c.body}</p>
+                      </div>
+                    </StaggerItem>
+                  ))}
+                </ul>
+
+                <div className="flex gap-3 border-t border-slate-100 pt-4">
+                  <Textarea
+                    value={commentText}
+                    onChange={e => setCommentText(e.target.value)}
+                    placeholder="Write a comment..."
+                    rows={2}
+                    className="flex-1 resize-none focus-visible:border-emerald-300"
+                    onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddComment(); }}
+                  />
+                  <WriteOnly>
+                    <Button
+                      onClick={handleAddComment}
+                      disabled={addingComment || !commentText.trim()}
+                      size="sm"
+                      aria-label="Send comment"
+                      className="self-end rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-95"
+                    >
+                      {addingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     </Button>
-                    <Button variant="outline" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => setDeleteOpen(true)}>
-                      <Trash2 className="w-4 h-4 mr-1" /> Delete
-                    </Button>
-                  </div>
-                </WriteOnly>
-              )}
-            </div>
-
-            {/* Status & Priority selectors */}
-            <div className="flex flex-wrap gap-4 mt-6 pt-4 border-t border-slate-100">
-              <div>
-                <Label className="text-xs text-slate-500 mb-1.5 block">Status</Label>
-                <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatusType)}>
-                  <SelectTrigger className="w-[160px] h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map(s => (
-                      <SelectItem key={s.value} value={s.value}>
-                        <span className="flex items-center gap-2">
-                          <s.icon className={cn('w-4 h-4', s.color)} />
-                          {s.label}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs text-slate-500 mb-1.5 block">Priority</Label>
-                <Select value={task.priority} onValueChange={(v) => handlePriorityChange(v as TaskPriorityType)}>
-                  <SelectTrigger className="w-[140px] h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PRIORITY_OPTIONS.map(p => (
-                      <SelectItem key={p.value} value={p.value}>
-                        <span className="flex items-center gap-2">
-                          <Flag className={cn('w-4 h-4', p.color)} />
-                          {p.label}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Details cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            {/* Dates */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-4">
-                <Calendar className="w-4 h-4 text-orange-500" /> Dates
-              </h3>
-              <dl className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">Created</dt>
-                  <dd className="text-slate-900">{task.createdAtUtc ? new Date(task.createdAtUtc).toLocaleDateString() : '—'}</dd>
+                  </WriteOnly>
                 </div>
-                {task.dueDateUtc && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-500">Due Date</dt>
-                    <dd className={cn('font-medium', new Date(task.dueDateUtc) < new Date() && task.status !== 'completed' ? 'text-red-600' : 'text-slate-900')}>
-                      {new Date(task.dueDateUtc).toLocaleDateString()}
-                    </dd>
-                  </div>
-                )}
-                {task.completedAtUtc && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-500">Completed</dt>
-                    <dd className="text-emerald-600">{new Date(task.completedAtUtc).toLocaleDateString()}</dd>
-                  </div>
-                )}
-                {task.updatedAtUtc && (
-                  <div className="flex justify-between">
-                    <dt className="text-slate-500">Last Updated</dt>
-                    <dd className="text-slate-700">{timeAgo(task.updatedAtUtc)}</dd>
-                  </div>
-                )}
-              </dl>
+                <p className="mt-2 text-xs text-slate-400">Press Ctrl+Enter to send</p>
+              </RecordCard>
             </div>
 
-            {/* Linked Entities */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-4">
-                <Target className="w-4 h-4 text-orange-500" /> Linked To
-              </h3>
-              <dl className="space-y-3 text-sm">
-                {task.assigneeName && (
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-blue-500" />
-                    <span className="text-slate-500">Assignee:</span>
-                    <span className="text-slate-900 font-medium">{task.assigneeName}</span>
+            <aside className="min-w-0 space-y-5">
+              <RecordCard title="Dates" icon={<Calendar className="h-3.5 w-3.5" />} tone="amber" index={2}>
+                <dl className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">Created</dt>
+                    <dd className="text-slate-900">{task.createdAtUtc ? new Date(task.createdAtUtc).toLocaleDateString() : '—'}</dd>
                   </div>
-                )}
-                {task.dealId && (
-                  <div className="flex items-center gap-2">
-                    <Briefcase className="w-4 h-4 text-emerald-500" />
-                    <span className="text-slate-500">Deal:</span>
-                    <Link to={`/deals/${task.dealId}`} className="text-orange-600 hover:underline font-medium">
-                      {task.dealName || 'View Deal'}
-                    </Link>
-                  </div>
-                )}
-                {task.leadId && (
-                  <div className="flex items-center gap-2">
-                    <Target className="w-4 h-4 text-violet-500" />
-                    <span className="text-slate-500">Lead:</span>
-                    <span className="text-slate-900 font-medium">{task.leadName || task.leadId}</span>
-                  </div>
-                )}
-                {task.contactId && (
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-cyan-500" />
-                    <span className="text-slate-500">Contact:</span>
-                    <Link to={`/contacts/${task.contactId}`} className="text-orange-600 hover:underline font-medium">
-                      {task.contactName || 'View Contact'}
-                    </Link>
-                  </div>
-                )}
-                {!task.assigneeName && !task.dealId && !task.leadId && !task.contactId && (
-                  <p className="text-slate-400 text-sm">No linked entities</p>
-                )}
-              </dl>
-            </div>
-          </div>
-
-          {/* Comments Section — HP-11 */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-4">
-              <MessageSquare className="w-4 h-4 text-orange-500" />
-              Comments
-              {comments.length > 0 && (
-                <span className="ml-auto text-xs font-normal text-slate-400">{comments.length}</span>
-              )}
-            </h3>
-
-            {/* Comment list */}
-            <div className="space-y-4 mb-6">
-              {commentsLoading && (
-                <div className="flex items-center gap-2 py-4 justify-center text-slate-400 text-sm">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Loading comments...
-                </div>
-              )}
-              {!commentsLoading && comments.length === 0 && (
-                <p className="text-sm text-slate-400 text-center py-4">No comments yet. Start a discussion!</p>
-              )}
-              {comments.map((c) => (
-                <div key={c.id} className="group flex gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                  <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-semibold text-orange-600">
-                      {c.authorName.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-slate-900">{c.authorName}</span>
-                      <span className="text-xs text-slate-400">{timeAgo(c.createdAtUtc)}</span>
-                      <button
-                        onClick={() => handleDeleteComment(c.id)}
-                        className="ml-auto opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all"
-                        title="Delete comment"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                  {task.dueDateUtc && (
+                    <div className="flex justify-between">
+                      <dt className="text-slate-500">Due Date</dt>
+                      <dd className={cn('font-medium', overdue ? 'text-red-600' : 'text-slate-900')}>
+                        {new Date(task.dueDateUtc).toLocaleDateString()}
+                      </dd>
                     </div>
-                    <p className="text-sm text-slate-700 whitespace-pre-wrap">{c.body}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  )}
+                  {task.completedAtUtc && (
+                    <div className="flex justify-between">
+                      <dt className="text-slate-500">Completed</dt>
+                      <dd className="text-emerald-600">{new Date(task.completedAtUtc).toLocaleDateString()}</dd>
+                    </div>
+                  )}
+                  {task.updatedAtUtc && (
+                    <div className="flex justify-between">
+                      <dt className="text-slate-500">Last Updated</dt>
+                      <dd className="text-slate-700">{timeAgo(task.updatedAtUtc)}</dd>
+                    </div>
+                  )}
+                </dl>
+              </RecordCard>
 
-            {/* Add comment form */}
-            <div className="flex gap-3 pt-4 border-t border-slate-100">
-              <Textarea
-                value={commentText}
-                onChange={e => setCommentText(e.target.value)}
-                placeholder="Write a comment..."
-                rows={2}
-                className="flex-1 resize-none"
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddComment(); }}
-              />
-              <WriteOnly>
-                <Button
-                  onClick={handleAddComment}
-                  disabled={addingComment || !commentText.trim()}
-                  size="sm"
-                  className="self-end"
-                >
-                  {addingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                </Button>
-              </WriteOnly>
-            </div>
-            <p className="text-xs text-slate-400 mt-2">Press Ctrl+Enter to send</p>
+              <RecordCard title="Linked to" icon={<Target className="h-3.5 w-3.5" />} tone="violet" index={3}>
+                <dl className="space-y-3 text-sm">
+                  {task.assigneeName && (
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-blue-500" />
+                      <span className="text-slate-500">Assignee:</span>
+                      <span className="font-medium text-slate-900">{task.assigneeName}</span>
+                    </div>
+                  )}
+                  {task.dealId && (
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="w-4 h-4 text-violet-500" />
+                      <span className="text-slate-500">Deal:</span>
+                      <Link to={`/deals/${task.dealId}`} className="font-medium text-violet-700 hover:underline">
+                        {task.dealName || 'View Deal'}
+                      </Link>
+                    </div>
+                  )}
+                  {task.leadId && (
+                    <div className="flex items-center gap-2">
+                      <Target className="w-4 h-4 text-orange-500" />
+                      <span className="text-slate-500">Lead:</span>
+                      <Link to={`/leads/${task.leadId}`} className="font-medium text-orange-600 hover:underline">
+                        {task.leadName || 'View Lead'}
+                      </Link>
+                    </div>
+                  )}
+                  {task.contactId && (
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-emerald-500" />
+                      <span className="text-slate-500">Contact:</span>
+                      <Link to={`/contacts/${task.contactId}`} className="font-medium text-emerald-700 hover:underline">
+                        {task.contactName || 'View Contact'}
+                      </Link>
+                    </div>
+                  )}
+                  {!task.assigneeName && !task.dealId && !task.leadId && !task.contactId && (
+                    <p className="text-sm text-slate-400">No linked entities</p>
+                  )}
+                </dl>
+              </RecordCard>
+            </aside>
           </div>
 
           {/* Delete confirmation */}

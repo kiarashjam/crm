@@ -55,7 +55,8 @@ import {
   type DuesFrequency,
 } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -247,65 +248,24 @@ export default function Members() {
           className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]"
           tabIndex={-1}
         >
-          {/* Hero */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -top-20 -right-20 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl animate-pulse" />
-              <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-amber-500/15 rounded-full blur-3xl" />
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-violet-500/10 rounded-full blur-3xl" />
-            </div>
-            <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center shadow-2xl shadow-indigo-500/30">
-                    <Crown className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Members</h1>
-                    <p className="text-slate-400 mt-1">
-                      Tiers, dues, renewals, and house account balances.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  onClick={openCreate}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 shadow-lg shadow-indigo-500/30 font-semibold text-white"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add member
-                </Button>
-              </div>
-            </div>
-          </div>
-          <NextActionsSlot />
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={<Crown className="w-5 h-5 text-indigo-600" />}
-              label="Total members"
-              value={String(stats.total)}
-              hint={`${stats.active} active`}
-            />
-            <StatCard
-              icon={<Sparkles className="w-5 h-5 text-emerald-600" />}
-              label="Monthly recurring"
-              value={formatCurrency(stats.monthlyRecurringRevenue)}
-              hint="Active dues, normalized"
-            />
-            <StatCard
-              icon={<DollarSign className="w-5 h-5 text-amber-600" />}
-              label="House accounts"
-              value={formatCurrency(stats.totalHouseAccountBalance)}
-              hint="Total balance across members"
-            />
-            <StatCard
-              icon={<CalendarClock className="w-5 h-5 text-rose-600" />}
-              label="Renewing < 30d"
-              value={String(stats.renewingSoon)}
-              hint={`${stats.lapsed} lapsed • ${stats.pending} pending`}
-            />
-          </div>
+          <PageHero
+            icon={Crown}
+            tone="indigo"
+            title="Members"
+            subtitle="Tiers, dues, renewals, and house account balances."
+            actions={
+              <Button onClick={openCreate} className={heroPrimary('indigo')}>
+                <Plus className="h-4 w-4" />
+                Add member
+              </Button>
+            }
+            stats={[
+              { label: 'Total members', value: stats.total, icon: Crown, tone: 'indigo', hint: `${stats.active} active` },
+              { label: 'Monthly recurring', value: stats.monthlyRecurringRevenue, icon: Sparkles, tone: 'emerald', hint: 'active dues', format: formatCurrency },
+              { label: 'House accounts', value: stats.totalHouseAccountBalance, icon: DollarSign, tone: 'amber', hint: 'total balance', format: formatCurrency },
+              { label: 'Renewing < 30d', value: stats.renewingSoon, icon: CalendarClock, tone: 'rose', hint: `${stats.lapsed} lapsed · ${stats.pending} pending` },
+            ]}
+          />
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row gap-3 mb-6">
@@ -372,14 +332,15 @@ export default function Members() {
             />
           ) : (
             <div className="space-y-3">
-              {filtered.map((m) => {
+              {filtered.map((m, index) => {
                 const renewsAt = Date.parse(m.renewsAtUtc);
                 const renewSoon = renewsAt - Date.now() < 30 * day && renewsAt > Date.now();
                 const overdue = renewsAt < Date.now() && m.status === 'Active';
                 return (
-                  <div
+                  <StaggerItem
                     key={m.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+                    index={index}
+                    className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-indigo-200 ${liftOnHover}`}
                   >
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="flex items-start gap-4 min-w-0 flex-1">
@@ -478,7 +439,7 @@ export default function Members() {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </StaggerItem>
                 );
               })}
             </div>
@@ -638,25 +599,3 @@ export default function Members() {
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-  hint,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center">{icon}</div>
-      </div>
-      <p className="text-2xl font-bold text-slate-900">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
-    </div>
-  );
-}

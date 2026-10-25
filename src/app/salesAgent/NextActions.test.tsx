@@ -129,6 +129,27 @@ describe('the queue', () => {
     expect(screen.queryByRole('button', { name: /Show all/ })).toBeNull();
   });
 
+  it('on a quiet page it is one line, and asking opens the chat with the cursor in it', async () => {
+    const user = userEvent.setup();
+    at('/contacts');
+    expect(await screen.findByText('Nothing on this page is waiting.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Ask the agent')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Ask Cadence AI' }));
+    expect(await screen.findByLabelText('Ask the agent')).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByLabelText('Ask the agent'));
+  });
+
+  it('with steps waiting, the closed chat is a pill on the title row', async () => {
+    leads.mockResolvedValue([lost('l1', 'Ada')]);
+    const user = userEvent.setup();
+    at('/dashboard');
+    await screen.findByRole('link', { name: 'Ada' });
+    expect(screen.queryByLabelText('Ask the agent')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Ask Cadence AI' }));
+    expect(await screen.findByLabelText('Ask the agent')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Ada' })).toBeInTheDocument();
+  });
+
   it('says so when nothing is waiting', async () => {
     at('/dashboard');
     expect(await screen.findByText('You are all caught up.')).toBeInTheDocument();
@@ -256,13 +277,22 @@ describe('every page places the panel after its title', () => {
     // forgets one still works — but it looks out of place. The till and the
     // member-portal preview never show the panel.
     const pages = resolve(__dirname, '../pages');
-    const missing = readdirSync(pages)
+    const withHeader = readdirSync(pages)
       .filter((file) => file.endsWith('.tsx') && !file.includes('.test.'))
-      .filter((file) => {
-        const source = readFileSync(join(pages, file), 'utf8');
-        return source.includes('<AppHeader') && !source.includes('<NextActionsSlot') && !source.includes('<PageHero');
-      });
-    expect(missing.sort()).toEqual(['MemberPortal.tsx', 'PosTerminal.tsx']);
+      .map((file) => ({ file, source: readFileSync(join(pages, file), 'utf8') }))
+      .filter(({ source }) => source.includes('<AppHeader'));
+    // The dashboard's title is its own DashboardHero, which is a PageHero.
+    const missing = withHeader
+      .filter(({ source }) => !source.includes('<NextActionsSlot') && !source.includes('<PageHero') && !source.includes('<DashboardHero'))
+      .map(({ file }) => file);
+    expect(missing).toEqual([]);
+    // The lead page leaves the header's slot out only to place the panel in its own
+    // main column; the till and the portal preview leave the panel out altogether.
+    const optedOut = withHeader
+      .filter(({ source }) => source.includes('noAgentSlot') && !source.includes('<NextActionsSlot'))
+      .map(({ file }) => file);
+    expect(optedOut.sort()).toEqual(['MemberPortal.tsx', 'PosTerminal.tsx']);
     expect(readFileSync(resolve(__dirname, '../components/PageHero.tsx'), 'utf8')).toContain('<NextActionsSlot');
+    expect(readFileSync(resolve(pages, 'dashboard/DashboardHero.tsx'), 'utf8')).toContain('<PageHero');
   });
 });

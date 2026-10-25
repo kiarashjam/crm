@@ -90,7 +90,8 @@ import { getTasks, createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary, type PageStat } from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 export default function Pipeline() {
   const { isReadOnly } = useOrg();
@@ -614,6 +615,31 @@ export default function Pipeline() {
   // are shown in the currency most of the pipeline is actually in rather than a
   // hardcoded USD.
   const boardCurrency = dominantCurrencyOf(deals);
+  const formatBoardAmount = (n: number) => formatAmount(n, boardCurrency);
+  // The board's numbers, in its header. Deals Won shows the won deals.
+  const dealHeroStats: PageStat[] = [
+    {
+      label: 'Total Pipeline Value', value: dealStats.activeValue, icon: DollarSign, tone: 'emerald',
+      hint: `${formatBoardAmount(dealStats.wonValue)} won`, format: formatBoardAmount,
+    },
+    {
+      label: 'Win Rate', value: dealStats.winRate, icon: TrendingUp, tone: 'blue',
+      hint: dealStats.winRate >= 50 ? 'great' : 'needs work', format: (n) => `${Math.round(n)}%`,
+    },
+    {
+      label: 'Total Deals', value: dealStats.total, icon: BarChart3, tone: 'slate',
+      hint: `${dealStats.active} open · ${dealStats.won + dealStats.lost} closed`,
+    },
+    {
+      label: 'Deals Won', value: dealStats.won, icon: Trophy, tone: 'orange',
+      hint: dealStats.wonValue > 0 ? formatBoardAmount(dealStats.wonValue) : undefined,
+      onClick: () => setFilterStage('Closed Won'),
+      actionLabel: `Deals won, ${dealStats.won}. Activate to show the won deals.`,
+    },
+    dealStats.overdue > 0
+      ? { label: 'Overdue Deals', value: dealStats.overdue, icon: AlertCircle, tone: 'rose', hint: 'action needed' }
+      : { label: 'All on track!', value: dealStats.overdue, icon: CheckCircle2, tone: 'emerald', hint: 'none overdue' },
+  ];
 
   const detailContact = detailDeal?.contactId ? contacts.find((c) => c.id === detailDeal.contactId) : undefined;
   const detailCompany = detailDeal?.companyId ? companies.find((c) => c.id === detailDeal.companyId) : undefined;
@@ -623,211 +649,31 @@ export default function Pipeline() {
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 min-h-0 flex flex-col w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          {/* Hero Section with Dark Decorative Elements */}
-          <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8 shrink-0"
-        >
-          {/* Decorative blur elements */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-            <div className="absolute inset-0 opacity-5" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l9.9-9.9h-2.83zM32 0l-3.486 3.485-1.414-1.414L30.586 0H32zM0 5.373l.828-.83 1.415 1.415L0 8.2V5.374zm0 5.656l.828-.829 5.657 5.657-1.414 1.414L0 11.03v-.001zm0 5.656l.828-.828 8.485 8.485-1.414 1.414L0 16.686v-.001zm0 5.657l.828-.828 11.314 11.314-1.414 1.414L0 22.343v-.001zM60 5.373l-.828-.83-1.415 1.415L60 8.2V5.374zm0 5.656l-.828-.829-5.657 5.657 1.414 1.414L60 11.03v-.001zm0 5.656l-.828-.828-8.485 8.485 1.414 1.414L60 16.686v-.001zm0 5.657l-.828-.828-11.314 11.314 1.414 1.414L60 22.343v-.001z' fill='%23fff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E")` }} />
-          </div>
-          
-          <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                  <Target className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Deals</h1>
-                  <p className="text-slate-400 mt-1">
-                    {loading ? 'Loading your pipeline…' : 'Track opportunities from qualification to close'}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                {!loading && deals.length > 0 && (
-                  <div className="hidden sm:flex items-center gap-3 mr-2">
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-sm text-white font-medium">{dealStats.active} active</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20">
-                      <TrendingUp className="w-4 h-4 text-emerald-400" />
-                      <span className="text-sm text-white font-medium">{totalPipelineValue}</span>
-                    </div>
-                  </div>
-                )}
-                {!isReadOnly && (
-                  <Button
-                    onClick={openCreateDeal}
-                    className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white"
-                  >
-                    <Plus className="w-4 h-4" />
-                    New Deal
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-        </motion.div>
-          <NextActionsSlot />
-
-        {/* Stats Grid - Modern Bento Box Style */}
-        {!loading && deals.length > 0 && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="grid grid-cols-2 lg:grid-cols-12 gap-4 mb-8"
-            >
-              {/* Pipeline Value - Large Card */}
-              <div className="col-span-2 lg:col-span-4 group relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-6 shadow-lg shadow-emerald-500/20 hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-bl-[60px] -mr-2 -mt-2" />
-                <div className="relative">
-                  <div className="flex items-center justify-between">
-                    <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                      <DollarSign className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-white/20 backdrop-blur-sm">
-                      <TrendingUp className="w-3 h-3 text-emerald-200" />
-                      <span className="text-xs text-white font-medium">Active</span>
-                    </div>
-                  </div>
-                  <div className="mt-4">
-                    <p className="text-3xl font-bold text-white tracking-tight">{formatAmount(dealStats.activeValue, boardCurrency)}</p>
-                    <p className="text-emerald-100 text-sm mt-1">Total Pipeline Value</p>
-                  </div>
-                  <div className="mt-4 flex items-center gap-3">
-                    <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min((dealStats.wonValue / (dealStats.activeValue + dealStats.wonValue || 1)) * 100, 100)}%` }}
-                        transition={{ duration: 1, delay: 0.5 }}
-                        className="h-full bg-white rounded-full"
-                      />
-                    </div>
-                    <span className="text-xs text-emerald-100">{formatAmount(dealStats.wonValue, boardCurrency)} won</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Win Rate - Medium Card */}
-              <div className="col-span-1 lg:col-span-2 group relative overflow-hidden rounded-2xl bg-white border border-blue-100 p-5 shadow-sm hover:shadow-xl hover:shadow-blue-100 hover:border-blue-200 transition-all duration-300">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-50 to-blue-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <TrendingUp className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <span className={cn(
-                      "text-xs font-semibold px-2 py-1 rounded-full",
-                      dealStats.winRate >= 50 ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                    )}>
-                      {dealStats.winRate >= 50 ? 'Great' : 'Needs work'}
-                    </span>
-                  </div>
-                  <p className="text-3xl font-bold text-blue-600 tracking-tight">{dealStats.winRate}%</p>
-                  <p className="text-xs font-medium text-blue-600/70 mt-1">Win Rate</p>
-                  <div className="mt-3 relative">
-                    <div className="w-full bg-blue-100 rounded-full h-1.5 overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${dealStats.winRate}%` }}
-                        transition={{ duration: 1, delay: 0.3 }}
-                        className="bg-gradient-to-r from-blue-500 to-cyan-400 h-1.5 rounded-full"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Total Deals */}
-              <div className="col-span-1 lg:col-span-2 group relative overflow-hidden rounded-2xl bg-white border border-slate-200/80 p-5 shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-50 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <BarChart3 className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-slate-900 tracking-tight">{dealStats.total}</p>
-                  <p className="text-xs font-medium text-slate-500 mt-1">Total Deals</p>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                    <span className="px-2 py-0.5 rounded-md bg-slate-100">{dealStats.active} open</span>
-                    <span className="px-2 py-0.5 rounded-md bg-slate-100">{dealStats.won + dealStats.lost} closed</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Won Deals */}
-              <div 
-                className="col-span-1 lg:col-span-2 group relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg shadow-amber-500/20 hover:shadow-xl hover:shadow-amber-500/30 transition-all duration-300 cursor-pointer"
-                onClick={() => setFilterStage('Closed Won')}
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-bl-[60px] -mr-2 -mt-2" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-3 group-hover:scale-110 group-hover:rotate-12 transition-all">
-                    <Trophy className="w-5 h-5 text-white" />
-                  </div>
-                  <p className="text-3xl font-bold text-white tracking-tight">{dealStats.won}</p>
-                  <p className="text-xs font-medium text-white/80 mt-1">Deals Won</p>
-                  {dealStats.wonValue > 0 && (
-                    <p className="mt-2 text-xs font-semibold text-white bg-white/20 px-2 py-1 rounded-lg inline-block">
-                      {formatAmount(dealStats.wonValue, boardCurrency)}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Overdue - Alert Card */}
-              <div className={cn(
-                "col-span-1 lg:col-span-2 group relative overflow-hidden rounded-2xl p-5 transition-all duration-300",
-                dealStats.overdue > 0 
-                  ? "bg-gradient-to-br from-red-500 to-rose-600 shadow-lg shadow-red-500/20 hover:shadow-xl hover:shadow-red-500/30"
-                  : "bg-white border border-emerald-100 shadow-sm hover:shadow-xl hover:shadow-emerald-100 hover:border-emerald-200"
-              )}>
-                <div className={cn(
-                  "absolute top-0 right-0 w-20 h-20 rounded-bl-[60px] -mr-2 -mt-2",
-                  dealStats.overdue > 0 ? "bg-white/10" : "bg-gradient-to-br from-emerald-50 to-emerald-100 group-hover:scale-110 transition-transform"
-                )} />
-                <div className="relative">
-                  <div className={cn(
-                    "w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110",
-                    dealStats.overdue > 0 
-                      ? "bg-white/20 backdrop-blur-sm" 
-                      : "bg-gradient-to-br from-emerald-100 to-emerald-200"
-                  )}>
-                    {dealStats.overdue > 0 ? (
-                      <AlertCircle className="w-5 h-5 text-white" />
-                    ) : (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                    )}
-                  </div>
-                  <p className={cn(
-                    "text-3xl font-bold tracking-tight",
-                    dealStats.overdue > 0 ? "text-white" : "text-emerald-600"
-                  )}>{dealStats.overdue}</p>
-                  <p className={cn(
-                    "text-xs font-medium mt-1",
-                    dealStats.overdue > 0 ? "text-white/80" : "text-emerald-600/70"
-                  )}>{dealStats.overdue > 0 ? 'Overdue Deals' : 'All on track!'}</p>
-                  {dealStats.overdue > 0 && (
-                    <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-white bg-white/20 px-2 py-1 rounded-full">
-                      <Clock className="w-3 h-3" />
-                      Action needed
-                    </span>
-                  )}
-                </div>
-              </div>
-
-            </motion.div>
-          )}
+          <PageHero
+            icon={Target}
+            tone="violet"
+            title="Deals"
+            subtitle={loading ? 'Loading your pipeline…' : 'Track opportunities from qualification to close'}
+            badges={!loading && deals.length > 0 && (
+              <>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse motion-reduce:animate-none" aria-hidden />
+                  {dealStats.active} active
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
+                  <TrendingUp className="h-3 w-3" aria-hidden />
+                  {totalPipelineValue}
+                </span>
+              </>
+            )}
+            actions={!isReadOnly && (
+              <Button onClick={openCreateDeal} className={heroPrimary('violet')}>
+                <Plus className="h-4 w-4" />
+                New Deal
+              </Button>
+            )}
+            stats={!loading && deals.length > 0 ? dealHeroStats : undefined}
+          />
 
           {/* Action Alert Banner */}
           {!loading && deals.length > 0 && dealStats.overdue > 0 && (
@@ -835,7 +681,7 @@ export default function Pipeline() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.4 }}
-              className="mt-4 relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 p-[1px] shadow-lg shadow-red-200/50"
+              className="mb-4 relative overflow-hidden rounded-2xl bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 p-[1px] shadow-lg shadow-red-200/50"
             >
               <div className="relative bg-gradient-to-r from-red-50 via-rose-50 to-pink-50 rounded-2xl p-4">
                 <div className="flex items-center gap-4">
@@ -864,39 +710,39 @@ export default function Pipeline() {
             </motion.div>
           )}
 
-          {/* Search and Filter Bar - Modern Dark Theme */}
+          {/* Search and filter bar */}
           {!loading && deals.length > 0 && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.3 }}
-              className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-4 mt-6 shadow-xl overflow-hidden"
+              className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur"
             >
               {/* Decorative elements */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
-              <div className="absolute bottom-0 left-0 w-24 h-24 bg-teal-500/10 rounded-full blur-2xl -ml-10 -mb-10" />
+              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-300/25 rounded-full blur-2xl -mr-10 -mt-10" />
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-emerald-300/25 rounded-full blur-2xl -ml-10 -mb-10" />
               
               <div className="relative flex flex-col sm:flex-row gap-3">
                 {/* Search Input - Compact Enhanced */}
                 <div className="relative flex-1 group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-violet-500/20 via-fuchsia-500/20 to-violet-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
                   <div className="relative">
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center group-focus-within:from-emerald-500/40 group-focus-within:to-teal-500/40 transition-all duration-300">
-                      <Search className="w-4 h-4 text-emerald-300 group-focus-within:text-emerald-200 transition-colors" aria-hidden />
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-violet-100 to-fuchsia-100 flex items-center justify-center group-focus-within:from-violet-200 group-focus-within:to-fuchsia-200 transition-all duration-300">
+                      <Search className="w-4 h-4 text-violet-500 group-focus-within:text-violet-600 transition-colors" aria-hidden />
                     </div>
                     <input
                       type="search"
                       placeholder="Search deals by name, value, or contact..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-14 pr-10 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 text-sm focus:outline-none focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 focus:bg-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300 placeholder:text-slate-400"
+                      className="w-full pl-14 pr-10 h-11 rounded-xl border border-slate-200 bg-slate-50/80 text-slate-900 text-sm placeholder:text-slate-400 focus:outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/50 focus:bg-white hover:bg-white hover:border-slate-300 transition-all duration-300"
                       aria-label="Search deals"
                     />
                     {searchQuery && (
                       <button
                         type="button"
                         onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-white/10 hover:bg-red-500/30 flex items-center justify-center text-slate-400 hover:text-red-300 transition-all duration-200"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -906,12 +752,12 @@ export default function Pipeline() {
 
                 {/* Stage Filter - Compact Enhanced */}
                 <div className="relative group/filter">
-                  <div className="absolute inset-0 bg-white/10 rounded-xl blur-lg opacity-0 group-hover/filter:opacity-50 transition-all duration-300" />
+                  <div className="absolute inset-0 bg-violet-200/50 rounded-xl blur-lg opacity-0 group-hover/filter:opacity-60 transition-all duration-300" />
                   <Select value={filterStage} onValueChange={setFilterStage}>
-                    <SelectTrigger className="relative h-11 w-full sm:w-[200px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-emerald-400/50 focus:ring-2 focus:ring-emerald-400/20 transition-all duration-300">
+                    <SelectTrigger className="relative h-11 w-full sm:w-[200px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
-                          <Filter className="w-3.5 h-3.5 text-slate-300" />
+                        <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
+                          <Filter className="w-3.5 h-3.5 text-violet-600" />
                         </div>
                         <SelectValue placeholder="All stages" />
                       </div>
@@ -938,10 +784,10 @@ export default function Pipeline() {
                   type="button"
                   onClick={() => setFilterMyDeals(!filterMyDeals)}
                   className={cn(
-                    'relative h-11 px-4 rounded-xl border shadow-xl shadow-black/10 font-medium text-sm transition-all duration-300',
+                    'relative h-11 px-4 rounded-xl border shadow-sm font-medium text-sm transition-all duration-300',
                     filterMyDeals
                       ? 'bg-gradient-to-r from-emerald-500 to-teal-500 border-emerald-400/50 text-white'
-                      : 'bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 hover:border-white/20'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700'
                   )}
                 >
                   <User className="w-4 h-4 inline mr-1.5" />
@@ -951,10 +797,10 @@ export default function Pipeline() {
                 {/* HP-10: Assignee filter */}
                 {orgMembers.length > 0 && (
                   <Select value={filterAssignee} onValueChange={setFilterAssignee}>
-                    <SelectTrigger className="relative h-11 w-full sm:w-[180px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 transition-all duration-300">
+                    <SelectTrigger className="relative h-11 w-full sm:w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-fuchsia-50 hover:border-fuchsia-300 focus:border-fuchsia-300 focus:ring-2 focus:ring-fuchsia-200/60 transition-all duration-300">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center">
-                          <User className="w-3.5 h-3.5 text-slate-300" />
+                        <div className="w-7 h-7 rounded-lg bg-fuchsia-100 flex items-center justify-center">
+                          <User className="w-3.5 h-3.5 text-fuchsia-600" />
                         </div>
                         <SelectValue placeholder="Assignee" />
                       </div>
@@ -973,37 +819,37 @@ export default function Pipeline() {
               {/* HP-10: Value range row */}
               <div className="relative flex flex-wrap gap-3 mt-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Value range:</span>
+                  <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Value range:</span>
                   <input
                     type="number"
                     placeholder="Min"
                     value={filterValueMin}
                     onChange={(e) => setFilterValueMin(e.target.value)}
-                    className="w-24 h-9 rounded-lg border border-white/10 bg-white/5 text-white text-xs px-3 focus:outline-none focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/20 placeholder:text-slate-500"
+                    className="w-24 h-9 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-900 text-xs px-3 focus:outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/50 focus:bg-white placeholder:text-slate-400"
                   />
-                  <span className="text-xs text-slate-500">—</span>
+                  <span className="text-xs text-slate-400">—</span>
                   <input
                     type="number"
                     placeholder="Max"
                     value={filterValueMax}
                     onChange={(e) => setFilterValueMax(e.target.value)}
-                    className="w-24 h-9 rounded-lg border border-white/10 bg-white/5 text-white text-xs px-3 focus:outline-none focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/20 placeholder:text-slate-500"
+                    className="w-24 h-9 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-900 text-xs px-3 focus:outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/50 focus:bg-white placeholder:text-slate-400"
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 font-medium whitespace-nowrap">Close date:</span>
+                  <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Close date:</span>
                   <input
                     type="date"
                     value={filterCloseDateFrom}
                     onChange={(e) => setFilterCloseDateFrom(e.target.value)}
-                    className="h-9 rounded-lg border border-white/10 bg-white/5 text-white text-xs px-3 focus:outline-none focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/20 [color-scheme:dark]"
+                    className="h-9 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-900 text-xs px-3 focus:outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/50 focus:bg-white"
                   />
-                  <span className="text-xs text-slate-500">—</span>
+                  <span className="text-xs text-slate-400">—</span>
                   <input
                     type="date"
                     value={filterCloseDateTo}
                     onChange={(e) => setFilterCloseDateTo(e.target.value)}
-                    className="h-9 rounded-lg border border-white/10 bg-white/5 text-white text-xs px-3 focus:outline-none focus:border-emerald-400/50 focus:ring-1 focus:ring-emerald-400/20 [color-scheme:dark]"
+                    className="h-9 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-900 text-xs px-3 focus:outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/50 focus:bg-white"
                   />
                 </div>
               </div>
@@ -1011,64 +857,64 @@ export default function Pipeline() {
               {/* Active Filter Pills */}
               {(searchQuery || filterStage !== 'all' || filterMyDeals || filterAssignee !== 'all' || filterValueMin || filterValueMax || filterCloseDateFrom || filterCloseDateTo) && (
                 <div className="relative mt-4 flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-slate-400 font-medium">Active filters:</span>
+                  <span className="text-xs text-slate-500 font-medium">Active filters:</span>
                   {searchQuery && (
-                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 text-white text-xs font-medium border border-white/10">
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                       <Search className="w-3 h-3" />
                       &quot;{searchQuery}&quot;
-                      <button onClick={() => setSearchQuery('')} className="ml-1 hover:text-emerald-300 transition-colors">
+                      <button onClick={() => setSearchQuery('')} className="ml-1 hover:text-violet-600 transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
                   )}
                   {filterStage !== 'all' && (
-                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-medium border border-emerald-400/30">
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
                       <span 
-                        className="w-2 h-2 rounded-full bg-emerald-300"
+                        className="w-2 h-2 rounded-full bg-emerald-500"
                       />
                       {filterStage}
-                      <button onClick={() => setFilterStage('all')} className="ml-1 hover:text-emerald-100 transition-colors">
+                      <button onClick={() => setFilterStage('all')} className="ml-1 hover:text-emerald-900 transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
                   )}
                   {filterMyDeals && (
-                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-medium border border-blue-400/30">
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-200">
                       <User className="w-3 h-3" />
                       My Deals
-                      <button onClick={() => setFilterMyDeals(false)} className="ml-1 hover:text-blue-100 transition-colors">
+                      <button onClick={() => setFilterMyDeals(false)} className="ml-1 hover:text-blue-900 transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
                   )}
                   {filterAssignee !== 'all' && (
-                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium border border-purple-400/30">
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-medium border border-purple-200">
                       <User className="w-3 h-3" />
                       {filterAssignee === 'unassigned' ? 'Unassigned' : orgMembers.find(m => m.userId === filterAssignee)?.name}
-                      <button onClick={() => setFilterAssignee('all')} className="ml-1 hover:text-purple-100 transition-colors">
+                      <button onClick={() => setFilterAssignee('all')} className="ml-1 hover:text-purple-900 transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
                   )}
                   {(filterValueMin || filterValueMax) && (
-                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/20 text-amber-300 text-xs font-medium border border-amber-400/30">
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
                       <DollarSign className="w-3 h-3" />
                       {filterValueMin || '0'} – {filterValueMax || '∞'}
-                      <button onClick={() => { setFilterValueMin(''); setFilterValueMax(''); }} className="ml-1 hover:text-amber-100 transition-colors">
+                      <button onClick={() => { setFilterValueMin(''); setFilterValueMax(''); }} className="ml-1 hover:text-amber-900 transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
                   )}
                   {(filterCloseDateFrom || filterCloseDateTo) && (
-                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/20 text-cyan-300 text-xs font-medium border border-cyan-400/30">
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium border border-cyan-200">
                       <Calendar className="w-3 h-3" />
                       {filterCloseDateFrom || 'any'} – {filterCloseDateTo || 'any'}
-                      <button onClick={() => { setFilterCloseDateFrom(''); setFilterCloseDateTo(''); }} className="ml-1 hover:text-cyan-100 transition-colors">
+                      <button onClick={() => { setFilterCloseDateFrom(''); setFilterCloseDateTo(''); }} className="ml-1 hover:text-cyan-900 transition-colors">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
                   )}
-                  <span className="text-xs text-slate-400 ml-2">
+                  <span className="text-xs text-slate-500 ml-2">
                     {filteredDeals.length} of {deals.length} deals
                   </span>
                 </div>
@@ -1254,12 +1100,8 @@ export default function Pipeline() {
                   className="flex-1 min-h-0 flex gap-5 overflow-x-auto overflow-y-hidden pb-6 -mx-2 px-2"
                 >
                   {dealsByStage.map(({ stageId: colStageId, stageName: colStageName, deals: stageDeals }, index) => (
-                    <motion.div
-                      key={colStageId}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                    >
+                    // The column rises in; the deal cards in it are drag sources, so they keep their own motion.
+                    <StaggerItem key={colStageId} index={index}>
                       <DroppableStageColumn
                         stageId={colStageId}
                         stageName={colStageName}
@@ -1274,7 +1116,7 @@ export default function Pipeline() {
                         onAddTask={(dealId) => setAddTaskDealId(dealId)}
                         readOnly={isReadOnly}
                       />
-                    </motion.div>
+                    </StaggerItem>
                   ))}
                 </motion.div>
               </DndProvider>
@@ -1303,12 +1145,11 @@ export default function Pipeline() {
                         const contact = deal.contactId ? contacts.find((c) => c.id === deal.contactId) : undefined;
                         const daysToClose = getDaysUntilClose(deal.expectedCloseDateUtc);
                         return (
-                          <motion.tr
+                          <StaggerItem
+                            as="tr"
                             key={deal.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.03 }}
-                            className="group hover:bg-gradient-to-r hover:from-slate-50 hover:to-emerald-50/30 transition-all duration-200"
+                            index={index}
+                            className="group transition-colors hover:bg-slate-50"
                           >
                             <td className="py-4 px-6">
                               <button
@@ -1388,7 +1229,7 @@ export default function Pipeline() {
                                 </Button>
                               </div>
                             </td>
-                          </motion.tr>
+                          </StaggerItem>
                         );
                       })}
                     </tbody>

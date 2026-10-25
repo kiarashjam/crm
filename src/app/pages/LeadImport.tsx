@@ -19,7 +19,8 @@ import {
 } from '@/app/components/ui/select';
 import { createLead, getLeadStatuses, getLeadSources } from '@/app/api';
 import type { LeadStatus, LeadSource } from '@/app/api/types';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 
 type CSVRow = Record<string, string>;
 type ColumnMapping = {
@@ -300,55 +301,39 @@ Bob Wilson,bob@example.com,,ads,New,`;
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-        {/* Header */}
-        <div className="mb-8">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/leads')}
-            className="gap-2 text-slate-600 hover:text-slate-900 -ml-2 mb-4"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Leads
-          </Button>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg shadow-orange-200/50">
-              <Upload className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Import Leads</h1>
-              <p className="text-slate-600 mt-1">Upload a CSV file to bulk import leads into your CRM</p>
-            </div>
-          </div>
-        </div>
-        <NextActionsSlot />
-
-        {/* Progress Steps */}
-        <div className="mb-8">
+        <PageHero
+          icon={Upload}
+          tone="orange"
+          title="Import Leads"
+          subtitle="Upload a CSV file to bulk import leads into your CRM"
+          back={{ to: '/leads', label: 'Back to Leads' }}
+        >
+          {/* Progress Steps */}
           <div className="flex items-center justify-between max-w-2xl">
             {['Upload', 'Map Columns', 'Preview', 'Import'].map((label, i) => {
               const stepNames = ['upload', 'mapping', 'preview', 'importing'] as const;
               const currentIndex = stepNames.indexOf(step === 'complete' ? 'importing' : step);
               const isActive = i === currentIndex;
               const isComplete = i < currentIndex || step === 'complete';
-              
+            
               return (
                 <div key={label} className="flex items-center">
                   <div className="flex flex-col items-center">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium text-sm transition-all ${
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm transition-all ${
                       isComplete
                         ? 'bg-emerald-500 text-white'
                         : isActive
                           ? 'bg-orange-500 text-white shadow-lg shadow-orange-200/50'
-                          : 'bg-slate-100 text-slate-400'
+                          : 'bg-white/80 text-slate-400 ring-1 ring-slate-200'
                     }`}>
-                      {isComplete ? <Check className="w-5 h-5" /> : i + 1}
+                      {isComplete ? <Check className="w-4 h-4" /> : i + 1}
                     </div>
-                    <span className={`mt-2 text-xs font-medium ${isActive || isComplete ? 'text-slate-700' : 'text-slate-400'}`}>
+                    <span className={`mt-1.5 text-xs font-medium ${isActive || isComplete ? 'text-slate-700' : 'text-slate-400'}`}>
                       {label}
                     </span>
                   </div>
                   {i < 3 && (
-                    <div className={`w-16 sm:w-24 h-1 mx-2 rounded-full ${
+                    <div className={`w-6 sm:w-16 md:w-24 h-1 mx-1.5 sm:mx-2 rounded-full ${
                       isComplete ? 'bg-emerald-500' : 'bg-slate-200'
                     }`} />
                   )}
@@ -356,7 +341,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
               );
             })}
           </div>
-        </div>
+        </PageHero>
 
         {/* Step 1: Upload */}
         {step === 'upload' && (
@@ -495,7 +480,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
                   };
                   
                   return (
-                    <div key={field} className="flex items-center gap-4">
+                    <StaggerItem key={field} index={ALL_FIELDS.indexOf(field)} className="flex items-center gap-4">
                       <div className="w-44 shrink-0">
                         <Label className="flex items-center gap-2 text-sm font-medium text-slate-700">
                           <div className={`flex items-center justify-center w-6 h-6 rounded-md ${colorClasses[info.color as keyof typeof colorClasses]}`}>
@@ -525,7 +510,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
                       {columnMapping[field as keyof ColumnMapping] && (
                         <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
                       )}
-                    </div>
+                    </StaggerItem>
                   );
                 })}
               </div>
@@ -624,7 +609,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
                     {getMappedData().slice(0, 10).map((row, i) => {
                       const hasError = !row.name || !row.email;
                       return (
-                        <tr key={i} className={hasError ? 'bg-red-50' : 'hover:bg-slate-50'}>
+                        <StaggerItem as="tr" key={i} index={i} className={hasError ? 'bg-red-50' : 'transition-colors hover:bg-slate-50'}>
                           <td className="px-4 py-3 text-sm text-slate-400">{i + 1}</td>
                           <td className="px-4 py-3 text-sm font-medium text-slate-800">
                             {row.name || <span className="text-red-500 italic">Missing</span>}
@@ -643,7 +628,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
                               {row.status}
                             </span>
                           </td>
-                        </tr>
+                        </StaggerItem>
                       );
                     })}
                   </tbody>
@@ -778,11 +763,11 @@ Bob Wilson,bob@example.com,,ads,New,`;
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {importResult.errors.map((err, i) => (
-                        <tr key={i} className="bg-red-50/30">
+                        <StaggerItem as="tr" key={i} index={i} className="bg-red-50/30 transition-colors hover:bg-red-50/60">
                           <td className="px-4 py-2 text-sm text-slate-600">{err.row}</td>
                           <td className="px-4 py-2 text-sm text-slate-800">{err.name}</td>
                           <td className="px-4 py-2 text-sm text-red-600">{err.error}</td>
-                        </tr>
+                        </StaggerItem>
                       ))}
                     </tbody>
                   </table>

@@ -53,7 +53,8 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
-import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
+import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 export default function Contacts() {
   const navigate = useNavigate();
@@ -215,6 +216,8 @@ export default function Contacts() {
     if (filterCompany !== 'all') {
       if (filterCompany === 'none') {
         result = result.filter(c => !c.companyId);
+      } else if (filterCompany === 'some') {
+        result = result.filter(c => !!c.companyId);
       } else {
         result = result.filter(c => c.companyId === filterCompany);
       }
@@ -422,40 +425,47 @@ export default function Contacts() {
     return gradients[index];
   };
 
+  // The page's numbers, in its header. With Company, Active and Need Attention
+  // open the filters with that filter set, as their cards did.
+  const contactHeroStats: PageStat[] = [
+    { label: 'Total Contacts', value: contactStats.total, icon: BarChart3, tone: 'emerald' },
+    {
+      label: 'With Company', value: contactStats.withCompany, icon: Building2, tone: 'violet', pressed: filterCompany === 'some',
+      onClick: () => { setFilterCompany((current) => (current === 'some' ? 'all' : 'some')); setShowFilters(true); },
+      actionLabel: filterCompany === 'some'
+        ? `With a company, ${contactStats.withCompany}. Filter is on. Activate to show every contact.`
+        : `With a company, ${contactStats.withCompany}. Activate to show only contacts with a company.`,
+    },
+    {
+      label: 'Active (30d)', value: contactStats.recentlyActive, icon: ActivityIcon, tone: 'teal',
+      onClick: () => { setFilterActivity('recent'); setShowFilters(true); },
+      actionLabel: `Active in the last 30 days, ${contactStats.recentlyActive}. Activate to show recently active contacts.`,
+    },
+    {
+      label: 'Need Attention', value: contactStats.inactive, icon: Clock, tone: 'amber', hint: 'quiet 90d+',
+      onClick: () => { setFilterActivity('inactive'); setShowFilters(true); },
+      actionLabel: `Need attention, ${contactStats.inactive}. No activity in 90 days. Activate to show inactive contacts.`,
+    },
+    { label: 'This Week', value: contactStats.thisWeek, icon: Calendar, tone: 'blue', hint: 'added' },
+    { label: 'With Phone', value: contactStats.withPhone, icon: Phone, tone: 'cyan' },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
       <PageTransition>
         <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-          {/* Enhanced Header Section with Dark Decorative Elements */}
-          <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-2xl overflow-hidden mb-8">
-          {/* Decorative blur elements */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-20 -right-20 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-pulse" />
-            <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-violet-500/15 rounded-full blur-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-            <div className="absolute inset-0 opacity-5" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M54.627 0l.83.828-1.415 1.415L51.8 0h2.827zM5.373 0l-.83.828L5.96 2.243 8.2 0H5.374zM48.97 0l3.657 3.657-1.414 1.414L46.143 0h2.828zM11.03 0L7.372 3.657 8.787 5.07 13.857 0H11.03zm32.284 0L49.8 6.485 48.384 7.9l-7.9-7.9h2.83zM16.686 0L10.2 6.485 11.616 7.9l7.9-7.9h-2.83zM22.343 0L13.857 8.485 15.272 9.9l9.9-9.9h-2.83zM32 0l-3.486 3.485-1.414-1.414L30.586 0H32zM0 5.373l.828-.83 1.415 1.415L0 8.2V5.374zm0 5.656l.828-.829 5.657 5.657-1.414 1.414L0 11.03v-.001zm0 5.656l.828-.828 8.485 8.485-1.414 1.414L0 16.686v-.001zm0 5.657l.828-.828 11.314 11.314-1.414 1.414L0 22.343v-.001zM60 5.373l-.828-.83-1.415 1.415L60 8.2V5.374zm0 5.656l-.828-.829-5.657 5.657 1.414 1.414L60 11.03v-.001zm0 5.656l-.828-.828-8.485 8.485 1.414 1.414L60 16.686v-.001zm0 5.657l-.828-.828-11.314 11.314 1.414 1.414L60 22.343v-.001z' fill='%23fff' fill-opacity='1' fill-rule='evenodd'/%3E%3C/svg%3E")` }} />
-          </div>
-          
-          <div className="relative px-6 lg:px-8 py-8 lg:py-10">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-              <div className="flex items-center gap-5">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-2xl shadow-orange-500/30">
-                  <Users className="w-8 h-8 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">Contacts</h1>
-                  <p className="text-slate-400 mt-1">
-                    {loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage your business relationships'}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
+          <PageHero
+            icon={Users}
+            tone="emerald"
+            title="Contacts"
+            subtitle={loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage your business relationships'}
+            actions={
+              <>
                 <ExportCsvButton
                   rows={filteredContacts}
                   filename="contacts"
-                  className="h-10 rounded-xl"
+                  className={heroSecondary}
                   columns={[
                     { header: 'Name', value: (c) => c.name },
                     { header: 'Email', value: (c) => c.email },
@@ -466,155 +476,66 @@ export default function Contacts() {
                   ]}
                 />
                 <WriteOnly>
-                  <Button onClick={openCreate} className="gap-2 h-10 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 shadow-lg shadow-orange-500/30 font-semibold text-white">
-                    <Plus className="w-4 h-4" />
+                  <Button onClick={openCreate} className={heroPrimary('emerald')}>
+                    <Plus className="h-4 w-4" />
                     Add Contact
                   </Button>
                 </WriteOnly>
-              </div>
-            </div>
-          </div>
-        </div>
-          <NextActionsSlot />
-
-          {/* Stats Cards */}
-          {!loading && contacts.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-              {/* Total Contacts */}
-              <div className="group relative bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-xl hover:border-slate-300 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-50 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <BarChart3 className="w-5 h-5 text-slate-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-slate-900 tracking-tight">{contactStats.total}</p>
-                  <p className="text-xs font-medium text-slate-500 mt-1">Total Contacts</p>
-                </div>
-              </div>
-
-              {/* With Company */}
-              <div 
-                className="group relative bg-white rounded-2xl border border-purple-100 p-5 shadow-sm hover:shadow-xl hover:shadow-purple-100 hover:border-purple-200 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { setFilterCompany('none'); setShowFilters(true); }}
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-purple-50 to-purple-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Building2 className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-purple-600 tracking-tight">{contactStats.withCompany}</p>
-                  <p className="text-xs font-medium text-purple-600/70 mt-1">With Company</p>
-                </div>
-              </div>
-
-              {/* Recently Active */}
-              <div 
-                className="group relative bg-white rounded-2xl border border-emerald-100 p-5 shadow-sm hover:shadow-xl hover:shadow-emerald-100 hover:border-emerald-200 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { setFilterActivity('recent'); setShowFilters(true); }}
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <ActivityIcon className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-emerald-600 tracking-tight">{contactStats.recentlyActive}</p>
-                  <p className="text-xs font-medium text-emerald-600/70 mt-1">Active (30d)</p>
-                </div>
-              </div>
-
-              {/* Inactive */}
-              <div 
-                className="group relative bg-white rounded-2xl border border-amber-100 p-5 shadow-sm hover:shadow-xl hover:shadow-amber-100 hover:border-amber-200 transition-all duration-300 overflow-hidden cursor-pointer"
-                onClick={() => { setFilterActivity('inactive'); setShowFilters(true); }}
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-amber-50 to-amber-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Clock className="w-5 h-5 text-amber-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-amber-600 tracking-tight">{contactStats.inactive}</p>
-                  <p className="text-xs font-medium text-amber-600/70 mt-1">Need Attention</p>
-                </div>
-              </div>
-
-              {/* New This Week */}
-              <div className="group relative bg-white rounded-2xl border border-blue-100 p-5 shadow-sm hover:shadow-xl hover:shadow-blue-100 hover:border-blue-200 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-50 to-blue-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Calendar className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-blue-600 tracking-tight">{contactStats.thisWeek}</p>
-                  <p className="text-xs font-medium text-blue-600/70 mt-1">This Week</p>
-                </div>
-              </div>
-
-              {/* With Phone */}
-              <div className="group relative bg-white rounded-2xl border border-cyan-100 p-5 shadow-sm hover:shadow-xl hover:shadow-cyan-100 hover:border-cyan-200 transition-all duration-300 overflow-hidden">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-bl-[60px] -mr-2 -mt-2 group-hover:scale-110 transition-transform" />
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-100 to-cyan-200 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <Phone className="w-5 h-5 text-cyan-600" />
-                  </div>
-                  <p className="text-3xl font-bold text-cyan-600 tracking-tight">{contactStats.withPhone}</p>
-                  <p className="text-xs font-medium text-cyan-600/70 mt-1">With Phone</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Quick Insights Banner */}
-          {!loading && contacts.length > 0 && contactStats.inactive > 3 && (
-            <div className="mt-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 p-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-amber-800">Re-engagement Opportunity</p>
-                  <p className="mt-1 text-sm text-amber-700">
-                    {contactStats.inactive} contacts haven't had activity in over 90 days. Consider reaching out to maintain relationships.
+              </>
+            }
+            stats={!loading && contacts.length > 0 ? contactHeroStats : undefined}
+          >
+            {/* Quick insight: contacts that have gone quiet. */}
+            {!loading && contacts.length > 0 && contactStats.inactive > 3 && (
+              <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2">
+                <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 sm:mt-0" aria-hidden />
+                  <p className="min-w-0 text-sm text-amber-700">
+                    <span className="font-semibold text-amber-800">Re-engagement Opportunity</span>
+                    {' · '}
+                    {contactStats.inactive} contacts haven't had activity in over 90 days.
+                    <span className="hidden sm:inline"> Consider reaching out to maintain relationships.</span>
                   </p>
                 </div>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => { setFilterActivity('inactive'); setShowFilters(true); }}
-                  className="shrink-0 border-amber-300 text-amber-700 hover:bg-amber-100"
+                  className="h-8 shrink-0 rounded-lg border-amber-300 bg-white/70 text-amber-700 hover:bg-amber-100"
                 >
                   View Inactive
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+          </PageHero>
 
-        {/* Search, Filter & Sort Bar - Modern Dark Theme */}
-        <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 rounded-2xl p-4 mb-6 shadow-xl overflow-hidden">
+        {/* Search, filter and sort */}
+        <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
           {/* Decorative elements */}
-          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl -mr-10 -mt-10" />
-          <div className="absolute bottom-0 left-0 w-24 h-24 bg-violet-500/10 rounded-full blur-2xl -ml-10 -mb-10" />
+          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-300/25 rounded-full blur-2xl -mr-10 -mt-10" />
+          <div className="absolute bottom-0 left-0 w-24 h-24 bg-teal-300/25 rounded-full blur-2xl -ml-10 -mb-10" />
           
           <div className="relative flex flex-col sm:flex-row gap-3">
             {/* Search Input - Enhanced */}
             <div className="relative flex-1 group">
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 via-cyan-500/20 to-blue-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
+              <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
               <div className="relative">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/20 to-cyan-500/20 flex items-center justify-center group-focus-within:from-blue-500/40 group-focus-within:to-cyan-500/40 transition-all duration-300">
-                  <Search className="w-4 h-4 text-blue-300 group-focus-within:text-blue-200 transition-colors" aria-hidden />
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-100 to-teal-100 flex items-center justify-center group-focus-within:from-emerald-200 group-focus-within:to-teal-200 transition-all duration-300">
+                  <Search className="w-4 h-4 text-emerald-600 group-focus-within:text-emerald-700 transition-colors" aria-hidden />
                 </div>
                 <Input
                   type="search"
                   placeholder="Search by name, email, phone, or job title..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-14 pr-10 h-11 rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white placeholder:text-slate-400 shadow-xl shadow-black/10 focus:border-blue-400/50 focus:ring-2 focus:ring-blue-400/20 focus:bg-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300"
+                  className="pl-14 pr-10 h-11 rounded-xl border border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400 focus:border-orange-300 focus:ring-4 focus:ring-orange-200/50 focus:bg-white hover:bg-white hover:border-slate-300 transition-all duration-300"
                   aria-label="Search contacts"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-white/10 hover:bg-red-500/30 flex items-center justify-center text-slate-400 hover:text-red-300 transition-all duration-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -628,20 +549,20 @@ export default function Contacts() {
               <div className="relative group/btn">
                 <div className={`absolute inset-0 rounded-xl blur-lg transition-all duration-300 ${
                   showFilters || activeFilterCount > 0 
-                    ? 'bg-gradient-to-r from-blue-500/40 to-cyan-500/40 opacity-100' 
-                    : 'bg-white/10 opacity-0 group-hover/btn:opacity-50'
+                    ? 'bg-gradient-to-r from-emerald-500/40 to-teal-500/40 opacity-100' 
+                    : 'bg-emerald-200/50 opacity-0 group-hover/btn:opacity-60'
                 }`} />
                 <Button
                   variant="outline"
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`relative h-11 px-4 rounded-xl border shadow-xl shadow-black/10 transition-all duration-300 ${
+                  className={`relative h-11 px-4 rounded-xl border shadow-sm transition-all duration-300 ${
                     showFilters || activeFilterCount > 0
-                      ? 'bg-gradient-to-r from-blue-500 to-cyan-500 border-blue-400/50 text-white hover:from-blue-400 hover:to-cyan-400 hover:shadow-blue-500/25'
-                      : 'bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 hover:border-white/20'
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 border-emerald-400/50 text-white hover:from-emerald-400 hover:to-teal-400 hover:shadow-emerald-500/25'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700'
                   }`}
                 >
                   <div className={`w-6 h-6 rounded-lg flex items-center justify-center mr-2 transition-all duration-300 ${
-                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-white/10'
+                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-emerald-100 text-emerald-600'
                   }`}>
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </div>
@@ -656,7 +577,7 @@ export default function Contacts() {
 
               {/* Sort Dropdown - Enhanced */}
               <div className="relative group/sort">
-                <div className="absolute inset-0 bg-white/10 rounded-xl blur-lg opacity-0 group-hover/sort:opacity-50 transition-all duration-300" />
+                <div className="absolute inset-0 bg-violet-200/50 rounded-xl blur-lg opacity-0 group-hover/sort:opacity-60 transition-all duration-300" />
                 <Select
                   value={`${sortField}-${sortDirection}`}
                   onValueChange={(v) => {
@@ -665,10 +586,10 @@ export default function Contacts() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[180px] rounded-xl border border-white/10 bg-white/5 backdrop-blur-md text-white shadow-xl shadow-black/10 hover:bg-white/10 hover:border-white/20 focus:border-blue-400/50 focus:ring-2 focus:ring-blue-400/20 transition-all duration-300">
+                  <SelectTrigger className="relative h-11 w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
-                        <ArrowUpDown className="w-3.5 h-3.5 text-slate-300" />
+                      <div className="w-6 h-6 rounded-lg bg-violet-100 flex items-center justify-center">
+                        <ArrowUpDown className="w-3.5 h-3.5 text-violet-600" />
                       </div>
                       <SelectValue placeholder="Sort by..." />
                     </div>
@@ -712,20 +633,26 @@ export default function Contacts() {
 
           {/* Expandable Filter Panel */}
           {showFilters && (
-            <div className="mt-4 bg-white/10 backdrop-blur-sm rounded-xl border border-white/10 p-4 animate-in slide-in-from-top-2 duration-200">
+            <div className="mt-4 rounded-xl border border-emerald-100 bg-gradient-to-b from-emerald-50/70 via-white to-white p-4 shadow-sm animate-in slide-in-from-top-2 duration-200">
               <div className="flex flex-wrap gap-4">
                 {/* Company Filter */}
                 <div className="min-w-[180px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">
                     <Building2 className="w-3.5 h-3.5" />
                     Company
                   </label>
                   <Select value={filterCompany} onValueChange={setFilterCompany}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-emerald-300 transition-colors">
                       <SelectValue placeholder="All companies" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All contacts</SelectItem>
+                      <SelectItem value="some">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-violet-400" />
+                          Has a company
+                        </span>
+                      </SelectItem>
                       <SelectItem value="none">
                         <span className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-slate-300" />
@@ -746,12 +673,12 @@ export default function Contacts() {
 
                 {/* Activity Filter */}
                 <div className="min-w-[160px]">
-                  <label className="flex items-center gap-2 text-xs font-medium text-slate-300 uppercase tracking-wider mb-2">
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">
                     <ActivityIcon className="w-3.5 h-3.5" />
                     Activity
                   </label>
                   <Select value={filterActivity} onValueChange={(v) => setFilterActivity(v as typeof filterActivity)}>
-                    <SelectTrigger className="h-10 rounded-lg bg-white/10 border-white/10 text-white hover:bg-white/15 transition-colors">
+                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-emerald-300 transition-colors">
                       <SelectValue placeholder="All activity" />
                     </SelectTrigger>
                     <SelectContent>
@@ -779,7 +706,7 @@ export default function Contacts() {
                       variant="ghost"
                       size="sm"
                       onClick={clearFilters}
-                      className="h-10 text-slate-300 hover:text-white hover:bg-white/10"
+                      className="h-10 text-slate-500 hover:text-red-600 hover:bg-red-50"
                     >
                       <X className="w-4 h-4 mr-1" />
                       Clear all
@@ -793,35 +720,35 @@ export default function Contacts() {
           {/* Active Filter Pills */}
           {(activeFilterCount > 0 || searchQuery) && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-400">Showing:</span>
+              <span className="text-xs text-slate-500">Showing:</span>
               {searchQuery && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 text-white text-xs font-medium border border-white/10">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                   <Search className="w-3 h-3" />
                   &quot;{searchQuery}&quot;
-                  <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-blue-300 transition-colors">
+                  <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-emerald-600 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
               {filterCompany !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-medium border border-purple-400/30">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-medium border border-purple-200">
                   <Building2 className="w-3 h-3" />
-                  {filterCompany === 'none' ? 'No company' : companyName(filterCompany)}
-                  <button onClick={() => setFilterCompany('all')} className="ml-0.5 hover:text-purple-100 transition-colors">
+                  {filterCompany === 'none' ? 'No company' : filterCompany === 'some' ? 'Has a company' : companyName(filterCompany)}
+                  <button onClick={() => setFilterCompany('all')} className="ml-0.5 hover:text-purple-900 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
               {filterActivity !== 'all' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-medium border border-emerald-400/30">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
                   <ActivityIcon className="w-3 h-3" />
                   {filterActivity === 'recent' ? 'Recently Active' : 'Inactive'}
-                  <button onClick={() => setFilterActivity('all')} className="ml-0.5 hover:text-emerald-100 transition-colors">
+                  <button onClick={() => setFilterActivity('all')} className="ml-0.5 hover:text-emerald-900 transition-colors">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-slate-500">
                 {filteredContacts.length} of {contacts.length} contacts
               </span>
             </div>
@@ -904,7 +831,7 @@ export default function Contacts() {
           <>
           {/* Contact Cards Grid */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredContacts.map((contact) => {
+            {filteredContacts.map((contact, index) => {
               const company = contact.companyId ? companyName(contact.companyId) : null;
               const initials = getInitials(contact.name);
               const gradient = getAvatarGradient(contact.name);
@@ -915,9 +842,10 @@ export default function Contacts() {
               const isInactive = !contact.lastActivityAtUtc || new Date(contact.lastActivityAtUtc) < ninetyDaysAgo;
               
               return (
-                <div
+                <StaggerItem
                   key={contact.id}
-                  className="group relative bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-slate-300 transition-all duration-300 overflow-hidden"
+                  index={index}
+                  className={`group relative bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-slate-300 overflow-hidden ${liftOnHover}`}
                 >
                   {/* Inactive indicator */}
                   {isInactive && (
@@ -1129,7 +1057,7 @@ export default function Contacts() {
                       </Button>
                     </div>
                   </div>
-                </div>
+                </StaggerItem>
               );
             })}
           </div>
