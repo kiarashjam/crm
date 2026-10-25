@@ -64,27 +64,27 @@ export function CreateWorkspaceDialog({ open, onOpenChange, onCreated }: Props) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden border-white/10 bg-[#0d0f18] p-0 text-white sm:max-w-[460px] [&>button]:text-white/50 [&>button]:hover:text-white">
-        <div className="relative overflow-hidden px-6 pt-6 pb-5">
+      <DialogContent className="overflow-hidden border-slate-200 bg-white p-0 text-slate-900 sm:max-w-[460px]">
+        <div className="relative overflow-hidden bg-gradient-to-br from-orange-50 via-white to-pink-50 px-6 pt-6 pb-5">
           <span
             aria-hidden
-            className="pointer-events-none absolute -top-24 -right-16 h-56 w-56 rounded-full bg-orange-500/25 blur-3xl"
+            className="pointer-events-none absolute -top-24 -right-16 h-56 w-56 rounded-full bg-orange-300/40 blur-3xl"
           />
           <div className="relative flex items-center gap-3.5">
             <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-amber-500 shadow-lg shadow-orange-500/25">
               <Sparkles className="h-5 w-5 text-white" aria-hidden />
             </span>
             <div>
-              <DialogTitle className="text-lg font-bold tracking-tight text-white">
+              <DialogTitle className="text-lg font-bold tracking-tight text-slate-900">
                 New workspace
               </DialogTitle>
-              <p className="mt-0.5 text-sm text-white/45">A separate world for a separate business</p>
+              <p className="mt-0.5 text-sm text-slate-500">A separate world for a separate business</p>
             </div>
           </div>
         </div>
 
         <form onSubmit={handleCreate} className="px-6 pb-6">
-          <Label htmlFor="workspace-name" className="text-xs font-semibold tracking-wide text-white/60 uppercase">
+          <Label htmlFor="workspace-name" className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
             Name
           </Label>
           <Input
@@ -93,20 +93,20 @@ export function CreateWorkspaceDialog({ open, onOpenChange, onCreated }: Props) 
             onChange={(e) => setName(e.target.value)}
             placeholder="Pavillon 46, Lac Léman SA…"
             autoComplete="off"
-            className="mt-2 h-11 border-white/10 bg-white/[0.04] text-white placeholder:text-white/25 focus-visible:border-orange-400/60 focus-visible:ring-orange-400/20"
+            className="mt-2 h-11 border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400 focus-visible:border-orange-300 focus-visible:ring-orange-200/50"
             required
           />
 
           <ul className="mt-5 grid grid-cols-2 gap-2.5">
             {PERKS.map(({ icon: Icon, label }) => (
-              <li key={label} className="flex items-center gap-2 text-[13px] text-white/55">
-                <Icon className="h-3.5 w-3.5 shrink-0 text-orange-400/80" aria-hidden />
+              <li key={label} className="flex items-center gap-2 text-[13px] text-slate-600">
+                <Icon className="h-3.5 w-3.5 shrink-0 text-orange-500" aria-hidden />
                 {label}
               </li>
             ))}
           </ul>
 
-          <p className="mt-5 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-3 text-[13px] leading-relaxed text-white/45">
+          <p className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-[13px] leading-relaxed text-slate-500">
             Nothing is shared between workspaces — not leads, not deals, not people.
             You will land in its settings to invite your team.
           </p>
@@ -117,14 +117,14 @@ export function CreateWorkspaceDialog({ open, onOpenChange, onCreated }: Props) 
               variant="ghost"
               onClick={() => onOpenChange(false)}
               disabled={creating}
-              className="h-11 flex-1 border border-white/10 text-white/70 hover:bg-white/5 hover:text-white"
+              className="h-11 flex-1 border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={creating || !name.trim()}
-              className="h-11 flex-[1.6] bg-gradient-to-r from-orange-500 to-amber-500 font-semibold text-white hover:from-orange-400 hover:to-amber-400"
+              className="h-11 flex-[1.6] bg-gradient-to-r from-orange-500 to-pink-500 font-semibold text-white shadow-md shadow-pink-500/20 hover:opacity-95"
             >
               {creating
                 ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> Creating…</>

@@ -1,11 +1,11 @@
 // The workspace launchpad — the threshold you cross to get into a workspace.
 //
-// Deliberately unlike every other page in the app. `/organizations` is the one
-// route inside `ProtectedLayout` but OUTSIDE `RequireOrgLayout`: it is the only
-// screen that runs with no organisation selected, so nothing else in the product
-// is reachable from here and none of the app's chrome would work if it were shown.
-// Making it a dark, keyboard-first launcher rather than another cream dashboard is
-// telling the truth about where you are.
+// `/organizations` is the one route inside `ProtectedLayout` but OUTSIDE
+// `RequireOrgLayout`: it is the only screen that runs with no organisation
+// selected, so nothing else in the product is reachable from here and none of the
+// app's chrome would work if it were shown. It wears the app's light look and the
+// same hero as every other page, under a top bar of its own, with a
+// keyboard-first launcher beneath it.
 //
 // Three things it does that the previous version did not:
 //
@@ -42,6 +42,8 @@ import { NextActions } from '@/app/salesAgent/NextActions';
 import { getCurrentUser } from '@/app/lib/auth';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import DemoBanner from '@/app/components/DemoBanner';
+import PageHero, { heroPrimary, type PageStat } from '@/app/components/PageHero';
+import { StaggerItem } from '@/app/components/motion/Stagger';
 import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
 import {
@@ -49,9 +51,12 @@ import {
   moveHighlight, orderWorkspaces, returnPath, type LaunchState,
 } from './organizations/launcher';
 import { prefetchRoute } from './organizations/prefetchRoute';
-import WorkspaceCard from './organizations/WorkspaceCard';
+import { WorkspaceCard } from './organizations/WorkspaceCard';
 import LaunchSequence from './organizations/LaunchSequence';
 import CreateWorkspaceDialog from './organizations/CreateWorkspaceDialog';
+
+/** The page's colour, for the hero, its main action and the focus rings. */
+const TONE = 'indigo' as const;
 
 /** Human label for a route, for "Taking you to …". */
 function destinationLabel(path: string): string {
@@ -62,73 +67,40 @@ function destinationLabel(path: string): string {
   return first.charAt(0).toUpperCase() + first.slice(1);
 }
 
-/* ------------------------------------------------------------------ backdrop */
-
-function Backdrop({ still }: { still: boolean }) {
-  // Three slow-drifting colour fields plus a hairline grid. Blur is doing the work,
-  // so this is two composited layers rather than anything per-frame expensive.
-  const blobs = [
-    { c: 'rgba(249,115,22,0.30)', s: 'h-[38rem] w-[38rem] -top-40 -left-24', d: 0 },
-    { c: 'rgba(56,189,248,0.20)', s: 'h-[32rem] w-[32rem] top-1/3 -right-32', d: 3 },
-    { c: 'rgba(168,85,247,0.18)', s: 'h-[30rem] w-[30rem] -bottom-40 left-1/4', d: 6 },
-  ];
-  return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
-      {blobs.map((b, i) => (
-        <motion.div
-          key={i}
-          className={cn('absolute rounded-full blur-[120px]', b.s)}
-          style={{ background: b.c }}
-          animate={still ? undefined : { x: [0, 40, -20, 0], y: [0, -30, 20, 0], scale: [1, 1.08, 0.96, 1] }}
-          transition={still ? undefined : { duration: 26, delay: b.d, repeat: Infinity, ease: 'easeInOut' }}
-        />
-      ))}
-      <div
-        className="absolute inset-0 opacity-[0.16]"
-        style={{
-          backgroundImage:
-            'linear-gradient(to right, rgba(255,255,255,0.09) 1px, transparent 1px),'
-            + 'linear-gradient(to bottom, rgba(255,255,255,0.09) 1px, transparent 1px)',
-          backgroundSize: '68px 68px',
-          maskImage: 'radial-gradient(78% 60% at 50% 38%, black, transparent)',
-          WebkitMaskImage: 'radial-gradient(78% 60% at 50% 38%, black, transparent)',
-        }}
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#07080f]" />
-    </div>
-  );
-}
-
 /* -------------------------------------------------------------- signal panel */
 
+const PANEL = {
+  emerald: { chip: 'from-emerald-400 to-teal-500 shadow-emerald-500/30', edge: 'from-emerald-400 via-teal-400 to-cyan-400' },
+  violet: { chip: 'from-violet-500 to-fuchsia-500 shadow-violet-500/30', edge: 'from-violet-500 via-fuchsia-500 to-pink-400' },
+  amber: { chip: 'from-amber-400 to-orange-500 shadow-amber-500/30', edge: 'from-amber-400 via-orange-400 to-rose-400' },
+} as const;
+
 function Panel({
-  tone, icon: Icon, title, children,
+  tone, icon: Icon, title, index, children,
 }: {
-  tone: 'emerald' | 'violet' | 'amber';
+  tone: keyof typeof PANEL;
   icon: typeof Mail;
   title: string;
+  index: number;
   children?: React.ReactNode;
 }) {
-  const ring = {
-    emerald: 'border-emerald-400/20 bg-emerald-400/[0.06]',
-    violet: 'border-violet-400/20 bg-violet-400/[0.06]',
-    amber: 'border-amber-400/20 bg-amber-400/[0.06]',
-  }[tone];
-  const chip = {
-    emerald: 'bg-emerald-400/15 text-emerald-300',
-    violet: 'bg-violet-400/15 text-violet-300',
-    amber: 'bg-amber-400/15 text-amber-300',
-  }[tone];
+  const p = PANEL[tone];
   return (
-    <section className={cn('rounded-2xl border p-4 backdrop-blur-sm sm:p-5', ring)}>
+    <StaggerItem
+      as="section"
+      index={index}
+      className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5"
+    >
+      <span aria-hidden className={cn('absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r', p.edge)} />
       <div className="flex items-center gap-2.5">
-        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-xl', chip)}>
-          <Icon className="h-4 w-4" aria-hidden />
+        <span className={cn('relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md', p.chip)}>
+          <span aria-hidden className="absolute inset-0 rounded-xl bg-gradient-to-b from-white/30 to-transparent" />
+          <Icon className="relative h-4 w-4" aria-hidden />
         </span>
-        <h2 className="text-sm font-semibold text-white">{title}</h2>
+        <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
       </div>
       {children && <div className="mt-3.5 space-y-2">{children}</div>}
-    </section>
+    </StaggerItem>
   );
 }
 
@@ -388,14 +360,18 @@ export default function Organizations() {
 
   if (!hasFetched || loading) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center bg-[#07080f]">
-        <Backdrop still={reduceMotion} />
-        <div className="relative flex flex-col items-center gap-4">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-amber-500 shadow-lg shadow-orange-500/25">
-            <Sparkles className="h-6 w-6 text-white" aria-hidden />
-          </span>
-          <p className="flex items-center gap-2 text-sm text-white/50" role="status">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+      <div className="flex min-h-screen items-center justify-center bg-gradient-subtle">
+        <div className="flex flex-col items-center gap-4">
+          <motion.span
+            className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-pink-500 shadow-lg shadow-orange-500/25"
+            animate={reduceMotion ? undefined : { y: [0, -4, 0] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <span aria-hidden className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent" />
+            <Sparkles className="relative h-6 w-6 text-white" aria-hidden />
+          </motion.span>
+          <p className="flex items-center gap-2 text-sm text-slate-500" role="status">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" aria-hidden />
             Finding your workspaces…
           </p>
         </div>
@@ -403,44 +379,61 @@ export default function Organizations() {
     );
   }
 
+  const none = organizations.length === 0;
   const owned = organizations.filter((o) => o.isOwner).length;
+  const joined = organizations.length - owned;
   const countsFailed = Object.values(memberCounts).some((v) => v === null);
+  const hasSignals = pendingInvites.length > 0 || joinRequests.length > 0 || countsFailed || requestsFailed;
+
+  // The counts the old page gave as a line of text, as the hero's figures.
+  const stats: PageStat[] = [
+    ...(none ? [] : [
+      { label: 'Workspaces', value: organizations.length, icon: Building2, tone: 'indigo' },
+      { label: 'Owned', value: owned, icon: Crown, tone: 'amber', progress: owned / organizations.length },
+      { label: 'Joined', value: joined, icon: Users, tone: 'sky', progress: joined / organizations.length },
+    ] satisfies PageStat[]),
+    ...(pendingInvites.length > 0
+      ? [{ label: 'Invitations waiting', value: pendingInvites.length, icon: Mail, tone: 'emerald' } satisfies PageStat]
+      : []),
+  ];
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#07080f] text-white">
-      <Backdrop still={reduceMotion} />
-
+    <div className="relative min-h-screen bg-gradient-subtle text-slate-900">
       {/* Bespoke top bar rather than AppHeader. The header's navigation all leads
-          to org-scoped pages, which from here would bounce straight back — and its
-          light styling belongs to the other half of the app. */}
-      <header className="relative z-10 flex h-16 items-center justify-between gap-3 px-[var(--page-padding)]" role="banner">
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 shadow-lg shadow-orange-500/25 ring-1 ring-white/20">
-            <Sparkles className="h-4 w-4 text-white" aria-hidden />
-          </span>
-          <span className="text-[15px] font-semibold tracking-tight text-white/90">Cadence</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {user && (
-            <span className="hidden truncate text-xs text-white/35 sm:block">{user.email}</span>
-          )}
-          {cameFromApp ? (
-            <Link
-              to={destination}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/5 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-              Back to {destinationLabel(destination)}
-            </Link>
-          ) : (
-            <Link
-              to="/login"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/5 hover:text-white focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:outline-none"
-            >
-              <LogOut className="h-3.5 w-3.5" aria-hidden />
-              Sign in as someone else
-            </Link>
-          )}
+          to org-scoped pages, which from here would bounce straight back. */}
+      <header
+        className="sticky top-0 z-40 border-b border-slate-200/60 bg-white/80 backdrop-blur-md"
+        role="banner"
+      >
+        <div className="flex h-16 items-center justify-between gap-3 px-[var(--page-padding)]">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 shadow-lg shadow-amber-500/25 ring-1 ring-white/20">
+              <Sparkles className="h-5 w-5 text-white drop-shadow-sm" aria-hidden />
+            </span>
+            <span className="text-lg font-semibold tracking-tight text-slate-800">Cadence</span>
+          </div>
+          <div className="flex min-w-0 items-center gap-2">
+            {user && (
+              <span className="hidden truncate text-xs text-slate-400 sm:block">{user.email}</span>
+            )}
+            {cameFromApp ? (
+              <Link
+                to={destination}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/70 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-white hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+                Back to {destinationLabel(destination)}
+              </Link>
+            ) : (
+              <Link
+                to="/login"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/70 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-white hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
+              >
+                <LogOut className="h-3.5 w-3.5" aria-hidden />
+                Sign in as someone else
+              </Link>
+            )}
+          </div>
         </div>
       </header>
 
@@ -449,230 +442,207 @@ export default function Organizations() {
       <main
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
-        className="relative z-10 w-full px-[var(--page-padding)] pt-8 pb-14 sm:pt-14 sm:pb-28"
+        className="relative w-full px-[var(--page-padding)] pt-[var(--main-block-padding-y)] pb-16 sm:pb-28"
       >
-        {/* Hero */}
-        <motion.div
-          initial={reduceMotion ? false : { opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <p className="text-[11px] font-semibold tracking-[0.32em] text-white/35 uppercase">
-            {organizations.length === 0 ? 'Get started' : 'Choose a workspace'}
-          </p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-balance sm:text-[2.6rem] sm:leading-[1.08]">
-            {organizations.length === 0
-              ? 'Your first workspace'
-              : <>Where are you<span className="text-white/35"> working today?</span></>}
-          </h1>
-          <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/45">
-            {organizations.length === 0
-              ? 'A workspace holds one business — its team, its leads, its pipeline. Nothing crosses between them.'
-              : 'Each workspace keeps its own team, leads, deals and reporting. Pick one to go in.'}
-          </p>
-        </motion.div>
-
-        {/* Search + counts + create */}
-        <motion.div
-          className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center"
-          initial={reduceMotion ? false : { opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.06, ease: [0.16, 1, 0.3, 1] }}
+        {/* No workspace, so no agent: its panel needs one to read from. */}
+        <PageHero
+          noAgentSlot
+          icon={Building2}
+          tone={TONE}
+          title={none ? 'Your first workspace' : 'Where are you working today?'}
+          subtitle={none
+            ? 'A workspace holds one business — its team, its leads, its pipeline. Nothing crosses between them.'
+            : 'Each workspace keeps its own team, leads, deals and reporting. Pick one to go in.'}
+          badges={(
+            <span className="hidden items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 sm:inline-flex">
+              {none ? 'Get started' : 'Choose a workspace'}
+            </span>
+          )}
+          actions={(
+            <Button onClick={() => setCreateOpen(true)} className={heroPrimary(TONE)}>
+              <Plus className="h-4 w-4" aria-hidden />
+              New workspace
+            </Button>
+          )}
+          stats={stats}
         >
           {organizations.length > 1 && (
-            <div className="relative flex-1 sm:max-w-xl">
-              <Search className="pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-white/30" aria-hidden />
-              <input
-                ref={searchRef}
-                value={query}
-                onChange={(e) => { setQuery(e.target.value); setHighlight(0); }}
-                placeholder="Search workspaces…"
-                aria-label="Search workspaces"
-                autoComplete="off"
-                spellCheck={false}
-                className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] pr-11 pl-11 text-[15px] text-white placeholder:text-white/25 transition-colors focus:border-white/25 focus:bg-white/[0.07] focus:outline-none"
-              />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+              <div className="relative flex-1 sm:max-w-xl">
+                <Search className="pointer-events-none absolute top-1/2 left-3.5 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                <input
+                  ref={searchRef}
+                  value={query}
+                  onChange={(e) => { setQuery(e.target.value); setHighlight(0); }}
+                  placeholder="Search workspaces…"
+                  aria-label="Search workspaces"
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white/80 pr-10 pl-10 text-sm text-slate-900 shadow-sm transition-[border-color,box-shadow] placeholder:text-slate-400 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-200/50 focus:outline-none motion-reduce:transition-none"
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => { setQuery(''); setHighlight(0); searchRef.current?.focus(); }}
+                    aria-label="Clear search"
+                    className="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:outline-none"
+                  >
+                    <X className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
+              </div>
               {query && (
-                <button
-                  type="button"
-                  onClick={() => { setQuery(''); setHighlight(0); searchRef.current?.focus(); }}
-                  aria-label="Clear search"
-                  className="absolute top-1/2 right-3 -translate-y-1/2 rounded-lg p-1.5 text-white/35 transition-colors hover:bg-white/10 hover:text-white"
-                >
-                  <X className="h-4 w-4" aria-hidden />
-                </button>
+                <p className="text-xs font-medium text-slate-500">
+                  {visible.length} matching “{query}”
+                </p>
               )}
             </div>
           )}
-          <Button
-            onClick={() => setCreateOpen(true)}
-            className="h-12 shrink-0 rounded-2xl bg-white px-5 font-semibold text-[#07080f] hover:bg-white/90 sm:ml-auto"
-          >
-            <Plus className="mr-1.5 h-4 w-4" aria-hidden />
-            New workspace
-          </Button>
-        </motion.div>
+        </PageHero>
 
-        {/* A single honest line of counts, in place of five decorative tiles that
-            mostly restated the length of the list below them. */}
-        {organizations.length > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-xs text-white/40">
-            <span className="font-medium text-white/60">
-              {organizations.length} workspace{organizations.length === 1 ? '' : 's'}
-            </span>
-            <span aria-hidden>·</span>
-            <span className="inline-flex items-center gap-1"><Crown className="h-3 w-3" aria-hidden />{owned} owned</span>
-            <span aria-hidden>·</span>
-            <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" aria-hidden />{organizations.length - owned} joined</span>
-            {query && (
-              <>
-                <span aria-hidden>·</span>
-                <span className="text-white/60">{visible.length} matching “{query}”</span>
-              </>
+        {/* Signals */}
+        {hasSignals && (
+          <div className="mb-4 space-y-3">
+            {pendingInvites.length > 0 && (
+              <Panel
+                tone="emerald"
+                icon={Mail}
+                index={0}
+                title={`${pendingInvites.length} invitation${pendingInvites.length === 1 ? '' : 's'} waiting for you`}
+              >
+                {pendingInvites.map((invite) => (
+                  <div
+                    key={invite.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{invite.organizationName}</p>
+                      <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-slate-500">
+                        <Clock className="h-3 w-3" aria-hidden />
+                        Expires {new Date(invite.expiresAtUtc).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => void handleAcceptInvite(invite)}
+                      disabled={acceptingId === invite.id}
+                      className="h-9 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 font-semibold text-white shadow-md shadow-emerald-500/20 hover:opacity-95"
+                    >
+                      {acceptingId === invite.id
+                        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        : <><UserPlus className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Accept</>}
+                    </Button>
+                  </div>
+                ))}
+              </Panel>
+            )}
+
+            {joinRequests.length > 0 && (
+              <Panel
+                tone="violet"
+                icon={UserCheck}
+                index={1}
+                title={`${joinRequests.length} person${joinRequests.length === 1 ? '' : 's'} asking to join`}
+              >
+                {joinRequests.map((request) => (
+                  <div
+                    key={request.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{request.userName}</p>
+                      <p className="truncate text-[11px] text-slate-500">{request.userEmail}</p>
+                      <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-violet-600">
+                        <Building2 className="h-3 w-3" aria-hidden />
+                        {request.organizationName}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void resolveRequest(request, false)}
+                        disabled={requestBusyId === request.id}
+                        className="h-9 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      >
+                        {requestBusyId === request.id
+                          ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                          : <><X className="mr-1 h-3.5 w-3.5" aria-hidden /> Decline</>}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => void resolveRequest(request, true)}
+                        disabled={requestBusyId === request.id}
+                        className="h-9 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 font-semibold text-white shadow-md shadow-violet-500/20 hover:opacity-95"
+                      >
+                        <Check className="mr-1 h-3.5 w-3.5" aria-hidden /> Approve
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </Panel>
+            )}
+
+            {(countsFailed || requestsFailed) && (
+              <Panel tone="amber" icon={TriangleAlert} index={2} title="Some details could not be loaded">
+                <p className="text-[13px] leading-relaxed text-slate-600">
+                  {countsFailed && 'Member counts are shown as “—” where the request failed. '}
+                  {requestsFailed && 'The list of pending join requests may be incomplete. '}
+                  Choosing a workspace still works normally.
+                </p>
+              </Panel>
             )}
           </div>
         )}
 
-        {/* Signals */}
-        <div className="mt-8 space-y-3">
-          {pendingInvites.length > 0 && (
-            <Panel
-              tone="emerald"
-              icon={Mail}
-              title={`${pendingInvites.length} invitation${pendingInvites.length === 1 ? '' : 's'} waiting for you`}
-            >
-              {pendingInvites.map((invite) => (
-                <div
-                  key={invite.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-black/20 px-3.5 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white">{invite.organizationName}</p>
-                    <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-white/40">
-                      <Clock className="h-3 w-3" aria-hidden />
-                      Expires {new Date(invite.expiresAtUtc).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => void handleAcceptInvite(invite)}
-                    disabled={acceptingId === invite.id}
-                    className="h-9 rounded-xl bg-emerald-500 font-semibold text-white hover:bg-emerald-400"
-                  >
-                    {acceptingId === invite.id
-                      ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                      : <><UserPlus className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Accept</>}
-                  </Button>
-                </div>
-              ))}
-            </Panel>
-          )}
-
-          {joinRequests.length > 0 && (
-            <Panel
-              tone="violet"
-              icon={UserCheck}
-              title={`${joinRequests.length} person${joinRequests.length === 1 ? '' : 's'} asking to join`}
-            >
-              {joinRequests.map((request) => (
-                <div
-                  key={request.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-black/20 px-3.5 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white">{request.userName}</p>
-                    <p className="truncate text-[11px] text-white/40">{request.userEmail}</p>
-                    <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-violet-300/70">
-                      <Building2 className="h-3 w-3" aria-hidden />
-                      {request.organizationName}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => void resolveRequest(request, false)}
-                      disabled={requestBusyId === request.id}
-                      className="h-9 rounded-xl border border-white/10 text-white/60 hover:bg-white/5 hover:text-white"
-                    >
-                      {requestBusyId === request.id
-                        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        : <><X className="mr-1 h-3.5 w-3.5" aria-hidden /> Decline</>}
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => void resolveRequest(request, true)}
-                      disabled={requestBusyId === request.id}
-                      className="h-9 rounded-xl bg-violet-500 font-semibold text-white hover:bg-violet-400"
-                    >
-                      <Check className="mr-1 h-3.5 w-3.5" aria-hidden /> Approve
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </Panel>
-          )}
-
-          {(countsFailed || requestsFailed) && (
-            <Panel tone="amber" icon={TriangleAlert} title="Some details could not be loaded">
-              <p className="text-[13px] leading-relaxed text-white/50">
-                {countsFailed && 'Member counts are shown as “—” where the request failed. '}
-                {requestsFailed && 'The list of pending join requests may be incomplete. '}
-                Choosing a workspace still works normally.
-              </p>
-            </Panel>
-          )}
-        </div>
-
         {/* The grid */}
-        <section className="mt-8" aria-label="Your workspaces">
-          {organizations.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-white/12 bg-white/[0.02] px-6 py-16 text-center">
-              <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-orange-400 to-amber-500 shadow-xl shadow-orange-500/20">
-                <Building2 className="h-8 w-8 text-white" aria-hidden />
+        <section aria-label="Your workspaces">
+          {none ? (
+            <StaggerItem className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-6 py-14 text-center shadow-sm">
+              <span className="relative mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-orange-400 via-amber-500 to-pink-500 shadow-lg shadow-orange-500/25">
+                <span aria-hidden className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent" />
+                <Building2 className="relative h-7 w-7 text-white" aria-hidden />
               </span>
-              <h2 className="mt-6 text-xl font-bold text-white">Nothing here yet</h2>
-              <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-white/45">
+              <h2 className="mt-5 text-lg font-bold text-slate-900">Nothing here yet</h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-500">
                 Create a workspace to start tracking leads, or accept an invitation
                 to join one that already exists.
               </p>
-              <Button
-                onClick={() => setCreateOpen(true)}
-                className="mt-7 h-12 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 px-7 font-semibold text-white hover:from-orange-400 hover:to-amber-400"
-              >
-                <Plus className="mr-2 h-4 w-4" aria-hidden />
+              <Button onClick={() => setCreateOpen(true)} className={cn(heroPrimary(TONE), 'mt-6 h-11 px-6')}>
+                <Plus className="h-4 w-4" aria-hidden />
                 Create your first workspace
               </Button>
-            </div>
+            </StaggerItem>
           ) : visible.length === 0 ? (
-            <div className="rounded-3xl border border-white/[0.07] bg-white/[0.02] px-6 py-14 text-center">
-              <p className="text-sm text-white/55">
-                No workspace matches <span className="font-semibold text-white">“{query}”</span>.
+            <div className="rounded-2xl border border-slate-200/80 bg-white px-6 py-12 text-center shadow-sm">
+              <p className="text-sm text-slate-500">
+                No workspace matches <span className="font-semibold text-slate-900">“{query}”</span>.
               </p>
               <button
                 type="button"
                 onClick={() => { setQuery(''); setHighlight(0); searchRef.current?.focus(); }}
-                className="mt-3 text-sm font-semibold text-orange-300 underline-offset-4 hover:underline"
+                className="mt-3 rounded text-sm font-semibold text-indigo-600 underline-offset-4 hover:text-indigo-700 hover:underline focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:outline-none"
               >
                 Clear the search
               </button>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3 2xl:grid-cols-4">
               {visible.map((org, i) => (
-                <WorkspaceCard
-                  key={org.id}
-                  org={org}
-                  index={i}
-                  isActive={org.id === currentOrgId}
-                  isHighlighted={i === hi}
-                  memberCount={memberCounts[org.id]}
-                  isLaunching={isLaunching(launch, org.id)}
-                  isDimmed={isBusy(launch) && !isLaunching(launch, org.id)}
-                  reduceMotion={reduceMotion}
-                  onSelect={() => startLaunch(org.id)}
-                  onHover={() => { setHighlight(i); prefetchRoute(destination); }}
-                />
+                <StaggerItem key={org.id} index={i}>
+                  <WorkspaceCard
+                    org={org}
+                    index={i}
+                    isActive={org.id === currentOrgId}
+                    isHighlighted={i === hi}
+                    memberCount={memberCounts[org.id]}
+                    isLaunching={isLaunching(launch, org.id)}
+                    isDimmed={isBusy(launch) && !isLaunching(launch, org.id)}
+                    reduceMotion={reduceMotion}
+                    onSelect={() => startLaunch(org.id)}
+                    onHover={() => { setHighlight(i); prefetchRoute(destination); }}
+                  />
+                </StaggerItem>
               ))}
             </div>
           )}
@@ -682,15 +652,20 @@ export default function Organizations() {
             managers can change a workspace; members and viewers cannot, and the
             old menu offered it to everyone. */}
         {currentOrgId && isOrgAdmin(organizations.find((o) => o.id === currentOrgId)) && (
-          <p className="mt-6 text-xs text-white/35">
+          <p className="mt-5 text-xs text-slate-500">
             Need to rename a workspace or manage its team?{' '}
-            <Link to="/settings" className="font-semibold text-white/70 underline-offset-4 hover:text-white hover:underline">
+            <Link
+              to="/settings"
+              className="rounded font-semibold text-indigo-600 underline-offset-4 hover:text-indigo-700 hover:underline focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:outline-none"
+            >
               Open workspace settings
             </Link>
           </p>
         )}
+        {/* Outside a page's slot the panel brings its own page gutter, so it
+            steps back out of this one to line up with the hero and the grid. */}
         {currentOrgId && (
-          <div className="mt-10 rounded-2xl bg-white p-1 text-slate-900">
+          <div className="-mx-[var(--page-padding)] mt-4">
             <NextActions />
           </div>
         )}
@@ -702,29 +677,29 @@ export default function Organizations() {
         // Desktop only. There is no keyboard to press on a phone, and a fixed
         // strip there is not a hint — it is something permanently covering the
         // bottom of the list.
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 hidden justify-center bg-gradient-to-t from-[#07080f] via-[#07080f]/90 to-transparent pt-10 pb-5 sm:flex">
-          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-2.5 text-[11px] text-white/40 backdrop-blur-sm">
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 hidden justify-center pb-5 sm:flex">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-2.5 text-[11px] text-slate-500 shadow-lg shadow-slate-900/5 backdrop-blur">
             {organizations.length > 1 && (
               <span className="inline-flex items-center gap-1.5">
-                <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono">↑↓</kbd>
+                <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-slate-600">↑↓</kbd>
                 move
               </span>
             )}
             <span className="inline-flex items-center gap-1.5">
-              <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono">
+              <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-slate-600">
                 <CornerDownLeft className="h-2.5 w-2.5" aria-hidden />
               </kbd>
               open
             </span>
             {organizations.length > 1 && query === '' && (
               <span className="inline-flex items-center gap-1.5">
-                <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono">1–9</kbd>
+                <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-slate-600">1–9</kbd>
                 jump
               </span>
             )}
             {organizations.length > 1 && (
               <span className="inline-flex items-center gap-1.5">
-                <Command className="h-3 w-3" aria-hidden />
+                <Command className="h-3 w-3 text-indigo-500" aria-hidden />
                 just start typing to search
               </span>
             )}
