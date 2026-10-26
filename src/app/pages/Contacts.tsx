@@ -54,6 +54,7 @@ import {
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
+import { DuplicateMerge, CONTACT_DUPLICATES } from '@/app/components/duplicates';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 export default function Contacts() {
@@ -508,6 +509,8 @@ export default function Contacts() {
               </div>
             )}
           </PageHero>
+
+        <DuplicateMerge spec={CONTACT_DUPLICATES} onMerged={() => { void fetchContacts(); }} />
 
         {/* Search, filter and sort */}
         <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
