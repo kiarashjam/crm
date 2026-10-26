@@ -94,6 +94,7 @@ public class SettingsService : ISettingsService
         if (request.ShowActivityStatus.HasValue) settings.ShowActivityStatus = request.ShowActivityStatus.Value;
         if (request.AllowAnalytics.HasValue) settings.AllowAnalytics = request.AllowAnalytics.Value;
         if (request.AgentMemoryJson != null) settings.AgentMemoryJson = request.AgentMemoryJson;
+        if (request.ViewPreferencesJson != null) settings.ViewPreferencesJson = request.ViewPreferencesJson;
 
         settings.UpdatedAtUtc = DateTime.UtcNow;
         await _userRepository.UpsertSettingsAsync(settings, ct);
@@ -112,6 +113,8 @@ public class SettingsService : ISettingsService
         {
             UserId = userId,
             AgentMemoryJson = existing?.AgentMemoryJson,
+            // Set on the pages themselves, not in Settings, so resetting Settings leaves them.
+            ViewPreferencesJson = existing?.ViewPreferencesJson,
             BrandName = "My Brand",
             BrandTone = BrandTone.Professional,
             Theme = Theme.Light,
@@ -182,6 +185,7 @@ public class SettingsService : ISettingsService
         ShowActivityStatus = s.ShowActivityStatus,
         AllowAnalytics = s.AllowAnalytics,
         AgentMemoryJson = s.AgentMemoryJson,
+        ViewPreferencesJson = s.ViewPreferencesJson,
 
         // Metadata
         CreatedAtUtc = s.CreatedAtUtc,

@@ -344,6 +344,8 @@ export interface UserSettings {
 
   /** Last agent turns for this signed-in user. */
   agentMemoryJson?: string;
+  /** How this person likes each list page shown (see lib/viewPreferences). */
+  viewPreferencesJson?: string;
 
   // Metadata
   createdAtUtc?: string;
@@ -392,6 +394,7 @@ export interface UpdateUserSettingsRequest {
   showActivityStatus?: boolean;
   allowAnalytics?: boolean;
   agentMemoryJson?: string;
+  viewPreferencesJson?: string;
 }
 
 export interface TimezoneOption {
