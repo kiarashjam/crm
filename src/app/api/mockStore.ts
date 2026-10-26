@@ -34,6 +34,21 @@ export interface MockStore<T> {
   remove: (id: string) => boolean;
   /** Reset to the seed data (used by "Reset demo data" UX); empty against the real API. */
   reset: () => void;
+  /** Point rows whose `field` is `fromId` at `toId` instead. Returns how many changed. */
+  relink: (field: string, fromId: string, toId: string) => number;
+}
+
+/** Every store made so far, so a merge can repoint links in all of them at once. */
+const stores: MockStore<unknown>[] = [];
+
+/**
+ * After two records became one, whatever pointed at the one that is gone — a
+ * task's `leadId`, a charge's `memberId` — points at the one kept. Only stores
+ * whose module has been loaded are reached, so a caller that needs particular
+ * ones imports them first.
+ */
+export function relinkMockRecords(field: string, fromId: string, toId: string): number {
+  return stores.reduce((n, store) => n + store.relink(field, fromId, toId), 0);
 }
 
 function readArray<T>(key: string): T[] | null {
@@ -93,6 +108,12 @@ function migrateLegacy<T>(storageKey: string, scopedKey: string, seedIds: Set<st
 }
 
 export function createMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<T>): MockStore<T> {
+  const store = buildMockStore({ storageKey, seed, idOf });
+  stores.push(store as MockStore<unknown>);
+  return store;
+}
+
+function buildMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<T>): MockStore<T> {
   const seedIds = new Set(seed.map(idOf));
 
   const read = (key: string): T[] => {
@@ -141,6 +162,23 @@ export function createMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<
       const key = scopedStorageKey(storageKey);
       writeArray(key, key === storageKey ? [...seed] : []);
       announceDataChanged();
+    },
+    relink: (field: string, fromId: string, toId: string) => {
+      const key = scopedStorageKey(storageKey);
+      // Read only what is already there: relinking must not seed a store nobody opened.
+      const list = readArray<T>(key);
+      if (!list) return 0;
+      let changed = 0;
+      const next = list.map((row) => {
+        if ((row as Record<string, unknown>)[field] !== fromId) return row;
+        changed++;
+        return { ...row, [field]: toId } as T;
+      });
+      if (changed) {
+        writeArray(key, next);
+        announceDataChanged();
+      }
+      return changed;
     },
   };
 }

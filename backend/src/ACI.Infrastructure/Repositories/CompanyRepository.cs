@@ -171,29 +171,37 @@ public sealed class CompanyRepository : ICompanyRepository
         return true;
     }
 
-    public async Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
-    {
-        if (keepId == dropId) return false;
-        var keep = await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == keepId, ct);
-        var drop = await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == dropId, ct);
-        if (keep == null || drop == null) return false;
+    public Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        RecordMerge.InTransactionAsync(_db, async () =>
+        {
+            if (keepId == dropId) return false;
+            var keep = await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == keepId, ct);
+            var drop = await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == dropId, ct);
+            if (keep == null || drop == null) return false;
 
-        await _db.Contacts.Where(c => c.CompanyId == dropId).ExecuteUpdateAsync(s => s.SetProperty(c => c.CompanyId, keepId), ct);
-        await _db.Deals.Where(d => d.CompanyId == dropId).ExecuteUpdateAsync(s => s.SetProperty(d => d.CompanyId, keepId), ct);
-        await _db.Leads.Where(l => l.CompanyId == dropId).ExecuteUpdateAsync(s => s.SetProperty(l => l.CompanyId, keepId), ct);
-        await _db.Leads.Where(l => l.ConvertedToCompanyId == dropId).ExecuteUpdateAsync(s => s.SetProperty(l => l.ConvertedToCompanyId, keepId), ct);
+            foreach (var contact in await _db.Contacts.Where(c => c.CompanyId == dropId).ToListAsync(ct))
+                contact.CompanyId = keepId;
+            foreach (var deal in await _db.Deals.Where(d => d.CompanyId == dropId).ToListAsync(ct))
+                deal.CompanyId = keepId;
+            foreach (var lead in await _db.Leads.Where(l => l.CompanyId == dropId).ToListAsync(ct))
+                lead.CompanyId = keepId;
+            foreach (var lead in await _db.Leads.Where(l => l.ConvertedToCompanyId == dropId).ToListAsync(ct))
+                lead.ConvertedToCompanyId = keepId;
+            // Deleting the other company would delete its files and custom fields with it.
+            await RecordMerge.MoveDependentsAsync(_db, RecordTypes.Company, keepId, dropId, ct);
 
-        if (string.IsNullOrWhiteSpace(keep.Domain)) keep.Domain = drop.Domain;
-        if (string.IsNullOrWhiteSpace(keep.Industry)) keep.Industry = drop.Industry;
-        if (string.IsNullOrWhiteSpace(keep.Size)) keep.Size = drop.Size;
-        if (string.IsNullOrWhiteSpace(keep.Description)) keep.Description = drop.Description;
-        if (string.IsNullOrWhiteSpace(keep.Website)) keep.Website = drop.Website;
-        if (string.IsNullOrWhiteSpace(keep.Location)) keep.Location = drop.Location;
-        keep.UpdatedAtUtc = DateTime.UtcNow;
-        keep.UpdatedByUserId = userId;
+            keep.Domain = RecordMerge.Fill(keep.Domain, drop.Domain);
+            keep.Industry = RecordMerge.Fill(keep.Industry, drop.Industry);
+            keep.Size = RecordMerge.Fill(keep.Size, drop.Size);
+            keep.Description = RecordMerge.Fill(keep.Description, drop.Description);
+            keep.Website = RecordMerge.Fill(keep.Website, drop.Website);
+            keep.Location = RecordMerge.Fill(keep.Location, drop.Location);
+            keep.UpdatedAtUtc = DateTime.UtcNow;
+            keep.UpdatedByUserId = userId;
+            await _db.SaveChangesAsync(ct);
 
-        _db.Companies.Remove(drop);
-        await _db.SaveChangesAsync(ct);
-        return true;
-    }
+            _db.Companies.Remove(drop);
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
 }

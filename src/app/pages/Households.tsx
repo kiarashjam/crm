@@ -46,6 +46,7 @@ import {
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { DuplicateMerge, HOUSEHOLD_DUPLICATES } from '@/app/components/duplicates';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 function formatCurrency(n: number): string {
@@ -207,6 +208,8 @@ export default function Households() {
               { label: 'House balances', value: totals.balance, icon: DollarSign, tone: 'rose', format: formatCurrency },
             ]}
           />
+
+          <DuplicateMerge spec={HOUSEHOLD_DUPLICATES} onMerged={() => { void load(); }} />
 
           <div className="flex gap-3 mb-6">
             <div className="relative flex-1 max-w-md">

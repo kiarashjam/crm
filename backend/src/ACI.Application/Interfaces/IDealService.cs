@@ -42,4 +42,7 @@ public interface IDealService
     /// Deletes a deal.
     /// </summary>
     Task<Result> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>Keeps one deal and folds a duplicate of it into it.</summary>
+    Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

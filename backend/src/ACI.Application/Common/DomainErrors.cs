@@ -278,6 +278,10 @@ public static class DomainErrors
 
         public static readonly Error PrivacyNotOwner = new(
             "Deal.PrivacyNotOwner", "Only the deal's creator, its owner, or a manager can make it private or shared");
+
+        public static readonly Error MergeWouldHideNotOwner = new(
+            "Deal.MergeWouldHideNotOwner",
+            "The duplicate is private, so merging it would make the kept deal private too. Only the kept deal's creator, its owner, or a manager can do that. Keep the private deal instead, or ask one of them.");
         
         public static readonly Error NameRequired = new(
             "Deal.NameRequired", "Deal name is required");

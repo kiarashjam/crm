@@ -329,6 +329,23 @@ public class DealService : IDealService
         return Result.Success();
     }
 
+    /// <inheritdoc />
+    public async Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        if (keepId == dropId) return DomainErrors.Deal.NotFound;
+        var keep = await _repository.GetByIdAsync(keepId, userId, organizationId, ct);
+        var drop = await _repository.GetByIdAsync(dropId, userId, organizationId, ct);
+        if (keep == null || drop == null) return DomainErrors.Deal.NotFound;
+        // A private duplicate makes the kept deal private, which hides it from the team:
+        // the same decision as making it private by hand, so the same people may make it.
+        if (drop.IsPrivate && !keep.IsPrivate && !await MayChangePrivacyAsync(keep, userId, organizationId, ct))
+            return DomainErrors.Deal.MergeWouldHideNotOwner;
+        var merged = await _repository.MergeIntoAsync(keepId, dropId, userId, organizationId, ct);
+        if (!merged) return DomainErrors.Deal.NotFound;
+        _logger.LogInformation("Merged deal {DropId} into {KeepId}", dropId, keepId);
+        return Result.Success();
+    }
+
     /// <summary>
     /// Making a deal private hides it from the rest of the team, so it is for the deal's
     /// creator, its owner, or a manager to decide, not for anyone who can open it.

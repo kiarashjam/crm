@@ -1,3 +1,4 @@
+import { forwardRef, useCallback, type ForwardedRef } from 'react';
 import { useDrag } from 'react-dnd';
 import {
   GripVertical,
@@ -113,7 +114,11 @@ export interface DealCardProps {
   readOnly?: boolean;
 }
 
-export function DealCard({
+/**
+ * Forwards its ref: the board's column animates cards out with AnimatePresence in
+ * popLayout mode, which measures each leaving card through its ref.
+ */
+export const DealCard = forwardRef(function DealCard({
   deal,
   contactName,
   stageId,
@@ -127,7 +132,7 @@ export function DealCard({
   taskCount,
   onAddTask,
   readOnly = false,
-}: DealCardProps) {
+}: DealCardProps, ref: ForwardedRef<HTMLDivElement>) {
   const lastActivity = formatLastActivity(deal.lastActivityAtUtc);
   const daysToClose = getDaysUntilClose(deal.expectedCloseDateUtc);
 
@@ -139,10 +144,15 @@ export function DealCard({
   }), [deal.id, stageId, readOnly]);
 
   const isActuallyDragging = isDragging ?? drag;
+  const setRefs = useCallback((node: HTMLDivElement | null) => {
+    dragRef(node);
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
+  }, [dragRef, ref]);
 
   return (
     <motion.div
-      ref={dragRef}
+      ref={setRefs}
       layout
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
@@ -310,4 +320,4 @@ export function DealCard({
       </div>
     </motion.div>
   );
-}
+});

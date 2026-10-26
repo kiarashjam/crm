@@ -457,6 +457,16 @@ public class LeadService : ILeadService
     }
 
     /// <inheritdoc />
+    public async Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        if (keepId == dropId) return DomainErrors.Lead.NotFound;
+        var merged = await _repository.MergeIntoAsync(keepId, dropId, userId, organizationId, ct);
+        if (!merged) return DomainErrors.Lead.NotFound;
+        _logger.LogInformation("Merged lead {DropId} into {KeepId}", dropId, keepId);
+        return Result.Success();
+    }
+
+    /// <inheritdoc />
     public async Task<Result<ConvertLeadResult>> ConvertAsync(
         Guid leadId, 
         Guid userId, 
