@@ -25,6 +25,9 @@ public class MemberWriteRequest
     public string? Notes { get; set; }
 }
 
+/// <summary>The member to fold into the one named in the route.</summary>
+public record MergeMembersRequest(Guid OtherMemberId);
+
 public record VisitDto(
     Guid Id, Guid MemberId, string MemberName, string MemberTier, string Venue,
     DateTime VisitedAtUtc, int GuestCount, int PointsAwarded, string? Notes);
@@ -57,6 +60,12 @@ public interface IClubRepository
     Task<ClubMember?> MemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
     Task SaveMemberAsync(ClubMember member, CancellationToken ct = default);
     Task<bool> DeleteMemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
+    /// <summary>
+    /// Folds <paramref name="dropId"/> into <paramref name="keepId"/>: visits, loyalty points
+    /// and every club record that names the member move to the member kept, the house
+    /// accounts add up, empty fields are filled, and the duplicate is deleted.
+    /// </summary>
+    Task<bool> MergeMembersAsync(Guid keepId, Guid dropId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<ClubVisit>> VisitsAsync(Guid? organizationId, CancellationToken ct = default);
     Task AddVisitAsync(ClubVisit visit, CancellationToken ct = default);
     Task<bool> DeleteVisitAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
@@ -71,6 +80,7 @@ public interface IClubService
     Task<Result<MemberDto>> CreateMemberAsync(Guid userId, Guid? organizationId, MemberWriteRequest request, CancellationToken ct = default);
     Task<Result<MemberDto>> UpdateMemberAsync(Guid id, Guid? organizationId, MemberWriteRequest request, CancellationToken ct = default);
     Task<Result> DeleteMemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
+    Task<Result> MergeMembersAsync(Guid keepId, Guid dropId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<VisitDto>> VisitsAsync(Guid? organizationId, CancellationToken ct = default);
     Task<Result<VisitDto>> CheckInAsync(Guid? organizationId, VisitWriteRequest request, CancellationToken ct = default);
     Task<Result> DeleteVisitAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
@@ -147,6 +157,11 @@ public sealed class ClubService : IClubService
 
     public async Task<Result> DeleteMemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
         await _club.DeleteMemberAsync(id, organizationId, ct)
+            ? Result.Success()
+            : new Error("Member.NotFound", "That member was not found.");
+
+    public async Task<Result> MergeMembersAsync(Guid keepId, Guid dropId, Guid? organizationId, CancellationToken ct = default) =>
+        keepId != dropId && await _club.MergeMembersAsync(keepId, dropId, organizationId, ct)
             ? Result.Success()
             : new Error("Member.NotFound", "That member was not found.");
 

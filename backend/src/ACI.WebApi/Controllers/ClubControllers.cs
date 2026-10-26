@@ -49,6 +49,15 @@ public class MembersController : ControllerBase
         if (_currentUser.UserId == null) return Unauthorized();
         return (await _club.DeleteMemberAsync(id, _currentUser.CurrentOrganizationId, ct)).ToNoContentResult();
     }
+
+    /// <summary>Keeps this member and folds the other one into it.</summary>
+    [HttpPost("{id:guid}/merge")]
+    public async Task<ActionResult> Merge(Guid id, [FromBody] MergeMembersRequest request, CancellationToken ct)
+    {
+        if (request == null || request.OtherMemberId == Guid.Empty) return BadRequest();
+        if (_currentUser.UserId == null) return Unauthorized();
+        return (await _club.MergeMembersAsync(id, request.OtherMemberId, _currentUser.CurrentOrganizationId, ct)).ToNoContentResult();
+    }
 }
 
 [ApiController]

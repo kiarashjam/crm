@@ -214,6 +214,47 @@ public class MergeDuplicatesTests
     }
 
     [Fact]
+    public async Task MergingMembers_MovesVisitsPointsAndEveryClubRecord_AndAddsUpTheHouseAccount()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        var w = await OpenAsync(connection);
+        await using var db = w.Db;
+        ClubMember Member(string email, decimal balance, DateTime joined) => new()
+        {
+            Id = Guid.NewGuid(), OrganizationId = w.Org.Id, OwnerUserId = w.User.Id, FirstName = "Amelia", LastName = "Hartwell",
+            Email = email, Tier = "Gold", Status = "Active", JoinedAtUtc = joined, RenewsAtUtc = joined.AddYears(1), HouseAccountBalance = balance,
+        };
+        var keep = Member("amelia@example.ch", 100m, DateTime.UtcNow.AddDays(-10));
+        var drop = Member("amelia@example.ch", 40.5m, DateTime.UtcNow.AddDays(-400));
+        drop.Phone = "+41 21 555 01 42";
+        var household = Guid.NewGuid();
+        ClubDocument Doc(string kind, string payload) => new() { Id = Guid.NewGuid(), OrganizationId = w.Org.Id, Kind = kind, Payload = payload, UpdatedAtUtc = DateTime.UtcNow };
+        db.AddRange(keep, drop);
+        db.Add(new ClubVisit { Id = Guid.NewGuid(), OrganizationId = w.Org.Id, MemberId = drop.Id, MemberName = "A. Hartwell", Venue = "Lounge", VisitedAtUtc = DateTime.UtcNow });
+        db.Add(new LoyaltyLedgerEntry { Id = Guid.NewGuid(), OrganizationId = w.Org.Id, MemberId = drop.Id, MemberName = "A. Hartwell", Points = 50, CreatedAtUtc = DateTime.UtcNow });
+        var charge = Doc("charges", $$"""{"memberId":"{{drop.Id}}","amount":40.5}""");
+        var untouched = Doc("charges", $$"""{"memberId":"{{keep.Id}}","amount":100}""");
+        db.AddRange(charge, untouched);
+        db.Add(Doc("household-members", $$"""{"householdId":"{{household}}","memberId":"{{keep.Id}}"}"""));
+        db.Add(Doc("household-members", $$"""{"householdId":"{{household}}","memberId":"{{drop.Id}}"}"""));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        (await new ClubRepository(db).MergeMembersAsync(keep.Id, drop.Id, w.Org.Id)).Should().BeTrue();
+        db.ChangeTracker.Clear();
+
+        var kept = await db.ClubMembers.SingleAsync();
+        kept.Id.Should().Be(keep.Id);
+        kept.HouseAccountBalance.Should().Be(140.5m);
+        kept.Phone.Should().Be("+41 21 555 01 42");
+        kept.JoinedAtUtc.Should().BeCloseTo(drop.JoinedAtUtc, TimeSpan.FromSeconds(1));
+        (await db.ClubVisits.SingleAsync()).MemberId.Should().Be(keep.Id);
+        (await db.LoyaltyLedger.SingleAsync()).MemberName.Should().Be("Amelia Hartwell");
+        (await db.ClubDocuments.SingleAsync(d => d.Id == charge.Id)).Payload.Should().Contain(keep.Id.ToString()).And.NotContain(drop.Id.ToString());
+        (await db.ClubDocuments.CountAsync(d => d.Kind == "household-members")).Should().Be(1, "one person is in a household once");
+    }
+
+    [Fact]
     public async Task ARecordIsNotMergedWithItself_OrWithOneFromAnotherWorkspace()
     {
         using var connection = new SqliteConnection("DataSource=:memory:");
