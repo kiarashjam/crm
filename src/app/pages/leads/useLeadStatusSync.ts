@@ -73,6 +73,7 @@ export function useLeadStatusSync({
   // sites). Reading the whole meta map per call meant 17 synchronous
   // JSON.parse-es per render on the keystroke path, so snapshot it once and let
   // the callbacks close over it. Refreshed by the subscription above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `prefs` and `refreshToken` are refresh triggers, not inputs
   const metaSnapshot = useMemo(() => loadAllSyncMeta(), [prefs, refreshToken]);
   const lastAutoFor = useCallback(
     (leadId: string) => metaSnapshot[leadId]?.lastAutoStatus,

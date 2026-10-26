@@ -19,7 +19,6 @@ import {
   History,
   X,
   MessageSquare,
-  Users,
   Briefcase,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -29,7 +28,6 @@ import {
 } from '@/app/components/ui/dialog';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
-import { Label } from '@/app/components/ui/label';
 import { Textarea } from '@/app/components/ui/textarea';
 import {
   Select,
@@ -77,7 +75,6 @@ export function TaskDetailModal({
   members,
   leads,
   deals,
-  contacts,
 }: TaskDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);

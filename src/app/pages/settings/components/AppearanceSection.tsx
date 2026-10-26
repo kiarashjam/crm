@@ -154,7 +154,7 @@ function SectionHeader({ icon: Icon, title, description }: { icon: React.Element
   );
 }
 
-export function AppearanceSection({ settings, updateSettings }: AppearanceSectionProps) {
+export function AppearanceSection({ updateSettings }: AppearanceSectionProps) {
   const theme = useTheme();
   const [showSaved, setShowSaved] = useState(false);
 

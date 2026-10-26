@@ -63,7 +63,6 @@ export function ListTaskCard({
   handlePriorityChange,
   statusConfig,
   priorityConfig,
-  contacts,
   members,
   getInitials,
   formatDue,

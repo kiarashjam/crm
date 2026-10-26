@@ -316,7 +316,7 @@ export default function Pipeline() {
           setContacts(contactsData);
           setPipelines(pipelinesData ?? []);
           setAllTasks(tasksData ?? []);
-          if (pipelinesData?.length && !selectedPipelineId) setSelectedPipelineId(pipelinesData?.[0]?.id ?? null);
+          if (pipelinesData?.length) setSelectedPipelineId((prev) => prev ?? pipelinesData[0]?.id ?? null);
         }
       })
       .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })

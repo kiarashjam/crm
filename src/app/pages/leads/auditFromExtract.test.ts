@@ -2,6 +2,8 @@
 // extract into a verdict, using the real derivation. Run with
 //   AUDIT_FILE=/path/to/extract.txt npx vitest run auditFromExtract
 // With no file it self-checks the parser against a synthetic extract.
+// The console output is the report itself, so console is allowed here.
+/* eslint-disable no-console */
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';

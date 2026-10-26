@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
   Mail, X, Copy, BarChart3, Target, Check, Activity,
-  TrendingUp, Clock, UserPlus, Phone, Handshake, Trash2,
+  TrendingUp, Clock, UserPlus, Handshake, Trash2,
   UserCircle, ShieldCheck, Eye
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';

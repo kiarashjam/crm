@@ -180,6 +180,7 @@ export default function Tasks() {
   }, [loadData]);
 
   // Date helpers — recompute whenever tasks change (ensures fresh grouping after data loads)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `tasks` is the refresh trigger, not an input
   const now = useMemo(() => new Date(), [tasks]);
   const today = useMemo(() => {
     const d = new Date(now);
@@ -255,7 +256,7 @@ export default function Tasks() {
     });
 
     return columns;
-  }, [filteredTasks, priorityOrder]);
+  }, [filteredTasks]);
 
   // List view grouped tasks
   const groupedTasks = useMemo(() => {
