@@ -52,6 +52,10 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const ACTIVITY_TYPES = [
   { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-600', borderColor: 'border-emerald-200' },
@@ -479,6 +483,173 @@ export default function Activities() {
       actionLabel: `${label}, ${count}. Activate to show only ${label.toLowerCase()}.`,
     };
   };
+  // How this person likes activities shown: the timeline, a table or cards, saved for them.
+  const view = useViewPreference('activities', { layouts: ['list', 'table', 'grid'] });
+
+  /** The contact, deal and lead an activity is about, each one a link. */
+  const activityLinks = (activity: Activity, className = '') => {
+    const contact = activity.contactId ? contacts.find((c) => c.id === activity.contactId) : null;
+    const deal = activity.dealId ? deals.find((d) => d.id === activity.dealId) : null;
+    const lead = activity.leadId ? leads.find((l) => l.id === activity.leadId) : null;
+    if (!contact && !deal && !lead) return null;
+    return (
+      <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+        {contact && (
+          <span
+            className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 cursor-pointer transition-colors"
+            onClick={(e) => { e.stopPropagation(); navigate(`/contacts/${contact.id}`); }}
+          >
+            <User className="w-3 h-3" />
+            {contact.name}
+          </span>
+        )}
+        {deal && (
+          <span
+            className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 cursor-pointer transition-colors"
+            onClick={(e) => { e.stopPropagation(); navigate(`/deals/${deal.id}`); }}
+          >
+            <Target className="w-3 h-3" />
+            {deal.name}
+          </span>
+        )}
+        {lead && (
+          <span
+            className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 cursor-pointer transition-colors"
+            onClick={(e) => { e.stopPropagation(); navigate(`/leads/${lead.id}`); }}
+          >
+            <UserCheck className="w-3 h-3" />
+            {lead.name}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  /** Edit and delete, the same on the timeline, a card and a table line. */
+  const activityActions = (activity: Activity, onHover = false) => {
+    const { label } = typeInfo(activity.type);
+    const reveal = onHover ? 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity' : '';
+    return (
+      <div className="flex items-center gap-1">
+        <WriteOnly>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleEditActivity(activity)}
+            className={`h-8 w-8 p-0 ${reveal} text-slate-400 hover:text-indigo-600 hover:bg-indigo-50`}
+            aria-label={`Edit activity ${activity.subject || label}`}
+          >
+            <Pencil className="w-4 h-4" />
+          </Button>
+        </WriteOnly>
+        <WriteOnly>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setDeleteConfirmActivity(activity)}
+            className={`h-8 w-8 p-0 ${reveal} text-slate-400 hover:text-red-600 hover:bg-red-50`}
+            aria-label={`Delete activity ${activity.subject || label}`}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </WriteOnly>
+      </div>
+    );
+  };
+
+  /** One activity as a card: on the timeline, and in the cards layout. */
+  const activityCard = (activity: Activity) => {
+    const { icon: Icon, label, bgColor, textColor, borderColor } = typeInfo(activity.type);
+    return (
+      <div className={`bg-white rounded-xl border ${borderColor} shadow-sm overflow-hidden ${liftOnHover}`}>
+        <div className={view.density === 'compact' ? 'p-3' : 'p-4'}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
+              {/* Header */}
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md ${bgColor} ${textColor}`}>
+                  <Icon className="w-3 h-3" />
+                  {label}
+                </span>
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {formatRelativeDate(activity.createdAt)}
+                </span>
+                {activity.updatedAt && (
+                  <span className="text-xs text-slate-400 italic">(edited)</span>
+                )}
+              </div>
+
+              {/* Subject */}
+              {activity.subject && (
+                <h3 className="font-semibold text-slate-900 text-base">
+                  {activity.subject}
+                </h3>
+              )}
+
+              {/* Body */}
+              {activity.body && (
+                <p className="text-sm text-slate-600 mt-1 line-clamp-2">
+                  {activity.body}
+                </p>
+              )}
+
+              {/* HP-6: Participants display */}
+              {activity.participants && (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <Users className="w-3.5 h-3.5 text-violet-500" />
+                  <span className="text-xs text-violet-700 font-medium">
+                    Participants: {activity.participants}
+                  </span>
+                </div>
+              )}
+
+              {activityLinks(activity, 'mt-3')}
+            </div>
+
+            {/* HP-2: Edit & Delete Buttons */}
+            {activityActions(activity, true)}
+          </div>
+        </div>
+
+        {/* Footer with timestamp and creator */}
+        <div className="px-4 py-2 bg-slate-50/50 border-t border-slate-100">
+          <p className="text-xs text-slate-400">
+            {formatDate(activity.createdAt)}
+            {activity.createdByName && <> &middot; by {activity.createdByName}</>}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const activityColumns: RecordColumn<Activity>[] = [
+    {
+      id: 'activity',
+      label: 'Activity',
+      required: true,
+      cell: (a) => {
+        const { icon: Icon, label, bgColor, textColor } = typeInfo(a.type);
+        return (
+          <span className="flex items-center gap-2.5">
+            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${bgColor}`}>
+              <Icon className={`h-3.5 w-3.5 ${textColor}`} aria-hidden />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate">{a.subject || label}</span>
+              {a.subject && <span className="block truncate text-xs font-normal text-slate-400">{label}</span>}
+            </span>
+          </span>
+        );
+      },
+    },
+    { id: 'linked', label: 'About', cell: (a) => activityLinks(a) ?? '—' },
+    { id: 'note', label: 'Note', byDefault: false, className: 'max-w-xs', cell: (a) => (a.body ? <span className="line-clamp-1">{a.body}</span> : '—') },
+    { id: 'participants', label: 'Participants', byDefault: false, cell: (a) => a.participants || '—' },
+    { id: 'by', label: 'By', cell: (a) => a.createdByName || '—' },
+    { id: 'when', label: 'When', cell: (a) => <span className="whitespace-nowrap" title={formatDate(a.createdAt)}>{formatRelativeDate(a.createdAt)}</span> },
+  ];
+
   const activityHeroStats: PageStat[] = [
     { label: 'Total Activities', value: activityStats.total, icon: BarChart3, tone: 'sky' },
     { label: 'Today', value: activityStats.todayCount, icon: CalendarDays, tone: 'indigo' },
@@ -593,7 +764,7 @@ export default function Activities() {
           <div className="absolute top-0 right-0 w-32 h-32 bg-sky-300/25 rounded-full blur-2xl -mr-10 -mt-10" />
           <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-300/25 rounded-full blur-2xl -ml-10 -mb-10" />
           
-          <div className="relative flex flex-col sm:flex-row gap-3">
+          <div className="relative flex flex-col sm:flex-row sm:flex-wrap gap-3">
             {/* Search Input - Enhanced */}
             <div className="relative flex-1 group">
               <div className="absolute inset-0 bg-gradient-to-r from-sky-500/20 via-blue-500/20 to-sky-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
@@ -646,6 +817,8 @@ export default function Activities() {
               </SelectContent>
             </Select>
             </div>
+
+            <ViewSwitcher view={view} columns={columnChoices(activityColumns)} />
           </div>
 
           {/* View Filter Tabs - Enhanced */}
@@ -844,6 +1017,25 @@ export default function Activities() {
             </Button>
           </div>
         ) : (
+          <ViewTransition layout={view.layout}>
+          {view.layout === 'table' ? (
+            <RecordTable
+              label="Activities"
+              items={filteredActivities}
+              view={view}
+              getKey={(a) => a.id}
+              columns={activityColumns}
+              actions={(a) => activityActions(a)}
+            />
+          ) : view.layout === 'grid' ? (
+            <div className={`grid sm:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3')}`}>
+              {filteredActivities.map((activity, i) => (
+                <StaggerItem key={activity.id} index={i} className="group">
+                  {activityCard(activity)}
+                </StaggerItem>
+              ))}
+            </div>
+          ) : (
           /* Timeline View */
           <div className="space-y-6">
             {Object.entries(groupedActivities).map(([dateGroup, groupActivities]) => (
@@ -859,15 +1051,12 @@ export default function Activities() {
                 </div>
 
                 {/* Activities List */}
-                <div className="relative pl-6 space-y-4">
+                <div className={`relative pl-6 ${view.density === 'compact' ? 'space-y-2' : 'space-y-4'}`}>
                   {/* Timeline line */}
                   <div className="absolute left-[11px] top-6 bottom-6 w-0.5 bg-gradient-to-b from-slate-200 via-slate-200 to-transparent" />
 
                   {groupActivities.map((activity, i) => {
-                    const { icon: Icon, label, bgColor, textColor, borderColor } = typeInfo(activity.type);
-                    const contact = activity.contactId ? contacts.find((c) => c.id === activity.contactId) : null;
-                    const deal = activity.dealId ? deals.find((d) => d.id === activity.dealId) : null;
-                    const lead = activity.leadId ? leads.find((l) => l.id === activity.leadId) : null;
+                    const { icon: Icon, bgColor, textColor } = typeInfo(activity.type);
 
                     return (
                       <StaggerItem key={activity.id} index={(groupStarts[dateGroup] ?? 0) + i} className="relative group">
@@ -876,120 +1065,7 @@ export default function Activities() {
                           <Icon className={`w-3 h-3 ${textColor}`} />
                         </div>
 
-                        {/* Activity Card */}
-                        <div className={`bg-white rounded-xl border ${borderColor} shadow-sm overflow-hidden ${liftOnHover}`}>
-                          <div className="p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                {/* Header */}
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md ${bgColor} ${textColor}`}>
-                                    <Icon className="w-3 h-3" />
-                                    {label}
-                                  </span>
-                                  <span className="text-xs text-slate-400 flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
-                                    {formatRelativeDate(activity.createdAt)}
-                                  </span>
-                                  {activity.updatedAt && (
-                                    <span className="text-xs text-slate-400 italic">(edited)</span>
-                                  )}
-                                </div>
-
-                                {/* Subject */}
-                                {activity.subject && (
-                                  <h3 className="font-semibold text-slate-900 text-base">
-                                    {activity.subject}
-                                  </h3>
-                                )}
-
-                                {/* Body */}
-                                {activity.body && (
-                                  <p className="text-sm text-slate-600 mt-1 line-clamp-2">
-                                    {activity.body}
-                                  </p>
-                                )}
-
-                                {/* HP-6: Participants display */}
-                                {activity.participants && (
-                                  <div className="flex items-center gap-1.5 mt-2">
-                                    <Users className="w-3.5 h-3.5 text-violet-500" />
-                                    <span className="text-xs text-violet-700 font-medium">
-                                      Participants: {activity.participants}
-                                    </span>
-                                  </div>
-                                )}
-
-                                {/* Links */}
-                                {(contact || deal || lead) && (
-                                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                                    {contact && (
-                                      <span 
-                                        className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100 cursor-pointer transition-colors"
-                                        onClick={(e) => { e.stopPropagation(); navigate(`/contacts/${contact.id}`); }}
-                                      >
-                                        <User className="w-3 h-3" />
-                                        {contact.name}
-                                      </span>
-                                    )}
-                                    {deal && (
-                                      <span 
-                                        className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 cursor-pointer transition-colors"
-                                        onClick={(e) => { e.stopPropagation(); navigate(`/deals/${deal.id}`); }}
-                                      >
-                                        <Target className="w-3 h-3" />
-                                        {deal.name}
-                                      </span>
-                                    )}
-                                    {lead && (
-                                      <span 
-                                        className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-md bg-purple-50 text-purple-700 border border-purple-100 hover:bg-purple-100 cursor-pointer transition-colors"
-                                        onClick={(e) => { e.stopPropagation(); navigate(`/leads/${lead.id}`); }}
-                                      >
-                                        <UserCheck className="w-3 h-3" />
-                                        {lead.name}
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* HP-2: Edit & Delete Buttons */}
-                              <div className="flex items-center gap-1">
-                                <WriteOnly>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleEditActivity(activity)}
-                                    className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                                    aria-label={`Edit activity ${activity.subject || label}`}
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </Button>
-                                </WriteOnly>
-                                <WriteOnly>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => setDeleteConfirmActivity(activity)}
-                                    className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600 hover:bg-red-50"
-                                    aria-label={`Delete activity ${activity.subject || label}`}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                </WriteOnly>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Footer with timestamp and creator */}
-                          <div className="px-4 py-2 bg-slate-50/50 border-t border-slate-100">
-                            <p className="text-xs text-slate-400">
-                              {formatDate(activity.createdAt)}
-                              {activity.createdByName && <> &middot; by {activity.createdByName}</>}
-                            </p>
-                          </div>
-                        </div>
+                        {activityCard(activity)}
                       </StaggerItem>
                     );
                   })}
@@ -997,6 +1073,8 @@ export default function Activities() {
               </div>
             ))}
           </div>
+          )}
+          </ViewTransition>
         )}
 
         {/* Pagination Controls */}

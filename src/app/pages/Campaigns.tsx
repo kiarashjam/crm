@@ -57,6 +57,10 @@ import { CHANNELS, CATEGORIES, type CommChannel, type CommCategory } from '@/app
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const STATUS_BADGE: Record<Campaign['status'], string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -199,6 +203,59 @@ export default function Campaigns() {
     await load();
   };
 
+  // How this person likes campaigns shown: rows, cards or a table, saved for them.
+  const view = useViewPreference('campaigns', { layouts: ['list', 'grid', 'table'] });
+
+  /** Send now and delete: the same on a row, a card and a table line. */
+  const campaignActions = (c: Campaign) => (
+    <div className="flex items-center gap-1.5 shrink-0">
+      {c.status !== 'Sent' && c.status !== 'Sending' && (
+        <Button size="sm" onClick={() => send(c)} disabled={sendingId === c.id}>
+          {sendingId === c.id ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <>
+              <Send className="w-3.5 h-3.5 mr-1" /> Send now
+            </>
+          )}
+        </Button>
+      )}
+      <button
+        type="button"
+        onClick={() => remove(c)}
+        className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        aria-label={`Delete ${c.name}`}
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+
+  const campaignColumns: RecordColumn<Campaign>[] = [
+    {
+      id: 'name',
+      label: 'Campaign',
+      required: true,
+      cell: (c) => {
+        const ChIcon = CHANNEL_ICON[c.channel];
+        return (
+          <span className="flex items-center gap-2.5">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-fuchsia-100 to-purple-100 text-fuchsia-700" aria-hidden>
+              <ChIcon className="h-3.5 w-3.5" />
+            </span>
+            <span className="truncate">{c.name}</span>
+          </span>
+        );
+      },
+    },
+    { id: 'status', label: 'Status', cell: (c) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{c.status}</span> },
+    { id: 'channel', label: 'Channel', className: 'whitespace-nowrap', cell: (c) => `${c.channel} · ${c.category}` },
+    { id: 'subject', label: 'Subject', cell: (c) => <span className="line-clamp-1">{c.subject || '—'}</span> },
+    { id: 'when', label: 'Scheduled / sent', className: 'whitespace-nowrap', cell: (c) => (c.sentAtUtc ? `Sent ${formatDateTime(c.sentAtUtc)}` : c.scheduledAtUtc ? formatDateTime(c.scheduledAtUtc) : '—') },
+    { id: 'recipients', label: 'Recipients', numeric: true, cell: (c) => c.recipientCount ?? '—' },
+    { id: 'segment', label: 'Segment', byDefault: false, cell: (c) => [c.segment.tiers?.join(', '), c.segment.statuses?.join(', ')].filter(Boolean).join(' · ') || 'Everyone' },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -226,8 +283,8 @@ export default function Campaigns() {
             ]}
           />
 
-          <div className="flex gap-3 mb-6">
-            <div className="relative flex-1 max-w-md">
+          <div className="flex flex-wrap items-center gap-3 mb-6">
+            <div className="relative flex-1 min-w-[12rem] max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
                 value={search}
@@ -236,6 +293,7 @@ export default function Campaigns() {
                 className="pl-9 h-11 rounded-xl"
               />
             </div>
+            <ViewSwitcher view={view} columns={columnChoices(campaignColumns)} className="ml-auto" />
           </div>
 
           {loading ? (
@@ -256,7 +314,55 @@ export default function Campaigns() {
               variant="orange"
             />
           ) : (
-            <div className="space-y-3">
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'table' ? (
+              <RecordTable
+                label="Campaigns"
+                items={filtered}
+                view={view}
+                getKey={(c) => c.id}
+                columns={campaignColumns}
+                actions={campaignActions}
+              />
+            ) : view.layout === 'grid' ? (
+              <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
+                {filtered.map((c, index) => {
+                  const ChIcon = CHANNEL_ICON[c.channel];
+                  return (
+                    <StaggerItem
+                      as="article"
+                      key={c.id}
+                      index={index}
+                      className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:border-fuchsia-200 ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-fuchsia-100 to-purple-100 flex items-center justify-center text-fuchsia-700 shrink-0">
+                          <ChIcon className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-semibold text-slate-900 truncate">{c.name}</h3>
+                          <p className="text-xs text-slate-500">{c.channel} · {c.category}</p>
+                        </div>
+                        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{c.status}</span>
+                      </div>
+                      <p className="mt-3 text-sm font-medium text-slate-700 line-clamp-1">{c.subject}</p>
+                      {view.density !== 'compact' && <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{c.body}</p>}
+                      <div className="mt-auto flex items-center justify-between gap-2 pt-3 text-xs text-slate-500">
+                        <span className="truncate">
+                          {c.sentAtUtc
+                            ? `Sent · ${c.recipientCount ?? 0} recipients`
+                            : c.scheduledAtUtc
+                              ? `Scheduled ${formatDateTime(c.scheduledAtUtc)}`
+                              : 'Not scheduled'}
+                        </span>
+                        {campaignActions(c)}
+                      </div>
+                    </StaggerItem>
+                  );
+                })}
+              </div>
+            ) : (
+            <div className={view.density === 'compact' ? 'space-y-2' : 'space-y-3'}>
               {filtered.map((c, index) => {
                 const ChIcon = CHANNEL_ICON[c.channel];
                 return (
@@ -264,7 +370,7 @@ export default function Campaigns() {
                     as="article"
                     key={c.id}
                     index={index}
-                    className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-fuchsia-200 ${liftOnHover}`}
+                    className={`rounded-2xl border border-slate-200 bg-white ${view.density === 'compact' ? 'p-3' : 'p-5'} shadow-sm hover:border-fuchsia-200 ${liftOnHover}`}
                   >
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-fuchsia-100 to-purple-100 flex items-center justify-center text-fuchsia-700 shrink-0">
@@ -297,32 +403,14 @@ export default function Campaigns() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {c.status !== 'Sent' && c.status !== 'Sending' && (
-                          <Button size="sm" onClick={() => send(c)} disabled={sendingId === c.id}>
-                            {sendingId === c.id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <>
-                                <Send className="w-3.5 h-3.5 mr-1" /> Send now
-                              </>
-                            )}
-                          </Button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => remove(c)}
-                          className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                          aria-label="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      {campaignActions(c)}
                     </div>
                   </StaggerItem>
                 );
               })}
             </div>
+            )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>

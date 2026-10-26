@@ -31,6 +31,10 @@ import { servesDemoData } from '@/app/api/apiClient';
 import { getOrgMembers, isOrgAdmin, type OrgMemberDto } from '@/app/api/organizations';
 import { getSequences, type Sequence } from '@/app/api/sequences';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
+import {
+  RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const ACTION_ICON: Record<ActionType, React.ElementType> = {
   create_task: CheckSquare, send_email: Mail, notify: Bell, assign: UserPlus, add_to_sequence: Workflow,
@@ -81,6 +85,66 @@ export default function Automations() {
     }
   };
 
+  // How this person likes rules shown: stacked, as cards or a table, saved for them.
+  const view = useViewPreference('automations', { layouts: ['list', 'grid', 'table'] });
+  const openRule = canChange ? (r: AutomationRule) => { setEditing(r); setEditorOpen(true); } : undefined;
+  const shortDate = (iso?: string) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  /** The rule's trigger, then each action it runs. */
+  const ruleFlow = (r: AutomationRule) => (
+    <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+      <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700">{TRIGGER_LABELS[r.trigger]}</span>
+      {r.actions.map((a) => {
+        const Icon = ACTION_ICON[a.type];
+        return (
+          <span key={a.id} className="inline-flex items-center gap-1">
+            <ArrowRight className="h-3.5 w-3.5 text-slate-300" />
+            <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+              <Icon className="h-3 w-3" /> {ACTION_LABELS[a.type]}
+            </span>
+          </span>
+        );
+      })}
+    </div>
+  );
+
+  /** On, edit and delete: the same on a card, a row and a table line. */
+  const ruleControls = (r: AutomationRule) => canChange && (
+    <WriteOnly>
+      <div className="flex shrink-0 items-center gap-2">
+        <Switch checked={r.enabled} onCheckedChange={() => toggle(r)} aria-label="Enabled" />
+        <button type="button" onClick={() => { setEditing(r); setEditorOpen(true); }} aria-label={`Edit ${r.name}`} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
+        <button type="button" onClick={() => remove(r)} aria-label={`Delete ${r.name}`} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+      </div>
+    </WriteOnly>
+  );
+
+  const ruleColumns: RecordColumn<AutomationRule>[] = [
+    { id: 'name', label: 'Name', required: true, cell: (r) => r.name },
+    { id: 'trigger', label: 'When', cell: (r) => TRIGGER_LABELS[r.trigger] },
+    {
+      id: 'actions',
+      label: 'Then',
+      cell: (r) => (r.actions.length ? r.actions.map((a) => ACTION_LABELS[a.type]).join(' → ') : '—'),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      cell: (r) => (
+        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium', r.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500')}>
+          <span className={cn('h-1.5 w-1.5 rounded-full', r.enabled ? 'bg-emerald-500' : 'bg-slate-400')} />
+          {r.enabled ? 'On' : 'Off'}
+        </span>
+      ),
+    },
+    { id: 'runs', label: 'Runs', numeric: true, cell: (r) => r.runCount ?? '—' },
+    { id: 'created', label: 'Created', byDefault: false, cell: (r) => shortDate(r.createdAtUtc) },
+  ];
+
   const enabledCount = rules.filter((r) => r.enabled).length;
   const totalRuns = rules.reduce((s, r) => s + (r.runCount ?? 0), 0);
   const triggerCount = new Set(rules.map((r) => r.trigger)).size;
@@ -118,41 +182,55 @@ export default function Automations() {
               <p className="mt-1 text-sm text-slate-500">Create a rule to automate repetitive work.</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-slate-500">
+                {rules.length} {rules.length === 1 ? 'automation' : 'automations'} · {enabledCount} on
+              </p>
+              <ViewSwitcher view={view} columns={columnChoices(ruleColumns)} />
+            </div>
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'table' ? (
+              <RecordTable
+                label="Automations"
+                items={rules}
+                view={view}
+                getKey={(r) => r.id}
+                onOpen={openRule}
+                columns={ruleColumns}
+                actions={ruleControls}
+              />
+            ) : (
+            <div className={view.layout === 'grid'
+              ? `grid sm:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3')}`
+              : view.density === 'compact' ? 'space-y-2' : 'space-y-3'}
+            >
               {rules.map((r, index) => (
-                <StaggerItem key={r.id} index={index} className={cn('rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-amber-200', liftOnHover)}>
+                <StaggerItem key={r.id} index={index} className={cn('rounded-2xl border border-slate-200 bg-white shadow-sm hover:border-amber-200', view.density === 'compact' ? 'p-3' : 'p-4', view.layout === 'grid' && 'flex flex-col gap-3', liftOnHover)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
+                        {view.layout === 'grid' && (
+                          <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm', r.enabled ? 'from-amber-400 to-orange-500' : 'from-slate-300 to-slate-400')}>
+                            <Zap className="h-4 w-4" aria-hidden />
+                          </span>
+                        )}
                         <h3 className="font-semibold text-slate-900">{r.name}</h3>
-                        {typeof r.runCount === 'number' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">{r.runCount} runs</span>}
+                        {typeof r.runCount === 'number' && <span className="shrink-0 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">{r.runCount} runs</span>}
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
-                        <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700">{TRIGGER_LABELS[r.trigger]}</span>
-                        {r.actions.map((a) => {
-                          const Icon = ACTION_ICON[a.type];
-                          return (
-                            <span key={a.id} className="inline-flex items-center gap-1">
-                              <ArrowRight className="h-3.5 w-3.5 text-slate-300" />
-                              <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
-                                <Icon className="h-3 w-3" /> {ACTION_LABELS[a.type]}
-                              </span>
-                            </span>
-                          );
-                        })}
-                      </div>
+                      <div className="mt-2">{ruleFlow(r)}</div>
                     </div>
-                    {canChange && <WriteOnly>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Switch checked={r.enabled} onCheckedChange={() => toggle(r)} aria-label="Enabled" />
-                        <button type="button" onClick={() => { setEditing(r); setEditorOpen(true); }} aria-label={`Edit ${r.name}`} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
-                        <button type="button" onClick={() => remove(r)} aria-label={`Delete ${r.name}`} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </WriteOnly>}
+                    {view.layout !== 'grid' && ruleControls(r)}
                   </div>
+                  {view.layout === 'grid' && canChange && (
+                    <div className="mt-auto flex justify-end border-t border-slate-100 pt-3">{ruleControls(r)}</div>
+                  )}
                 </StaggerItem>
               ))}
             </div>
+            )}
+            </ViewTransition>
+            </>
           )}
         </main>
       </PageTransition>

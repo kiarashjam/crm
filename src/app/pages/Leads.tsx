@@ -13,6 +13,11 @@ import { createLeadOrOfferDuplicate } from './leads/createLeadOrOfferDuplicate';
 import AppHeader from '@/app/components/AppHeader';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
 import { DuplicateMerge, LEAD_DUPLICATES } from '@/app/components/duplicates';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { PageEnter } from '@/app/components/motion/PageEnter';
 import { LeadsListSkeleton } from './leads/components/LeadsListSkeleton';
 import DataPagination from '@/app/components/DataPagination';
@@ -85,7 +90,7 @@ import {
 } from './salesTracker/computed';
 import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignmentMigrationDialog';
 import { LeadReferralMigrationDialog } from './leads/components/LeadReferralMigrationDialog';
-import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM } from './leads/config';
+import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, STATUS_BADGE_COLORS } from './leads/config';
 import { QUALIFIED_OR_BEYOND, statusIn } from './leads/leadStatusSync';
 import { findStatusFixes } from './leads/bulkStatusReconcile';
 import StatusReconcileDialog from './leads/components/StatusReconcileDialog';
@@ -1368,6 +1373,57 @@ export default function Leads() {
     : `${stats.converted.toLocaleString()} became ${stats.converted === 1 ? 'a deal' : 'deals'}`;
   // The page's numbers, in its header. Active, Converted and Qualified switch
   // their filter on and off, and say which is on.
+  // How this person likes leads shown: the gallery, a list or a table, saved for them.
+  const view = useViewPreference('leads', { layouts: ['grid', 'list', 'table'] });
+  const leadDate = (iso?: string) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  const statusPill = (status: string) => {
+    const c = STATUS_BADGE_COLORS[status] ?? { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200', dot: 'bg-slate-400' };
+    return (
+      <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium ${c.bg} ${c.text} ${c.border}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} aria-hidden />
+        {status}
+      </span>
+    );
+  };
+  /** A lead's tick for bulk changes, in the list and table as on its card. */
+  const leadPick = (lead: Lead) => (isReadOnly ? null : (
+    <span onClick={(e) => e.stopPropagation()} className="flex items-center">
+      <Checkbox
+        checked={selectedIds.has(lead.id)}
+        onCheckedChange={() => toggleSelected(lead.id)}
+        aria-label={`Select ${lead.name}`}
+      />
+    </span>
+  ));
+  const leadColumns: RecordColumn<Lead>[] = [
+    {
+      id: 'name',
+      label: 'Lead',
+      required: true,
+      cell: (l) => (
+        <span className="flex items-center gap-2.5">
+          {leadPick(l)}
+          <InitialsAvatar name={l.name} size="sm" />
+          <span className="truncate">{l.name}</span>
+        </span>
+      ),
+    },
+    { id: 'status', label: 'Status', cell: (l) => statusPill(l.status) },
+    { id: 'company', label: 'Company', cell: (l) => companyName(l) },
+    { id: 'email', label: 'Email', cell: (l) => l.email || '—' },
+    { id: 'phone', label: 'Phone', byDefault: false, cell: (l) => l.phone || '—' },
+    { id: 'owner', label: 'Owner', cell: (l) => (l.assignedToId ? orgMembersById.get(l.assignedToId)?.name ?? l.assignedToName ?? '—' : 'Unassigned') },
+    { id: 'source', label: 'Source', byDefault: false, cell: (l) => l.source || '—' },
+    { id: 'score', label: 'Score', numeric: true, byDefault: false, cell: (l) => (l.leadScore == null ? '—' : l.leadScore) },
+    { id: 'country', label: 'Country', byDefault: false, cell: (l) => l.country || '—' },
+    { id: 'lastContacted', label: 'Last contacted', cell: (l) => leadDate(l.lastContactedAt) },
+    { id: 'created', label: 'Added', byDefault: false, cell: (l) => leadDate(l.createdAtUtc) },
+  ];
+
   const leadHeroStats: PageStat[] = [
     { label: 'Total leads', value: stats.total, icon: Users, tone: 'orange', hint: `${stats.active.toLocaleString()} active`, progress: shareOf(stats.active) },
     {
@@ -1554,7 +1610,7 @@ export default function Leads() {
             </div>
 
             {/* Filter & Sort Controls */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* Filter Button - Enhanced */}
               <div className="relative group/btn">
                 <div className={`absolute inset-0 rounded-xl blur-lg transition-all duration-300 ${
@@ -1658,6 +1714,8 @@ export default function Leads() {
                 </SelectContent>
               </Select>
               </div>
+
+              <ViewSwitcher view={view} columns={columnChoices(leadColumns)} />
             </div>
           </div>
 
@@ -1967,7 +2025,37 @@ export default function Leads() {
               onBulkApply={runBulkApply}
             />
           )}
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <ViewTransition layout={view.layout}>
+          {view.layout === 'list' ? (
+            <RecordList
+              label="Leads"
+              items={filteredLeads}
+              view={view}
+              getKey={(l) => l.id}
+              onOpen={openDetail}
+              selected={(l) => selectedIds.has(l.id)}
+              leading={(l) => (
+                <span className="flex items-center gap-3">
+                  {leadPick(l)}
+                  <InitialsAvatar name={l.name} />
+                </span>
+              )}
+              title={(l) => l.name}
+              subtitle={(l) => [cardCompany(l), l.email].filter(Boolean).join(' · ')}
+              columns={leadColumns.filter((c) => c.id !== 'email')}
+            />
+          ) : view.layout === 'table' ? (
+            <RecordTable
+              label="Leads"
+              items={filteredLeads}
+              view={view}
+              getKey={(l) => l.id}
+              onOpen={openDetail}
+              selected={(l) => selectedIds.has(l.id)}
+              columns={leadColumns}
+            />
+          ) : (
+          <div className={`grid md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
             {filteredLeads.map((lead, leadIndex) => (
               <LeadGalleryCard
                 key={lead.id}
@@ -1996,6 +2084,8 @@ export default function Leads() {
               />
             ))}
           </div>
+          )}
+          </ViewTransition>
           <DataPagination
             currentPage={currentPage}
             totalPages={totalPages}

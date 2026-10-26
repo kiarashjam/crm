@@ -49,6 +49,10 @@ import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -173,6 +177,126 @@ export default function Tabs() {
     await load();
   };
 
+  // How this person likes open tabs shown: cards, a list or a table, saved for them.
+  const view = useViewPreference('tabs', { layouts: ['grid', 'list', 'table'] });
+
+  /** A tab's items, each removable. */
+  const tabItems = (t: OpenTab) =>
+    t.items.length === 0 ? (
+      <p className="text-sm text-slate-400 py-3">No items yet.</p>
+    ) : (
+      <ul className="space-y-1.5">
+        {t.items.map((i) => (
+          <li key={i.id} className="flex items-center justify-between gap-2 text-sm">
+            <div className="min-w-0 flex-1">
+              <span className="text-slate-700">
+                {i.quantity > 1 && (
+                  <span className="text-slate-400">{i.quantity}× </span>
+                )}
+                {i.name}
+              </span>
+            </div>
+            <span className="font-medium text-slate-900">
+              {formatCurrency(i.quantity * i.unitPrice)}
+            </span>
+            <button
+              type="button"
+              onClick={() => removeItem(t.id, i.id)}
+              className="rounded p-0.5 text-slate-400 hover:text-rose-600"
+              aria-label={`Remove ${i.name}`}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+
+  /** The form that adds an item to the tab being edited. */
+  const itemEditor = () => (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <Input
+          placeholder="Item name"
+          value={itemForm.name}
+          onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
+        />
+        <div className="flex gap-2">
+          <Input
+            placeholder="Qty"
+            type="number"
+            min="1"
+            value={itemForm.quantity}
+            onChange={(e) => setItemForm({ ...itemForm, quantity: e.target.value })}
+            className="w-16"
+          />
+          <Input
+            placeholder="Price"
+            type="number"
+            min="0"
+            step="0.01"
+            value={itemForm.unitPrice}
+            onChange={(e) => setItemForm({ ...itemForm, unitPrice: e.target.value })}
+          />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={submitItem} disabled={busy} className="flex-1">
+          Add
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setAddingTo(null)}>
+          Done
+        </Button>
+      </div>
+    </div>
+  );
+
+  /** Add an item, close and post, or void: the same on a card, a row and a table line. */
+  const tabActions = (t: OpenTab, wrap = true) => (
+    <div className={wrap ? 'flex flex-wrap gap-2' : 'flex items-center gap-2'}>
+      <Button size="sm" variant={addingTo === t.id ? 'secondary' : 'outline'} onClick={() => setAddingTo(t.id)}>
+        <Plus className="w-3.5 h-3.5 mr-1" /> Item
+      </Button>
+      <Button
+        size="sm"
+        onClick={() => close(t)}
+        className="bg-emerald-600 hover:bg-emerald-700"
+      >
+        Close + post
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => doVoid(t)}
+        className="text-rose-600 hover:bg-rose-50"
+      >
+        Void
+      </Button>
+    </div>
+  );
+
+  const tabColumns: RecordColumn<OpenTab>[] = [
+    {
+      id: 'member',
+      label: 'Member',
+      required: true,
+      cell: (t) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={t.memberName} size="sm" />
+          <span className="truncate">{t.memberName}</span>
+        </span>
+      ),
+    },
+    { id: 'venue', label: 'Venue', cell: (t) => VENUE_LABELS[t.venue] },
+    { id: 'opened', label: 'Open for', cell: (t) => timeAgo(t.openedAtUtc) },
+    { id: 'items', label: 'Items', numeric: true, cell: (t) => t.items.reduce((n, i) => n + i.quantity, 0) },
+    { id: 'total', label: 'Total', numeric: true, cell: (t) => <span className="font-semibold text-slate-900">{formatCurrency(t.total)}</span> },
+    { id: 'tier', label: 'Tier', byDefault: false, cell: (t) => t.memberTier },
+    { id: 'server', label: 'Server', byDefault: false, cell: (t) => t.serverName || '—' },
+  ];
+
+  const editing = view.layout !== 'grid' ? openTabs.find((t) => t.id === addingTo) : undefined;
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -220,7 +344,58 @@ export default function Tabs() {
               variant="orange"
             />
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+            <>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">
+                <span className="font-semibold text-slate-900">{openTabs.length}</span> open {openTabs.length === 1 ? 'tab' : 'tabs'}
+              </p>
+              <ViewSwitcher view={view} columns={columnChoices(tabColumns)} />
+            </div>
+            {/* In a list or a table, the tab being added to opens here, with its items. */}
+            {editing && (
+              <div className="mb-4 rounded-2xl border border-amber-200 bg-white shadow-sm overflow-hidden animate-in fade-in-0 slide-in-from-top-2 duration-200">
+                <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 px-5 py-3 flex items-center justify-between border-b border-slate-100">
+                  <div>
+                    <p className="font-semibold text-slate-900">{editing.memberName}'s tab</p>
+                    <p className="text-xs text-slate-500">{VENUE_LABELS[editing.venue]} · {formatCurrency(editing.total)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAddingTo(null)}
+                    className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                    aria-label="Close"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="px-5 py-3">{tabItems(editing)}</div>
+                <div className="px-5 py-3 bg-slate-50 border-t border-slate-100">{itemEditor()}</div>
+              </div>
+            )}
+            <ViewTransition layout={view.layout} className="mb-8">
+            {view.layout === 'list' ? (
+              <RecordList
+                label="Open tabs"
+                items={openTabs}
+                view={view}
+                getKey={(t) => t.id}
+                leading={(t) => <InitialsAvatar name={t.memberName} />}
+                title={(t) => t.memberName}
+                subtitle={(t) => `${VENUE_LABELS[t.venue]}${t.serverName ? ` · ${t.serverName}` : ''} · open ${timeAgo(t.openedAtUtc)}`}
+                columns={tabColumns.filter((c) => c.id !== 'venue' && c.id !== 'opened')}
+                actions={(t) => tabActions(t, false)}
+              />
+            ) : view.layout === 'table' ? (
+              <RecordTable
+                label="Open tabs"
+                items={openTabs}
+                view={view}
+                getKey={(t) => t.id}
+                columns={tabColumns}
+                actions={(t) => tabActions(t, false)}
+              />
+            ) : (
+            <div className={`grid grid-cols-1 lg:grid-cols-2 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-3')}`}>
               {openTabs.map((t, index) => (
                 <StaggerItem
                   as="article"
@@ -228,7 +403,7 @@ export default function Tabs() {
                   index={index}
                   className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:border-amber-200 ${liftOnHover}`}
                 >
-                  <div className="bg-gradient-to-r from-amber-500/10 to-orange-500/10 px-5 py-3 flex items-center justify-between border-b border-slate-100">
+                  <div className={`bg-gradient-to-r from-amber-500/10 to-orange-500/10 ${view.density === 'compact' ? 'px-4 py-2' : 'px-5 py-3'} flex items-center justify-between border-b border-slate-100`}>
                     <div>
                       <p className="font-semibold text-slate-900">{t.memberName}</p>
                       <p className="text-xs text-slate-500">
@@ -240,106 +415,28 @@ export default function Tabs() {
                       {t.memberTier}
                     </span>
                   </div>
-                  <div className="px-5 py-3">
-                    {t.items.length === 0 ? (
-                      <p className="text-sm text-slate-400 py-3">No items yet.</p>
-                    ) : (
-                      <ul className="space-y-1.5">
-                        {t.items.map((i) => (
-                          <li key={i.id} className="flex items-center justify-between gap-2 text-sm">
-                            <div className="min-w-0 flex-1">
-                              <span className="text-slate-700">
-                                {i.quantity > 1 && (
-                                  <span className="text-slate-400">{i.quantity}× </span>
-                                )}
-                                {i.name}
-                              </span>
-                            </div>
-                            <span className="font-medium text-slate-900">
-                              {formatCurrency(i.quantity * i.unitPrice)}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeItem(t.id, i.id)}
-                              className="rounded p-0.5 text-slate-400 hover:text-rose-600"
-                              aria-label="Remove item"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                  <div className={view.density === 'compact' ? 'px-4 py-2' : 'px-5 py-3'}>
+                    {tabItems(t)}
                   </div>
-                  <div className="px-5 py-3 bg-slate-50 border-t border-slate-100">
+                  <div className={`${view.density === 'compact' ? 'px-4 py-2' : 'px-5 py-3'} bg-slate-50 border-t border-slate-100`}>
                     {addingTo === t.id ? (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            placeholder="Item name"
-                            value={itemForm.name}
-                            onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })}
-                          />
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="Qty"
-                              type="number"
-                              min="1"
-                              value={itemForm.quantity}
-                              onChange={(e) => setItemForm({ ...itemForm, quantity: e.target.value })}
-                              className="w-16"
-                            />
-                            <Input
-                              placeholder="Price"
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={itemForm.unitPrice}
-                              onChange={(e) => setItemForm({ ...itemForm, unitPrice: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" onClick={submitItem} disabled={busy} className="flex-1">
-                            Add
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => setAddingTo(null)}>
-                            Done
-                          </Button>
-                        </div>
-                      </div>
+                      itemEditor()
                     ) : (
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="text-xs text-slate-500 uppercase tracking-wide">Running total</p>
                           <p className="text-xl font-bold text-slate-900">{formatCurrency(t.total)}</p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setAddingTo(t.id)}>
-                            <Plus className="w-3.5 h-3.5 mr-1" /> Item
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => close(t)}
-                            className="bg-emerald-600 hover:bg-emerald-700"
-                          >
-                            Close + post
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => doVoid(t)}
-                            className="text-rose-600 hover:bg-rose-50"
-                          >
-                            Void
-                          </Button>
-                        </div>
+                        {tabActions(t)}
                       </div>
                     )}
                   </div>
                 </StaggerItem>
               ))}
             </div>
+            )}
+            </ViewTransition>
+            </>
           )}
 
           {recentClosed.length > 0 && (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Crown,
   Plus,
@@ -58,6 +58,10 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { DuplicateMerge, MEMBER_DUPLICATES } from '@/app/components/duplicates';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -148,6 +152,54 @@ export default function Members() {
   }, []);
 
   const stats = useMemo(() => computeMemberStats(members), [members]);
+
+  // How this person likes members shown: rows, cards or a table, saved for them.
+  const navigate = useNavigate();
+  const view = useViewPreference('members', { layouts: ['list', 'grid', 'table'] });
+  const fullName = (m: Member) => `${m.firstName} ${m.lastName}`.trim();
+  const memberColumns: RecordColumn<Member>[] = [
+    {
+      id: 'name',
+      label: 'Member',
+      required: true,
+      cell: (m) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={fullName(m)} size="sm" />
+          <span className="truncate">{fullName(m)}</span>
+        </span>
+      ),
+    },
+    { id: 'tier', label: 'Tier', cell: (m) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TIER_BADGE[m.tier]}`}>{m.tier}</span> },
+    { id: 'status', label: 'Status', cell: (m) => <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[m.status]}`}>{m.status}</span> },
+    { id: 'email', label: 'Email', cell: (m) => m.email || '—' },
+    { id: 'phone', label: 'Phone', byDefault: false, cell: (m) => m.phone || '—' },
+    { id: 'dues', label: 'Dues', numeric: true, cell: (m) => `${formatCurrency(m.duesAmount)} /${m.duesFrequency.toLowerCase()}` },
+    { id: 'house', label: 'House account', numeric: true, cell: (m) => <span className={m.houseAccountBalance < 0 ? 'text-rose-600' : ''}>{formatCurrency(m.houseAccountBalance)}</span> },
+    { id: 'renews', label: 'Renews', cell: (m) => formatDate(m.renewsAtUtc) },
+    { id: 'joined', label: 'Member since', byDefault: false, cell: (m) => formatDate(m.joinedAtUtc) },
+  ];
+  /** Open, edit and remove: the same in every layout. */
+  const memberActions = (m: Member) => (
+    <>
+      <button
+        type="button"
+        onClick={() => openEdit(m)}
+        className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        aria-label="Edit member"
+      >
+        <Pencil className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => remove(m)}
+        disabled={deletingId === m.id}
+        className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+        aria-label="Remove member"
+      >
+        {deletingId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      </button>
+    </>
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -271,7 +323,7 @@ export default function Members() {
           <DuplicateMerge spec={MEMBER_DUPLICATES} onMerged={() => { void load(); }} />
 
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -313,6 +365,7 @@ export default function Members() {
                 ))}
               </SelectContent>
             </Select>
+            <ViewSwitcher view={view} columns={columnChoices(memberColumns)} className="md:ml-auto" />
           </div>
 
           {/* List */}
@@ -334,7 +387,57 @@ export default function Members() {
               variant="orange"
             />
           ) : (
-            <div className="space-y-3">
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'table' ? (
+              <RecordTable
+                label="Members"
+                items={filtered}
+                view={view}
+                getKey={(m) => m.id}
+                href={(m) => `/members/${m.id}`}
+                columns={memberColumns}
+                actions={memberActions}
+              />
+            ) : view.layout === 'grid' ? (
+              <div className={`grid sm:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
+                {filtered.map((m, index) => (
+                  <StaggerItem
+                    key={m.id}
+                    index={index}
+                    className={`group flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm hover:border-indigo-200 ${view.density === 'compact' ? 'p-4' : 'p-5'} ${liftOnHover}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <InitialsAvatar name={fullName(m)} />
+                      <div className="min-w-0 flex-1">
+                        <button type="button" onClick={() => navigate(`/members/${m.id}`)} className="block max-w-full truncate text-left font-semibold text-slate-900 hover:text-indigo-700">
+                          {fullName(m)}
+                        </button>
+                        <p className="truncate text-sm text-slate-500">{m.email}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TIER_BADGE[m.tier]}`}>{m.tier}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[m.status]}`}>{m.status}</span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-sm">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wide text-slate-400">Dues</p>
+                        <p className="font-semibold text-slate-900">{formatCurrency(m.duesAmount)}<span className="text-xs font-normal text-slate-500"> /{m.duesFrequency.toLowerCase()}</span></p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wide text-slate-400">House</p>
+                        <p className={`font-semibold ${m.houseAccountBalance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatCurrency(m.houseAccountBalance)}</p>
+                      </div>
+                    </div>
+                    <div className="mt-auto flex items-center justify-between pt-3">
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-500"><CalendarClock className="h-3.5 w-3.5" /> Renews {formatDate(m.renewsAtUtc)}</span>
+                      <div className="flex items-center">{memberActions(m)}</div>
+                    </div>
+                  </StaggerItem>
+                ))}
+              </div>
+            ) : (
+            <div className={view.density === 'compact' ? 'space-y-2' : 'space-y-3'}>
               {filtered.map((m, index) => {
                 const renewsAt = Date.parse(m.renewsAtUtc);
                 const renewSoon = renewsAt - Date.now() < 30 * day && renewsAt > Date.now();
@@ -343,7 +446,7 @@ export default function Members() {
                   <StaggerItem
                     key={m.id}
                     index={index}
-                    className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-indigo-200 ${liftOnHover}`}
+                    className={`rounded-2xl border border-slate-200 bg-white shadow-sm hover:border-indigo-200 ${view.density === 'compact' ? 'px-4 py-3' : 'p-5'} ${liftOnHover}`}
                   >
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="flex items-start gap-4 min-w-0 flex-1">
@@ -418,27 +521,7 @@ export default function Members() {
                           >
                             <ChevronRight className="h-4 w-4" />
                           </Link>
-                          <button
-                            type="button"
-                            onClick={() => openEdit(m)}
-                            className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            aria-label="Edit member"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => remove(m)}
-                            disabled={deletingId === m.id}
-                            className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                            aria-label="Remove member"
-                          >
-                            {deletingId === m.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </button>
+                          {memberActions(m)}
                         </div>
                       </div>
                     </div>
@@ -446,6 +529,8 @@ export default function Members() {
                 );
               })}
             </div>
+            )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>

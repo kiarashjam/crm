@@ -57,6 +57,10 @@ import {
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 // Role mapping
 const ROLES = {
@@ -556,6 +560,43 @@ export default function Team() {
     return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
   };
 
+  // How this person likes the team shown: cards, a list or a table, saved for them.
+  const view = useViewPreference('team', { layouts: ['grid', 'list', 'table'] });
+
+  /** The member's initials in their role's colour, as on their card. */
+  const memberAvatar = (member: OrgMemberDto, small = false) => (
+    <span className={`inline-flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${getRoleInfo(member.role).bgGradient} font-bold text-white shadow-sm ${small ? 'h-7 w-7 text-[11px]' : 'h-10 w-10 text-sm'}`} aria-hidden>
+      {getInitials(member.name)}
+    </span>
+  );
+
+  const roleBadge = (member: OrgMemberDto) => {
+    const roleInfo = getRoleInfo(member.role);
+    const RoleIcon = roleInfo.icon;
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${roleInfo.bg} ${roleInfo.color}`}>
+        <RoleIcon className="w-3 h-3" />
+        {roleInfo.label}
+      </span>
+    );
+  };
+
+  const memberColumns: RecordColumn<OrgMemberDto>[] = [
+    {
+      id: 'name',
+      label: 'Name',
+      required: true,
+      cell: (m) => (
+        <span className="flex items-center gap-2.5">
+          {memberAvatar(m, true)}
+          <span className="truncate">{m.name}</span>
+        </span>
+      ),
+    },
+    { id: 'email', label: 'Email', cell: (m) => m.email || '—' },
+    { id: 'role', label: 'Role', cell: roleBadge },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -665,7 +706,7 @@ export default function Team() {
               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-300/25 rounded-full blur-2xl -mr-10 -mt-10" />
               <div className="absolute bottom-0 left-0 w-24 h-24 bg-violet-300/25 rounded-full blur-2xl -ml-10 -mb-10" />
               
-              <div className="relative flex flex-col sm:flex-row gap-3">
+              <div className="relative flex flex-col sm:flex-row sm:flex-wrap gap-3">
                 {/* Search Input - Enhanced */}
                 <div className="relative flex-1 group">
                   <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 via-violet-500/20 to-indigo-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-50 group-focus-within:opacity-100 transition-all duration-500" />
@@ -733,6 +774,8 @@ export default function Team() {
                   </SelectContent>
                 </Select>
                 </div>
+
+                <ViewSwitcher view={view} columns={columnChoices(memberColumns)} />
               </div>
               
               {/* Active Filter Pills */}
@@ -787,7 +830,30 @@ export default function Team() {
                   onAction={() => setInviteDialogOpen(true)}
                 />
               ) : (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <ViewTransition layout={view.layout}>
+                {view.layout === 'list' ? (
+                  <RecordList
+                    label="Team members"
+                    items={filteredMembers}
+                    view={view}
+                    getKey={(m) => m.userId}
+                    onOpen={setSelectedMember}
+                    leading={(m) => memberAvatar(m)}
+                    title={(m) => m.name}
+                    subtitle={(m) => m.email}
+                    columns={memberColumns.filter((c) => c.id !== 'email')}
+                  />
+                ) : view.layout === 'table' ? (
+                  <RecordTable
+                    label="Team members"
+                    items={filteredMembers}
+                    view={view}
+                    getKey={(m) => m.userId}
+                    onOpen={setSelectedMember}
+                    columns={memberColumns}
+                  />
+                ) : (
+                <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
                   {filteredMembers.map((member, index) => {
                     const roleInfo = getRoleInfo(member.role);
                     const RoleIcon = roleInfo.icon;
@@ -802,7 +868,7 @@ export default function Team() {
                         {/* Role color strip */}
                         <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${roleInfo.bgGradient}`} />
                         
-                        <div className="p-5">
+                        <div className={view.density === 'compact' ? 'p-4' : 'p-5'}>
                           <div className="flex items-start gap-4">
                             {/* Avatar */}
                             <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${roleInfo.bgGradient} flex items-center justify-center text-white font-bold text-lg shadow-lg group-hover:scale-105 transition-transform`}>
@@ -849,6 +915,8 @@ export default function Team() {
                     );
                   })}
                 </div>
+                )}
+                </ViewTransition>
               )}
             </section>
 

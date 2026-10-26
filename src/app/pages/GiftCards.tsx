@@ -57,6 +57,10 @@ import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -248,6 +252,82 @@ export default function GiftCards() {
     }
   };
 
+  // How this person likes gift cards and redemptions shown, saved for them.
+  const view = useViewPreference('giftcards', { layouts: ['grid', 'list', 'table'] });
+  const redemptionView = useViewPreference('giftcards.redemptions', { layouts: ['table', 'list', 'grid'] });
+
+  const codeChip = (c: GiftCard) => (
+    <button
+      type="button"
+      onClick={() => copyCode(c.code)}
+      className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700 transition hover:bg-slate-200"
+      aria-label={`Copy code ${c.code}`}
+    >
+      {c.code}
+      {copiedCode === c.code ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+    </button>
+  );
+
+  const statusBadge = (status: GiftCardStatus) => (
+    <span
+      className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+        status === 'Active' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'
+      }`}
+    >
+      {status}
+    </span>
+  );
+
+  /** Redeem and void, the same on a row and a table line as on the card. */
+  const cardActions = (c: GiftCard) =>
+    c.status === 'Active' ? (
+      <>
+        <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)}>
+          <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => doVoid(c)}
+          disabled={voidingId === c.id}
+          className="text-rose-600 hover:bg-rose-50"
+          aria-label={`Void gift card ${c.code}`}
+        >
+          {voidingId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
+        </Button>
+      </>
+    ) : null;
+
+  const cardColumns: RecordColumn<GiftCard>[] = [
+    {
+      id: 'recipient',
+      label: 'Recipient',
+      required: true,
+      cell: (c) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={c.recipientName} size="sm" />
+          <span className="truncate">{c.recipientName}</span>
+        </span>
+      ),
+    },
+    { id: 'code', label: 'Code', cell: codeChip },
+    { id: 'status', label: 'Status', cell: (c) => statusBadge(c.status) },
+    { id: 'remaining', label: 'Balance', numeric: true, cell: (c) => <span className="font-semibold text-rose-700">{formatCurrency(c.remainingValue)}</span> },
+    { id: 'face', label: 'Face value', numeric: true, cell: (c) => formatCurrency(c.faceValue) },
+    { id: 'purchaser', label: 'From', cell: (c) => c.purchaserName },
+    { id: 'issued', label: 'Issued', cell: (c) => <span className="whitespace-nowrap">{formatDate(c.issuedAtUtc)}</span> },
+    { id: 'expires', label: 'Expires', byDefault: false, cell: (c) => (c.expiresAtUtc ? formatDate(c.expiresAtUtc) : '—') },
+    { id: 'email', label: 'Recipient email', byDefault: false, cell: (c) => c.recipientEmail || '—' },
+  ];
+
+  const redemptionColumns: RecordColumn<GiftCardRedemption>[] = [
+    { id: 'redeemedBy', label: 'Redeemed by', required: true, cell: (r) => r.redeemedByName },
+    { id: 'code', label: 'Code', cell: (r) => <span className="font-mono text-xs text-slate-700">{r.giftCardCode}</span> },
+    { id: 'appliedTo', label: 'Applied to', cell: (r) => r.appliedTo ?? '—' },
+    { id: 'amount', label: 'Amount', numeric: true, cell: (r) => <span className="font-semibold text-rose-600">-{formatCurrency(r.amount)}</span> },
+    { id: 'when', label: 'When', cell: (r) => <span className="whitespace-nowrap">{formatDate(r.redeemedAtUtc)}</span> },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -283,7 +363,7 @@ export default function GiftCards() {
             </TabsList>
 
             <TabsContent value="cards">
-              <div className="flex flex-col md:flex-row gap-3 mb-6">
+              <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input
@@ -309,6 +389,7 @@ export default function GiftCards() {
                     ))}
                   </SelectContent>
                 </Select>
+                <ViewSwitcher view={view} columns={columnChoices(cardColumns)} className="md:ml-auto" />
               </div>
 
               {loading ? (
@@ -329,7 +410,30 @@ export default function GiftCards() {
                   variant="orange"
                 />
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <ViewTransition layout={view.layout}>
+                {view.layout === 'list' ? (
+                  <RecordList
+                    label="Gift cards"
+                    items={filtered}
+                    view={view}
+                    getKey={(c) => c.id}
+                    leading={(c) => <InitialsAvatar name={c.recipientName} />}
+                    title={(c) => c.recipientName}
+                    subtitle={(c) => `${formatCurrency(c.remainingValue)} of ${formatCurrency(c.faceValue)} · from ${c.purchaserName}`}
+                    columns={cardColumns}
+                    actions={cardActions}
+                  />
+                ) : view.layout === 'table' ? (
+                  <RecordTable
+                    label="Gift cards"
+                    items={filtered}
+                    view={view}
+                    getKey={(c) => c.id}
+                    columns={cardColumns}
+                    actions={cardActions}
+                  />
+                ) : (
+                <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
                   {filtered.map((c, index) => {
                     const used = c.faceValue - c.remainingValue;
                     const usedPct = c.faceValue > 0 ? (used / c.faceValue) * 100 : 0;
@@ -340,7 +444,7 @@ export default function GiftCards() {
                         index={index}
                         className={`rounded-2xl border border-slate-200 bg-white shadow-sm hover:border-rose-200 overflow-hidden ${liftOnHover}`}
                       >
-                        <div className="relative bg-gradient-to-br from-rose-500 via-pink-500 to-fuchsia-500 p-5 text-white">
+                        <div className={`relative bg-gradient-to-br from-rose-500 via-pink-500 to-fuchsia-500 text-white ${view.density === 'compact' ? 'p-4' : 'p-5'}`}>
                           <div className="absolute top-3 right-3">
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium bg-white/20 backdrop-blur-sm`}>
                               {c.status}
@@ -362,7 +466,7 @@ export default function GiftCards() {
                             )}
                           </button>
                         </div>
-                        <div className="p-4">
+                        <div className={view.density === 'compact' ? 'p-3' : 'p-4'}>
                           <p className="text-xs text-slate-500 mb-1">Recipient</p>
                           <p className="font-semibold text-slate-900">{c.recipientName}</p>
                           {c.recipientEmail && (
@@ -417,6 +521,8 @@ export default function GiftCards() {
                     );
                   })}
                 </div>
+                )}
+                </ViewTransition>
               )}
             </TabsContent>
 
@@ -428,34 +534,58 @@ export default function GiftCards() {
                   description="Gift card redemptions appear here once members start using them."
                 />
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                        <th className="px-4 py-3 font-medium">Code</th>
-                        <th className="px-4 py-3 font-medium">Redeemed by</th>
-                        <th className="px-4 py-3 font-medium">Applied to</th>
-                        <th className="px-4 py-3 font-medium text-right">Amount</th>
-                        <th className="px-4 py-3 font-medium">When</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {redemptions.map((r, index) => (
-                        <StaggerItem as="tr" key={r.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
-                          <td className="px-4 py-3 font-mono text-xs text-slate-700">{r.giftCardCode}</td>
-                          <td className="px-4 py-3 text-slate-700">{r.redeemedByName}</td>
-                          <td className="px-4 py-3 text-slate-500">{r.appliedTo ?? '—'}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-rose-600">
-                            -{formatCurrency(r.amount)}
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                            {formatDate(r.redeemedAtUtc)}
-                          </td>
-                        </StaggerItem>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-slate-500">
+                      {redemptions.length} {redemptions.length === 1 ? 'redemption' : 'redemptions'}
+                    </p>
+                    <ViewSwitcher view={redemptionView} columns={columnChoices(redemptionColumns)} />
+                  </div>
+                  <ViewTransition layout={redemptionView.layout}>
+                    {redemptionView.layout === 'list' ? (
+                      <RecordList
+                        label="Redemptions"
+                        items={redemptions}
+                        view={redemptionView}
+                        getKey={(r) => r.id}
+                        leading={(r) => <InitialsAvatar name={r.redeemedByName} />}
+                        title={(r) => r.redeemedByName}
+                        subtitle={(r) => `-${formatCurrency(r.amount)}${r.appliedTo ? ` · ${r.appliedTo}` : ''}`}
+                        columns={redemptionColumns}
+                      />
+                    ) : redemptionView.layout === 'grid' ? (
+                      <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(redemptionView, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
+                        {redemptions.map((r, index) => (
+                          <StaggerItem
+                            key={r.id}
+                            index={index}
+                            className={`rounded-2xl border border-slate-200/80 bg-white shadow-sm ${redemptionView.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <InitialsAvatar name={r.redeemedByName} />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-semibold text-slate-900">{r.redeemedByName}</p>
+                                <p className="font-mono text-xs text-slate-500">{r.giftCardCode}</p>
+                              </div>
+                              <p className="shrink-0 font-bold text-rose-600">-{formatCurrency(r.amount)}</p>
+                            </div>
+                            <p className="mt-3 text-xs text-slate-500">
+                              {r.appliedTo ? `${r.appliedTo} · ` : ''}{formatDate(r.redeemedAtUtc)}
+                            </p>
+                          </StaggerItem>
+                        ))}
+                      </div>
+                    ) : (
+                      <RecordTable
+                        label="Redemptions"
+                        items={redemptions}
+                        view={redemptionView}
+                        getKey={(r) => r.id}
+                        columns={redemptionColumns}
+                      />
+                    )}
+                  </ViewTransition>
+                </>
               )}
             </TabsContent>
           </Tabs>

@@ -55,6 +55,10 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
 import { DuplicateMerge, CONTACT_DUPLICATES } from '@/app/components/duplicates';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 export default function Contacts() {
@@ -428,6 +432,79 @@ export default function Contacts() {
 
   // The page's numbers, in its header. With Company, Active and Need Attention
   // open the filters with that filter set, as their cards did.
+  // How this person likes contacts shown: cards, a list or a table, saved for them.
+  const view = useViewPreference('contacts', { layouts: ['grid', 'list', 'table'] });
+  const openContact = (c: Contact) => navigate(recordHref(`/contacts/${c.id}`, c.name, 'Contacts'));
+  const shortDate = (iso?: string) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  const contactColumns: RecordColumn<Contact>[] = [
+    {
+      id: 'name',
+      label: 'Name',
+      required: true,
+      cell: (c) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={c.name} size="sm" />
+          <span className="truncate">{c.name}</span>
+          {c.doNotContact && <span className="shrink-0 rounded-full bg-red-100 px-1.5 text-[10px] font-semibold text-red-700">DNC</span>}
+          {c.isArchived && <span className="shrink-0 rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-600">Archived</span>}
+        </span>
+      ),
+    },
+    { id: 'email', label: 'Email', cell: (c) => c.email || '—' },
+    { id: 'phone', label: 'Phone', cell: (c) => c.phone || '—' },
+    { id: 'jobTitle', label: 'Job title', cell: (c) => c.jobTitle || '—' },
+    { id: 'company', label: 'Company', cell: (c) => (c.companyId ? companyName(c.companyId) || '—' : '—') },
+    { id: 'deals', label: 'Deals', numeric: true, cell: (c) => getDealsForContact(c.id).length || '—' },
+    { id: 'tasks', label: 'Tasks', numeric: true, byDefault: false, cell: (c) => getTasksForContact(c.id).length || '—' },
+    { id: 'lastActivity', label: 'Last activity', cell: (c) => shortDate(c.lastActivityAtUtc) },
+    { id: 'added', label: 'Added', byDefault: false, cell: (c) => shortDate(c.createdAtUtc) },
+  ];
+
+  /** The same menu on a card, a row and a table line. */
+  const contactMenu = (contact: Contact, triggerClassName = '') => (
+    <WriteOnly>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className={`h-8 w-8 p-0 ${triggerClassName}`}>
+            <span className="sr-only">Actions for {contact.name}</span>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem onClick={() => openEdit(contact)}>
+            <Pencil className="w-4 h-4 mr-2" />
+            Edit Contact
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => navigate('/send', { state: { contactId: contact.id, contactName: contact.name } })}>
+            <Paperclip className="w-4 h-4 mr-2" />
+            Attach copy
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => handleArchiveToggle(contact)}>
+            {contact.isArchived ? (
+              <><ArchiveRestore className="w-4 h-4 mr-2" /> Unarchive</>
+            ) : (
+              <><Archive className="w-4 h-4 mr-2" /> Archive</>
+            )}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => setDeleteConfirmContact(contact)}
+            className="text-red-600 focus:text-red-600"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </WriteOnly>
+  );
+
   const contactHeroStats: PageStat[] = [
     { label: 'Total Contacts', value: contactStats.total, icon: BarChart3, tone: 'emerald' },
     {
@@ -547,7 +624,7 @@ export default function Contacts() {
             </div>
 
             {/* Filter & Sort Controls */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* Filter Button - Enhanced */}
               <div className="relative group/btn">
                 <div className={`absolute inset-0 rounded-xl blur-lg transition-all duration-300 ${
@@ -631,6 +708,8 @@ export default function Contacts() {
                 </SelectContent>
               </Select>
               </div>
+
+              <ViewSwitcher view={view} columns={columnChoices(contactColumns)} />
             </div>
           </div>
 
@@ -832,8 +911,33 @@ export default function Contacts() {
           </div>
         ) : (
           <>
-          {/* Contact Cards Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ViewTransition layout={view.layout}>
+          {view.layout === 'list' ? (
+            <RecordList
+              label="Contacts"
+              items={filteredContacts}
+              view={view}
+              getKey={(c) => c.id}
+              onOpen={openContact}
+              leading={(c) => <InitialsAvatar name={c.name} />}
+              title={(c) => c.name}
+              subtitle={(c) => [c.jobTitle, c.companyId ? companyName(c.companyId) : ''].filter(Boolean).join(' · ') || c.email}
+              columns={contactColumns}
+              actions={(c) => contactMenu(c)}
+            />
+          ) : view.layout === 'table' ? (
+            <RecordTable
+              label="Contacts"
+              items={filteredContacts}
+              view={view}
+              getKey={(c) => c.id}
+              onOpen={openContact}
+              columns={contactColumns}
+              actions={(c) => contactMenu(c)}
+            />
+          ) : (
+          /* Contact Cards Grid */
+          <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
             {filteredContacts.map((contact, index) => {
               const company = contact.companyId ? companyName(contact.companyId) : null;
               const initials = getInitials(contact.name);
@@ -855,7 +959,7 @@ export default function Contacts() {
                     <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 to-orange-400" />
                   )}
                   
-                  <div className="p-5">
+                  <div className={view.density === 'compact' ? 'p-4' : 'p-5'}>
                     {/* Header with avatar and actions */}
                     <div className="flex items-start gap-4 mb-4">
                       <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center text-white font-bold text-lg shadow-lg group-hover:scale-105 transition-transform duration-300`}>
@@ -902,43 +1006,7 @@ export default function Contacts() {
                       </div>
 
                       {/* Actions dropdown */}
-                      <WriteOnly>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <span className="sr-only">Open menu</span>
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                              </svg>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem onClick={() => openEdit(contact)}>
-                              <Pencil className="w-4 h-4 mr-2" />
-                              Edit Contact
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate('/send', { state: { contactId: contact.id, contactName: contact.name } })}>
-                              <Paperclip className="w-4 h-4 mr-2" />
-                              Attach copy
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleArchiveToggle(contact)}>
-                              {contact.isArchived ? (
-                                <><ArchiveRestore className="w-4 h-4 mr-2" /> Unarchive</>
-                              ) : (
-                                <><Archive className="w-4 h-4 mr-2" /> Archive</>
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => setDeleteConfirmContact(contact)}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </WriteOnly>
+                      {contactMenu(contact, 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity')}
                     </div>
 
                     {/* Contact details */}
@@ -1064,6 +1132,8 @@ export default function Contacts() {
               );
             })}
           </div>
+          )}
+          </ViewTransition>
           
           {/* Pagination */}
           <DataPagination

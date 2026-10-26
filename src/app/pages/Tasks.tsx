@@ -20,8 +20,6 @@ import {
   CheckCheck,
   Play,
   RotateCcw,
-  LayoutList,
-  Columns3,
   FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -91,18 +89,20 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
+import {
+  RecordTable, ViewSwitcher, ViewTransition, columnChoices, useViewPreference, type RecordColumn,
+} from '@/app/components/views';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { cn } from '@/app/components/ui/utils';
-
-/** Board / List switch in the header: white on the band, the page's colour when on. */
-const VIEW_TOGGLE = 'h-8 gap-2 rounded-lg px-3 text-slate-600 transition-all hover:bg-white hover:text-slate-900';
-const VIEW_TOGGLE_ON = 'bg-amber-50 text-amber-800 shadow-sm ring-1 ring-amber-200 hover:bg-amber-50 hover:text-amber-900';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [stats, setStats] = useState<TaskStats | null>(null);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
-  const [viewMode, setViewMode] = useState<ViewMode>('kanban');
+  // How this person likes tasks shown: the board, grouped list or a table, saved for them.
+  const view = useViewPreference('tasks', { layouts: ['board', 'list', 'table'] });
+  const viewMode: ViewMode = view.layout === 'board' ? 'kanban' : 'list';
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [form, setForm] = useState({
@@ -650,6 +650,60 @@ export default function Tasks() {
     return formatDue(iso);
   }, []);
 
+  const memberName = (id?: string) => (id ? orgMembers.find((m) => m.userId === id)?.name : undefined);
+  const linkedTo = (t: TaskItem) =>
+    (t.leadId && leads.find((l) => l.id === t.leadId)?.name)
+    || (t.dealId && deals.find((d) => d.id === t.dealId)?.name)
+    || (t.contactId && contacts.find((c) => c.id === t.contactId)?.name)
+    || '—';
+  const taskColumns: RecordColumn<TaskItem>[] = [
+    {
+      id: 'title',
+      label: 'Task',
+      required: true,
+      cell: (t) => (
+        <span className="flex items-center gap-2.5">
+          {bulkMode && (
+            <span onClick={(e) => e.stopPropagation()} className="flex items-center">
+              <Checkbox checked={selectedTaskIds.has(t.id)} onCheckedChange={() => toggleTaskSelection(t.id)} aria-label={`Select ${t.title}`} />
+            </span>
+          )}
+          <span className={cn('truncate', t.status === 'completed' && 'text-slate-400 line-through')}>{t.title}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'status',
+      label: 'Status',
+      cell: (t) => {
+        const c = statusConfig[t.status as TaskStatusType] ?? statusConfig.todo;
+        return <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', c.bgColor, c.color)}>{c.label}</span>;
+      },
+    },
+    {
+      id: 'priority',
+      label: 'Priority',
+      cell: (t) => {
+        const c = priorityConfig[(t.priority ?? 'none') as TaskPriorityType] ?? priorityConfig.none;
+        return <span className={cn('inline-flex rounded-full px-2 py-0.5 text-xs font-medium', c.bgColor, c.color)}>{c.label}</span>;
+      },
+    },
+    { id: 'due', label: 'Due', cell: (t) => (t.dueDateUtc ? formatDue(t.dueDateUtc) : '—') },
+    { id: 'assignee', label: 'Assignee', cell: (t) => memberName(t.assigneeId) ?? 'Unassigned' },
+    { id: 'linked', label: 'Linked to', cell: linkedTo },
+  ];
+  /** Edit and delete, as on the board and in the list. */
+  const taskActions = (t: TaskItem) => (
+    <WriteOnly>
+      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-700" onClick={() => openEdit(t)} aria-label={`Edit ${t.title}`}>
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => setDeleteConfirmTask(t)} aria-label={`Delete ${t.title}`}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </WriteOnly>
+  );
+
   // HP-9: Bulk operations handlers
   const toggleTaskSelection = useCallback((taskId: string) => {
     setSelectedTaskIds((prev) => {
@@ -788,31 +842,9 @@ export default function Tasks() {
             subtitle="Organize, prioritize, and track your work efficiently"
             actions={
               <>
-                {/* View Toggle */}
-                <div className="flex items-center gap-0.5 rounded-xl border border-slate-200/80 bg-white/80 p-0.5 shadow-sm backdrop-blur">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setViewMode('kanban')}
-                    aria-pressed={viewMode === 'kanban'}
-                    className={cn(VIEW_TOGGLE, viewMode === 'kanban' && VIEW_TOGGLE_ON)}
-                  >
-                    <Columns3 className="h-4 w-4" />
-                    Board
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setViewMode('list')}
-                    aria-pressed={viewMode === 'list'}
-                    className={cn(VIEW_TOGGLE, viewMode === 'list' && VIEW_TOGGLE_ON)}
-                  >
-                    <LayoutList className="h-4 w-4" />
-                    List
-                  </Button>
-                </div>
+                <ViewSwitcher view={view} columns={columnChoices(taskColumns)} />
 
-                {/* HP-9: Bulk mode toggle (list view only) */}
+                {/* HP-9: Bulk mode toggle (list and table) */}
                 {viewMode === 'list' && (
                   <Button
                     variant={bulkMode ? 'default' : 'outline'}
@@ -1011,7 +1043,7 @@ export default function Tasks() {
                 </div>
               </DndProvider>
             ) : (
-              /* List View */
+              /* List and table views */
               <div className="space-y-2">
                 {/* HP-9: Bulk operations toolbar */}
                 {bulkMode && (
@@ -1037,6 +1069,20 @@ export default function Tasks() {
                   </div>
                 )}
 
+                <ViewTransition layout={view.layout}>
+                {view.layout === 'table' ? (
+                  <RecordTable
+                    label="Tasks"
+                    items={filteredTasks}
+                    view={view}
+                    getKey={(t) => t.id}
+                    onOpen={openTaskDetail}
+                    selected={(t) => selectedTaskIds.has(t.id)}
+                    columns={taskColumns}
+                    actions={taskActions}
+                  />
+                ) : (
+                <div className="space-y-2">
                 {(['overdue', 'today', 'tomorrow', 'thisWeek', 'later', 'noDue', 'completed'] as const).map((group, index) => (
                   // A group with nothing to show renders nothing, so its wrapper hides too.
                   <StaggerItem key={group} index={index} className="empty:hidden">
@@ -1067,6 +1113,9 @@ export default function Tasks() {
                     />
                   </StaggerItem>
                 ))}
+                </div>
+                )}
+                </ViewTransition>
               </div>
             )}
           </>

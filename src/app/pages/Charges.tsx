@@ -58,7 +58,11 @@ import {
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
-import { StaggerItem } from '@/app/components/motion/Stagger';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const STATUS_BADGE: Record<ChargeStatus, string> = {
   Pending: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
@@ -253,6 +257,94 @@ export default function Charges() {
     }
   };
 
+  // How this person likes charges and payments shown, saved for them. Tables, as they always were, until they choose.
+  const view = useViewPreference('charges', { layouts: ['table', 'list', 'grid'] });
+  const paymentView = useViewPreference('charges.payments', { layouts: ['table', 'list', 'grid'] });
+
+  const chargeStatus = (c: Charge) => (
+    <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>
+      {STATUS_LABEL[c.status]}
+    </span>
+  );
+
+  const chargeAmount = (c: Charge) => {
+    const remaining = c.amount - c.paidAmount;
+    return (
+      <span className="block">
+        <span className="block font-semibold text-slate-900">{formatCurrency(c.amount)}</span>
+        {c.paidAmount > 0 && c.paidAmount < c.amount && (
+          <span className="block text-xs text-slate-500">{formatCurrency(remaining)} left</span>
+        )}
+      </span>
+    );
+  };
+
+  /** Pay and delete, the same in every layout. */
+  const chargeActions = (c: Charge) => (
+    <div className="flex items-center justify-end gap-1">
+      {(c.status === 'Pending' || c.status === 'PartiallyPaid' || c.status === 'Overdue') && (
+        <Button size="sm" variant="outline" onClick={() => openPaymentDialog(c)}>
+          <CreditCard className="w-3.5 h-3.5 mr-1" /> Pay
+        </Button>
+      )}
+      <button
+        type="button"
+        onClick={() => remove(c)}
+        disabled={deletingId === c.id}
+        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+        aria-label={`Delete charge ${c.description}`}
+      >
+        {deletingId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+
+  const chargeColumns: RecordColumn<Charge>[] = [
+    {
+      id: 'member',
+      label: 'Member',
+      required: true,
+      cell: (c) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={c.memberName} size="sm" />
+          <span className="truncate">{c.memberName}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'charge',
+      label: 'Charge',
+      cell: (c) => (
+        <span className="block">
+          <span className="block text-slate-700">{c.description}</span>
+          {c.reference && <span className="mt-0.5 block text-xs text-slate-400">{c.reference}</span>}
+        </span>
+      ),
+    },
+    { id: 'kind', label: 'Kind', cell: (c) => c.kind },
+    { id: 'status', label: 'Status', cell: chargeStatus },
+    { id: 'amount', label: 'Amount', numeric: true, cell: chargeAmount },
+    { id: 'posted', label: 'Posted', cell: (c) => <span className="whitespace-nowrap">{formatDate(c.postedAtUtc)}</span> },
+  ];
+
+  const paymentColumns: RecordColumn<Payment>[] = [
+    {
+      id: 'member',
+      label: 'Member',
+      required: true,
+      cell: (p) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={p.memberName} size="sm" />
+          <span className="truncate">{p.memberName}</span>
+        </span>
+      ),
+    },
+    { id: 'method', label: 'Method', cell: (p) => PAYMENT_METHOD_LABELS[p.method] },
+    { id: 'reference', label: 'Reference', cell: (p) => <span className="font-mono text-xs text-slate-500">{p.reference ?? '—'}</span> },
+    { id: 'amount', label: 'Amount', numeric: true, cell: (p) => <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span> },
+    { id: 'received', label: 'Received', cell: (p) => <span className="whitespace-nowrap">{formatDate(p.receivedAtUtc)}</span> },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -282,7 +374,7 @@ export default function Charges() {
           />
 
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -321,6 +413,7 @@ export default function Charges() {
                 ))}
               </SelectContent>
             </Select>
+            <ViewSwitcher view={view} columns={columnChoices(chargeColumns)} className="md:ml-auto" />
           </div>
 
           <Tabs defaultValue="charges">
@@ -348,80 +441,59 @@ export default function Charges() {
                   variant="teal"
                 />
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                        <th className="px-4 py-3 font-medium">Member</th>
-                        <th className="px-4 py-3 font-medium">Charge</th>
-                        <th className="px-4 py-3 font-medium">Kind</th>
-                        <th className="px-4 py-3 font-medium">Status</th>
-                        <th className="px-4 py-3 font-medium text-right">Amount</th>
-                        <th className="px-4 py-3 font-medium">Posted</th>
-                        <th className="px-4 py-3 font-medium" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredCharges.map((c, index) => {
-                        const remaining = c.amount - c.paidAmount;
-                        return (
-                          <StaggerItem as="tr" key={c.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
-                            <td className="px-4 py-3">
-                              <p className="font-medium text-slate-900">{c.memberName}</p>
-                            </td>
-                            <td className="px-4 py-3">
-                              <p className="text-slate-700">{c.description}</p>
-                              {c.reference && <p className="text-xs text-slate-400 mt-0.5">{c.reference}</p>}
-                            </td>
-                            <td className="px-4 py-3 text-slate-600">{c.kind}</td>
-                            <td className="px-4 py-3">
-                              <span
-                                className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}
-                              >
-                                {STATUS_LABEL[c.status]}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <p className="font-semibold text-slate-900">{formatCurrency(c.amount)}</p>
-                              {c.paidAmount > 0 && c.paidAmount < c.amount && (
-                                <p className="text-xs text-slate-500">
-                                  {formatCurrency(remaining)} left
-                                </p>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                              {formatDate(c.postedAtUtc)}
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                {(c.status === 'Pending' ||
-                                  c.status === 'PartiallyPaid' ||
-                                  c.status === 'Overdue') && (
-                                  <Button size="sm" variant="outline" onClick={() => openPaymentDialog(c)}>
-                                    <CreditCard className="w-3.5 h-3.5 mr-1" /> Pay
-                                  </Button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => remove(c)}
-                                  disabled={deletingId === c.id}
-                                  className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                                  aria-label="Delete charge"
-                                >
-                                  {deletingId === c.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-4 w-4" />
-                                  )}
-                                </button>
-                              </div>
-                            </td>
-                          </StaggerItem>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <ViewTransition layout={view.layout}>
+                  {view.layout === 'list' ? (
+                    <RecordList
+                      label="Charges"
+                      items={filteredCharges}
+                      view={view}
+                      getKey={(c) => c.id}
+                      leading={(c) => <InitialsAvatar name={c.memberName} />}
+                      title={(c) => c.memberName}
+                      subtitle={(c) => `${c.description} · ${c.kind}`}
+                      columns={chargeColumns}
+                      actions={chargeActions}
+                    />
+                  ) : view.layout === 'grid' ? (
+                    <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
+                      {filteredCharges.map((c, index) => (
+                        <StaggerItem
+                          key={c.id}
+                          index={index}
+                          className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <InitialsAvatar name={c.memberName} />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-semibold text-slate-900">{c.memberName}</p>
+                              <p className="truncate text-sm text-slate-600">{c.description}</p>
+                            </div>
+                            {chargeStatus(c)}
+                          </div>
+                          <div className="mt-3 flex items-end justify-between gap-2">
+                            <div className="text-lg">{chargeAmount(c)}</div>
+                            <p className="text-right text-xs text-slate-500">
+                              {c.kind}
+                              <br />
+                              Posted {formatDate(c.postedAtUtc)}
+                            </p>
+                          </div>
+                          {c.reference && <p className="mt-1 font-mono text-xs text-slate-400">{c.reference}</p>}
+                          <div className="mt-auto pt-3">{chargeActions(c)}</div>
+                        </StaggerItem>
+                      ))}
+                    </div>
+                  ) : (
+                    <RecordTable
+                      label="Charges"
+                      items={filteredCharges}
+                      view={view}
+                      getKey={(c) => c.id}
+                      columns={chargeColumns}
+                      actions={chargeActions}
+                    />
+                  )}
+                </ViewTransition>
               )}
             </TabsContent>
 
@@ -433,38 +505,59 @@ export default function Charges() {
                   description="Payments will appear here once you record them against charges."
                 />
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                        <th className="px-4 py-3 font-medium">Member</th>
-                        <th className="px-4 py-3 font-medium">Method</th>
-                        <th className="px-4 py-3 font-medium">Reference</th>
-                        <th className="px-4 py-3 font-medium text-right">Amount</th>
-                        <th className="px-4 py-3 font-medium">Received</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredPayments.map((p, index) => (
-                        <StaggerItem as="tr" key={p.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
-                          <td className="px-4 py-3 font-medium text-slate-900">{p.memberName}</td>
-                          <td className="px-4 py-3 text-slate-600">
-                            {PAYMENT_METHOD_LABELS[p.method]}
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 font-mono text-xs">
-                            {p.reference ?? '—'}
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-emerald-700">
-                            +{formatCurrency(p.amount)}
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                            {formatDate(p.receivedAtUtc)}
-                          </td>
-                        </StaggerItem>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <>
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-slate-500">
+                      {filteredPayments.length} {filteredPayments.length === 1 ? 'payment' : 'payments'}
+                    </p>
+                    <ViewSwitcher view={paymentView} columns={columnChoices(paymentColumns)} />
+                  </div>
+                  <ViewTransition layout={paymentView.layout}>
+                    {paymentView.layout === 'list' ? (
+                      <RecordList
+                        label="Payments"
+                        items={filteredPayments}
+                        view={paymentView}
+                        getKey={(p) => p.id}
+                        leading={(p) => <InitialsAvatar name={p.memberName} />}
+                        title={(p) => p.memberName}
+                        subtitle={(p) => `+${formatCurrency(p.amount)} · ${PAYMENT_METHOD_LABELS[p.method]}`}
+                        columns={paymentColumns}
+                      />
+                    ) : paymentView.layout === 'grid' ? (
+                      <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(paymentView, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
+                        {filteredPayments.map((p, index) => (
+                          <StaggerItem
+                            key={p.id}
+                            index={index}
+                            className={`rounded-2xl border border-slate-200/80 bg-white shadow-sm ${paymentView.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <InitialsAvatar name={p.memberName} />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-semibold text-slate-900">{p.memberName}</p>
+                                <p className="text-xs text-slate-500">{PAYMENT_METHOD_LABELS[p.method]}</p>
+                              </div>
+                              <p className="shrink-0 font-bold text-emerald-700">+{formatCurrency(p.amount)}</p>
+                            </div>
+                            <p className="mt-3 text-xs text-slate-500">
+                              {p.reference ? <span className="font-mono">{p.reference} · </span> : null}
+                              {formatDate(p.receivedAtUtc)}
+                            </p>
+                          </StaggerItem>
+                        ))}
+                      </div>
+                    ) : (
+                      <RecordTable
+                        label="Payments"
+                        items={filteredPayments}
+                        view={paymentView}
+                        getKey={(p) => p.id}
+                        columns={paymentColumns}
+                      />
+                    )}
+                  </ViewTransition>
+                </>
               )}
             </TabsContent>
           </Tabs>

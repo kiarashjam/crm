@@ -10,6 +10,7 @@ import {
   MousePointerClick,
   AlertCircle,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -51,6 +52,10 @@ import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const CHANNEL_ICON: Record<CommChannel, React.ElementType> = {
   Email: Mail,
@@ -195,6 +200,55 @@ export default function Communications() {
     }
   };
 
+  // How this person likes the message log shown: a feed, cards or a table, saved for them.
+  const view = useViewPreference('communications', { layouts: ['list', 'grid', 'table'] });
+
+  /**
+   * Delete: the same on a row, a card and a table line. It used to draw an
+   * invisible icon, so the button was there but could not be seen.
+   */
+  const communicationActions = (c: Communication) => (
+    <button
+      type="button"
+      onClick={() => remove(c)}
+      disabled={deletingId === c.id}
+      className="rounded p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
+      aria-label={`Delete message to ${c.memberName}`}
+    >
+      {deletingId === c.id ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Trash2 className="h-4 w-4" />
+      )}
+    </button>
+  );
+
+  const communicationColumns: RecordColumn<Communication>[] = [
+    {
+      id: 'subject',
+      label: 'Message',
+      required: true,
+      cell: (c) => {
+        const Icon = CHANNEL_ICON[c.channel];
+        return (
+          <span className="flex items-center gap-2.5">
+            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${CHANNEL_COLOR[c.channel]}`} aria-hidden>
+              <Icon className="h-3.5 w-3.5" />
+            </span>
+            <span className="truncate">{c.subject}</span>
+          </span>
+        );
+      },
+    },
+    { id: 'member', label: 'To', cell: (c) => c.memberName },
+    { id: 'status', label: 'Status', cell: (c) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{c.status}</span> },
+    { id: 'category', label: 'Category', cell: (c) => c.category },
+    { id: 'sent', label: 'Sent', cell: (c) => formatDateTime(c.sentAtUtc) },
+    { id: 'opened', label: 'Opened', byDefault: false, cell: (c) => (c.openedAtUtc ? formatDateTime(c.openedAtUtc) : '—') },
+    { id: 'clicked', label: 'Clicked', byDefault: false, cell: (c) => (c.clickedAtUtc ? formatDateTime(c.clickedAtUtc) : '—') },
+    { id: 'campaign', label: 'Campaign', byDefault: false, cell: (c) => c.campaignName || '—' },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -224,7 +278,7 @@ export default function Communications() {
           />
 
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -266,6 +320,7 @@ export default function Communications() {
                 ))}
               </SelectContent>
             </Select>
+            <ViewSwitcher view={view} columns={columnChoices(communicationColumns)} className="md:ml-auto" />
           </div>
 
           {/* Feed */}
@@ -287,6 +342,55 @@ export default function Communications() {
               variant="orange"
             />
           ) : (
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'table' ? (
+              <RecordTable
+                label="Communications"
+                items={filtered}
+                view={view}
+                getKey={(c) => c.id}
+                columns={communicationColumns}
+                actions={communicationActions}
+              />
+            ) : view.layout === 'grid' ? (
+              <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
+                {filtered.map((c, index) => {
+                  const Icon = CHANNEL_ICON[c.channel];
+                  return (
+                    <StaggerItem
+                      key={c.id}
+                      index={index}
+                      className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:border-violet-200 ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${CHANNEL_COLOR[c.channel]}`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-slate-900 truncate">{c.subject}</p>
+                          <p className="text-xs text-slate-500 truncate">To {c.memberName}</p>
+                        </div>
+                        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{c.status}</span>
+                      </div>
+                      {view.density !== 'compact' && <p className="mt-2 text-sm text-slate-500 line-clamp-2">{c.preview}</p>}
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">{c.category}</span>
+                        {c.openedAtUtc && (
+                          <span className="inline-flex items-center gap-1 text-emerald-600"><Eye className="w-3 h-3" /> opened</span>
+                        )}
+                        {c.clickedAtUtc && (
+                          <span className="inline-flex items-center gap-1 text-violet-600"><MousePointerClick className="w-3 h-3" /> clicked</span>
+                        )}
+                      </div>
+                      <div className="mt-auto flex items-center justify-between pt-3 text-xs text-slate-400">
+                        <span>{formatDateTime(c.sentAtUtc)}</span>
+                        {communicationActions(c)}
+                      </div>
+                    </StaggerItem>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="space-y-2">
               {filtered.map((c, index) => {
                 const Icon = CHANNEL_ICON[c.channel];
@@ -294,7 +398,7 @@ export default function Communications() {
                   <StaggerItem
                     key={c.id}
                     index={index}
-                    className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-violet-200 ${liftOnHover}`}
+                    className={`rounded-xl border border-slate-200 bg-white ${view.density === 'compact' ? 'p-2.5' : 'p-4'} shadow-sm hover:border-violet-200 ${liftOnHover}`}
                   >
                     <div className="flex items-start gap-3">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${CHANNEL_COLOR[c.channel]}`}>
@@ -329,24 +433,14 @@ export default function Communications() {
                           )}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => remove(c)}
-                        disabled={deletingId === c.id}
-                        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
-                        aria-label="Delete"
-                      >
-                        {deletingId === c.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Send className="h-4 w-4 opacity-0" />
-                        )}
-                      </button>
+                      {communicationActions(c)}
                     </div>
                   </StaggerItem>
                 );
               })}
             </div>
+            )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>

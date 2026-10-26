@@ -48,6 +48,10 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { DuplicateMerge, HOUSEHOLD_DUPLICATES } from '@/app/components/duplicates';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
@@ -181,6 +185,54 @@ export default function Households() {
     [members, memberIdsInHouseholds],
   );
 
+
+  // How this person likes households shown: cards, a list or a table, saved for them.
+  const view = useViewPreference('households', { layouts: ['grid', 'list', 'table'] });
+  const people = (r: HouseholdRollup) =>
+    r.members.map((row) => (row.member ? `${row.member.firstName} ${row.member.lastName}` : 'Unknown member')).join(', ');
+  const primaryOf = (r: HouseholdRollup) => {
+    const row = r.members.find((x) => x.link.role === 'Primary');
+    return row?.member ? `${row.member.firstName} ${row.member.lastName}` : '—';
+  };
+  const householdColumns: RecordColumn<HouseholdRollup>[] = [
+    {
+      id: 'name',
+      label: 'Household',
+      required: true,
+      cell: (r) => (
+        <span className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-teal-400 to-cyan-500 text-white shadow-sm"><HomeIcon className="h-3.5 w-3.5" aria-hidden /></span>
+          <span className="truncate">The {r.household.name} household</span>
+        </span>
+      ),
+    },
+    { id: 'primary', label: 'Primary', cell: primaryOf },
+    { id: 'people', label: 'People', numeric: true, cell: (r) => r.members.length },
+    { id: 'names', label: 'Members', byDefault: false, cell: people },
+    { id: 'mrr', label: 'Total MRR', numeric: true, cell: (r) => formatCurrency(r.totalDuesMonthly) },
+    { id: 'balance', label: 'House balance', numeric: true, cell: (r) => <span className={r.totalHouseBalance < 0 ? 'text-rose-600' : ''}>{formatCurrency(r.totalHouseBalance)}</span> },
+  ];
+  /** Add a member and delete, the same in every layout. */
+  const householdActions = (r: HouseholdRollup) => (
+    <>
+      <button
+        type="button"
+        onClick={() => openAddMember(r.household.id)}
+        className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        aria-label="Add member"
+      >
+        <UserPlus className="w-4 h-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => removeHousehold(r.household.id, r.household.name)}
+        className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        aria-label="Delete household"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </>
+  );
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -211,7 +263,7 @@ export default function Households() {
 
           <DuplicateMerge spec={HOUSEHOLD_DUPLICATES} onMerged={() => { void load(); }} />
 
-          <div className="flex gap-3 mb-6">
+          <div className="flex flex-wrap items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -221,6 +273,7 @@ export default function Households() {
                 className="pl-9 h-11 rounded-xl"
               />
             </div>
+            <ViewSwitcher view={view} columns={columnChoices(householdColumns)} className="ml-auto" />
           </div>
 
           {loading ? (
@@ -241,13 +294,38 @@ export default function Households() {
               variant="teal"
             />
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'table' ? (
+              <RecordTable
+                label="Households"
+                items={filtered}
+                view={view}
+                getKey={(r) => r.household.id}
+                columns={householdColumns}
+                actions={householdActions}
+              />
+            ) : view.layout === 'list' ? (
+              <RecordList
+                label="Households"
+                items={filtered}
+                view={view}
+                getKey={(r) => r.household.id}
+                leading={() => (
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400 to-cyan-500 text-white shadow-sm"><HomeIcon className="h-4 w-4" aria-hidden /></span>
+                )}
+                title={(r) => `The ${r.household.name} household`}
+                subtitle={(r) => people(r) || 'No members yet'}
+                columns={householdColumns.filter((c) => c.id !== 'names')}
+                actions={householdActions}
+              />
+            ) : (
+            <div className={`grid grid-cols-1 lg:grid-cols-2 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-3')}`}>
               {filtered.map((r, index) => (
                 <StaggerItem
                   as="article"
                   key={r.household.id}
                   index={index}
-                  className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-5 hover:border-teal-200 ${liftOnHover}`}
+                  className={`bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-teal-200 ${view.density === 'compact' ? 'p-4' : 'p-5'} ${liftOnHover}`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div>
@@ -259,22 +337,7 @@ export default function Households() {
                       )}
                     </div>
                     <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openAddMember(r.household.id)}
-                        className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                        aria-label="Add member"
-                      >
-                        <UserPlus className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeHousehold(r.household.id, r.household.name)}
-                        className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                        aria-label="Delete household"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {householdActions(r)}
                     </div>
                   </div>
 
@@ -337,6 +400,8 @@ export default function Households() {
                 </StaggerItem>
               ))}
             </div>
+            )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>
