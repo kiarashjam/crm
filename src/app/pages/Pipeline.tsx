@@ -92,6 +92,7 @@ import type { TaskItem as TaskItemType } from '@/app/api/types';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, type PageStat } from '@/app/components/PageHero';
+import { DuplicateMerge, DEAL_DUPLICATES } from '@/app/components/duplicates';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 
 export default function Pipeline() {
@@ -296,6 +297,13 @@ export default function Pipeline() {
   }, [deals, searchQuery, filterStage, contacts, stageList, filterMyDeals, currentUserId, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo]);
 
   const dealsByStage = groupDealsByStage(filteredDeals, stageList);
+
+  /** The board again, quietly, after duplicates were merged into one deal. */
+  const reloadDeals = () => {
+    getDealsPaged({ page: 1, pageSize: 500 })
+      .then((paged) => setDeals(paged.items))
+      .catch(() => toast.error(messages.errors.loadFailed));
+  };
 
   // HP-5: Use getDealsPaged instead of getDeals (fetch all with large pageSize for kanban)
   useEffect(() => {
@@ -675,6 +683,8 @@ export default function Pipeline() {
             )}
             stats={!loading && deals.length > 0 ? dealHeroStats : undefined}
           />
+
+          <DuplicateMerge spec={DEAL_DUPLICATES} onMerged={reloadDeals} />
 
           {/* Action Alert Banner */}
           {!loading && deals.length > 0 && dealStats.overdue > 0 && (

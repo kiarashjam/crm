@@ -37,4 +37,12 @@ public interface ILeadRepository
     /// <summary>Leads in this workspace that a contact referred, newest first.</summary>
     Task<IReadOnlyList<Lead>> GetReferredByAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Folds <paramref name="dropId"/> into <paramref name="keepId"/>: its tasks, activities,
+    /// history, messages, contracts, files and custom field values move to the lead kept,
+    /// the kept lead's empty fields are filled from it, and it is deleted. False when
+    /// either lead is not in this workspace, or they are the same lead.
+    /// </summary>
+    Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

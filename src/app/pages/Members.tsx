@@ -56,6 +56,7 @@ import {
 } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
+import { DuplicateMerge, MEMBER_DUPLICATES } from '@/app/components/duplicates';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const TIER_BADGE: Record<MemberTier, string> = {
@@ -266,6 +267,8 @@ export default function Members() {
               { label: 'Renewing < 30d', value: stats.renewingSoon, icon: CalendarClock, tone: 'rose', hint: `${stats.lapsed} lapsed · ${stats.pending} pending` },
             ]}
           />
+
+          <DuplicateMerge spec={MEMBER_DUPLICATES} onMerged={() => { void load(); }} />
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row gap-3 mb-6">

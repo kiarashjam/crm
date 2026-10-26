@@ -12,6 +12,7 @@ import { ApiError } from '@/app/api/apiClient';
 import { createLeadOrOfferDuplicate } from './leads/createLeadOrOfferDuplicate';
 import AppHeader from '@/app/components/AppHeader';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
+import { DuplicateMerge, LEAD_DUPLICATES } from '@/app/components/duplicates';
 import { PageEnter } from '@/app/components/motion/PageEnter';
 import { LeadsListSkeleton } from './leads/components/LeadsListSkeleton';
 import DataPagination from '@/app/components/DataPagination';
@@ -1509,6 +1510,8 @@ export default function Leads() {
             }
             stats={!loading && totalCount > 0 ? leadHeroStats : undefined}
           />
+
+        <DuplicateMerge spec={LEAD_DUPLICATES} onMerged={() => { void fetchLeads(); }} />
 
         {/* Sales Tracker dashboard — collapsible KPI + charts panel that
             mirrors the P46 Excel workbook. Sits above the filter bar so

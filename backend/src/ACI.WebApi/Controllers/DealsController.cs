@@ -234,4 +234,23 @@ public class DealsController : ControllerBase
         
         return result.ToNoContentResult();
     }
+
+    /// <summary>Keeps this deal and folds the other one into it.</summary>
+    /// <response code="204">Merged; the other deal is gone and everything on it is on this one.</response>
+    /// <response code="403">The other deal is private and this person may not make this one private.</response>
+    /// <response code="404">Either deal is not one this person can see, or they are the same deal.</response>
+    [HttpPost("{id:guid}/merge")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Merge(Guid id, [FromBody] MergeDealsRequest request, CancellationToken ct)
+    {
+        if (request == null || request.OtherDealId == Guid.Empty)
+            return BadRequest();
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await _dealService.MergeAsync(id, request.OtherDealId, userId.Value, _currentUser.CurrentOrganizationId, ct);
+        return result.ToNoContentResult();
+    }
 }
