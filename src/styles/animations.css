@@ -611,14 +611,25 @@
   }
 }
 
+/* A page arrives: it rises a little and comes into focus, rather than just
+   sliding. Reduced motion (the OS setting or the in-app one) turns it off with
+   every other animation. */
 @keyframes page-slide-up {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(14px) scale(0.995);
+    filter: blur(6px);
   }
+  60% {
+    filter: blur(0);
+  }
+  /* "none", not a zero transform or blur: the animation keeps its last frame, and
+     any transform or filter left on the page would make it the box that fixed
+     elements inside it (a bulk-action bar, a floating button) position against. */
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
+    filter: none;
   }
 }
 
@@ -648,8 +659,8 @@
 
 /* Main page transition class - fast and smooth */
 .page-transition {
-  animation: page-slide-up 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  will-change: opacity, transform;
+  animation: page-slide-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity, transform, filter;
 }
 
 /* Alternative transition styles */

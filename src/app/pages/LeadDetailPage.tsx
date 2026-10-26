@@ -11,8 +11,8 @@ import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
 import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 import AppHeader from '@/app/components/AppHeader';
+import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import { PageTransition } from '@/app/components/PageTransition';
-import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getLeadById, updateLead, assignLead, deleteLead,
@@ -750,14 +750,13 @@ export default function LeadDetailPage() {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
-        <PageTransition>
-          <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
-            <ContentSkeleton rows={6} />
-          </main>
-        </PageTransition>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <RecordSkeleton />
+        </main>
       </div>
     );
   }
+
 
   if (notFound || !lead) {
     return (

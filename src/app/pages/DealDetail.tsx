@@ -9,7 +9,6 @@ import {
   User,
   Building2,
   Calendar,
-  Clock,
   Target,
   Activity as ActivityIcon,
   CheckCircle2,
@@ -20,6 +19,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
+import { Spinner } from '@/app/components/motion/CadenceLoader';
+import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import DealLineItemsCard from '@/app/components/DealLineItemsCard';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
@@ -198,12 +199,13 @@ export default function DealDetail() {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="animate-pulse text-slate-400">Loading deal...</div>
-        </div>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <RecordSkeleton />
+        </main>
       </div>
     );
   }
+
 
   if (!deal) {
     return (
@@ -331,7 +333,7 @@ export default function DealDetail() {
                 <ActivityLogForm draft={activityForm} onChange={setActivityForm} saving={savingActivity} onSubmit={handleLogActivity} />
                 {activitiesLoading ? (
                   <div className="py-8 text-center">
-                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <Spinner size={22} className="mx-auto mb-2" />
                     <p className="text-xs text-slate-500">Loading activities...</p>
                   </div>
                 ) : activities.length === 0 ? (
@@ -358,7 +360,7 @@ export default function DealDetail() {
               <RecordCard title="Linked tasks" icon={<CheckCircle2 className="h-3.5 w-3.5" />} tone="violet" count={dealTasks.length} index={1}>
                 {tasksLoading ? (
                   <div className="py-6 text-center">
-                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <Spinner size={22} className="mx-auto mb-2" />
                     <p className="text-xs text-slate-500">Loading tasks...</p>
                   </div>
                 ) : dealTasks.length === 0 ? (

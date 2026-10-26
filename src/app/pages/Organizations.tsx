@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, Building2, Check, Clock, Command, CornerDownLeft, Crown, Loader2, LogOut,
   Mail, Plus, Search, Sparkles, TriangleAlert, UserCheck, UserPlus, Users, X,
@@ -44,6 +44,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import DemoBanner from '@/app/components/DemoBanner';
 import PageHero, { heroPrimary, type PageStat } from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
+import { CadenceLoader } from '@/app/components/motion/CadenceLoader';
 import { Button } from '@/app/components/ui/button';
 import { cn } from '@/app/components/ui/utils';
 import {
@@ -361,17 +362,12 @@ export default function Organizations() {
   if (!hasFetched || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-subtle">
-        <div className="flex flex-col items-center gap-4">
-          <motion.span
-            className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-pink-500 shadow-lg shadow-orange-500/25"
-            animate={reduceMotion ? undefined : { y: [0, -4, 0] }}
-            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+        <div className="flex flex-col items-center">
+          <CadenceLoader size="lg" />
+          <p
+            className="mt-5 bg-gradient-to-r from-slate-500 via-indigo-500 to-slate-500 bg-[length:200%_100%] bg-clip-text text-sm font-semibold text-transparent motion-safe:animate-[shimmer_3s_linear_infinite]"
+            role="status"
           >
-            <span aria-hidden className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent" />
-            <Sparkles className="relative h-6 w-6 text-white" aria-hidden />
-          </motion.span>
-          <p className="flex items-center gap-2 text-sm text-slate-500" role="status">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" aria-hidden />
             Finding your workspaces…
           </p>
         </div>
