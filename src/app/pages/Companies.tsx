@@ -213,8 +213,8 @@ export default function Companies() {
   }, [companies, companyStatsMap, totalCount]);
 
   // HP-7: Get counts from server-side stats map
-  const getContactCount = (companyId: string) => companyStatsMap.get(companyId)?.contactCount ?? 0;
-  const getDealCount = (companyId: string) => companyStatsMap.get(companyId)?.dealCount ?? 0;
+  const getContactCount = useCallback((companyId: string) => companyStatsMap.get(companyId)?.contactCount ?? 0, [companyStatsMap]);
+  const getDealCount = useCallback((companyId: string) => companyStatsMap.get(companyId)?.dealCount ?? 0, [companyStatsMap]);
   const getDealValue = (companyId: string) => companyStatsMap.get(companyId)?.totalDealValue ?? 0;
   // HP-12: Get deals for a company (still from deals array for drill-down)
   const getDealsForCompany = (companyId: string) => deals.filter(d => d.companyId === companyId);
@@ -256,7 +256,7 @@ export default function Companies() {
     });
     
     return result;
-  }, [companies, searchQuery, filterIndustry, filterSize, sortField, sortDirection, companyStatsMap]);
+  }, [companies, searchQuery, filterIndustry, filterSize, sortField, sortDirection, getContactCount, getDealCount]);
 
   // Count active filters
   const activeFilterCount = [

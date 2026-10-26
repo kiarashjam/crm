@@ -15,7 +15,7 @@ export interface DuplicateGroup<T> {
   records: T[];
 }
 
-const norm = (s?: string) => (s ?? '').trim().toLowerCase();
+const norm = (s?: string | null) => (s ?? '').trim().toLowerCase();
 
 function pushTo<T>(map: Map<string, T[]>, key: string, value: T) {
   const list = map.get(key);
@@ -25,10 +25,10 @@ function pushTo<T>(map: Map<string, T[]>, key: string, value: T) {
 
 /** Same grouping the Duplicates page uses. Pure, so the sales list can share it. */
 export function duplicateContactGroups<T extends { id: string; name?: string | null; email?: string | null }>(contacts: T[]): DuplicateGroup<T>[] {
-  const groups: DuplicateGroup<Contact>[] = [];
+  const groups: DuplicateGroup<T>[] = [];
   const grouped = new Set<string>();
 
-  const byEmail = new Map<string, Contact[]>();
+  const byEmail = new Map<string, T[]>();
   for (const c of contacts) {
     const e = norm(c.email);
     if (e) pushTo(byEmail, e, c);
@@ -40,7 +40,7 @@ export function duplicateContactGroups<T extends { id: string; name?: string | n
     }
   }
 
-  const byName = new Map<string, Contact[]>();
+  const byName = new Map<string, T[]>();
   for (const c of contacts) {
     if (grouped.has(c.id)) continue;
     const n = norm(c.name);
@@ -58,10 +58,10 @@ export async function findDuplicateContacts(): Promise<DuplicateGroup<Contact>[]
 
 /** Same grouping the Duplicates page uses. Pure, so the sales list can share it. */
 export function duplicateCompanyGroups<T extends { id: string; name?: string | null; domain?: string | null; website?: string | null }>(companies: T[]): DuplicateGroup<T>[] {
-  const groups: DuplicateGroup<Company>[] = [];
+  const groups: DuplicateGroup<T>[] = [];
   const grouped = new Set<string>();
 
-  const byDomain = new Map<string, Company[]>();
+  const byDomain = new Map<string, T[]>();
   for (const c of companies) {
     const d = norm(c.domain || c.website).replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
     if (d) pushTo(byDomain, d, c);
@@ -73,7 +73,7 @@ export function duplicateCompanyGroups<T extends { id: string; name?: string | n
     }
   }
 
-  const byName = new Map<string, Company[]>();
+  const byName = new Map<string, T[]>();
   for (const c of companies) {
     if (grouped.has(c.id)) continue;
     const n = norm(c.name);

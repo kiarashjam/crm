@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { toast } from 'sonner';
 import { queryKeys } from './queryKeys';
 import { getCompanies, getCompaniesPaged, createCompany, updateCompany, deleteCompany } from '@/app/api/companies';
-import type { Company, PaginationParams, PagedResult } from '@/app/api/types';
+import type { PaginationParams } from '@/app/api/types';
 
 /**
  * Hook to fetch companies with pagination and search (HP-8: primary data-fetching hook).

@@ -75,7 +75,6 @@ export function useTrackerAnnouncement({
     if (prev === lost) return;
     if (lost) say(`Pipeline stopped: ${lost}.`);
     else say('Pipeline reopened.');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lost]);
 
   useEffect(() => () => {
