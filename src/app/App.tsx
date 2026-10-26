@@ -11,6 +11,7 @@ import { OrgProvider, useOrgOptional } from '@/app/contexts/OrgContext';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import { servesDemoData } from '@/app/api/apiClient';
 import { PageLoadingProvider } from '@/app/components/LoadingOverlay';
+import { RouteProgress } from '@/app/components/motion/RouteProgress';
 
 // Eager-loaded pages (critical path)
 import Homepage from '@/app/pages/Homepage';
@@ -105,6 +106,7 @@ export default function App() {
         <QueryProvider>
           <BrowserRouter>
             <PageLoadingProvider>
+              <RouteProgress />
             <OrgProvider>
               <SkipLink />
               <Toaster position="top-center" richColors closeButton />

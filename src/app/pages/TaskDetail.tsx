@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import AppHeader from '@/app/components/AppHeader';
+import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
@@ -224,16 +225,15 @@ export default function TaskDetail() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-subtle">
+      <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
-        <main id={MAIN_CONTENT_ID} className="mx-auto max-w-4xl px-6 py-10">
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-          </div>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <RecordSkeleton />
         </main>
       </div>
     );
   }
+
 
   if (!task) {
     return (

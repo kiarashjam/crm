@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
+import { Spinner } from '@/app/components/motion/CadenceLoader';
+import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -170,15 +172,13 @@ export default function CompanyDetail() {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <Clock className="w-8 h-8 text-slate-400 animate-spin mx-auto mb-3" />
-            <p className="text-slate-500">Loading company...</p>
-          </div>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <RecordSkeleton />
         </main>
       </div>
     );
   }
+
 
   if (!company) {
     return (
@@ -271,7 +271,7 @@ export default function CompanyDetail() {
               <RecordCard title="Contacts" icon={<Users className="h-3.5 w-3.5" />} tone="emerald" count={contacts.length} index={0}>
                 {contactsLoading ? (
                   <div className="py-6 text-center">
-                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <Spinner size={22} className="mx-auto mb-2" />
                     <p className="text-sm text-slate-500">Loading contacts...</p>
                   </div>
                 ) : contacts.length === 0 ? (
@@ -305,7 +305,7 @@ export default function CompanyDetail() {
               <RecordCard title="Deals" icon={<Briefcase className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={1}>
                 {dealsLoading ? (
                   <div className="py-6 text-center">
-                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <Spinner size={22} className="mx-auto mb-2" />
                     <p className="text-sm text-slate-500">Loading deals...</p>
                   </div>
                 ) : deals.length === 0 ? (

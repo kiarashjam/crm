@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Pencil, Trash2, Mail, Phone, Building2,
-  Briefcase, Target, Calendar, Clock, Archive, ArchiveRestore,
+  Briefcase, Target, Calendar, Archive, ArchiveRestore,
   User, Activity as ActivityIcon,
   CheckCircle2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
+import { Spinner } from '@/app/components/motion/CadenceLoader';
+import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import EmailComposerDialog from '@/app/components/EmailComposerDialog';
@@ -247,15 +249,13 @@ export default function ContactDetail() {
     return (
       <div className="min-h-screen flex flex-col bg-gradient-subtle">
         <AppHeader />
-        <main className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <Clock className="w-8 h-8 text-slate-400 animate-spin mx-auto mb-3" />
-            <p className="text-slate-500">Loading contact...</p>
-          </div>
+        <main id={MAIN_CONTENT_ID} className="flex-1 w-full px-[var(--page-padding)] py-[var(--main-block-padding-y)]" tabIndex={-1}>
+          <RecordSkeleton />
         </main>
       </div>
     );
   }
+
 
   if (!contact) {
     return (
@@ -429,7 +429,7 @@ export default function ContactDetail() {
 
                 {activitiesLoading ? (
                   <div className="py-8 text-center">
-                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <Spinner size={22} className="mx-auto mb-2" />
                     <p className="text-sm text-slate-500">Loading activities...</p>
                   </div>
                 ) : activities.length === 0 ? (
@@ -447,7 +447,7 @@ export default function ContactDetail() {
               <RecordCard title="Tasks" icon={<CheckCircle2 className="h-3.5 w-3.5" />} tone="emerald" count={contactTasks.length} index={1}>
                 {tasksLoading ? (
                   <div className="py-6 text-center">
-                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <Spinner size={22} className="mx-auto mb-2" />
                     <p className="text-sm text-slate-500">Loading tasks...</p>
                   </div>
                 ) : contactTasks.length === 0 ? (
@@ -549,7 +549,7 @@ export default function ContactDetail() {
               <RecordCard title="Deals" icon={<Target className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={3}>
                 {dealsLoading ? (
                   <div className="py-6 text-center">
-                    <Clock className="mx-auto mb-2 h-5 w-5 animate-spin text-slate-400" />
+                    <Spinner size={22} className="mx-auto mb-2" />
                     <p className="text-sm text-slate-500">Loading deals...</p>
                   </div>
                 ) : deals.length === 0 ? (

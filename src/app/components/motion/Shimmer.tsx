@@ -25,16 +25,25 @@ export function Shimmer({
   return (
     <div
       aria-hidden
-      className={cn('relative overflow-hidden rounded-xl bg-slate-200', className)}
+      className={cn('relative overflow-hidden rounded-xl bg-gradient-to-r from-slate-200/90 via-slate-100 to-slate-200/90', className)}
       style={style}
     >
       {!reduceMotion && (
-        <motion.div
-          className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/75 to-transparent"
-          initial={{ x: '-150%' }}
-          animate={{ x: '250%' }}
-          transition={{ duration: 1.35, delay, repeat: Infinity, ease: 'linear' }}
-        />
+        <>
+          {/* A faint wash of the brand colours drifting through, then the light. */}
+          <motion.div
+            className="absolute inset-y-0 w-2/3 bg-gradient-to-r from-transparent via-fuchsia-200/40 to-transparent"
+            initial={{ x: '-160%' }}
+            animate={{ x: '260%' }}
+            transition={{ duration: 1.8, delay, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <motion.div
+            className="absolute inset-y-0 w-1/2 -skew-x-12 bg-gradient-to-r from-transparent via-white/80 to-transparent"
+            initial={{ x: '-150%' }}
+            animate={{ x: '250%' }}
+            transition={{ duration: 1.35, delay: delay + 0.1, repeat: Infinity, ease: 'linear' }}
+          />
+        </>
       )}
     </div>
   );

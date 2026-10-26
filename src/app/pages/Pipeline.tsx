@@ -46,6 +46,7 @@ import {
   Tooltip,
 } from 'recharts';
 import AppHeader from '@/app/components/AppHeader';
+import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
@@ -1461,7 +1462,7 @@ export default function Pipeline() {
                   <div className="space-y-2 max-h-[300px] overflow-y-auto">
                     {activitiesLoading ? (
                       <div className="py-6 text-center">
-                        <Clock className="w-5 h-5 text-slate-400 animate-spin mx-auto mb-2" />
+                        <Spinner size={22} className="mx-auto mb-2" />
                         <p className="text-xs text-slate-500">Loading activities...</p>
                       </div>
                     ) : dealActivities.length === 0 ? (
