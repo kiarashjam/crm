@@ -65,6 +65,9 @@ public interface ILeadService
     /// </summary>
     Task<Result> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
+    /// <summary>Keeps one lead and folds a duplicate of it into it.</summary>
+    Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
     /// <summary>
     /// Converts a lead to a contact and/or deal.
     /// </summary>

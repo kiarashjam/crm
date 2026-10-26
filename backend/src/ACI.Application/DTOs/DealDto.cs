@@ -31,3 +31,6 @@ public record DealDto(
     DateTime? ClosedAtUtc,
     bool IsPrivate = false,
     Guid? TeamId = null);
+
+/// <summary>The deal to fold into the one named in the route.</summary>
+public record MergeDealsRequest(Guid OtherDealId);

@@ -270,48 +270,58 @@ public sealed class ContactRepository : IContactRepository
             .ToList();
     }
 
-    public async Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
-    {
-        if (keepId == dropId) return false;
-        var keep = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == keepId, ct);
-        var drop = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == dropId, ct);
-        if (keep == null || drop == null || keep.IsArchived || drop.IsArchived) return false;
+    public Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        RecordMerge.InTransactionAsync(_db, async () =>
+        {
+            if (keepId == dropId) return false;
+            var keep = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == keepId, ct);
+            var drop = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == dropId, ct);
+            if (keep == null || drop == null || keep.IsArchived || drop.IsArchived) return false;
 
-        foreach (var deal in await _db.Deals.Where(d => d.ContactId == dropId).ToListAsync(ct))
-            deal.ContactId = keepId;
-        foreach (var task in await _db.TaskItems.Where(t => t.ContactId == dropId).ToListAsync(ct))
-            task.ContactId = keepId;
-        foreach (var activity in await _db.Activities.Where(a => a.ContactId == dropId).ToListAsync(ct))
-            activity.ContactId = keepId;
-        foreach (var lead in await _db.Leads.Where(l => l.ConvertedToContactId == dropId).ToListAsync(ct))
-            lead.ConvertedToContactId = keepId;
-        // The people the dropped record referred were referred by the person kept.
-        foreach (var lead in await _db.Leads.Where(l => l.ReferredByContactId == dropId).ToListAsync(ct))
-            lead.ReferredByContactId = keepId;
+            foreach (var deal in await _db.Deals.Where(d => d.ContactId == dropId).ToListAsync(ct))
+                deal.ContactId = keepId;
+            foreach (var task in await _db.TaskItems.Where(t => t.ContactId == dropId).ToListAsync(ct))
+                task.ContactId = keepId;
+            foreach (var activity in await _db.Activities.Where(a => a.ContactId == dropId).ToListAsync(ct))
+                activity.ContactId = keepId;
+            foreach (var message in await _db.SentMessages.Where(m => m.ContactId == dropId).ToListAsync(ct))
+                message.ContactId = keepId;
+            foreach (var lead in await _db.Leads.Where(l => l.ConvertedToContactId == dropId).ToListAsync(ct))
+                lead.ConvertedToContactId = keepId;
+            // The people the dropped record referred were referred by the person kept.
+            foreach (var lead in await _db.Leads.Where(l => l.ReferredByContactId == dropId).ToListAsync(ct))
+                lead.ReferredByContactId = keepId;
+            await RecordMerge.MoveEnrollmentsAsync(_db, "contact", keepId, dropId, ct);
+            // The dropped record is archived rather than deleted, so its files and
+            // custom fields would otherwise stay on a contact nobody sees.
+            await RecordMerge.MoveDependentsAsync(_db, RecordTypes.Contact, keepId, dropId, ct);
 
-        if (drop.ConvertedFromLeadId is Guid leadId && keep.ConvertedFromLeadId == null)
-            keep.ConvertedFromLeadId = leadId;
-        drop.ConvertedFromLeadId = null;
+            if (drop.ConvertedFromLeadId is Guid leadId && keep.ConvertedFromLeadId == null)
+            {
+                keep.ConvertedFromLeadId = leadId;
+                keep.ConvertedAtUtc ??= drop.ConvertedAtUtc;
+            }
+            drop.ConvertedFromLeadId = null;
 
-        if (string.IsNullOrWhiteSpace(keep.Phone) && !string.IsNullOrWhiteSpace(drop.Phone))
-            keep.Phone = drop.Phone;
-        if (keep.CompanyId == null && drop.CompanyId != null)
-            keep.CompanyId = drop.CompanyId;
-        if (string.IsNullOrWhiteSpace(keep.JobTitle) && !string.IsNullOrWhiteSpace(drop.JobTitle))
-            keep.JobTitle = drop.JobTitle;
-        // Either record saying "do not contact" is the person saying it. Merging must not
-        // quietly make them reachable again.
-        if (drop.DoNotContact)
-            keep.DoNotContact = true;
+            keep.Phone = RecordMerge.Fill(keep.Phone, drop.Phone);
+            keep.CompanyId ??= drop.CompanyId;
+            keep.JobTitle = RecordMerge.Fill(keep.JobTitle, drop.JobTitle);
+            keep.Description = RecordMerge.Fill(keep.Description, drop.Description);
+            keep.PreferredContactMethod = RecordMerge.Fill(keep.PreferredContactMethod, drop.PreferredContactMethod);
+            // Either record saying "do not contact" is the person saying it. Merging must not
+            // quietly make them reachable again.
+            if (drop.DoNotContact)
+                keep.DoNotContact = true;
+            keep.CreatedAtUtc = RecordMerge.Earliest(keep.CreatedAtUtc, drop.CreatedAtUtc)!.Value;
 
-        drop.IsArchived = true;
-        drop.ArchivedAtUtc = DateTime.UtcNow;
-        drop.ArchivedByUserId = userId;
-        keep.UpdatedAtUtc = DateTime.UtcNow;
-        keep.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
-        return true;
-    }
+            drop.IsArchived = true;
+            drop.ArchivedAtUtc = DateTime.UtcNow;
+            drop.ArchivedByUserId = userId;
+            keep.UpdatedAtUtc = DateTime.UtcNow;
+            keep.UpdatedByUserId = userId;
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
 
     private async Task RememberContactOnLeadAsync(Lead lead, Guid contactId, CancellationToken ct)
     {

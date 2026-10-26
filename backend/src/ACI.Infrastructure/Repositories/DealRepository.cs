@@ -139,6 +139,66 @@ public sealed class DealRepository : IDealRepository
         return true;
     }
 
+    public Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        RecordMerge.InTransactionAsync(_db, async () =>
+        {
+            if (keepId == dropId) return false;
+            // Both through visibility: a private deal someone cannot see is not theirs to fold away.
+            var keep = await FilterByUserAndOrg(_db.Deals, userId, organizationId).FirstOrDefaultAsync(d => d.Id == keepId, ct);
+            var drop = await FilterByUserAndOrg(_db.Deals, userId, organizationId).FirstOrDefaultAsync(d => d.Id == dropId, ct);
+            if (keep == null || drop == null) return false;
+
+            foreach (var task in await _db.TaskItems.Where(t => t.DealId == dropId).ToListAsync(ct))
+                task.DealId = keepId;
+            foreach (var activity in await _db.Activities.Where(a => a.DealId == dropId).ToListAsync(ct))
+                activity.DealId = keepId;
+            // Stage history cascades on delete and line items go with a deleted deal, so
+            // both have to move before the other deal is removed.
+            foreach (var change in await _db.DealStageChanges.Where(c => c.DealId == dropId).ToListAsync(ct))
+                change.DealId = keepId;
+            foreach (var item in await _db.DealLineItems.Where(i => i.DealId == dropId).ToListAsync(ct))
+                item.DealId = keepId;
+            foreach (var message in await _db.SentMessages.Where(m => m.DealId == dropId).ToListAsync(ct))
+                message.DealId = keepId;
+            foreach (var contract in await _db.Contracts.Where(c => c.DealId == dropId).ToListAsync(ct))
+                contract.DealId = keepId;
+            foreach (var lead in await _db.Leads.Where(l => l.ConvertedToDealId == dropId).ToListAsync(ct))
+                lead.ConvertedToDealId = keepId;
+
+            await RecordMerge.MoveDependentsAsync(_db, RecordTypes.Deal, keepId, dropId, ct);
+
+            // The kept deal's own values stay — its name, stage and outcome among them;
+            // what it is missing is filled in.
+            if (IsBlankValue(keep.Value) && !IsBlankValue(drop.Value))
+            {
+                keep.Value = drop.Value;
+                keep.Currency = drop.Currency ?? keep.Currency;
+            }
+            keep.Currency = RecordMerge.Fill(keep.Currency, drop.Currency);
+            keep.CompanyId ??= drop.CompanyId;
+            keep.ContactId ??= drop.ContactId;
+            keep.AssigneeId ??= drop.AssigneeId;
+            keep.TeamId ??= drop.TeamId;
+            keep.ExpectedCloseDateUtc ??= drop.ExpectedCloseDateUtc;
+            keep.Description = RecordMerge.Fill(keep.Description, drop.Description);
+            keep.Probability ??= drop.Probability;
+            // Either deal being private is someone saying it is private. Folding it into a
+            // shared deal must not quietly show it to the team.
+            if (drop.IsPrivate) keep.IsPrivate = true;
+            keep.CreatedAtUtc = RecordMerge.Earliest(keep.CreatedAtUtc, drop.CreatedAtUtc)!.Value;
+            keep.UpdatedAtUtc = DateTime.UtcNow;
+            keep.UpdatedByUserId = userId;
+            await _db.SaveChangesAsync(ct);
+
+            _db.Deals.Remove(drop);
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
+
+    private static bool IsBlankValue(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+        || (decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var amount) && amount == 0);
+
     /// <summary>HP-11: Record a deal stage change.</summary>
     public async Task AddStageChangeAsync(DealStageChange change, CancellationToken ct = default)
     {

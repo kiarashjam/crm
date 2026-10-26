@@ -316,6 +316,23 @@ public class LeadsController : ControllerBase
         return result.ToActionResult();
     }
 
+    /// <summary>Keeps this lead and folds the other one into it.</summary>
+    /// <response code="204">Merged; the other lead is gone and everything on it is on this one.</response>
+    /// <response code="404">Either lead is not in this workspace, or they are the same lead.</response>
+    [HttpPost("{id:guid}/merge")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Merge(Guid id, [FromBody] MergeLeadsRequest request, CancellationToken ct)
+    {
+        if (request == null || request.OtherLeadId == Guid.Empty)
+            return BadRequest();
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await _leadService.MergeAsync(id, request.OtherLeadId, userId.Value, _currentUser.CurrentOrganizationId, ct);
+        return result.ToNoContentResult();
+    }
+
     /// <summary>
     /// Deletes a lead.
     /// </summary>

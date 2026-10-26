@@ -298,4 +298,86 @@ public sealed class LeadRepository : ILeadRepository
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    public Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        RecordMerge.InTransactionAsync(_db, async () =>
+        {
+            if (keepId == dropId) return false;
+            var keep = await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == keepId, ct);
+            var drop = await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == dropId, ct);
+            if (keep == null || drop == null) return false;
+
+            // Everything that hangs off the lead folded in now hangs off the one kept.
+            foreach (var task in await _db.TaskItems.Where(t => t.LeadId == dropId).ToListAsync(ct))
+                task.LeadId = keepId;
+            foreach (var activity in await _db.Activities.Where(a => a.LeadId == dropId).ToListAsync(ct))
+                activity.LeadId = keepId;
+            foreach (var change in await _db.LeadStatusEvents.Where(e => e.LeadId == dropId).ToListAsync(ct))
+                change.LeadId = keepId;
+            foreach (var message in await _db.SentMessages.Where(m => m.LeadId == dropId).ToListAsync(ct))
+                message.LeadId = keepId;
+            foreach (var contract in await _db.Contracts.Where(c => c.LeadId == dropId).ToListAsync(ct))
+                contract.LeadId = keepId;
+
+            await RecordMerge.MoveEnrollmentsAsync(_db, "lead", keepId, dropId, ct);
+
+            // A lead becomes at most one contact. If both did, the other contact stays,
+            // just no longer marked as made from a lead that is gone.
+            var keptContact = await _db.Contacts.AnyAsync(c => c.ConvertedFromLeadId == keepId, ct);
+            foreach (var contact in await _db.Contacts.Where(c => c.ConvertedFromLeadId == dropId).ToListAsync(ct))
+            {
+                contact.ConvertedFromLeadId = keptContact ? null : keepId;
+                keptContact = true;
+            }
+
+            await RecordMerge.MoveDependentsAsync(_db, RecordTypes.Lead, keepId, dropId, ct);
+
+            // The kept lead's own values stay; what it is missing is filled in.
+            keep.Phone = RecordMerge.Fill(keep.Phone, drop.Phone);
+            keep.CompanyId ??= drop.CompanyId;
+            // Not a referrer that is the person themselves, made from either lead.
+            if (keep.ReferredByContactId == null && drop.ReferredByContactId is Guid referrer
+                && referrer != keep.ConvertedToContactId
+                && !await _db.Contacts.AnyAsync(c => c.Id == referrer && (c.ConvertedFromLeadId == keepId || c.ConvertedFromLeadId == dropId), ct))
+                keep.ReferredByContactId = referrer;
+            keep.AssignedToUserId ??= drop.AssignedToUserId;
+            keep.Source = RecordMerge.Fill(keep.Source, drop.Source);
+            keep.LeadSourceId ??= drop.LeadSourceId;
+            keep.Description = RecordMerge.Fill(keep.Description, drop.Description);
+            keep.LifecycleStage = RecordMerge.Fill(keep.LifecycleStage, drop.LifecycleStage);
+            keep.PipelineState = RecordMerge.Fill(keep.PipelineState, drop.PipelineState);
+            keep.JobTitle = RecordMerge.Fill(keep.JobTitle, drop.JobTitle);
+            keep.Country = RecordMerge.Fill(keep.Country, drop.Country);
+            keep.Industry = RecordMerge.Fill(keep.Industry, drop.Industry);
+            keep.CompanySize = RecordMerge.Fill(keep.CompanySize, drop.CompanySize);
+            keep.EnrichedDomain = RecordMerge.Fill(keep.EnrichedDomain, drop.EnrichedDomain);
+            keep.QueueId ??= drop.QueueId;
+            keep.TerritoryId ??= drop.TerritoryId;
+            if (keep.LeadScore == null && drop.LeadScore != null)
+            {
+                keep.LeadScore = drop.LeadScore;
+                keep.ScoreIsManual = drop.ScoreIsManual;
+            }
+            // History adds up: the person first came in at the earlier date, was last
+            // spoken to at the later one, and opened every email either record counted.
+            keep.CreatedAtUtc = RecordMerge.Earliest(keep.CreatedAtUtc, drop.CreatedAtUtc)!.Value;
+            keep.LastContactedAt = RecordMerge.Latest(keep.LastContactedAt, drop.LastContactedAt);
+            keep.FirstResponseAtUtc = RecordMerge.Earliest(keep.FirstResponseAtUtc, drop.FirstResponseAtUtc);
+            keep.EmailOpenCount += drop.EmailOpenCount;
+            if (!keep.IsConverted && drop.IsConverted)
+            {
+                keep.IsConverted = true;
+                keep.ConvertedAtUtc = drop.ConvertedAtUtc;
+            }
+            keep.ConvertedToDealId ??= drop.ConvertedToDealId;
+            keep.ConvertedToCompanyId ??= drop.ConvertedToCompanyId;
+            keep.ConvertedToContactId ??= drop.ConvertedToContactId;
+            keep.UpdatedAtUtc = DateTime.UtcNow;
+            keep.UpdatedByUserId = userId;
+            await _db.SaveChangesAsync(ct);
+
+            _db.Leads.Remove(drop);
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }, ct);
 }

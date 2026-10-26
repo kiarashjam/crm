@@ -37,3 +37,6 @@ public record LeadDto(
     bool ScoreIsManual = false,
     Guid? ReferredByContactId = null,
     string? ReferredByContactName = null);
+
+/// <summary>The lead to fold into the one named in the route.</summary>
+public record MergeLeadsRequest(Guid OtherLeadId);
