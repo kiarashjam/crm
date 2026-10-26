@@ -2,19 +2,40 @@
 
 import * as React from "react";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
+import { motion } from "motion/react";
 
 import { cn } from "./utils";
+import { useMotionPreference } from "@/app/hooks/useMotionPreference";
+
+// The active tab's highlight slides from tab to tab rather than blinking across.
+// Tabs knows which tab is chosen, so each trigger can tell whether the highlight
+// is its own; a trigger used outside these Tabs keeps the plain highlight.
+const TabsHighlight = React.createContext<{ id: string; value: string | undefined } | null>(null);
 
 function Tabs({
   className,
+  value,
+  defaultValue,
+  onValueChange,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Root>) {
+  const id = React.useId();
+  const [chosen, setChosen] = React.useState(defaultValue);
+  const current = value ?? chosen;
   return (
-    <TabsPrimitive.Root
-      data-slot="tabs"
-      className={cn("flex flex-col gap-2", className)}
-      {...props}
-    />
+    <TabsHighlight.Provider value={{ id, value: current }}>
+      <TabsPrimitive.Root
+        data-slot="tabs"
+        className={cn("flex flex-col gap-2", className)}
+        value={value}
+        defaultValue={defaultValue}
+        onValueChange={(next) => {
+          setChosen(next);
+          onValueChange?.(next);
+        }}
+        {...props}
+      />
+    </TabsHighlight.Provider>
   );
 }
 
@@ -36,17 +57,34 @@ function TabsList({
 
 function TabsTrigger({
   className,
+  children,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  const highlight = React.useContext(TabsHighlight);
+  const reduce = useMotionPreference();
+  const slides = !!highlight && !reduce;
+  const active = highlight?.value === props.value;
   return (
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "data-[state=active]:bg-card dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-xl border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,scale] duration-200 ease-out hover:text-foreground active:scale-[0.97] data-[state=active]:shadow-sm focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative isolate data-[state=active]:bg-card dark:data-[state=active]:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-xl border border-transparent px-2 py-1 text-sm font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,scale] duration-200 ease-out hover:text-foreground active:scale-[0.97] data-[state=active]:shadow-sm focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        // The sliding highlight below stands in for the static one.
+        slides && "data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent",
         className,
       )}
       {...props}
-    />
+    >
+      {slides && active && (
+        <motion.span
+          aria-hidden
+          layoutId={`${highlight!.id}-tab`}
+          className="absolute inset-0 -z-10 rounded-[inherit] bg-card shadow-sm dark:bg-input/30"
+          transition={{ type: "spring", stiffness: 500, damping: 36 }}
+        />
+      )}
+      {children}
+    </TabsPrimitive.Trigger>
   );
 }
 
