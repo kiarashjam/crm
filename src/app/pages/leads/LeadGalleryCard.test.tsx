@@ -134,3 +134,25 @@ describe('LeadGalleryCard', () => {
     expect(screen.getByText('No interactions yet.')).toBeTruthy();
   });
 });
+
+describe('LeadGalleryCard relationships', () => {
+  const spouse = {
+    id: 'r1', type: 'spouse' as const, relatedContactId: 'c-marc', relatedContactName: 'Marc Favre',
+    relatedContactIsArchived: false, relatedLeadId: 'l9', createdAtUtc: '2026-10-01T00:00:00Z',
+  };
+
+  it('shows the spouse as a link to their lead', () => {
+    renderCard({ lead: { ...base, relationships: [spouse] } });
+    const link = screen.getByRole('link', { name: /Spouse: Marc Favre/ });
+    expect(link.getAttribute('href')).toBe('/leads/l9');
+  });
+
+  it('names a single relative, and counts several', () => {
+    const child = { ...spouse, id: 'r2', type: 'child' as const, relatedContactName: 'Harry Favre', relatedLeadId: null };
+    const sister = { ...spouse, id: 'r3', type: 'sibling' as const, relatedContactName: 'Lea Favre', relatedLeadId: null };
+    renderCard({ lead: { ...base, relationships: [child] } });
+    expect(screen.getByText('Child: Harry Favre')).toBeTruthy();
+    renderCard({ lead: { ...base, id: 'l2', relationships: [spouse, child, sister] } });
+    expect(screen.getByText('2 relatives')).toBeTruthy();
+  });
+});

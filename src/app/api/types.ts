@@ -1,5 +1,7 @@
 /** Shared types for the CRM API (frontend mock; replace with real API later). */
 
+import type { ContactRelationship } from './relationships';
+
 // ============================================================================
 // Pagination Types
 // ============================================================================
@@ -81,6 +83,8 @@ export interface Lead {
   phone?: string;
   referredByContactId?: string;
   referredByContactName?: string;
+  /** The lead's spouse or partner and family, spouse first. Filled on list reads. */
+  relationships?: ContactRelationship[];
   companyId?: string;
   companyName?: string;
   source?: string;

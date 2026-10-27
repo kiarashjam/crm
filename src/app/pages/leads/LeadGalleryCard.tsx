@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   Building2, Calendar, Check, CheckCircle2, ChevronDown, Clock, Gauge, Mail,
-  MessageSquarePlus, Phone, Sparkles, Tag, User, UserCircle, UserPlus, Zap,
+  Heart, MessageSquarePlus, Phone, Sparkles, Tag, User, UserCircle, UserPlus, Users, Zap,
   Activity as ActivityIcon,
 } from 'lucide-react';
 import type { Activity, Lead } from '@/app/api/types';
+import { isCouple, relationshipLabel } from '@/app/api/relationships';
 import type { OrgMemberDto } from '@/app/api/organizations';
 import { Reveal } from '@/app/components/motion/PageEnter';
 import { Button } from '@/app/components/ui/button';
@@ -280,6 +281,9 @@ export function LeadGalleryCard({
   const hasScore = lead.leadScore !== undefined && lead.leadScore !== null;
   const hot = (hasScore && (lead.leadScore ?? 0) >= 70) || lead.lifecycleStage === 'Hot';
   const email = lead.email?.trim();
+  // Spouse or partner (the couples package) gets its own chip; other relatives share one.
+  const couple = lead.relationships?.find((r) => isCouple(r.type));
+  const relatives = lead.relationships?.filter((r) => !isCouple(r.type)) ?? [];
 
   return (
     <Reveal
@@ -488,8 +492,8 @@ export function LeadGalleryCard({
           />
         </div>
 
-        {/* How to reach them, and who sent them. */}
-        {(email || lead.phone || (lead.referredByContactId && lead.referredByContactName)) && (
+        {/* How to reach them, who sent them, and who they come with. */}
+        {(email || lead.phone || (lead.referredByContactId && lead.referredByContactName) || couple || relatives.length > 0) && (
           <div className="flex flex-wrap items-center gap-1.5">
             {email && (
               <a
@@ -520,6 +524,29 @@ export function LeadGalleryCard({
                 <UserPlus className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 <span className="truncate">Referred by {lead.referredByContactName}</span>
               </Link>
+            )}
+            {couple && (
+              <Link
+                to={couple.relatedLeadId ? `/leads/${couple.relatedLeadId}` : `/contacts/${couple.relatedContactId}`}
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-800 ring-1 ring-rose-200/70 transition-colors hover:bg-rose-100"
+              >
+                <Heart className="h-3.5 w-3.5 shrink-0 fill-rose-400 text-rose-500" aria-hidden />
+                <span className="truncate">{relationshipLabel(couple.type)}: {couple.relatedContactName}</span>
+              </Link>
+            )}
+            {relatives.length > 0 && (
+              <span
+                title={relatives.map((r) => `${relationshipLabel(r.type)}: ${r.relatedContactName}`).join('\n')}
+                className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200/70"
+              >
+                <Users className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="truncate">
+                  {relatives.length === 1 && relatives[0]
+                    ? `${relationshipLabel(relatives[0].type)}: ${relatives[0].relatedContactName}`
+                    : `${relatives.length} relatives`}
+                </span>
+              </span>
             )}
           </div>
         )}

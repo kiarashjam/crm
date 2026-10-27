@@ -18,6 +18,7 @@ public class LeadService : ILeadService
     private readonly ILeadAutomation _automation;
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
+    private readonly IContactRelationshipRepository? _relationships;
     private readonly ILogger<LeadService> _logger;
 
     public LeadService(
@@ -28,7 +29,8 @@ public class LeadService : ILeadService
         ILeadAutomation automation,
         ILogger<LeadService> logger,
         IAutomationEngine? automations = null,
-        IOutboundWebhookPublisher? webhooks = null)
+        IOutboundWebhookPublisher? webhooks = null,
+        IContactRelationshipRepository? relationships = null)
     {
         _repository = repository;
         _companyRepository = companyRepository;
@@ -38,6 +40,7 @@ public class LeadService : ILeadService
         _logger = logger;
         _automations = automations;
         _webhooks = webhooks;
+        _relationships = relationships;
     }
 
     /// <inheritdoc />
@@ -58,7 +61,7 @@ public class LeadService : ILeadService
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, options, ct);
 
-        var dtos = items.Select(Map).ToList();
+        var dtos = await MapWithRelationshipsAsync(items, ct);
 
         _logger.LogInformation(
             "Retrieved {Count} of {Total} leads for user {UserId} (page {Page})",
@@ -89,7 +92,7 @@ public class LeadService : ILeadService
             "Retrieved {Count} leads for user {UserId}",
             list.Count, userId);
 
-        return list.Select(Map).ToList();
+        return await MapWithRelationshipsAsync(list, ct);
     }
 
     /// <inheritdoc />
@@ -113,7 +116,7 @@ public class LeadService : ILeadService
             "Search returned {Count} leads for query '{Query}'",
             list.Count, query);
 
-        return list.Select(Map).ToList();
+        return await MapWithRelationshipsAsync(list, ct);
     }
 
     /// <inheritdoc />
@@ -668,6 +671,27 @@ public class LeadService : ILeadService
             leadId, companyId, contactId, dealId);
 
         return new ConvertLeadResult(companyId, contactId, dealId);
+    }
+
+    /// <summary>
+    /// Leads for a list, each with the relationships of its person contact (spouse or
+    /// partner first), read in one query for the whole page.
+    /// </summary>
+    private async Task<List<LeadDto>> MapWithRelationshipsAsync(IReadOnlyList<Lead> leads, CancellationToken ct)
+    {
+        var dtos = leads.Select(Map).ToList();
+        if (_relationships == null) return dtos;
+        var contactIds = leads.Where(l => l.ConvertedToContactId != null).Select(l => l.ConvertedToContactId!.Value).Distinct().ToList();
+        if (contactIds.Count == 0) return dtos;
+        var rows = await _relationships.ForContactsAsync(contactIds, ct);
+        if (rows.Count == 0) return dtos;
+        for (var i = 0; i < leads.Count; i++)
+        {
+            if (leads[i].ConvertedToContactId is not Guid contactId) continue;
+            var seen = ContactRelationshipService.SeenFrom(rows, contactId);
+            if (seen.Count > 0) dtos[i] = dtos[i] with { Relationships = seen };
+        }
+        return dtos;
     }
 
     private static LeadDto Map(Lead e) =>
