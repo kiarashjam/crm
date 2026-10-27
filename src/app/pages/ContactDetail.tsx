@@ -16,6 +16,8 @@ import EmailComposerDialog from '@/app/components/EmailComposerDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import ReferredLeadsCard from '@/app/components/ReferredLeadsCard';
+import RelationshipsCard from '@/app/components/RelationshipsCard';
+import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import {
   getActivitiesByContact, getTasksByContact,
@@ -84,6 +86,7 @@ export default function ContactDetail() {
   const [merging, setMerging] = useState(false);
   const [dismissedLookalike, setDismissedLookalike] = useState(false);
   const [recordRevision, setRecordRevision] = useState(0);
+  const { isReadOnly } = useOrg();
 
   useEffect(() => {
     if (!id) return;
@@ -578,6 +581,14 @@ export default function ContactDetail() {
                   </ul>
                 )}
               </RecordCard>
+
+              {/* Spouse or partner (the couples package) and family, from either side */}
+              <RelationshipsCard
+                owner={{ contactId: contact.id }}
+                personName={contact.name}
+                readOnly={isReadOnly || !!contact.isArchived}
+                revision={recordRevision}
+              />
 
               {/* Leads this person referred, each a link to that lead */}
               <ReferredLeadsCard contactId={contact.id} contactName={contact.name} revision={recordRevision} />

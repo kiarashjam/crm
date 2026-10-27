@@ -187,6 +187,7 @@ try
     // Application services
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IContactService, ContactService>();
+    builder.Services.AddScoped<IContactRelationshipService, ContactRelationshipService>();
     builder.Services.AddScoped<IDealService, DealService>();
     builder.Services.AddScoped<ILeadService, LeadService>();
     builder.Services.AddScoped<ILeadAutomation, LeadAutomation>();
@@ -1470,6 +1471,36 @@ try
                 END;
             ");
             
+            // Create ContactRelationships table if missing: who is whose spouse, parent, and so on.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ContactRelationships')
+                BEGIN
+                    CREATE TABLE [ContactRelationships] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [UserId] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NULL,
+                        [ContactId] uniqueidentifier NOT NULL,
+                        [RelatedContactId] uniqueidentifier NOT NULL,
+                        [Type] nvarchar(32) NOT NULL,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        [UpdatedAtUtc] datetime2 NULL,
+                        CONSTRAINT [PK_ContactRelationships] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_ContactRelationships_Contacts_ContactId] FOREIGN KEY ([ContactId])
+                            REFERENCES [Contacts] ([Id]),
+                        CONSTRAINT [FK_ContactRelationships_Contacts_RelatedContactId] FOREIGN KEY ([RelatedContactId])
+                            REFERENCES [Contacts] ([Id]),
+                        CONSTRAINT [FK_ContactRelationships_Users_UserId] FOREIGN KEY ([UserId])
+                            REFERENCES [Users] ([Id]),
+                        CONSTRAINT [FK_ContactRelationships_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId])
+                            REFERENCES [Organizations] ([Id])
+                    );
+                    CREATE UNIQUE INDEX [IX_ContactRelationships_ContactId_RelatedContactId] ON [ContactRelationships] ([ContactId], [RelatedContactId]);
+                    CREATE INDEX [IX_ContactRelationships_RelatedContactId] ON [ContactRelationships] ([RelatedContactId]);
+                    CREATE INDEX [IX_ContactRelationships_OrganizationId] ON [ContactRelationships] ([OrganizationId]);
+                    CREATE INDEX [IX_ContactRelationships_UserId] ON [ContactRelationships] ([UserId]);
+                END;
+            ");
+
             // Create Notifications table if missing.
             //
             // AddNotifications is one of the two migrations with no .Designer.cs, so

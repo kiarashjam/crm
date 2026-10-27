@@ -103,7 +103,9 @@ public class OrganizationCloneTests
             }),
         };
         var definition = new CustomFieldDefinition { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", Key = "board_seat", Label = "Board seat", Type = "checkbox", CreatedAtUtc = now };
-        db.AddRange(task, contract, sequence, territory, queue, member, team, rule, definition);
+        var spouse = new Contact { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Marie Dupont", Email = $"marie@{name}.ch", CreatedAtUtc = now };
+        db.AddRange(task, contract, sequence, territory, queue, member, team, rule, definition, spouse);
+        db.ContactRelationships.Add(new ContactRelationship { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, ContactId = contact.Id, RelatedContactId = spouse.Id, Type = ContactRelationshipTypes.Spouse, CreatedAtUtc = now });
         db.AddRange(
             new DealStageChange { Id = Guid.NewGuid(), DealId = deal.Id, FromDealStageId = stage.Id, ToDealStageId = won.Id, ChangedByUserId = owner, ChangedAtUtc = now },
             new DealLineItem { Id = Guid.NewGuid(), DealId = deal.Id, Name = "Membership", Quantity = 1, UnitPrice = 12000, CreatedAtUtc = now },
@@ -242,12 +244,15 @@ public class OrganizationCloneTests
 
         var lead = await db.Leads.SingleAsync(l => l.OrganizationId == report.CopyId);
         var deal = await db.Deals.SingleAsync(d => d.OrganizationId == report.CopyId);
-        var contact = await db.Contacts.SingleAsync(c => c.OrganizationId == report.CopyId);
+        var contact = await db.Contacts.SingleAsync(c => c.OrganizationId == report.CopyId && c.Name == "Jean Dupont");
         new[] { lead.Id, deal.Id, contact.Id }.Should().NotIntersectWith(new[] { original.Lead, original.Deal, original.Contact });
         lead.ConvertedToDealId.Should().Be(deal.Id, "the converted lead's loop is rebuilt between the copies");
         lead.ConvertedToContactId.Should().Be(contact.Id);
         deal.ContactId.Should().Be(contact.Id);
         contact.ConvertedFromLeadId.Should().Be(lead.Id);
+        var couple = await db.ContactRelationships.SingleAsync(r => r.OrganizationId == report.CopyId);
+        couple.ContactId.Should().Be(contact.Id, "a relationship links the copied people, not the originals");
+        (await db.Contacts.SingleAsync(c => c.Id == couple.RelatedContactId)).OrganizationId.Should().Be(report.CopyId);
         deal.IsPrivate.Should().BeTrue();
         var stage = await db.DealStages.SingleAsync(s => s.Id == deal.DealStageId);
         (await db.Pipelines.SingleAsync(p => p.Id == stage.PipelineId)).OrganizationId.Should().Be(report.CopyId);

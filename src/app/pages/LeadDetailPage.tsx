@@ -56,6 +56,7 @@ import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
 import { SalesTrackerCard } from './leads/detail/SalesTrackerCard';
 import { ReferralCard } from './leads/detail/ReferralCard';
+import RelationshipsCard from '@/app/components/RelationshipsCard';
 import AiNextActionCard from '@/app/components/AiNextActionCard';
 import SaveLeadAsContactDialog from '@/app/components/SaveLeadAsContactDialog';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
@@ -651,6 +652,14 @@ export default function LeadDetailPage() {
       return false;
     }
   }, [lead, contacts]);
+
+  /** Notes a relationship change (spouse, family) on the lead's timeline. */
+  const noteRelationship = useCallback((summary: string) => {
+    if (!lead) return;
+    createActivity({ type: 'system', subject: summary, leadId: lead.id })
+      .then((a) => a && setActivities((prev) => [a, ...prev]))
+      .catch(() => { /* non-fatal */ });
+  }, [lead]);
 
   // Open the full multi-step editor, prefilled from the current lead. Mirrors
   // the leads list's openEdit so the two stay behaviourally identical.
@@ -1328,6 +1337,17 @@ export default function LeadDetailPage() {
               {/* Who referred this lead: visible to the whole team, and editable here. */}
               <motion.div {...card(2)}>
                 <ReferralCard lead={lead} contacts={contacts} readOnly={isReadOnly} onChange={saveReferral} />
+              </motion.div>
+
+              {/* Spouse or partner (the couples package) and family, from either side. */}
+              <motion.div {...card(2)}>
+                <RelationshipsCard
+                  owner={{ leadId: lead.id }}
+                  personName={lead.name}
+                  contacts={contacts}
+                  readOnly={isReadOnly}
+                  onChanged={noteRelationship}
+                />
               </motion.div>
 
               {/* Contact: the fields edit in place. */}

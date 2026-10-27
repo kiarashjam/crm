@@ -87,6 +87,7 @@ public sealed class OrganizationRepository : IOrganizationRepository
     {
         await _db.Companies.Where(c => c.UserId == userId && c.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(c => c.OrganizationId, organizationId), ct);
         await _db.Contacts.Where(c => c.UserId == userId && c.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(c => c.OrganizationId, organizationId), ct);
+        await _db.ContactRelationships.Where(r => r.UserId == userId && r.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(r => r.OrganizationId, organizationId), ct);
         await _db.Deals.Where(d => d.UserId == userId && d.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(d => d.OrganizationId, organizationId), ct);
         await _db.Leads.Where(l => l.UserId == userId && l.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(l => l.OrganizationId, organizationId), ct);
         await _db.TaskItems.Where(t => t.UserId == userId && t.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(t => t.OrganizationId, organizationId), ct);

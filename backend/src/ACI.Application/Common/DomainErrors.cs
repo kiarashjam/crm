@@ -269,6 +269,40 @@ public static class DomainErrors
     }
 
     /// <summary>
+    /// Errors for how two contacts are related (spouse, parent, ...).
+    /// </summary>
+    public static class ContactRelationship
+    {
+        public static readonly Error NotFound = new(
+            "ContactRelationship.NotFound", "The relationship was not found on this contact");
+
+        public static readonly Error InvalidType = new(
+            "ContactRelationship.InvalidType",
+            "Unknown relationship. Use one of: " + string.Join(", ", ACI.Domain.Entities.ContactRelationshipTypes.All));
+
+        public static readonly Error RelatedContactRequired = new(
+            "ContactRelationship.RelatedContactRequired", "Pick the contact this person is related to");
+
+        public static readonly Error RelatedContactNotInWorkspace = new(
+            "ContactRelationship.RelatedContactNotInWorkspace", "The related contact was not found in this workspace");
+
+        public static readonly Error RelatedContactArchived = new(
+            "ContactRelationship.RelatedContactArchived", "The related contact is archived. Restore it first, or pick another contact");
+
+        public static readonly Error IsSelf = new(
+            "ContactRelationship.IsSelf", "A contact cannot be related to themselves");
+
+        public static Error Duplicate(string name) => new(
+            "ContactRelationship.Duplicate", $"A relationship with {name} is already recorded. Change that one instead");
+
+        public static Error CoupleDuplicate(string name) => new(
+            "ContactRelationship.CoupleDuplicate", $"{name} already has a spouse or partner recorded. Remove that one first");
+
+        public static readonly Error LeadHasNoContact = new(
+            "ContactRelationship.LeadHasNoContact", "This lead needs a name and an email before relationships can be recorded");
+    }
+
+    /// <summary>
     /// Deal-related errors.
     /// </summary>
     public static class Deal
