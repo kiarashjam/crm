@@ -29,6 +29,7 @@ public class AppDbContext : DbContext
     public DbSet<LeadSource> LeadSources => Set<LeadSource>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Contact> Contacts => Set<Contact>();
+    public DbSet<ContactRelationship> ContactRelationships => Set<ContactRelationship>();
     public DbSet<Deal> Deals => Set<Deal>();
     public DbSet<DealStageChange> DealStageChanges => Set<DealStageChange>();
     public DbSet<Lead> Leads => Set<Lead>();

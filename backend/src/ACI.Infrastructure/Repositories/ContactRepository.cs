@@ -154,6 +154,7 @@ public sealed class ContactRepository : IContactRepository
         await _db.Activities.Where(a => a.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(a => a.ContactId, (Guid?)null), ct);
         await _db.TaskItems.Where(t => t.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(t => t.ContactId, (Guid?)null), ct);
         await _db.Leads.Where(l => l.ReferredByContactId == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.ReferredByContactId, (Guid?)null), ct);
+        await _db.ContactRelationships.Where(r => r.ContactId == id || r.RelatedContactId == id).ExecuteDeleteAsync(ct);
         _db.Contacts.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -291,6 +292,7 @@ public sealed class ContactRepository : IContactRepository
             // The people the dropped record referred were referred by the person kept.
             foreach (var lead in await _db.Leads.Where(l => l.ReferredByContactId == dropId).ToListAsync(ct))
                 lead.ReferredByContactId = keepId;
+            await MoveRelationshipsAsync(keepId, dropId, ct);
             await RecordMerge.MoveEnrollmentsAsync(_db, "contact", keepId, dropId, ct);
             // The dropped record is archived rather than deleted, so its files and
             // custom fields would otherwise stay on a contact nobody sees.
@@ -322,6 +324,37 @@ public sealed class ContactRepository : IContactRepository
             await _db.SaveChangesAsync(ct);
             return true;
         }, ct);
+
+    /// <summary>
+    /// The dropped record's spouse, children and so on are the kept person's. One that
+    /// would relate the person to themselves, repeat a relative the kept record already
+    /// has, or give them a second spouse or partner is removed instead.
+    /// </summary>
+    private async Task MoveRelationshipsAsync(Guid keepId, Guid dropId, CancellationToken ct)
+    {
+        var kept = await _db.ContactRelationships
+            .Where(r => r.ContactId == keepId || r.RelatedContactId == keepId)
+            .ToListAsync(ct);
+        var relatives = kept.Select(r => r.ContactId == keepId ? r.RelatedContactId : r.ContactId).ToHashSet();
+        var hasCouple = kept.Any(r => ContactRelationshipTypes.IsCouple(r.Type));
+
+        var moving = await _db.ContactRelationships
+            .Where(r => r.ContactId == dropId || r.RelatedContactId == dropId)
+            .ToListAsync(ct);
+        foreach (var relationship in moving)
+        {
+            if (relationship.ContactId == dropId) relationship.ContactId = keepId;
+            if (relationship.RelatedContactId == dropId) relationship.RelatedContactId = keepId;
+            var other = relationship.ContactId == keepId ? relationship.RelatedContactId : relationship.ContactId;
+            var couple = ContactRelationshipTypes.IsCouple(relationship.Type);
+            if (other == keepId || !relatives.Add(other) || (couple && hasCouple))
+            {
+                _db.ContactRelationships.Remove(relationship);
+                continue;
+            }
+            hasCouple |= couple;
+        }
+    }
 
     private async Task RememberContactOnLeadAsync(Lead lead, Guid contactId, CancellationToken ct)
     {
