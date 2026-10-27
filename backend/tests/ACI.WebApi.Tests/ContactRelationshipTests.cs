@@ -86,6 +86,39 @@ public class ContactRelationshipTests
     }
 
     [Fact]
+    public async Task TheLeadsListShowsEachLeadsSpouse_FromBothSides()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, ownerId) = await SignInAsync(factory, "owner@example.ch");
+        var org = await CreateAsync(factory, ownerId, "Pavillon");
+
+        var claire = (await Json(await owner.In(org).PostAsync("/api/leads", Body(new { name = "Claire Dubois", email = "claire@example.ch", status = "New" })))).GetProperty("id").GetGuid();
+        var marc = (await Json(await owner.In(org).PostAsync("/api/leads", Body(new { name = "Marc Favre", email = "marc@example.ch", status = "New" })))).GetProperty("id").GetGuid();
+        var alone = (await Json(await owner.In(org).PostAsync("/api/leads", Body(new { name = "Paul Roux", email = "paul@example.ch", status = "New" })))).GetProperty("id").GetGuid();
+        var marcContact = (await Json(await owner.In(org).GetAsync($"/api/leads/{marc}/relationships"))).GetProperty("contactId").GetGuid();
+        await Json(await owner.In(org).PostAsync($"/api/leads/{claire}/relationships", Body(new { relatedContactId = marcContact, type = "partner" })));
+
+        foreach (var path in new[] { "/api/leads?page=1&pageSize=50", "/api/leads/all" })
+        {
+            var body = await Json(await owner.In(org).GetAsync(path));
+            var leads = (body.ValueKind == JsonValueKind.Array ? body : body.GetProperty("items")).EnumerateArray()
+                .ToDictionary(l => l.GetProperty("id").GetGuid());
+
+            var onClaire = leads[claire].GetProperty("relationships").EnumerateArray().Single();
+            onClaire.GetProperty("type").GetString().Should().Be("partner");
+            onClaire.GetProperty("relatedContactName").GetString().Should().Be("Marc Favre");
+            onClaire.GetProperty("relatedLeadId").GetGuid().Should().Be(marc);
+
+            var onMarc = leads[marc].GetProperty("relationships").EnumerateArray().Single();
+            onMarc.GetProperty("relatedContactName").GetString().Should().Be("Claire Dubois");
+            onMarc.GetProperty("relatedLeadId").GetGuid().Should().Be(claire);
+
+            leads[alone].TryGetProperty("relationships", out var none);
+            (none.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined).Should().BeTrue(path);
+        }
+    }
+
+    [Fact]
     public async Task AParentIsSeenAsAChildFromTheOtherSide()
     {
         using var factory = new CustomWebApplicationFactory();

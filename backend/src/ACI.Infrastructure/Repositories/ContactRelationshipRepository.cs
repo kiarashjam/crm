@@ -18,6 +18,17 @@ public sealed class ContactRelationshipRepository : IContactRelationshipReposito
             .Where(r => r.ContactId == contactId || r.RelatedContactId == contactId)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<ContactRelationship>> ForContactsAsync(IReadOnlyCollection<Guid> contactIds, CancellationToken ct = default)
+    {
+        if (contactIds.Count == 0) return [];
+        return await _db.ContactRelationships
+            .AsNoTracking()
+            .Include(r => r.Contact)
+            .Include(r => r.RelatedContact)
+            .Where(r => contactIds.Contains(r.ContactId) || contactIds.Contains(r.RelatedContactId))
+            .ToListAsync(ct);
+    }
+
     public Task<ContactRelationship?> BetweenAsync(Guid contactId, Guid otherContactId, CancellationToken ct = default) =>
         _db.ContactRelationships.FirstOrDefaultAsync(r =>
             (r.ContactId == contactId && r.RelatedContactId == otherContactId)

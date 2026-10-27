@@ -107,12 +107,7 @@ public class ContactRelationshipService : IContactRelationshipService
 
     private async Task<ContactRelationshipListDto> ListOfAsync(Guid contactId, CancellationToken ct)
     {
-        var items = (await _repository.ForContactAsync(contactId, ct))
-            .Select(r => Map(r, contactId, r.ContactId == contactId ? r.RelatedContact : r.Contact))
-            // The couple first, then by name.
-            .OrderBy(r => ContactRelationshipTypes.IsCouple(r.Type) ? 0 : 1)
-            .ThenBy(r => r.RelatedContactName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var items = SeenFrom(await _repository.ForContactAsync(contactId, ct), contactId);
         return new ContactRelationshipListDto(contactId, items);
     }
 
@@ -150,6 +145,18 @@ public class ContactRelationshipService : IContactRelationshipService
 
         return (related, type);
     }
+
+    /// <summary>
+    /// The relationships of <paramref name="viewerId"/> among <paramref name="rows"/> (both
+    /// contacts loaded), as seen from that contact: the couple first, then by name.
+    /// </summary>
+    internal static IReadOnlyList<ContactRelationshipDto> SeenFrom(IEnumerable<ContactRelationship> rows, Guid viewerId) =>
+        rows
+            .Where(r => r.ContactId == viewerId || r.RelatedContactId == viewerId)
+            .Select(r => Map(r, viewerId, r.ContactId == viewerId ? r.RelatedContact : r.Contact))
+            .OrderBy(r => ContactRelationshipTypes.IsCouple(r.Type) ? 0 : 1)
+            .ThenBy(r => r.RelatedContactName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     /// <summary>The relationship as seen from <paramref name="viewerId"/>, whose relative is <paramref name="other"/>.</summary>
     private static ContactRelationshipDto Map(ContactRelationship r, Guid viewerId, Contact other) =>

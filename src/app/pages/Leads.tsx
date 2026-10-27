@@ -48,6 +48,7 @@ import {
 import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
+import { relationshipLabel } from '@/app/api/relationships';
 import { bulkUpdateLeads } from '@/app/api/leadOps';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
 import { useOrg } from '@/app/contexts/OrgContext';
@@ -816,6 +817,7 @@ export default function Leads() {
         'Email',
         'Phone',
         'Referred By',
+        'Relationships',
         'Company',
         'Source',
         'Status',
@@ -834,6 +836,7 @@ export default function Leads() {
         lead.email,
         lead.phone ?? '',
         lead.referredByContactName ?? (lead.referredByContactId ? contacts.find((c) => c.id === lead.referredByContactId)?.name : '') ?? '',
+        (lead.relationships ?? []).map((r) => `${relationshipLabel(r.type)}: ${r.relatedContactName}`).join('; '),
         lead.companyId ? companyName(lead) : '',
         lead.source ?? '',
         lead.status,
@@ -1244,6 +1247,8 @@ export default function Leads() {
       // The server's answer, including a referrer that was just cleared.
       referredByContactId: updatedLead.referredByContactId,
       referredByContactName: updatedLead.referredByContactName,
+      // Only list reads carry relationships; an edit's answer leaves them as they were.
+      relationships: updatedLead.relationships ?? existingLead?.relationships,
     };
 
     const updatedAssignments = { ...leadAssignments };

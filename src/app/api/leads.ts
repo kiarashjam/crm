@@ -1,4 +1,5 @@
 import type { Lead, PagedResult, PaginationParams } from './types';
+import type { ContactRelationship } from './relationships';
 import { mockLeads } from './mockData';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
@@ -50,6 +51,7 @@ type LeadRaw = {
   scoreIsManual?: boolean;
   referredByContactId?: string | null;
   referredByContactName?: string | null;
+  relationships?: ContactRelationship[] | null;
 };
 
 function mapLead(d: LeadRaw): Lead {
@@ -88,6 +90,7 @@ function mapLead(d: LeadRaw): Lead {
     scoreIsManual: d.scoreIsManual ?? false,
     referredByContactId: d.referredByContactId ?? undefined,
     referredByContactName: d.referredByContactName ?? undefined,
+    relationships: d.relationships?.length ? d.relationships : undefined,
   };
 }
 
