@@ -48,6 +48,10 @@ import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const VENUE_COLOR: Record<VisitVenue, string> = {
   Dining: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -184,6 +188,46 @@ export default function Visits() {
     }
   };
 
+  // How this person likes visits shown: a feed, cards or a table, saved for them.
+  const view = useViewPreference('visits', { layouts: ['list', 'grid', 'table'] });
+
+  /** Delete: the same on a row, a card and a table line. */
+  const visitActions = (v: Visit) => (
+    <button
+      type="button"
+      onClick={() => remove(v)}
+      disabled={deletingId === v.id}
+      className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
+      aria-label={`Delete visit by ${v.memberName}`}
+    >
+      {deletingId === v.id ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Trash2 className="h-4 w-4" />
+      )}
+    </button>
+  );
+
+  const visitColumns: RecordColumn<Visit>[] = [
+    {
+      id: 'member',
+      label: 'Member',
+      required: true,
+      cell: (v) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={v.memberName} size="sm" />
+          <span className="truncate">{v.memberName}</span>
+        </span>
+      ),
+    },
+    { id: 'venue', label: 'Venue', cell: (v) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${VENUE_COLOR[v.venue]}`}>{v.venue}</span> },
+    { id: 'when', label: 'When', cell: (v) => formatDateTime(v.visitedAtUtc) },
+    { id: 'tier', label: 'Tier', cell: (v) => v.memberTier },
+    { id: 'guests', label: 'Guests', numeric: true, cell: (v) => v.guestCount || '—' },
+    { id: 'points', label: 'Points', numeric: true, cell: (v) => (v.pointsAwarded > 0 ? <span className="font-semibold text-amber-600">+{v.pointsAwarded}</span> : '—') },
+    { id: 'notes', label: 'Notes', byDefault: false, cell: (v) => <span className="line-clamp-1">{v.notes || '—'}</span> },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -213,7 +257,7 @@ export default function Visits() {
           />
 
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -239,6 +283,7 @@ export default function Visits() {
                 ))}
               </SelectContent>
             </Select>
+            <ViewSwitcher view={view} columns={columnChoices(visitColumns)} className="md:ml-auto" />
           </div>
 
           {/* Visit feed */}
@@ -260,12 +305,61 @@ export default function Visits() {
               variant="teal"
             />
           ) : (
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'table' ? (
+              <RecordTable
+                label="Visits"
+                items={filtered}
+                view={view}
+                getKey={(v) => v.id}
+                columns={visitColumns}
+                actions={visitActions}
+              />
+            ) : view.layout === 'grid' ? (
+              <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
+                {filtered.map((v, index) => (
+                  <StaggerItem
+                    key={v.id}
+                    index={index}
+                    className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:border-cyan-200 ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <InitialsAvatar name={v.memberName} />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-slate-900 truncate">{v.memberName}</p>
+                        <p className="text-xs text-slate-500">{v.memberTier} · {timeAgo(v.visitedAtUtc)}</p>
+                      </div>
+                      {v.pointsAwarded > 0 && (
+                        <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+                          +{v.pointsAwarded}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${VENUE_COLOR[v.venue]}`}>{v.venue}</span>
+                      {v.guestCount > 0 && (
+                        <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                          <Users className="w-3 h-3" /> +{v.guestCount} guest{v.guestCount > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                    {v.notes && view.density !== 'compact' && (
+                      <p className="mt-2 text-sm italic text-slate-500 line-clamp-2">{v.notes}</p>
+                    )}
+                    <div className="mt-auto flex items-center justify-between pt-3 text-xs text-slate-400">
+                      <span>{formatDateTime(v.visitedAtUtc)}</span>
+                      {visitActions(v)}
+                    </div>
+                  </StaggerItem>
+                ))}
+              </div>
+            ) : (
             <div className="space-y-2">
               {filtered.map((v, index) => (
                 <StaggerItem
                   key={v.id}
                   index={index}
-                  className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-cyan-200 flex items-center gap-4 ${liftOnHover}`}
+                  className={`rounded-xl border border-slate-200 bg-white ${view.density === 'compact' ? 'p-2.5' : 'p-4'} shadow-sm hover:border-cyan-200 flex items-center gap-4 ${liftOnHover}`}
                 >
                   <div
                     className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${VENUE_COLOR[v.venue]}`}
@@ -305,22 +399,12 @@ export default function Visits() {
                       <p className="font-semibold text-amber-600">+{v.pointsAwarded}</p>
                     </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => remove(v)}
-                    disabled={deletingId === v.id}
-                    className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
-                    aria-label="Delete visit"
-                  >
-                    {deletingId === v.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </button>
+                  {visitActions(v)}
                 </StaggerItem>
               ))}
             </div>
+            )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>

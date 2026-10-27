@@ -53,11 +53,16 @@ import {
   type LoyaltyEntry,
   type LoyaltyEntryKind,
   type LoyaltyReason,
+  type MemberBalance,
 } from '@/app/api/loyalty';
 import { getMembers, MEMBER_TIERS, type Member, type MemberTier } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const KIND_BADGE: Record<LoyaltyEntryKind, string> = {
   Earned: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -206,6 +211,73 @@ export default function Loyalty() {
     }
   };
 
+  // How this person likes the ledger and the balances shown, saved for them.
+  const view = useViewPreference('loyalty', { layouts: ['table', 'list', 'grid'] });
+  const balanceView = useViewPreference('loyalty.balances', { layouts: ['grid', 'list', 'table'] });
+
+  const kindBadge = (e: LoyaltyEntry) => (
+    <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${KIND_BADGE[e.kind]}`}>{e.kind}</span>
+  );
+  const signedPoints = (e: LoyaltyEntry) => (
+    <span className={`font-semibold ${e.points >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+      {e.points >= 0 ? '+' : ''}
+      {formatPoints(e.points)}
+    </span>
+  );
+
+  /** Delete, the same in every layout. */
+  const entryActions = (e: LoyaltyEntry) => (
+    <button
+      type="button"
+      onClick={() => remove(e)}
+      disabled={deletingId === e.id}
+      className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+      aria-label={`Delete entry for ${e.memberName}`}
+    >
+      {deletingId === e.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+    </button>
+  );
+
+  const entryColumns: RecordColumn<LoyaltyEntry>[] = [
+    {
+      id: 'member',
+      label: 'Member',
+      required: true,
+      cell: (e) => (
+        <span className="block">
+          <span className="flex items-center gap-2.5">
+            <InitialsAvatar name={e.memberName} size="sm" />
+            <span className="truncate">{e.memberName}</span>
+          </span>
+          {e.note && <span className="mt-0.5 block text-xs font-normal text-slate-500">{e.note}</span>}
+        </span>
+      ),
+    },
+    { id: 'reason', label: 'Reason', cell: (e) => REASON_LABELS[e.reason] },
+    { id: 'kind', label: 'Kind', cell: kindBadge },
+    { id: 'points', label: 'Points', numeric: true, cell: signedPoints },
+    { id: 'when', label: 'When', cell: (e) => <span className="whitespace-nowrap">{formatDateTime(e.createdAtUtc)}</span> },
+  ];
+
+  const rankOf = new Map(balances.map((b, i) => [b.memberId, i + 1]));
+  const balanceColumns: RecordColumn<MemberBalance>[] = [
+    {
+      id: 'member',
+      label: 'Member',
+      required: true,
+      cell: (b) => (
+        <span className="flex items-center gap-2.5">
+          <span className="w-6 text-xs font-bold text-amber-700">#{rankOf.get(b.memberId)}</span>
+          <InitialsAvatar name={b.memberName} size="sm" />
+          <span className="truncate">{b.memberName}</span>
+        </span>
+      ),
+    },
+    { id: 'points', label: 'Points', numeric: true, cell: (b) => <span className={`font-semibold ${b.points < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatPoints(b.points)}</span> },
+    { id: 'value', label: 'Worth', numeric: true, cell: (b) => `$${(b.points / POINTS_PER_DOLLAR).toFixed(2)}` },
+    { id: 'entries', label: 'Entries', numeric: true, cell: (b) => b.entries },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -254,7 +326,7 @@ export default function Loyalty() {
             </TabsList>
 
             <TabsContent value="ledger">
-              <div className="flex flex-col md:flex-row gap-3 mb-6">
+              <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
                 <div className="relative flex-1 max-w-md">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input
@@ -279,6 +351,7 @@ export default function Loyalty() {
                     <SelectItem value="Expired">Expired</SelectItem>
                   </SelectContent>
                 </Select>
+                <ViewSwitcher view={view} columns={columnChoices(entryColumns)} className="md:ml-auto" />
               </div>
 
               {loading ? (
@@ -299,58 +372,57 @@ export default function Loyalty() {
                   variant="orange"
                 />
               ) : (
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                        <th className="px-4 py-3 font-medium">Member</th>
-                        <th className="px-4 py-3 font-medium">Reason</th>
-                        <th className="px-4 py-3 font-medium">Kind</th>
-                        <th className="px-4 py-3 font-medium text-right">Points</th>
-                        <th className="px-4 py-3 font-medium">When</th>
-                        <th className="px-4 py-3 font-medium" aria-label="actions" />
-                      </tr>
-                    </thead>
-                    <tbody>
+                <ViewTransition layout={view.layout}>
+                  {view.layout === 'list' ? (
+                    <RecordList
+                      label="Loyalty ledger"
+                      items={filteredEntries}
+                      view={view}
+                      getKey={(e) => e.id}
+                      leading={(e) => <InitialsAvatar name={e.memberName} />}
+                      title={(e) => e.memberName}
+                      subtitle={(e) => e.note || REASON_LABELS[e.reason]}
+                      columns={entryColumns}
+                      actions={entryActions}
+                    />
+                  ) : view.layout === 'grid' ? (
+                    <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
                       {filteredEntries.map((e, index) => (
-                        <StaggerItem as="tr" key={e.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-slate-900">{e.memberName}</p>
-                            {e.note && <p className="text-xs text-slate-500 mt-0.5">{e.note}</p>}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">{REASON_LABELS[e.reason]}</td>
-                          <td className="px-4 py-3">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${KIND_BADGE[e.kind]}`}>
-                              {e.kind}
+                        <StaggerItem
+                          key={e.id}
+                          index={index}
+                          className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <InitialsAvatar name={e.memberName} />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-semibold text-slate-900">{e.memberName}</p>
+                              <p className="text-xs text-slate-500">{REASON_LABELS[e.reason]}</p>
+                            </div>
+                            <span className="shrink-0 text-lg">{signedPoints(e)}</span>
+                          </div>
+                          {e.note && <p className="mt-2 line-clamp-2 text-sm text-slate-500">{e.note}</p>}
+                          <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+                            <span className="flex items-center gap-2 text-xs text-slate-500">
+                              {kindBadge(e)}
+                              {formatDateTime(e.createdAtUtc)}
                             </span>
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold">
-                            <span className={e.points >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                              {e.points >= 0 ? '+' : ''}
-                              {formatPoints(e.points)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDateTime(e.createdAtUtc)}</td>
-                          <td className="px-4 py-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() => remove(e)}
-                              disabled={deletingId === e.id}
-                              className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                              aria-label="Delete entry"
-                            >
-                              {deletingId === e.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                            </button>
-                          </td>
+                            {entryActions(e)}
+                          </div>
                         </StaggerItem>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </div>
+                  ) : (
+                    <RecordTable
+                      label="Loyalty ledger"
+                      items={filteredEntries}
+                      view={view}
+                      getKey={(e) => e.id}
+                      columns={entryColumns}
+                      actions={entryActions}
+                    />
+                  )}
+                </ViewTransition>
               )}
             </TabsContent>
 
@@ -362,12 +434,40 @@ export default function Loyalty() {
                   description="Add ledger entries to see per-member point balances."
                 />
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <>
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-slate-500">
+                      {balances.length} {balances.length === 1 ? 'member' : 'members'} with points
+                    </p>
+                    <ViewSwitcher view={balanceView} columns={columnChoices(balanceColumns)} />
+                  </div>
+                  <ViewTransition layout={balanceView.layout}>
+                  {balanceView.layout === 'list' ? (
+                    <RecordList
+                      label="Balances by member"
+                      items={balances}
+                      view={balanceView}
+                      getKey={(b) => b.memberId}
+                      leading={(b) => <InitialsAvatar name={b.memberName} />}
+                      title={(b) => `#${rankOf.get(b.memberId)} ${b.memberName}`}
+                      subtitle={(b) => `${b.entries} ledger entries`}
+                      columns={balanceColumns}
+                    />
+                  ) : balanceView.layout === 'table' ? (
+                    <RecordTable
+                      label="Balances by member"
+                      items={balances}
+                      view={balanceView}
+                      getKey={(b) => b.memberId}
+                      columns={balanceColumns}
+                    />
+                  ) : (
+                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 ${gridDensity(balanceView, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
                   {balances.map((b, idx) => (
                     <StaggerItem
                       key={b.memberId}
                       index={idx}
-                      className={`bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-amber-200 ${liftOnHover}`}
+                      className={`bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-amber-200 ${balanceView.density === 'compact' ? 'p-4' : 'p-5'} ${liftOnHover}`}
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
@@ -395,6 +495,9 @@ export default function Loyalty() {
                     </StaggerItem>
                   ))}
                 </div>
+                  )}
+                  </ViewTransition>
+                </>
               )}
             </TabsContent>
 

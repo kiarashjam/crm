@@ -111,7 +111,9 @@ export async function resetUserSettings(): Promise<UserSettings> {
     return res ? { ...defaults, ...res } : { ...defaults };
   }
   await delay(100);
-  const next = { ...defaults, agentMemoryJson: getStored()?.agentMemoryJson };
+  const stored = getStored();
+  // Page views are chosen on the pages, not in Settings, so a reset leaves them, as on the server.
+  const next = { ...defaults, agentMemoryJson: stored?.agentMemoryJson, viewPreferencesJson: stored?.viewPreferencesJson };
   setStored(next);
   return next;
 }

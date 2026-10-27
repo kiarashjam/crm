@@ -51,6 +51,9 @@ public record UserSettingsDto
     /// <summary>Last agent turns for this user. Capped so a settings save stays small.</summary>
     public string? AgentMemoryJson { get; init; }
 
+    /// <summary>How this person likes each list page shown.</summary>
+    public string? ViewPreferencesJson { get; init; }
+
     // Metadata (read-only)
     public DateTime? CreatedAtUtc { get; init; }
     public DateTime? UpdatedAtUtc { get; init; }
@@ -140,4 +143,7 @@ public record UpdateUserSettingsRequest
 
     [StringLength(4000)]
     public string? AgentMemoryJson { get; init; }
+
+    [StringLength(4000)]
+    public string? ViewPreferencesJson { get; init; }
 }

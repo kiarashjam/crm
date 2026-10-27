@@ -54,6 +54,10 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
 import { DuplicateMerge, COMPANY_DUPLICATES } from '@/app/components/duplicates';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 // Common industries for filtering
@@ -405,6 +409,68 @@ export default function Companies() {
   // that industry set, as its card did.
   const topIndustryName = companyStats.topIndustry?.[0];
   const topIndustryCount = companyStats.topIndustry?.[1] || 0;
+  // How this person likes companies shown: cards, a list or a table, saved for them.
+  const view = useViewPreference('companies', { layouts: ['grid', 'list', 'table'] });
+  const openCompany = (c: Company) => navigate(recordHref(`/companies/${c.id}`, c.name, 'Companies'));
+  const companyColumns: RecordColumn<Company>[] = [
+    {
+      id: 'name',
+      label: 'Company',
+      required: true,
+      cell: (c) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={c.name} size="sm" />
+          <span className="truncate">{c.name}</span>
+        </span>
+      ),
+    },
+    { id: 'domain', label: 'Domain', cell: (c) => c.domain || c.website || '—' },
+    { id: 'industry', label: 'Industry', cell: (c) => c.industry || '—' },
+    { id: 'size', label: 'Size', byDefault: false, cell: (c) => c.size || '—' },
+    { id: 'location', label: 'Location', byDefault: false, cell: (c) => c.location || '—' },
+    { id: 'contacts', label: 'Contacts', numeric: true, cell: (c) => getContactCount(c.id) || '—' },
+    { id: 'deals', label: 'Deals', numeric: true, cell: (c) => getDealCount(c.id) || '—' },
+    { id: 'value', label: 'Pipeline', numeric: true, cell: (c) => (getDealValue(c.id) ? formatCurrency(getDealValue(c.id)) : '—') },
+  ];
+
+  /** The same menu on a card, a row and a table line. */
+  const companyMenu = (company: Company, triggerClassName = '') => (
+    <WriteOnly>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className={`h-8 w-8 p-0 ${triggerClassName}`}>
+            <span className="sr-only">Actions for {company.name}</span>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem onClick={() => openEdit(company)}>
+            <Pencil className="w-4 h-4 mr-2" />
+            Edit Company
+          </DropdownMenuItem>
+          {company.domain && (
+            <DropdownMenuItem asChild>
+              <a href={`https://${company.domain}`} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Visit Website
+              </a>
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => setDeleteConfirmCompany(company)}
+            className="text-red-600 focus:text-red-600"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </WriteOnly>
+  );
+
   const companyHeroStats: PageStat[] = [
     { label: 'Total Companies', value: companyStats.total, icon: BarChart3, tone: 'blue' },
     { label: 'With Contacts', value: companyStats.withContacts, icon: UserCircle, tone: 'sky' },
@@ -507,7 +573,7 @@ export default function Companies() {
             </div>
 
             {/* Filter & Sort Controls */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {/* Filter Button - Enhanced */}
               <div className="relative group/btn">
                 <div className={`absolute inset-0 rounded-xl blur-lg transition-all duration-300 ${
@@ -591,6 +657,8 @@ export default function Companies() {
                 </SelectContent>
               </Select>
               </div>
+
+              <ViewSwitcher view={view} columns={columnChoices(companyColumns)} />
             </div>
           </div>
 
@@ -773,8 +841,33 @@ export default function Companies() {
           </div>
         ) : (
           <>
-          {/* Company Cards Grid */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <ViewTransition layout={view.layout}>
+          {view.layout === 'list' ? (
+            <RecordList
+              label="Companies"
+              items={filteredCompanies}
+              view={view}
+              getKey={(c) => c.id}
+              onOpen={openCompany}
+              leading={(c) => <InitialsAvatar name={c.name} />}
+              title={(c) => c.name}
+              subtitle={(c) => [c.industry, c.location].filter(Boolean).join(' · ') || c.domain || c.website}
+              columns={companyColumns}
+              actions={(c) => companyMenu(c)}
+            />
+          ) : view.layout === 'table' ? (
+            <RecordTable
+              label="Companies"
+              items={filteredCompanies}
+              view={view}
+              getKey={(c) => c.id}
+              onOpen={openCompany}
+              columns={companyColumns}
+              actions={(c) => companyMenu(c)}
+            />
+          ) : (
+          /* Company Cards Grid */
+          <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
             {filteredCompanies.map((company, index) => {
               const initials = getInitials(company.name);
               const gradient = getCompanyGradient(company.name);
@@ -788,7 +881,7 @@ export default function Companies() {
                   index={index}
                   className={`group relative bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-slate-300 overflow-hidden ${liftOnHover}`}
                 >
-                  <div className="p-5">
+                  <div className={view.density === 'compact' ? 'p-4' : 'p-5'}>
                     {/* Header with logo and actions */}
                     <div className="flex items-start gap-4 mb-4">
                       <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center text-white font-bold text-lg shadow-lg group-hover:scale-105 transition-transform duration-300`}>
@@ -811,40 +904,7 @@ export default function Companies() {
                       </div>
 
                       {/* Actions dropdown */}
-                      <WriteOnly>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <span className="sr-only">Open menu</span>
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                              </svg>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem onClick={() => openEdit(company)}>
-                              <Pencil className="w-4 h-4 mr-2" />
-                              Edit Company
-                            </DropdownMenuItem>
-                            {company.domain && (
-                              <DropdownMenuItem asChild>
-                                <a href={`https://${company.domain}`} target="_blank" rel="noopener noreferrer">
-                                  <ExternalLink className="w-4 h-4 mr-2" />
-                                  Visit Website
-                                </a>
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => setDeleteConfirmCompany(company)}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </WriteOnly>
+                      {companyMenu(company, 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity')}
                     </div>
 
                     {/* Company details */}
@@ -947,6 +1007,8 @@ export default function Companies() {
               );
             })}
           </div>
+          )}
+          </ViewTransition>
           
           {/* Pagination */}
           <DataPagination

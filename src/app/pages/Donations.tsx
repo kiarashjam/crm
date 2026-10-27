@@ -48,7 +48,11 @@ import {
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
-import { StaggerItem } from '@/app/components/motion/Stagger';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const CAUSE_COLOR: Record<DonationCause, string> = {
   StaffSupport: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -167,6 +171,67 @@ export default function Donations() {
     await load();
   };
 
+  // How this person likes donations shown, saved for them. A table, as it always was, until they choose.
+  const view = useViewPreference('donations', { layouts: ['table', 'list', 'grid'] });
+  const donorName = (d: Donation) => (d.isAnonymous ? 'Anonymous' : d.memberName);
+
+  const status = (d: Donation) =>
+    d.acknowledged ? (
+      <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
+        <CheckCircle2 className="w-3 h-3" /> Acknowledged
+      </span>
+    ) : (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">
+        Awaiting thanks
+      </span>
+    );
+
+  /** Acknowledge and delete, the same on a row, a card and a table line. */
+  const donationActions = (d: Donation) => (
+    <>
+      {!d.acknowledged && (
+        <Button size="sm" variant="outline" onClick={() => acknowledge(d)}>
+          Acknowledge
+        </Button>
+      )}
+      <button
+        type="button"
+        onClick={() => remove(d)}
+        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        aria-label={`Delete donation from ${donorName(d)}`}
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </>
+  );
+
+  const donationColumns: RecordColumn<Donation>[] = [
+    {
+      id: 'donor',
+      label: 'Donor',
+      required: true,
+      cell: (d) => (
+        <span className="block">
+          <span className="flex items-center gap-2.5">
+            <InitialsAvatar name={d.isAnonymous ? '?' : d.memberName} size="sm" />
+            <span className="truncate">{donorName(d)}</span>
+          </span>
+          {d.message && <span className="mt-1 block text-xs font-normal italic text-slate-500">"{d.message}"</span>}
+        </span>
+      ),
+    },
+    {
+      id: 'cause',
+      label: 'Cause',
+      cell: (d) => (
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAUSE_COLOR[d.cause]}`}>{CAUSE_LABELS[d.cause]}</span>
+      ),
+    },
+    { id: 'amount', label: 'Amount', numeric: true, cell: (d) => <span className="font-semibold text-rose-700">{formatCurrency(d.amount)}</span> },
+    { id: 'received', label: 'Received', cell: (d) => <span className="whitespace-nowrap">{formatDate(d.receivedAtUtc)}</span> },
+    { id: 'status', label: 'Status', cell: status },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -200,7 +265,7 @@ export default function Donations() {
             ]}
           />
 
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -226,6 +291,7 @@ export default function Donations() {
                 ))}
               </SelectContent>
             </Select>
+            <ViewSwitcher view={view} columns={columnChoices(donationColumns)} className="md:ml-auto" />
           </div>
 
           {loading ? (
@@ -246,67 +312,55 @@ export default function Donations() {
               variant="orange"
             />
           ) : (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3">Donor</th>
-                    <th className="px-4 py-3">Cause</th>
-                    <th className="px-4 py-3 text-right">Amount</th>
-                    <th className="px-4 py-3">Received</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody>
+            <ViewTransition layout={view.layout}>
+              {view.layout === 'list' ? (
+                <RecordList
+                  label="Donations"
+                  items={filtered}
+                  view={view}
+                  getKey={(d) => d.id}
+                  leading={(d) => <InitialsAvatar name={d.isAnonymous ? '?' : d.memberName} />}
+                  title={donorName}
+                  subtitle={(d) => d.message ? `"${d.message}"` : CAUSE_LABELS[d.cause]}
+                  columns={donationColumns}
+                  actions={donationActions}
+                />
+              ) : view.layout === 'grid' ? (
+                <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
                   {filtered.map((d, index) => (
-                    <StaggerItem as="tr" key={d.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-slate-900">
-                          {d.isAnonymous ? 'Anonymous' : d.memberName}
-                        </p>
-                        {!d.isAnonymous && d.memberName && (
-                          <p className="text-xs text-slate-500">{d.memberName}</p>
-                        )}
-                        {d.message && (
-                          <p className="text-xs italic text-slate-500 mt-1">"{d.message}"</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAUSE_COLOR[d.cause]}`}>
-                          {CAUSE_LABELS[d.cause]}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-rose-700">
-                        {formatCurrency(d.amount)}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{formatDate(d.receivedAtUtc)}</td>
-                      <td className="px-4 py-3">
-                        {d.acknowledged ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
-                            <CheckCircle2 className="w-3 h-3" /> Acknowledged
-                          </span>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => acknowledge(d)}>
-                            Acknowledge
-                          </Button>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => remove(d)}
-                          className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                          aria-label="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
+                    <StaggerItem
+                      key={d.id}
+                      index={index}
+                      className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <InitialsAvatar name={d.isAnonymous ? '?' : d.memberName} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold text-slate-900">{donorName(d)}</p>
+                          <p className="text-xs text-slate-500">{formatDate(d.receivedAtUtc)}</p>
+                        </div>
+                        <p className="shrink-0 text-lg font-bold text-rose-700">{formatCurrency(d.amount)}</p>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAUSE_COLOR[d.cause]}`}>{CAUSE_LABELS[d.cause]}</span>
+                        {status(d)}
+                      </div>
+                      {d.message && <p className="mt-2 line-clamp-2 text-sm italic text-slate-500">"{d.message}"</p>}
+                      <div className="mt-auto flex items-center justify-end gap-1 pt-3">{donationActions(d)}</div>
                     </StaggerItem>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              ) : (
+                <RecordTable
+                  label="Donations"
+                  items={filtered}
+                  view={view}
+                  getKey={(d) => d.id}
+                  columns={donationColumns}
+                  actions={donationActions}
+                />
+              )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>

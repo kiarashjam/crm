@@ -55,6 +55,10 @@ import {
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -259,6 +263,78 @@ export default function Events() {
     }
   };
 
+  // How this person likes events shown: cards, a list or a table, saved for them.
+  const view = useViewPreference('events', { layouts: ['grid', 'list', 'table'] });
+
+  /** RSVP, edit and delete: the same on a card, a row and a table line. */
+  const eventActions = (e: ClubEvent, inCard = false) => {
+    const atCapacity = e.registeredCount >= e.capacity;
+    return (
+      <div className={`flex items-center ${inCard ? 'gap-2' : 'gap-1'}`}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => rsvp(e)}
+          disabled={rsvpId === e.id || e.status !== 'Published'}
+          className={inCard ? 'flex-1' : 'h-8'}
+        >
+          {rsvpId === e.id ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : atCapacity ? (
+            'Join waitlist'
+          ) : (
+            'RSVP'
+          )}
+        </Button>
+        <button
+          type="button"
+          onClick={() => openEdit(e)}
+          className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          aria-label={`Edit ${e.name}`}
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => remove(e)}
+          disabled={deletingId === e.id}
+          className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          aria-label={`Delete ${e.name}`}
+        >
+          {deletingId === e.id ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4" />
+          )}
+        </button>
+      </div>
+    );
+  };
+
+  const eventColumns: RecordColumn<ClubEvent>[] = [
+    {
+      id: 'name',
+      label: 'Event',
+      required: true,
+      cell: (e) => (
+        <span className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-pink-100 via-fuchsia-100 to-violet-100 text-base" aria-hidden>
+            {e.coverEmoji}
+          </span>
+          <span className="truncate">{e.name}</span>
+        </span>
+      ),
+    },
+    { id: 'when', label: 'When', cell: (e) => formatDateTime(e.startAtUtc) },
+    { id: 'status', label: 'Status', cell: (e) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[e.status]}`}>{e.status}</span> },
+    { id: 'location', label: 'Location', cell: (e) => e.location || '—' },
+    { id: 'registered', label: 'Registered', numeric: true, cell: (e) => `${e.registeredCount} / ${e.capacity}` },
+    { id: 'waitlist', label: 'Waitlist', numeric: true, byDefault: false, cell: (e) => e.waitlistCount || '—' },
+    { id: 'price', label: 'Member price', numeric: true, cell: (e) => formatCurrency(e.memberPrice) },
+    { id: 'guestPrice', label: 'Guest price', numeric: true, byDefault: false, cell: (e) => (e.visibility === 'MembersOnly' ? '—' : formatCurrency(e.guestPrice)) },
+    { id: 'visibility', label: 'Visibility', byDefault: false, cell: (e) => VISIBILITY_LABELS[e.visibility] },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -292,7 +368,7 @@ export default function Events() {
           />
 
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -318,6 +394,7 @@ export default function Events() {
                 ))}
               </SelectContent>
             </Select>
+            <ViewSwitcher view={view} columns={columnChoices(eventColumns)} className="md:ml-auto" />
           </div>
 
           {/* List */}
@@ -339,7 +416,36 @@ export default function Events() {
               variant="orange"
             />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'list' ? (
+              <RecordList
+                label="Events"
+                items={filtered}
+                view={view}
+                getKey={(e) => e.id}
+                href={(e) => `/events/${e.id}`}
+                leading={(e) => (
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-pink-100 via-fuchsia-100 to-violet-100 text-xl shadow-sm" aria-hidden>
+                    {e.coverEmoji}
+                  </span>
+                )}
+                title={(e) => e.name}
+                subtitle={(e) => [formatDateTime(e.startAtUtc), e.location].filter(Boolean).join(' · ')}
+                columns={eventColumns.filter((c) => c.id !== 'when' && c.id !== 'location')}
+                actions={(e) => eventActions(e)}
+              />
+            ) : view.layout === 'table' ? (
+              <RecordTable
+                label="Events"
+                items={filtered}
+                view={view}
+                getKey={(e) => e.id}
+                href={(e) => `/events/${e.id}`}
+                columns={eventColumns}
+                actions={(e) => eventActions(e)}
+              />
+            ) : (
+            <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-5', 'gap-3 2xl:grid-cols-4')}`}>
               {filtered.map((e, index) => {
                 const capacityPct = e.capacity > 0 ? Math.min(100, (e.registeredCount / e.capacity) * 100) : 0;
                 const atCapacity = e.registeredCount >= e.capacity;
@@ -350,15 +456,15 @@ export default function Events() {
                     index={index}
                     className={`bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-pink-200 overflow-hidden ${liftOnHover}`}
                   >
-                    <div className="relative h-28 bg-gradient-to-br from-pink-100 via-fuchsia-100 to-violet-100 flex items-center justify-center">
-                      <span className="text-6xl">{e.coverEmoji}</span>
+                    <div className={`relative ${view.density === 'compact' ? 'h-20' : 'h-28'} bg-gradient-to-br from-pink-100 via-fuchsia-100 to-violet-100 flex items-center justify-center`}>
+                      <span className={view.density === 'compact' ? 'text-5xl' : 'text-6xl'}>{e.coverEmoji}</span>
                       <div className="absolute top-3 right-3 flex gap-1.5">
                         <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_BADGE[e.status]}`}>
                           {e.status}
                         </span>
                       </div>
                     </div>
-                    <div className="p-5">
+                    <div className={view.density === 'compact' ? 'p-4' : 'p-5'}>
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <Link
                           to={`/events/${e.id}`}
@@ -414,49 +520,14 @@ export default function Events() {
                           />
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => rsvp(e)}
-                          disabled={rsvpId === e.id || e.status !== 'Published'}
-                          className="flex-1"
-                        >
-                          {rsvpId === e.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : atCapacity ? (
-                            'Join waitlist'
-                          ) : (
-                            'RSVP'
-                          )}
-                        </Button>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(e)}
-                          className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          aria-label="Edit event"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => remove(e)}
-                          disabled={deletingId === e.id}
-                          className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                          aria-label="Delete event"
-                        >
-                          {deletingId === e.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
+                      {eventActions(e, true)}
                     </div>
                   </StaggerItem>
                 );
               })}
             </div>
+            )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>

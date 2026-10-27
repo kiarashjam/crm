@@ -56,6 +56,10 @@ import {
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const KIND_ICON: Record<ResourceKind, React.ElementType> = {
   Dining: Coffee,
@@ -269,6 +273,78 @@ export default function Reservations() {
     }
   };
 
+  // How this person likes bookings shown: rows, cards or a table, saved for them.
+  const view = useViewPreference('reservations', { layouts: ['list', 'grid', 'table'] });
+
+  const statusLabel = (status: ReservationStatus) =>
+    status === 'CheckedIn' ? 'Checked in' : status === 'NoShow' ? 'No-show' : status;
+
+  /** Status, edit and delete: the same on a row, a card and a table line. */
+  const reservationActions = (r: Reservation) => (
+    <div className="flex items-center gap-2">
+      <Select value={r.status} onValueChange={(v) => setStatus(r, v as ReservationStatus)}>
+        <SelectTrigger className="h-9 w-36 text-xs" aria-label={`Status of ${r.memberName}'s booking`}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {RESERVATION_STATUSES.map((s) => (
+            <SelectItem key={s} value={s}>
+              {s}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <button
+        type="button"
+        onClick={() => openEdit(r)}
+        className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        aria-label="Edit reservation"
+      >
+        <Pencil className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => remove(r)}
+        disabled={deletingId === r.id}
+        className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+        aria-label="Delete reservation"
+      >
+        {deletingId === r.id ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+      </button>
+    </div>
+  );
+
+  const reservationColumns: RecordColumn<Reservation>[] = [
+    {
+      id: 'member',
+      label: 'Member',
+      required: true,
+      cell: (r) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={r.memberName} size="sm" />
+          <span className="truncate">{r.memberName}</span>
+          {isToday(r.startAtUtc) && (
+            <span className="shrink-0 rounded-full bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200">Today</span>
+          )}
+        </span>
+      ),
+    },
+    { id: 'resource', label: 'Resource', cell: (r) => r.resourceName },
+    { id: 'when', label: 'When', cell: (r) => formatDateTime(r.startAtUtc) },
+    { id: 'party', label: 'Party', numeric: true, cell: (r) => r.partySize },
+    {
+      id: 'status',
+      label: 'Status',
+      cell: (r) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[r.status]}`}>{statusLabel(r.status)}</span>,
+    },
+    { id: 'email', label: 'Email', byDefault: false, cell: (r) => r.memberEmail || '—' },
+    { id: 'notes', label: 'Notes', byDefault: false, cell: (r) => <span className="line-clamp-1">{r.notes || '—'}</span> },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -327,7 +403,7 @@ export default function Reservations() {
           )}
 
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -366,6 +442,7 @@ export default function Reservations() {
                 ))}
               </SelectContent>
             </Select>
+            <ViewSwitcher view={view} columns={columnChoices(reservationColumns)} className="md:ml-auto" />
           </div>
 
           {/* List */}
@@ -387,14 +464,72 @@ export default function Reservations() {
               variant="teal"
             />
           ) : (
-            <div className="space-y-3">
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'table' ? (
+              <RecordTable
+                label="Bookings"
+                items={filtered}
+                view={view}
+                getKey={(r) => r.id}
+                columns={reservationColumns}
+                actions={reservationActions}
+              />
+            ) : view.layout === 'grid' ? (
+              <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
+                {filtered.map((r, index) => {
+                  const kind = resources.find((x) => x.id === r.resourceId)?.kind;
+                  const Icon = kind ? KIND_ICON[kind] : MapPin;
+                  return (
+                    <StaggerItem
+                      key={r.id}
+                      index={index}
+                      className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:border-emerald-200 ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <InitialsAvatar name={r.memberName} />
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-semibold text-slate-900 truncate">{r.memberName}</h3>
+                          <span className={`mt-1 inline-flex text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[r.status]}`}>
+                            {statusLabel(r.status)}
+                          </span>
+                        </div>
+                        {isToday(r.startAtUtc) && (
+                          <span className="shrink-0 text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200">
+                            Today
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-3 space-y-1.5 text-sm text-slate-600">
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${kind ? KIND_COLOR[kind] : 'bg-slate-100 text-slate-600'}`}>
+                            <Icon className="h-3.5 w-3.5" />
+                          </span>
+                          <span className="truncate">{r.resourceName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" /> {formatDateTime(r.startAtUtc)}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Users className="w-3.5 h-3.5 text-slate-400" /> Party of {r.partySize}
+                        </div>
+                      </div>
+                      {r.notes && view.density !== 'compact' && (
+                        <p className="mt-2 text-sm text-slate-500 line-clamp-2">{r.notes}</p>
+                      )}
+                      <div className="mt-auto pt-3 flex justify-end">{reservationActions(r)}</div>
+                    </StaggerItem>
+                  );
+                })}
+              </div>
+            ) : (
+            <div className={view.density === 'compact' ? 'space-y-2' : 'space-y-3'}>
               {filtered.map((r, index) => {
                 const today = isToday(r.startAtUtc);
                 return (
                   <StaggerItem
                     key={r.id}
                     index={index}
-                    className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-emerald-200 ${liftOnHover}`}
+                    className={`rounded-2xl border border-slate-200 bg-white ${view.density === 'compact' ? 'p-3' : 'p-5'} shadow-sm hover:border-emerald-200 ${liftOnHover}`}
                   >
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="flex items-start gap-4 min-w-0 flex-1">
@@ -410,7 +545,7 @@ export default function Reservations() {
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="font-semibold text-slate-900 truncate">{r.memberName}</h3>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[r.status]}`}>
-                              {r.status === 'CheckedIn' ? 'Checked in' : r.status === 'NoShow' ? 'No-show' : r.status}
+                              {statusLabel(r.status)}
                             </span>
                             {today && (
                               <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200">
@@ -434,46 +569,14 @@ export default function Reservations() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Select value={r.status} onValueChange={(v) => setStatus(r, v as ReservationStatus)}>
-                          <SelectTrigger className="h-9 w-36 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {RESERVATION_STATUSES.map((s) => (
-                              <SelectItem key={s} value={s}>
-                                {s}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <button
-                          type="button"
-                          onClick={() => openEdit(r)}
-                          className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          aria-label="Edit reservation"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => remove(r)}
-                          disabled={deletingId === r.id}
-                          className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                          aria-label="Delete reservation"
-                        >
-                          {deletingId === r.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
+                      {reservationActions(r)}
                     </div>
                   </StaggerItem>
                 );
               })}
             </div>
+            )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>

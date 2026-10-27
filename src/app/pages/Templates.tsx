@@ -20,6 +20,10 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const categoryIcons: Record<string, typeof Mail> = {
   Sales: Mail,
@@ -199,6 +203,87 @@ export default function Templates() {
   const categoryCount = new Set(templates.map((t) => t.category)).size;
   const totalUses = templates.reduce((sum, t) => sum + (t.useCount ?? 0), 0);
 
+  // How this person likes templates shown, saved for them. Cards, as they always were, until they choose.
+  const view = useViewPreference('templates', { layouts: ['grid', 'list', 'table'] });
+
+  const templateIcon = (t: ExtendedTemplate, size: 'sm' | 'md' = 'md') => {
+    const Icon = categoryIcons[t.category] ?? Handshake;
+    return (
+      <span className={`flex shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-600 ${size === 'sm' ? 'h-7 w-7' : 'h-10 w-10'}`}>
+        <Icon className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-5 w-5'} aria-hidden />
+      </span>
+    );
+  };
+
+  const sharing = (t: ExtendedTemplate) => (
+    <span className="flex flex-wrap gap-1">
+      {t.isSharedWithOrganization && (
+        <span className="text-xs bg-violet-100 text-violet-700 px-2 py-0.5 rounded-full font-medium inline-flex items-center gap-1">
+          <Users className="w-3 h-3" />
+          Team
+        </span>
+      )}
+      {t.isSystemTemplate && (
+        <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">System</span>
+      )}
+      {!t.isSharedWithOrganization && !t.isSystemTemplate && <span className="text-xs text-slate-400">Just you</span>}
+    </span>
+  );
+
+  /** Use, edit and delete, the same on a row and a table line as on the card. */
+  const templateActions = (t: ExtendedTemplate) => (
+    <div className="flex items-center justify-end gap-1">
+      {!t.isSystemTemplate && (
+        <WriteOnly>
+          <button
+            type="button"
+            onClick={() => openEditModal(t)}
+            className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+            aria-label={`Edit template ${t.title}`}
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDelete(t)}
+            disabled={deleting === t.id}
+            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+            aria-label={`Delete template ${t.title}`}
+          >
+            {deleting === t.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+          </button>
+        </WriteOnly>
+      )}
+      <button
+        type="button"
+        onClick={() => handleUseTemplate(t)}
+        className="ml-1 whitespace-nowrap rounded-lg px-2 py-1 text-sm font-medium text-orange-600 transition-colors hover:bg-orange-50 hover:text-orange-700 focus-visible:ring-2 focus-visible:ring-orange-500"
+      >
+        Use →
+      </button>
+    </div>
+  );
+
+  const templateColumns: RecordColumn<ExtendedTemplate>[] = [
+    {
+      id: 'title',
+      label: 'Template',
+      required: true,
+      cell: (t) => (
+        <span className="flex items-center gap-2.5">
+          {templateIcon(t, 'sm')}
+          <span className="truncate">{t.title}</span>
+        </span>
+      ),
+    },
+    { id: 'category', label: 'Category', cell: (t) => t.category },
+    { id: 'sharing', label: 'Shared', cell: sharing },
+    { id: 'uses', label: 'Used', numeric: true, cell: (t) => t.useCount ?? 0 },
+    { id: 'type', label: 'Type', byDefault: false, cell: (t) => COPY_TYPES.find((c) => c.id === t.copyTypeId)?.label ?? t.copyTypeId },
+    { id: 'goal', label: 'Goal', byDefault: false, cell: (t) => t.goal || '—' },
+    { id: 'description', label: 'Description', byDefault: false, cell: (t) => <span className="line-clamp-1">{t.description || '—'}</span> },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -234,7 +319,37 @@ export default function Templates() {
           {loading ? (
             <ContentSkeleton rows={6} />
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">
+                {templates.length} {templates.length === 1 ? 'template' : 'templates'}
+              </p>
+              <ViewSwitcher view={view} columns={columnChoices(templateColumns)} />
+            </div>
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'list' ? (
+              <RecordList
+                label="Templates"
+                items={templates}
+                view={view}
+                getKey={(t) => t.id}
+                leading={(t) => templateIcon(t)}
+                title={(t) => t.title}
+                subtitle={(t) => t.description || t.category}
+                columns={templateColumns}
+                actions={templateActions}
+              />
+            ) : view.layout === 'table' ? (
+              <RecordTable
+                label="Templates"
+                items={templates}
+                view={view}
+                getKey={(t) => t.id}
+                columns={templateColumns}
+                actions={templateActions}
+              />
+            ) : (
+            <div className={`grid md:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-6', 'gap-3 xl:grid-cols-4')}`}>
               {templates.map((template, index) => {
                 const Icon = categoryIcons[template.category] ?? Handshake;
                 const isSystemTemplate = template.isSystemTemplate;
@@ -245,7 +360,7 @@ export default function Templates() {
                     as="article"
                     key={template.id}
                     index={index}
-                    className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:border-fuchsia-200 relative group ${liftOnHover}`}
+                    className={`bg-white rounded-2xl border border-slate-200 shadow-sm hover:border-fuchsia-200 relative group ${view.density === 'compact' ? 'p-4' : 'p-6'} ${liftOnHover}`}
                   >
                     {/* Edit/Delete buttons (only for non-system templates) */}
                     {!isSystemTemplate && (
@@ -315,6 +430,9 @@ export default function Templates() {
                 );
               })}
             </div>
+            )}
+            </ViewTransition>
+            </>
           )}
 
           <div className="mt-12 bg-teal-50 border border-teal-200 rounded-2xl p-6">

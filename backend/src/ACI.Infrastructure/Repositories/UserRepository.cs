@@ -85,6 +85,7 @@ public sealed class UserRepository : IUserRepository
             existing.ShowActivityStatus = settings.ShowActivityStatus;
             existing.AllowAnalytics = settings.AllowAnalytics;
             existing.AgentMemoryJson = settings.AgentMemoryJson;
+            existing.ViewPreferencesJson = settings.ViewPreferencesJson;
 
             existing.UpdatedAtUtc = settings.UpdatedAtUtc;
             _db.UserSettings.Update(existing);

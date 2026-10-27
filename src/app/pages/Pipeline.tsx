@@ -10,8 +10,6 @@ import {
   Handshake,
   Trophy,
   DollarSign,
-  LayoutGrid,
-  List,
   User,
   AlertCircle,
   Sparkles,
@@ -77,7 +75,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/app/components/ui/sheet';
-import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 import { cn } from '@/app/components/ui/utils';
 
 // Import extracted components and utilities
@@ -85,7 +82,7 @@ import { DroppableStageColumn } from './pipeline/DroppableStageColumn';
 import { STAGE_COLORS_MAP } from './pipeline/config';
 import { getStageList, groupDealsByStage, formatDealTotal, formatAmount, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
 import { dominantCurrencyOf } from '@/app/lib/money';
-import { getCurrencySymbol } from './pipeline/DealCard';
+import { DealCard, getCurrencySymbol } from './pipeline/DealCard';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { getTasks, createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
@@ -93,6 +90,10 @@ import { useOrg } from '@/app/contexts/OrgContext';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, type PageStat } from '@/app/components/PageHero';
 import { DuplicateMerge, DEAL_DUPLICATES } from '@/app/components/duplicates';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 
 export default function Pipeline() {
@@ -102,7 +103,6 @@ export default function Pipeline() {
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
-  const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -625,6 +625,94 @@ export default function Pipeline() {
   // hardcoded USD.
   const boardCurrency = dominantCurrencyOf(deals);
   const formatBoardAmount = (n: number) => formatAmount(n, boardCurrency);
+  // How this person likes deals shown: the board, a table, a list or cards, saved for them.
+  const view = useViewPreference('deals', { layouts: ['board', 'table', 'list', 'grid'] });
+  const stagePill = (deal: Deal) => {
+    const name = dealStageName(deal);
+    return (
+      <span className={cn(
+        'inline-flex items-center gap-2 rounded-xl px-2.5 py-1 text-xs font-bold',
+        name === 'Closed Won' && 'bg-emerald-100 text-emerald-700',
+        name === 'Closed Lost' && 'bg-slate-100 text-slate-600',
+        name === 'Qualification' && 'bg-blue-100 text-blue-700',
+        name === 'Proposal' && 'bg-amber-100 text-amber-700',
+        name === 'Negotiation' && 'bg-violet-100 text-violet-700',
+        !['Closed Won', 'Closed Lost', 'Qualification', 'Proposal', 'Negotiation'].includes(name) && 'bg-slate-100 text-slate-600',
+      )}>
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: STAGE_COLORS_MAP[name]?.bar ?? '#94a3b8' }} />
+        {name}
+      </span>
+    );
+  };
+  // Values are typed text and sometimes carry their own symbol ("$50,000"); read the
+  // number out of it so the symbol is never shown twice.
+  const dealValue = (deal: Deal) => {
+    const amount = Number(String(deal.value ?? '').replace(/[^0-9.-]/g, ''));
+    return (
+      <span className="font-semibold text-emerald-700">
+        {Number.isFinite(amount) && String(deal.value ?? '').trim() !== ''
+          ? formatAmount(amount, deal.currency || boardCurrency)
+          : <><span className="text-xs">{getCurrencySymbol(deal.currency)}</span>{deal.value}</>}
+      </span>
+    );
+  };
+  const contactOf = (deal: Deal) => (deal.contactId ? contacts.find((c) => c.id === deal.contactId)?.name : undefined) ?? deal.contactName;
+  const closeDate = (deal: Deal) => {
+    if (!deal.expectedCloseDateUtc) return '—';
+    const days = getDaysUntilClose(deal.expectedCloseDateUtc);
+    return (
+      <span className="flex flex-wrap items-center gap-1.5">
+        <span>{new Date(deal.expectedCloseDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+        {days !== null && <UrgencyBadge days={days} />}
+      </span>
+    );
+  };
+  const dealColumns: RecordColumn<Deal>[] = [
+    {
+      id: 'name',
+      label: 'Deal',
+      required: true,
+      cell: (d) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={d.name} size="sm" />
+          <span className="truncate">{d.name}</span>
+          {d.isPrivate && <span className="shrink-0 rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-600">Private</span>}
+        </span>
+      ),
+    },
+    { id: 'value', label: 'Value', numeric: true, cell: dealValue },
+    { id: 'stage', label: 'Stage', cell: stagePill },
+    { id: 'company', label: 'Company', byDefault: false, cell: (d) => d.companyName || '—' },
+    { id: 'contact', label: 'Contact', cell: (d) => contactOf(d) || '—' },
+    { id: 'owner', label: 'Owner', byDefault: false, cell: (d) => d.assigneeName || '—' },
+    { id: 'probability', label: 'Probability', numeric: true, byDefault: false, cell: (d) => (d.probability == null ? '—' : `${d.probability}%`) },
+    { id: 'close', label: 'Close date', cell: closeDate },
+    { id: 'tasks', label: 'Tasks', numeric: true, byDefault: false, cell: (d) => taskCountsByDeal[d.id] || '—' },
+  ];
+  /** Edit and delete, the same on every layout. */
+  const dealActions = (deal: Deal) => (isReadOnly ? null : (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-xl text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+        onClick={() => setEditDeal(deal)}
+        aria-label={`Edit ${deal.name}`}
+      >
+        <Pencil className="h-4 w-4" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600"
+        onClick={() => setDeleteConfirmDeal(deal)}
+        aria-label={`Delete ${deal.name}`}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </>
+  ));
+
   // The board's numbers, in its header. Deals Won shows the won deals.
   const dealHeroStats: PageStat[] = [
     {
@@ -1076,24 +1164,7 @@ export default function Pipeline() {
 
             {/* View Toggle - Floating Pills */}
             <div className="flex items-center justify-between mb-5 shrink-0">
-              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'kanban' | 'list')}>
-                <TabsList className="h-12 p-1.5 bg-slate-100/80 backdrop-blur-sm rounded-2xl border border-slate-200 shadow-lg shadow-slate-100">
-                  <TabsTrigger 
-                    value="kanban" 
-                    className="gap-2 h-9 px-5 rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-emerald-700 font-medium transition-all"
-                  >
-                    <LayoutGrid className="w-4 h-4" />
-                    Kanban
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="list" 
-                    className="gap-2 h-9 px-5 rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-emerald-700 font-medium transition-all"
-                  >
-                    <List className="w-4 h-4" />
-                    List View
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <ViewSwitcher view={view} columns={columnChoices(dealColumns)} />
               
               <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100">
@@ -1103,7 +1174,8 @@ export default function Pipeline() {
               </div>
             </div>
 
-            {viewMode === 'kanban' ? (
+            <ViewTransition layout={view.layout} className="flex min-h-0 flex-1 flex-col">
+            {view.layout === 'board' ? (
               <DndProvider backend={HTML5Backend}>
                 <motion.div
                   initial={{ opacity: 0 }}
@@ -1131,123 +1203,58 @@ export default function Pipeline() {
                   ))}
                 </motion.div>
               </DndProvider>
+            ) : view.layout === 'table' ? (
+              <div className="min-h-0 flex-1 overflow-auto">
+                <RecordTable
+                  label="Deals"
+                  items={filteredDeals}
+                  view={view}
+                  getKey={(d) => d.id}
+                  onOpen={openDealDetail}
+                  columns={dealColumns}
+                  actions={dealActions}
+                />
+              </div>
+            ) : view.layout === 'list' ? (
+              <div className="min-h-0 flex-1 overflow-auto">
+                <RecordList
+                  label="Deals"
+                  items={filteredDeals}
+                  view={view}
+                  getKey={(d) => d.id}
+                  onOpen={openDealDetail}
+                  leading={(d) => <InitialsAvatar name={d.name} />}
+                  title={(d) => d.name}
+                  subtitle={(d) => [d.companyName, contactOf(d)].filter(Boolean).join(' · ') || dealStageName(d)}
+                  columns={dealColumns}
+                  actions={dealActions}
+                />
+              </div>
             ) : (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex-1 min-h-0 overflow-auto"
-              >
-                <div className="rounded-2xl border-2 border-slate-200 bg-white overflow-hidden shadow-lg shadow-slate-100">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b-2 border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100">
-                        <th className="text-left py-4 px-6 font-bold text-slate-700 uppercase text-xs tracking-wider">Deal</th>
-                        <th className="text-left py-4 px-6 font-bold text-slate-700 uppercase text-xs tracking-wider">Value</th>
-                        <th className="text-left py-4 px-6 font-bold text-slate-700 uppercase text-xs tracking-wider">Stage</th>
-                        <th className="text-left py-4 px-6 font-bold text-slate-700 uppercase text-xs tracking-wider">Contact</th>
-                        <th className="text-left py-4 px-6 font-bold text-slate-700 uppercase text-xs tracking-wider">Close Date</th>
-                        <th className="w-20" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredDeals.map((deal, index) => {
-                        const stageName = dealStageName(deal);
-                        const config = STAGE_COLORS_MAP[stageName] ?? STAGE_COLORS_MAP.Qualification;
-                        const contact = deal.contactId ? contacts.find((c) => c.id === deal.contactId) : undefined;
-                        const daysToClose = getDaysUntilClose(deal.expectedCloseDateUtc);
-                        return (
-                          <StaggerItem
-                            as="tr"
-                            key={deal.id}
-                            index={index}
-                            className="group transition-colors hover:bg-slate-50"
-                          >
-                            <td className="py-4 px-6">
-                              <button
-                                type="button"
-                                onClick={() => openDealDetail(deal)}
-                                className="font-semibold text-slate-800 hover:text-emerald-600 text-left transition-colors group-hover:translate-x-1 transform duration-200"
-                              >
-                                {deal.name}
-                              </button>
-                            </td>
-                            <td className="py-4 px-6">
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-200 text-emerald-700 font-bold text-sm">
-                                <span className="text-xs font-semibold">{getCurrencySymbol(deal.currency)}</span>
-                                {deal.value}
-                              </span>
-                            </td>
-                            <td className="py-4 px-6">
-                              <span className={cn(
-                                'inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-bold',
-                                stageName === 'Closed Won' && 'bg-emerald-100 text-emerald-700',
-                                stageName === 'Closed Lost' && 'bg-slate-100 text-slate-600',
-                                stageName === 'Qualification' && 'bg-blue-100 text-blue-700',
-                                stageName === 'Proposal' && 'bg-amber-100 text-amber-700',
-                                stageName === 'Negotiation' && 'bg-violet-100 text-violet-700',
-                                !['Closed Won', 'Closed Lost', 'Qualification', 'Proposal', 'Negotiation'].includes(stageName) && 'bg-slate-100 text-slate-600'
-                              )}>
-                                <span 
-                                  className="w-2 h-2 rounded-full"
-                                  style={{ backgroundColor: config?.bar }}
-                                />
-                                {stageName}
-                              </span>
-                            </td>
-                            <td className="py-4 px-6">
-                              {contact ? (
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
-                                    <User className="w-4 h-4 text-slate-500" />
-                                  </div>
-                                  <span className="text-slate-700 font-medium">{contact.name}</span>
-                                </div>
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
-                            </td>
-                            <td className="py-4 px-6">
-                              {deal.expectedCloseDateUtc ? (
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-slate-700 font-medium">
-                                    {new Date(deal.expectedCloseDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                  </span>
-                                  {daysToClose !== null && <UrgencyBadge days={daysToClose} />}
-                                </div>
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
-                            </td>
-                            <td className="py-4 px-6">
-                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="h-9 w-9 rounded-xl text-slate-400 hover:text-emerald-600 hover:bg-emerald-50" 
-                                  onClick={() => setEditDeal(deal)} 
-                                  aria-label="Edit"
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                                <Button 
-                                  variant="ghost" 
-                                  size="icon" 
-                                  className="h-9 w-9 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50" 
-                                  onClick={() => setDeleteConfirmDeal(deal)} 
-                                  aria-label="Delete"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </td>
-                          </StaggerItem>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+              <DndProvider backend={HTML5Backend}>
+                <div className={cn('grid min-h-0 flex-1 content-start overflow-auto pb-6 sm:grid-cols-2 lg:grid-cols-3', gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4'))}>
+                  {filteredDeals.map((deal, index) => (
+                    <StaggerItem key={deal.id} index={index}>
+                      <DealCard
+                        deal={deal}
+                        contactName={contactOf(deal)}
+                        stageId={deal.dealStageId ?? dealStageName(deal)}
+                        stageName={dealStageName(deal)}
+                        onMoveStage={handleMoveStage}
+                        onEdit={() => setEditDeal(deal)}
+                        onDelete={() => setDeleteConfirmDeal(deal)}
+                        onOpenDetail={() => openDealDetail(deal)}
+                        stageList={stageList}
+                        taskCount={taskCountsByDeal[deal.id]}
+                        onAddTask={(dealId) => setAddTaskDealId(dealId)}
+                        readOnly={isReadOnly}
+                      />
+                    </StaggerItem>
+                  ))}
                 </div>
-              </motion.div>
+              </DndProvider>
             )}
+            </ViewTransition>
           </>
         )}
         </main>

@@ -31,6 +31,10 @@ import {
 import type { Lead } from '@/app/api/types';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import {
+  RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const STEP_META: Record<SequenceStepType, { icon: React.ElementType; label: string; tone: string }> = {
   email: { icon: Mail, label: 'Email', tone: 'bg-blue-100 text-blue-700' },
@@ -126,6 +130,120 @@ export default function Sequences() {
   const totalEnrollments = allEnrollments.length;
   const activeEnrollments = allEnrollments.filter((e) => e.status === 'active').length;
 
+  // How this person likes sequences shown, saved for them. Cards, as they always were, until they choose.
+  const view = useViewPreference('sequences', { layouts: ['grid', 'list', 'table'] });
+
+  /** Who is enrolled, with pause, resume and remove for each; on a card it opens in place. */
+  const enrollmentPanel = (s: Sequence) => {
+    const enrollments = enrollmentsBySeq[s.id] ?? [];
+    return (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Enrollments</span>
+          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setEnrollFor(s)}>
+            <Plus className="h-3 w-3" /> Enroll
+          </Button>
+        </div>
+        {enrollments.length === 0 ? (
+          <p className="py-2 text-xs text-slate-400">No one enrolled yet.</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {enrollments.map((e) => (
+              <li key={e.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-slate-700">{e.targetName}</span>
+                <span className="flex items-center gap-1">
+                  <Badge variant="outline" className="capitalize">{e.status}</Badge>
+                  <button
+                    type="button"
+                    title={e.status === 'paused' ? 'Resume' : 'Pause'}
+                    onClick={() => changeEnrollment(() => setEnrollmentStatus(e.id, e.status === 'paused' ? 'active' : 'paused'), 'Could not change the enrolment')}
+                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    {e.status === 'paused' ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+                  </button>
+                  <button
+                    type="button" title="Remove"
+                    onClick={() => changeEnrollment(() => unenroll(e.id), 'Could not remove the enrolment')}
+                    className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    );
+  };
+
+  const statusBadge = (s: Sequence) => (
+    <Badge variant="outline" className={cn('shrink-0 capitalize', STATUS_TONE[s.status])}>{s.status}</Badge>
+  );
+
+  const stepChips = (s: Sequence) => (
+    <span className="flex flex-wrap gap-1">
+      {s.steps.map((st) => {
+        const M = STEP_META[st.type];
+        return (
+          <span key={st.id} className={cn('inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium', M.tone)}>
+            <M.icon className="h-3 w-3" /> {st.dayOffset > 0 ? `+${st.dayOffset}d` : 'Day 0'}
+          </span>
+        );
+      })}
+    </span>
+  );
+
+  /** People, pause or activate, edit and delete, the same on a row and a table line as on the card. */
+  const sequenceActions = (s: Sequence) => (
+    <div className="flex items-center justify-end gap-1">
+      <Button
+        size="sm"
+        variant={expanded === s.id ? 'secondary' : 'ghost'}
+        className="gap-1 text-xs"
+        onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+        aria-expanded={expanded === s.id}
+        aria-label={`People in ${s.name}`}
+      >
+        <Users className="h-3.5 w-3.5" /> {activeCount(s.id)}
+      </Button>
+      <WriteOnly>
+        <Button size="sm" variant="ghost" className="gap-1 text-xs" onClick={() => toggleStatus(s)}>
+          {s.status === 'active' ? <><Pause className="h-3.5 w-3.5" /> Pause</> : <><Play className="h-3.5 w-3.5" /> Activate</>}
+        </Button>
+        <Button size="sm" variant="ghost" className="gap-1 text-xs" onClick={() => openEdit(s)} aria-label={`Edit ${s.name}`}>
+          <Pencil className="h-3.5 w-3.5" />
+        </Button>
+        <Button size="sm" variant="ghost" className="gap-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => handleDelete(s)} aria-label={`Delete ${s.name}`}>
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </WriteOnly>
+    </div>
+  );
+
+  const sequenceColumns: RecordColumn<Sequence>[] = [
+    {
+      id: 'name',
+      label: 'Sequence',
+      required: true,
+      cell: (s) => (
+        <span className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-sm">
+            <Workflow className="h-3.5 w-3.5" aria-hidden />
+          </span>
+          <span className="truncate">{s.name}</span>
+        </span>
+      ),
+    },
+    { id: 'status', label: 'Status', cell: statusBadge },
+    { id: 'steps', label: 'Steps', numeric: true, cell: (s) => s.steps.length },
+    { id: 'cadence', label: 'Cadence', cell: stepChips },
+    { id: 'active', label: 'Active', numeric: true, cell: (s) => activeCount(s.id) },
+    { id: 'enrolled', label: 'Enrolled', numeric: true, byDefault: false, cell: (s) => (enrollmentsBySeq[s.id] ?? []).length },
+    { id: 'description', label: 'Description', byDefault: false, cell: (s) => <span className="line-clamp-1">{s.description || '—'}</span> },
+  ];
+  const expandedSequence = view.layout !== 'grid' ? sequences.find((s) => s.id === expanded) : undefined;
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -162,13 +280,46 @@ export default function Sequences() {
               </WriteOnly>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">
+                {sequences.length} {sequences.length === 1 ? 'sequence' : 'sequences'}
+              </p>
+              <ViewSwitcher view={view} columns={columnChoices(sequenceColumns)} />
+            </div>
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'list' ? (
+              <RecordList
+                label="Sequences"
+                items={sequences}
+                view={view}
+                getKey={(s) => s.id}
+                leading={() => (
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-sm">
+                    <Workflow className="h-5 w-5" aria-hidden />
+                  </span>
+                )}
+                title={(s) => s.name}
+                subtitle={(s) => s.description || `${s.steps.length} steps`}
+                columns={sequenceColumns}
+                actions={sequenceActions}
+              />
+            ) : view.layout === 'table' ? (
+              <RecordTable
+                label="Sequences"
+                items={sequences}
+                view={view}
+                getKey={(s) => s.id}
+                columns={sequenceColumns}
+                actions={sequenceActions}
+              />
+            ) : (
+            <div className={cn('grid sm:grid-cols-2 xl:grid-cols-3', gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4'))}>
               {sequences.map((s, index) => {
-                const enrollments = enrollmentsBySeq[s.id] ?? [];
                 const isOpen = expanded === s.id;
                 return (
                   <StaggerItem key={s.id} index={index} className={cn('flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm hover:border-indigo-200', liftOnHover)}>
-                    <div className="border-b border-slate-100 p-4">
+                    <div className={cn('border-b border-slate-100', view.density === 'compact' ? 'p-3' : 'p-4')}>
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-semibold text-slate-900">{s.name}</h3>
                         <Badge variant="outline" className={cn('shrink-0 capitalize', STATUS_TONE[s.status])}>{s.status}</Badge>
@@ -194,41 +345,7 @@ export default function Sequences() {
                     </div>
                     {isOpen && (
                       <div className="border-t border-slate-100 px-4 py-3">
-                        <div className="mb-2 flex items-center justify-between">
-                          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Enrollments</span>
-                          <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setEnrollFor(s)}>
-                            <Plus className="h-3 w-3" /> Enroll
-                          </Button>
-                        </div>
-                        {enrollments.length === 0 ? (
-                          <p className="py-2 text-xs text-slate-400">No one enrolled yet.</p>
-                        ) : (
-                          <ul className="space-y-1.5">
-                            {enrollments.map((e) => (
-                              <li key={e.id} className="flex items-center justify-between gap-2 text-sm">
-                                <span className="min-w-0 truncate text-slate-700">{e.targetName}</span>
-                                <span className="flex items-center gap-1">
-                                  <Badge variant="outline" className="capitalize">{e.status}</Badge>
-                                  <button
-                                    type="button"
-                                    title={e.status === 'paused' ? 'Resume' : 'Pause'}
-                                    onClick={() => changeEnrollment(() => setEnrollmentStatus(e.id, e.status === 'paused' ? 'active' : 'paused'), 'Could not change the enrolment')}
-                                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                                  >
-                                    {e.status === 'paused' ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
-                                  </button>
-                                  <button
-                                    type="button" title="Remove"
-                                    onClick={() => changeEnrollment(() => unenroll(e.id), 'Could not remove the enrolment')}
-                                    className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                                  >
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                        {enrollmentPanel(s)}
                       </div>
                     )}
                     {/* Card actions */}
@@ -249,6 +366,25 @@ export default function Sequences() {
                 );
               })}
             </div>
+            )}
+            </ViewTransition>
+            {expandedSequence && (
+              <div className="mt-4 rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="font-semibold text-slate-900">{expandedSequence.name}</h3>
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(null)}
+                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    aria-label="Close enrollments"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {enrollmentPanel(expandedSequence)}
+              </div>
+            )}
+            </>
           )}
         </main>
       </PageTransition>

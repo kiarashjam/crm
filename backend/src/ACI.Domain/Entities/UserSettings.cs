@@ -53,6 +53,13 @@ public class UserSettings
     /// <summary>Last agent turns and the record they were about. Not a sales preference.</summary>
     public string? AgentMemoryJson { get; set; }
 
+    /// <summary>
+    /// How each list page is shown to this person — grid, list, table or board, how
+    /// dense, which columns — so it looks the same in every browser they sign in from.
+    /// The client owns the shape.
+    /// </summary>
+    public string? ViewPreferencesJson { get; set; }
+
     // =========== METADATA ===========
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }

@@ -53,6 +53,10 @@ import { MEMBER_TIERS, TIER_DUES, type MemberTier } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -233,6 +237,99 @@ export default function Applications() {
     }
   };
 
+  // How this person likes applications shown: rows, cards or a table, saved for them.
+  const view = useViewPreference('applications', { layouts: ['list', 'grid', 'table'] });
+
+  /**
+   * Approve, waitlist, reject, move to review, delete: the same wherever the
+   * application is shown. Stacked down the side of a row, wrapping on a card, and
+   * in one line in a table.
+   */
+  const applicationActions = (a: Application, layout: 'stacked' | 'wrap' | 'line' = 'wrap') => (
+    <div
+      className={
+        layout === 'stacked'
+          ? 'flex flex-row lg:flex-col gap-2 lg:items-end shrink-0'
+          : layout === 'line'
+            ? 'flex items-center justify-end gap-1.5'
+            : 'flex flex-wrap items-center justify-end gap-1.5'
+      }
+    >
+      {(a.status === 'Submitted' || a.status === 'UnderReview') && (
+        <>
+          <Button
+            size="sm"
+            onClick={() => startReview(a, 'approve')}
+            disabled={busyId === a.id}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Check className="w-3.5 h-3.5 mr-1" /> Approve
+          </Button>
+          <div className="flex gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => startReview(a, 'waitlist')}
+              disabled={busyId === a.id}
+            >
+              Waitlist
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => startReview(a, 'reject')}
+              disabled={busyId === a.id}
+              className="text-rose-600 hover:bg-rose-50"
+              aria-label={`Reject ${a.firstName} ${a.lastName}`}
+            >
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </>
+      )}
+      {a.status === 'Submitted' && (
+        <button
+          type="button"
+          onClick={() => setStatus(a, 'UnderReview')}
+          className="text-xs text-blue-600 hover:underline inline-flex items-center gap-0.5"
+        >
+          Move to review <ChevronRight className="w-3 h-3" />
+        </button>
+      )}
+      {(a.status === 'Rejected' || a.status === 'Approved' || a.status === 'Waitlisted') && (
+        <button
+          type="button"
+          onClick={() => remove(a)}
+          disabled={busyId === a.id}
+          className="text-xs text-slate-500 hover:text-rose-600 disabled:opacity-50"
+        >
+          Delete record
+        </button>
+      )}
+    </div>
+  );
+
+  const applicationColumns: RecordColumn<Application>[] = [
+    {
+      id: 'name',
+      label: 'Applicant',
+      required: true,
+      cell: (a) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={`${a.firstName} ${a.lastName}`} size="sm" />
+          <span className="truncate">{a.firstName} {a.lastName}</span>
+        </span>
+      ),
+    },
+    { id: 'status', label: 'Status', cell: (a) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[a.status]}`}>{STATUS_LABEL[a.status]}</span> },
+    { id: 'tier', label: 'Requested tier', cell: (a) => a.requestedTier },
+    { id: 'email', label: 'Email', cell: (a) => a.email },
+    { id: 'submitted', label: 'Submitted', cell: (a) => formatDate(a.submittedAtUtc) },
+    { id: 'phone', label: 'Phone', byDefault: false, cell: (a) => a.phone || '—' },
+    { id: 'occupation', label: 'Occupation', byDefault: false, cell: (a) => a.occupation || '—' },
+    { id: 'referredBy', label: 'Referred by', byDefault: false, cell: (a) => a.referredByName || '—' },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -262,7 +359,7 @@ export default function Applications() {
           />
 
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -288,6 +385,7 @@ export default function Applications() {
                 ))}
               </SelectContent>
             </Select>
+            <ViewSwitcher view={view} columns={columnChoices(applicationColumns)} className="md:ml-auto" />
           </div>
 
           {/* List */}
@@ -309,12 +407,53 @@ export default function Applications() {
               variant="orange"
             />
           ) : (
-            <div className="space-y-3">
+            <ViewTransition layout={view.layout}>
+            {view.layout === 'table' ? (
+              <RecordTable
+                label="Applications"
+                items={filtered}
+                view={view}
+                getKey={(a) => a.id}
+                columns={applicationColumns}
+                actions={(a) => applicationActions(a, 'line')}
+              />
+            ) : view.layout === 'grid' ? (
+              <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 2xl:grid-cols-4')}`}>
+                {filtered.map((a, index) => (
+                  <StaggerItem
+                    key={a.id}
+                    index={index}
+                    className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:border-blue-200 ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <InitialsAvatar name={`${a.firstName} ${a.lastName}`} />
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-semibold text-slate-900 truncate">{a.firstName} {a.lastName}</h3>
+                        <p className="text-xs text-slate-500 truncate">{a.email}</p>
+                      </div>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[a.status]}`}>
+                        {STATUS_LABEL[a.status]}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">Requested: {a.requestedTier}</span>
+                      <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDate(a.submittedAtUtc)}</span>
+                      {a.occupation && <span className="inline-flex items-center gap-1 truncate"><Briefcase className="w-3 h-3" /> {a.occupation}</span>}
+                    </div>
+                    {a.reasonForJoining && view.density !== 'compact' && (
+                      <p className="mt-2 text-sm text-slate-600 line-clamp-2 italic">"{a.reasonForJoining}"</p>
+                    )}
+                    <div className="mt-auto pt-3">{applicationActions(a)}</div>
+                  </StaggerItem>
+                ))}
+              </div>
+            ) : (
+            <div className={view.density === 'compact' ? 'space-y-2' : 'space-y-3'}>
               {filtered.map((a, index) => (
                 <StaggerItem
                   key={a.id}
                   index={index}
-                  className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-blue-200 ${liftOnHover}`}
+                  className={`rounded-2xl border border-slate-200 bg-white ${view.density === 'compact' ? 'p-3' : 'p-5'} shadow-sm hover:border-blue-200 ${liftOnHover}`}
                 >
                   <div className="flex flex-col lg:flex-row gap-4">
                     <div className="flex items-start gap-4 min-w-0 flex-1">
@@ -368,62 +507,13 @@ export default function Applications() {
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-row lg:flex-col gap-2 lg:items-end shrink-0">
-                      {(a.status === 'Submitted' || a.status === 'UnderReview') && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => startReview(a, 'approve')}
-                            disabled={busyId === a.id}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                          >
-                            <Check className="w-3.5 h-3.5 mr-1" /> Approve
-                          </Button>
-                          <div className="flex gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => startReview(a, 'waitlist')}
-                              disabled={busyId === a.id}
-                            >
-                              Waitlist
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => startReview(a, 'reject')}
-                              disabled={busyId === a.id}
-                              className="text-rose-600 hover:bg-rose-50"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                      {a.status === 'Submitted' && (
-                        <button
-                          type="button"
-                          onClick={() => setStatus(a, 'UnderReview')}
-                          className="text-xs text-blue-600 hover:underline inline-flex items-center gap-0.5"
-                        >
-                          Move to review <ChevronRight className="w-3 h-3" />
-                        </button>
-                      )}
-                      {(a.status === 'Rejected' || a.status === 'Approved' || a.status === 'Waitlisted') && (
-                        <button
-                          type="button"
-                          onClick={() => remove(a)}
-                          disabled={busyId === a.id}
-                          className="text-xs text-slate-500 hover:text-rose-600 disabled:opacity-50"
-                        >
-                          Delete record
-                        </button>
-                      )}
-                    </div>
+                    {applicationActions(a, 'stacked')}
                   </div>
                 </StaggerItem>
               ))}
             </div>
+            )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>

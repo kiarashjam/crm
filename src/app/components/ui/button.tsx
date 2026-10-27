@@ -6,9 +6,10 @@ import { cn } from "./utils";
 import { useMotionPreference } from "@/app/hooks/useMotionPreference";
 
 // Every button lifts a pixel on hover, gives a little when pressed, and lets ink
-// spread from the point it was pressed. The lift and the press are transforms on
-// their own properties (`translate`, `scale`), so a caller's own positioning
-// survives them; the ink is drawn inside a clipped layer of its own, so a badge
+// spread from the point it was pressed; a solid one also catches a sheen of light
+// as the pointer arrives. The lift and the press are transforms on their own
+// properties (`translate`, `scale`), so a caller's own positioning survives them;
+// the ink and the sheen are drawn inside clipped layers of their own, so a badge
 // hanging off the button's corner is not cut off.
 const buttonVariants = cva(
   "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,box-shadow,translate,scale,opacity] duration-200 ease-out active:scale-[0.97] active:duration-75 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 [&_svg]:transition-transform [&_svg]:duration-200 hover:[&_svg]:scale-110 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
@@ -67,6 +68,7 @@ const Button = React.forwardRef<
   // A slotted child is someone else's element with a single child of its own, so
   // there is nowhere to put the ink layer; it still gets the lift and the press.
   const inks = !asChild && !reduceMotion && variant !== "link";
+  const shines = inks && (variant == null || variant === "default" || variant === "destructive");
 
   const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
     onPointerDown?.(event);
@@ -95,6 +97,11 @@ const Button = React.forwardRef<
 
   return (
     <button ref={ref} data-slot="button" className={classes} onPointerDown={handlePointerDown} {...props}>
+      {shines && (
+        <span aria-hidden data-slot="button-shine" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
+          <span className="cadence-shine" />
+        </span>
+      )}
       {children}
       {ripples.length > 0 && (
         <span aria-hidden data-slot="button-ink" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">

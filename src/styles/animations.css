@@ -947,3 +947,74 @@
     display: none;
   }
 }
+
+/* A sheen that sweeps once across a solid button when the pointer arrives. */
+@keyframes button-shine {
+  from { translate: 0; opacity: 0; }
+  20% { opacity: 1; }
+  to { translate: 380%; opacity: 0; }
+}
+
+.cadence-shine {
+  position: absolute;
+  inset-block: 0;
+  left: -45%;
+  width: 35%;
+  transform: skewX(-18deg);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.45), transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+[data-slot="button"]:hover > [data-slot="button-shine"] > .cadence-shine,
+[data-slot="button"]:focus-visible > [data-slot="button-shine"] > .cadence-shine {
+  animation: button-shine 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Menu and list items cascade in, one after another, when a menu opens. */
+@keyframes menu-item-in {
+  from { opacity: 0; translate: 0 -4px; }
+  to { opacity: 1; translate: 0; }
+}
+
+[data-slot="select-content"][data-state="open"] [data-slot="select-item"],
+[data-slot="dropdown-menu-content"][data-state="open"] > [data-slot="dropdown-menu-item"],
+[data-slot="dropdown-menu-content"][data-state="open"] > [data-slot="dropdown-menu-checkbox-item"],
+[data-slot="dropdown-menu-content"][data-state="open"] > [data-slot="dropdown-menu-radio-group"] > * {
+  animation: menu-item-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[data-slot="select-content"][data-state="open"] [data-slot="select-item"]:nth-child(2),
+[data-slot="dropdown-menu-content"][data-state="open"] > :nth-child(2) { animation-delay: 25ms; }
+[data-slot="select-content"][data-state="open"] [data-slot="select-item"]:nth-child(3),
+[data-slot="dropdown-menu-content"][data-state="open"] > :nth-child(3) { animation-delay: 50ms; }
+[data-slot="select-content"][data-state="open"] [data-slot="select-item"]:nth-child(4),
+[data-slot="dropdown-menu-content"][data-state="open"] > :nth-child(4) { animation-delay: 75ms; }
+[data-slot="select-content"][data-state="open"] [data-slot="select-item"]:nth-child(5),
+[data-slot="dropdown-menu-content"][data-state="open"] > :nth-child(5) { animation-delay: 100ms; }
+[data-slot="select-content"][data-state="open"] [data-slot="select-item"]:nth-child(6),
+[data-slot="dropdown-menu-content"][data-state="open"] > :nth-child(6) { animation-delay: 125ms; }
+[data-slot="select-content"][data-state="open"] [data-slot="select-item"]:nth-child(n + 7),
+[data-slot="dropdown-menu-content"][data-state="open"] > :nth-child(n + 7) { animation-delay: 150ms; }
+
+/* The tick in a checkbox draws itself in. */
+@keyframes check-draw {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+[data-slot="checkbox-indicator"] svg path,
+[data-slot="checkbox-indicator"] svg polyline {
+  stroke-dasharray: 24;
+  animation: check-draw 0.32s 0.06s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cadence-shine {
+    display: none;
+  }
+}
+
+.reduce-motion .cadence-shine {
+  display: none;
+}

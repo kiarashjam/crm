@@ -52,7 +52,11 @@ import {
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
-import { StaggerItem } from '@/app/components/motion/Stagger';
+import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import {
+  InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
+  type RecordColumn,
+} from '@/app/components/views';
 
 const STATUS_BADGE: Record<SubscriptionStatus, string> = {
   Active: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -204,6 +208,114 @@ export default function Subscriptions() {
     }
   };
 
+  // How this person likes subscriptions shown, saved for them. A table, as it always was, until they choose.
+  const view = useViewPreference('subscriptions', { layouts: ['table', 'list', 'grid'] });
+
+  const statusBadge = (s: Subscription) => (
+    <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[s.status]}`}>
+      {s.status === 'PastDue' ? 'Past due' : s.status}
+    </span>
+  );
+
+  const nextCharge = (s: Subscription) => {
+    const days = daysUntil(s.nextChargeAtUtc);
+    return (
+      <span className="block">
+        <span className="block text-slate-700">{formatDate(s.nextChargeAtUtc)}</span>
+        <span className={`block text-xs ${days < 0 ? 'text-rose-600' : 'text-slate-500'}`}>
+          {days < 0 ? `${-days}d overdue` : days === 0 ? 'today' : `in ${days}d`}
+        </span>
+      </span>
+    );
+  };
+
+  /** Bill, pause or resume, cancel and delete, the same in every layout. */
+  const subscriptionActions = (s: Subscription) => (
+    <div className="flex items-center justify-end gap-1">
+      {s.status !== 'Cancelled' && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => charge(s)}
+          disabled={runningId === s.id}
+        >
+          {runningId === s.id ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <>
+              <Zap className="w-3.5 h-3.5 mr-1" /> Bill
+            </>
+          )}
+        </Button>
+      )}
+      {s.status === 'Active' && (
+        <button
+          type="button"
+          onClick={() => togglePause(s)}
+          className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          aria-label="Pause"
+        >
+          <Pause className="w-4 h-4" />
+        </button>
+      )}
+      {s.status === 'Paused' && (
+        <button
+          type="button"
+          onClick={() => togglePause(s)}
+          className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-700"
+          aria-label="Resume"
+        >
+          <Play className="w-4 h-4" />
+        </button>
+      )}
+      {s.status !== 'Cancelled' && (
+        <button
+          type="button"
+          onClick={() => cancel(s)}
+          className="rounded p-1.5 text-xs text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        >
+          Cancel
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => remove(s)}
+        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        aria-label="Delete"
+      >
+        <Trash2 className="w-4 h-4" />
+      </button>
+    </div>
+  );
+
+  const subscriptionColumns: RecordColumn<Subscription>[] = [
+    {
+      id: 'member',
+      label: 'Member',
+      required: true,
+      cell: (s) => (
+        <span className="flex items-center gap-2.5">
+          <InitialsAvatar name={s.memberName} size="sm" />
+          <span className="truncate">{s.memberName}</span>
+        </span>
+      ),
+    },
+    {
+      id: 'subscription',
+      label: 'Subscription',
+      cell: (s) => (
+        <span className="block">
+          <span className="block text-slate-700">{s.name}</span>
+          {s.notes && <span className="mt-0.5 block text-xs text-slate-500">{s.notes}</span>}
+        </span>
+      ),
+    },
+    { id: 'cadence', label: 'Cadence', cell: (s) => s.cadence },
+    { id: 'amount', label: 'Amount', numeric: true, cell: (s) => <span className="font-semibold text-slate-900">{formatCurrency(s.amount)}</span> },
+    { id: 'next', label: 'Next charge', cell: nextCharge },
+    { id: 'status', label: 'Status', cell: statusBadge },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -249,7 +361,7 @@ export default function Subscriptions() {
             ]}
           />
 
-          <div className="flex flex-col md:flex-row gap-3 mb-6">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
@@ -275,6 +387,7 @@ export default function Subscriptions() {
                 ))}
               </SelectContent>
             </Select>
+            <ViewSwitcher view={view} columns={columnChoices(subscriptionColumns)} className="md:ml-auto" />
           </div>
 
           {loading ? (
@@ -295,107 +408,58 @@ export default function Subscriptions() {
               variant="orange"
             />
           ) : (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3">Member</th>
-                    <th className="px-4 py-3">Subscription</th>
-                    <th className="px-4 py-3">Cadence</th>
-                    <th className="px-4 py-3 text-right">Amount</th>
-                    <th className="px-4 py-3">Next charge</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((s, index) => {
-                    const days = daysUntil(s.nextChargeAtUtc);
-                    return (
-                      <StaggerItem as="tr" key={s.id} index={index} className="border-b border-slate-100 transition-colors hover:bg-slate-50">
-                        <td className="px-4 py-3 font-medium text-slate-900">{s.memberName}</td>
-                        <td className="px-4 py-3">
-                          <p className="text-slate-700">{s.name}</p>
-                          {s.notes && <p className="text-xs text-slate-500 mt-0.5">{s.notes}</p>}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">{s.cadence}</td>
-                        <td className="px-4 py-3 text-right font-semibold">{formatCurrency(s.amount)}</td>
-                        <td className="px-4 py-3">
-                          <p className="text-slate-700">{formatDate(s.nextChargeAtUtc)}</p>
-                          <p className={`text-xs ${days < 0 ? 'text-rose-600' : 'text-slate-500'}`}>
-                            {days < 0 ? `${-days}d overdue` : days === 0 ? 'today' : `in ${days}d`}
-                          </p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[s.status]}`}
-                          >
-                            {s.status === 'PastDue' ? 'Past due' : s.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {s.status !== 'Cancelled' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => charge(s)}
-                                disabled={runningId === s.id}
-                              >
-                                {runningId === s.id ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <>
-                                    <Zap className="w-3.5 h-3.5 mr-1" /> Bill
-                                  </>
-                                )}
-                              </Button>
-                            )}
-                            {s.status === 'Active' && (
-                              <button
-                                type="button"
-                                onClick={() => togglePause(s)}
-                                className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                                aria-label="Pause"
-                              >
-                                <Pause className="w-4 h-4" />
-                              </button>
-                            )}
-                            {s.status === 'Paused' && (
-                              <button
-                                type="button"
-                                onClick={() => togglePause(s)}
-                                className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-700"
-                                aria-label="Resume"
-                              >
-                                <Play className="w-4 h-4" />
-                              </button>
-                            )}
-                            {s.status !== 'Cancelled' && (
-                              <button
-                                type="button"
-                                onClick={() => cancel(s)}
-                                className="rounded p-1.5 text-xs text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                              >
-                                Cancel
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => remove(s)}
-                              className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                              aria-label="Delete"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </StaggerItem>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <ViewTransition layout={view.layout}>
+              {view.layout === 'list' ? (
+                <RecordList
+                  label="Subscriptions"
+                  items={filtered}
+                  view={view}
+                  getKey={(s) => s.id}
+                  leading={(s) => <InitialsAvatar name={s.memberName} />}
+                  title={(s) => s.memberName}
+                  subtitle={(s) => `${s.name} · ${formatCurrency(s.amount)} ${s.cadence.toLowerCase()}`}
+                  columns={subscriptionColumns}
+                  actions={subscriptionActions}
+                />
+              ) : view.layout === 'grid' ? (
+                <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
+                  {filtered.map((s, index) => (
+                    <StaggerItem
+                      key={s.id}
+                      index={index}
+                      className={`flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm ${view.density === 'compact' ? 'p-3' : 'p-4'} ${liftOnHover}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <InitialsAvatar name={s.memberName} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold text-slate-900">{s.memberName}</p>
+                          <p className="truncate text-sm text-slate-600">{s.name}</p>
+                        </div>
+                        {statusBadge(s)}
+                      </div>
+                      <div className="mt-3 flex items-end justify-between gap-2">
+                        <div>
+                          <p className="text-lg font-bold text-slate-900">{formatCurrency(s.amount)}</p>
+                          <p className="text-xs text-slate-500">{s.cadence}</p>
+                        </div>
+                        <div className="text-right text-sm">{nextCharge(s)}</div>
+                      </div>
+                      {s.notes && <p className="mt-2 line-clamp-2 text-xs text-slate-500">{s.notes}</p>}
+                      <div className="mt-auto pt-3">{subscriptionActions(s)}</div>
+                    </StaggerItem>
+                  ))}
+                </div>
+              ) : (
+                <RecordTable
+                  label="Subscriptions"
+                  items={filtered}
+                  view={view}
+                  getKey={(s) => s.id}
+                  columns={subscriptionColumns}
+                  actions={subscriptionActions}
+                />
+              )}
+            </ViewTransition>
           )}
         </main>
       </PageTransition>
