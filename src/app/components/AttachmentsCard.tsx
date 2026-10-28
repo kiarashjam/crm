@@ -94,7 +94,7 @@ export default function AttachmentsCard({ entityType, recordId, className }: Att
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
-          className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-60"
+          className="-my-1 inline-flex min-h-6 items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-60"
         >
           {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Upload
         </button>
@@ -112,7 +112,7 @@ export default function AttachmentsCard({ entityType, recordId, className }: Att
           onDrop={(e) => { e.preventDefault(); setDragging(false); doUpload(e.dataTransfer.files); }}
           className={cn(
             'flex w-full flex-col items-center gap-1 rounded-xl border border-dashed px-4 py-6 text-sm transition-colors',
-            dragging ? 'border-indigo-400 bg-indigo-50/50 text-indigo-700' : 'border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600',
+            dragging ? 'border-indigo-400 bg-indigo-50/50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600',
           )}
         >
           <Upload className="h-5 w-5" />

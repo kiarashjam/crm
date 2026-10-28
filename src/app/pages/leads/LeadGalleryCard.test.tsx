@@ -119,9 +119,12 @@ describe('LeadGalleryCard', () => {
     expect(onOpen).toHaveBeenCalledWith(base);
   });
 
-  it('opens with Enter on the card itself', () => {
+  it('opens from the name, a real button, so the card is not a button around buttons', () => {
     const { onOpen } = renderCard();
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Open Ada Lovelace' }), { key: 'Enter' });
+    const open = screen.getByRole('button', { name: 'Open Ada Lovelace' });
+    expect(open.textContent).toBe('Ada Lovelace');
+    expect(open.querySelector('button, a')).toBeNull();
+    fireEvent.click(open);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 

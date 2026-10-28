@@ -666,7 +666,7 @@ export default function Contacts() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
+                  <SelectTrigger aria-label="Sort contacts by" className="relative h-11 w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-lg bg-violet-100 flex items-center justify-center">
                         <ArrowUpDown className="w-3.5 h-3.5 text-violet-600" />
@@ -807,7 +807,7 @@ export default function Contacts() {
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                   <Search className="w-3 h-3" />
                   &quot;{searchQuery}&quot;
-                  <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-emerald-600 transition-colors">
+                  <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-emerald-100 hover:text-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -816,7 +816,7 @@ export default function Contacts() {
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-medium border border-purple-200">
                   <Building2 className="w-3 h-3" />
                   {filterCompany === 'none' ? 'No company' : filterCompany === 'some' ? 'Has a company' : companyName(filterCompany)}
-                  <button onClick={() => setFilterCompany('all')} className="ml-0.5 hover:text-purple-900 transition-colors">
+                  <button type="button" onClick={() => setFilterCompany('all')} aria-label="Remove company filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-purple-100 hover:text-purple-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -825,7 +825,7 @@ export default function Contacts() {
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
                   <ActivityIcon className="w-3 h-3" />
                   {filterActivity === 'recent' ? 'Recently Active' : 'Inactive'}
-                  <button onClick={() => setFilterActivity('all')} className="ml-0.5 hover:text-emerald-900 transition-colors">
+                  <button type="button" onClick={() => setFilterActivity('all')} aria-label="Remove activity filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-emerald-100 hover:text-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -1112,7 +1112,7 @@ export default function Contacts() {
                         ) : (
                           <>
                             <span className="w-2 h-2 rounded-full bg-slate-300" />
-                            <span className="text-xs text-slate-400">No activity</span>
+                            <span className="text-xs text-slate-500">No activity</span>
                           </>
                         )}
                       </div>

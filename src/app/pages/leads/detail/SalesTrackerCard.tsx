@@ -2,7 +2,7 @@
 // Fields match the P46 tracker workbook and persist on lead.pipelineState
 // so the org-wide lead funnel reads the same data.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useId, useState } from 'react';
 import { Save, Check, Clock, AlertTriangle, Sparkles, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/app/components/ui/button';
@@ -60,7 +60,9 @@ function EnumSelect<T extends string>({
   onChange,
   placeholder,
   disabled,
+  id,
 }: {
+  id?: string;
   value: T;
   options: readonly T[];
   onChange: (v: T) => void;
@@ -74,7 +76,7 @@ function EnumSelect<T extends string>({
       onValueChange={(v) => onChange((v === SENTINEL ? '' : v) as T)}
       disabled={disabled}
     >
-      <SelectTrigger className="h-9 rounded-lg bg-white border-slate-200 text-sm">
+      <SelectTrigger id={id} className="h-9 rounded-lg bg-white border-slate-200 text-sm">
         <SelectValue placeholder={placeholder ?? '—'} />
       </SelectTrigger>
       <SelectContent>
@@ -95,10 +97,12 @@ function DateField({
   value,
   onChange,
   disabled,
-}: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  id,
+}: { value: string; onChange: (v: string) => void; disabled?: boolean; id?: string }) {
   const iso = ddMmYyyyToIso(value);
   return (
     <Input
+      id={id}
       type="date"
       value={iso}
       disabled={disabled}
@@ -114,6 +118,8 @@ function extrasFromLead(lead: Lead): SalesExtras {
 
 export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnly = false }: SalesTrackerCardProps) {
   const [extras, setExtras] = useState<SalesExtras>(() => extrasFromLead(lead));
+  // Ties each visible label to its field, so screen readers name the field.
+  const fieldId = useId();
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -214,8 +220,9 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Outreach status</Label>
+          <Label htmlFor={`${fieldId}-outreach-status`} className="text-[11px] text-slate-500">Outreach status</Label>
           <EnumSelect
+            id={`${fieldId}-outreach-status`}
             disabled={readOnly}
             value={extras.outreachStatus}
             options={OUTREACH_STATUS_OPTIONS}
@@ -223,12 +230,13 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Outreach date</Label>
-          <DateField disabled={readOnly} value={extras.outreachDate} onChange={(v) => update({ outreachDate: v })} />
+          <Label htmlFor={`${fieldId}-outreach-date`} className="text-[11px] text-slate-500">Outreach date</Label>
+          <DateField id={`${fieldId}-outreach-date`} disabled={readOnly} value={extras.outreachDate} onChange={(v) => update({ outreachDate: v })} />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Meeting scheduled</Label>
+          <Label htmlFor={`${fieldId}-meeting-scheduled`} className="text-[11px] text-slate-500">Meeting scheduled</Label>
           <EnumSelect
+            id={`${fieldId}-meeting-scheduled`}
             disabled={readOnly}
             value={extras.meetingScheduled}
             options={MEETING_SCHEDULED_OPTIONS}
@@ -236,16 +244,18 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Meeting date</Label>
-          <DateField disabled={readOnly} value={extras.meetingDate} onChange={(v) => update({ meetingDate: v })} />
+          <Label htmlFor={`${fieldId}-meeting-date`} className="text-[11px] text-slate-500">Meeting date</Label>
+          <DateField id={`${fieldId}-meeting-date`} disabled={readOnly} value={extras.meetingDate} onChange={(v) => update({ meetingDate: v })} />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Met (showed up)</Label>
-          <EnumSelect disabled={readOnly} value={extras.met} options={YES_NO_OPTIONS} onChange={(v) => update({ met: v })} />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Interested after meeting</Label>
+          <Label htmlFor={`${fieldId}-met-showed-up`} className="text-[11px] text-slate-500">Met (showed up)</Label>
           <EnumSelect
+            id={`${fieldId}-met-showed-up`} disabled={readOnly} value={extras.met} options={YES_NO_OPTIONS} onChange={(v) => update({ met: v })} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${fieldId}-interested-after-meeting`} className="text-[11px] text-slate-500">Interested after meeting</Label>
+          <EnumSelect
+            id={`${fieldId}-interested-after-meeting`}
             disabled={readOnly}
             value={extras.interestedAfterMtg}
             options={YES_NO_PENDING_OPTIONS}
@@ -253,8 +263,9 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Contract sent</Label>
+          <Label htmlFor={`${fieldId}-contract-sent`} className="text-[11px] text-slate-500">Contract sent</Label>
           <EnumSelect
+            id={`${fieldId}-contract-sent`}
             disabled={readOnly}
             value={extras.contractSent}
             options={CONTRACT_SENT_OPTIONS}
@@ -262,12 +273,13 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Contract sent date</Label>
-          <DateField disabled={readOnly} value={extras.contractSentDate} onChange={(v) => update({ contractSentDate: v })} />
+          <Label htmlFor={`${fieldId}-contract-sent-date`} className="text-[11px] text-slate-500">Contract sent date</Label>
+          <DateField id={`${fieldId}-contract-sent-date`} disabled={readOnly} value={extras.contractSentDate} onChange={(v) => update({ contractSentDate: v })} />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Contract signed</Label>
+          <Label htmlFor={`${fieldId}-contract-signed`} className="text-[11px] text-slate-500">Contract signed</Label>
           <EnumSelect
+            id={`${fieldId}-contract-signed`}
             disabled={readOnly}
             value={extras.contractSigned}
             options={CONTRACT_SIGNED_OPTIONS}
@@ -275,12 +287,13 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Signature date</Label>
-          <DateField disabled={readOnly} value={extras.signatureDate} onChange={(v) => update({ signatureDate: v })} />
+          <Label htmlFor={`${fieldId}-signature-date`} className="text-[11px] text-slate-500">Signature date</Label>
+          <DateField id={`${fieldId}-signature-date`} disabled={readOnly} value={extras.signatureDate} onChange={(v) => update({ signatureDate: v })} />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Deposit paid</Label>
+          <Label htmlFor={`${fieldId}-deposit-paid`} className="text-[11px] text-slate-500">Deposit paid</Label>
           <EnumSelect
+            id={`${fieldId}-deposit-paid`}
             disabled={readOnly}
             value={extras.depositPaid}
             options={YES_NO_OPTIONS}
@@ -288,14 +301,15 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-[11px] text-slate-500">Last contact date</Label>
-          <DateField disabled={readOnly} value={extras.lastContactDate} onChange={(v) => update({ lastContactDate: v })} />
+          <Label htmlFor={`${fieldId}-last-contact-date`} className="text-[11px] text-slate-500">Last contact date</Label>
+          <DateField id={`${fieldId}-last-contact-date`} disabled={readOnly} value={extras.lastContactDate} onChange={(v) => update({ lastContactDate: v })} />
         </div>
       </div>
 
       <div className="mt-3 space-y-1.5">
-        <Label className="text-[11px] text-slate-500">Notes</Label>
+        <Label htmlFor={`${fieldId}-notes`} className="text-[11px] text-slate-500">Notes</Label>
         <Textarea
+            id={`${fieldId}-notes`}
           disabled={readOnly}
           value={extras.salesNotes}
           onChange={(e) => update({ salesNotes: e.target.value })}

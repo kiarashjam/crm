@@ -574,7 +574,7 @@ export default function ContactDetail() {
                             </p>
                             <p className="text-xs text-slate-500">{deal.dealStageName || deal.stage || 'No stage'}</p>
                           </div>
-                          <p className="text-sm font-bold text-emerald-600">{dealAmount(deal)}</p>
+                          <p className="text-sm font-bold text-emerald-700">{dealAmount(deal)}</p>
                         </Link>
                       </StaggerItem>
                     ))}

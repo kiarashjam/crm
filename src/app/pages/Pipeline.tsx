@@ -961,7 +961,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                       <Search className="w-3 h-3" />
                       &quot;{searchQuery}&quot;
-                      <button onClick={() => setSearchQuery('')} className="ml-1 hover:text-violet-600 transition-colors">
+                      <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-violet-100 hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -972,7 +972,7 @@ export default function Pipeline() {
                         className="w-2 h-2 rounded-full bg-emerald-500"
                       />
                       {filterStage}
-                      <button onClick={() => setFilterStage('all')} className="ml-1 hover:text-emerald-900 transition-colors">
+                      <button type="button" onClick={() => setFilterStage('all')} aria-label={`Remove ${filterStage} filter`} className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-emerald-100 hover:text-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -981,7 +981,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-200">
                       <User className="w-3 h-3" />
                       My Deals
-                      <button onClick={() => setFilterMyDeals(false)} className="ml-1 hover:text-blue-900 transition-colors">
+                      <button type="button" onClick={() => setFilterMyDeals(false)} aria-label="Remove “my deals” filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-blue-100 hover:text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -990,7 +990,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-medium border border-purple-200">
                       <User className="w-3 h-3" />
                       {filterAssignee === 'unassigned' ? 'Unassigned' : orgMembers.find(m => m.userId === filterAssignee)?.name}
-                      <button onClick={() => setFilterAssignee('all')} className="ml-1 hover:text-purple-900 transition-colors">
+                      <button type="button" onClick={() => setFilterAssignee('all')} aria-label="Remove owner filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-purple-100 hover:text-purple-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -999,7 +999,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
                       <DollarSign className="w-3 h-3" />
                       {filterValueMin || '0'} – {filterValueMax || '∞'}
-                      <button onClick={() => { setFilterValueMin(''); setFilterValueMax(''); }} className="ml-1 hover:text-amber-900 transition-colors">
+                      <button type="button" onClick={() => { setFilterValueMin(''); setFilterValueMax(''); }} aria-label="Remove value filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -1008,7 +1008,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium border border-cyan-200">
                       <Calendar className="w-3 h-3" />
                       {filterCloseDateFrom || 'any'} – {filterCloseDateTo || 'any'}
-                      <button onClick={() => { setFilterCloseDateFrom(''); setFilterCloseDateTo(''); }} className="ml-1 hover:text-cyan-900 transition-colors">
+                      <button type="button" onClick={() => { setFilterCloseDateFrom(''); setFilterCloseDateTo(''); }} aria-label="Remove close date filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-cyan-100 hover:text-cyan-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>

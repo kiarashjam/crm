@@ -275,7 +275,7 @@ export default function PageHero({
             {back && (
               <Link
                 to={back.to}
-                className="group/back mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900"
+                className="group/back mb-1 inline-flex min-h-6 items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900"
               >
                 <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover/back:-translate-x-0.5" aria-hidden />
                 {back.label}

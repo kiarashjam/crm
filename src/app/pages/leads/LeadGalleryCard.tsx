@@ -228,7 +228,7 @@ function ScoreRing({ score, reduce }: { score: number; reduce: boolean }) {
 function Fact({ icon, label, value, title, tone }: { icon: ReactNode; label: string; value: ReactNode; title?: string; tone: string }) {
   return (
     <div className="min-w-0 rounded-xl bg-white/80 px-2.5 py-2 ring-1 ring-slate-200/70" title={title}>
-      <div className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 flex min-w-0 items-center gap-1.5 text-sm font-semibold tabular-nums text-slate-800">
         <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md', tone)} aria-hidden>{icon}</span>
         <span className="truncate">{value}</span>
@@ -288,26 +288,18 @@ export function LeadGalleryCard({
   return (
     <Reveal
       index={index}
-      role="button"
-      tabIndex={0}
-      aria-label={`Open ${lead.name}`}
       onClick={(e) => {
-        // Controls inside the card (checkbox, links, owner, track, log and their
-        // popovers) do their own thing; only the card itself opens the lead.
+        // A click anywhere on the card opens the lead, for the mouse. Controls inside
+        // it (checkbox, links, owner, track, log and their popovers) do their own
+        // thing. Keyboard and screen-reader users open it from the name, so the card
+        // is not itself a button wrapped around other buttons.
         if ((e.target as HTMLElement).closest('button, a, input, textarea, label, [role="dialog"], [data-radix-popper-content-wrapper]')) return;
         onOpen(lead);
-      }}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen(lead);
-        }
       }}
       className={cn(
         '@container group/card relative flex cursor-pointer flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm',
         'transition-[translate,box-shadow,border-color] duration-300 ease-out hover:-translate-y-1 hover:shadow-xl motion-reduce:transition-none motion-reduce:hover:translate-y-0',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+        'has-[[data-open-lead]:focus-visible]:-translate-y-1 has-[[data-open-lead]:focus-visible]:shadow-xl',
         selected && 'ring-2 ring-indigo-400 ring-offset-2',
         tone.card,
       )}
@@ -376,7 +368,17 @@ export function LeadGalleryCard({
           </div>
 
           <div className="min-w-0 flex-1 pr-6">
-            <h3 className="truncate text-base font-bold tracking-tight text-slate-900">{lead.name}</h3>
+            <h3 className="truncate text-base font-bold tracking-tight text-slate-900">
+              <button
+                type="button"
+                data-open-lead
+                onClick={() => onOpen(lead)}
+                aria-label={`Open ${lead.name}`}
+                className="max-w-full truncate rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
+              >
+                {lead.name}
+              </button>
+            </h3>
             {(company || lead.jobTitle) && (
               <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
                 <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
@@ -423,7 +425,7 @@ export function LeadGalleryCard({
         <div>
           <div className="flex items-center justify-between gap-2">
             <span className={cn('truncate text-xs font-bold', tone.text)}>{life.title}</span>
-            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">{life.done}/5</span>
+            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-500">{life.done}/5</span>
           </div>
           <div
             className="mt-1.5 grid grid-cols-5 gap-1"
@@ -475,7 +477,7 @@ export function LeadGalleryCard({
             tone="bg-sky-100 text-sky-600"
             label="Last touch"
             title={fullDate(touched ?? undefined)}
-            value={touched ? ago(touched) : <span className="text-rose-500">Never</span>}
+            value={touched ? ago(touched) : <span className="text-rose-700">Never</span>}
           />
           <Fact
             icon={<ActivityIcon className="h-3 w-3" />}

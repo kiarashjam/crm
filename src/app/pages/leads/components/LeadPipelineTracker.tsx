@@ -984,7 +984,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
             onClick={() => disclosure.setAll(!disclosure.allOpen)}
             aria-label={disclosure.allOpen ? 'Collapse all phases' : 'Expand all phases'}
             className={cn(
-              'mt-0.5 ml-1 flex shrink-0 items-center gap-1 rounded-lg border-l border-slate-200 py-1 pl-2 pr-1.5 text-[11px] font-semibold text-slate-500',
+              'mt-0.5 ml-1 flex min-h-6 shrink-0 items-center gap-1 rounded-lg border-l border-slate-200 py-1 pl-2 pr-1.5 text-[11px] font-semibold text-slate-500',
               'transition-colors duration-150 hover:bg-slate-100 hover:text-slate-700',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
             )}
