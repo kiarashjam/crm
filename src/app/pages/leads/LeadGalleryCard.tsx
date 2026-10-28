@@ -381,7 +381,7 @@ export function LeadGalleryCard({
             </h3>
             {(company || lead.jobTitle) && (
               <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-                <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
                 <span className="truncate">{[lead.jobTitle, company].filter(Boolean).join(' · ')}</span>
               </p>
             )}
@@ -468,7 +468,7 @@ export function LeadGalleryCard({
         <div className="grid grid-cols-2 gap-1.5 @sm:grid-cols-4">
           <Fact
             icon={hasScore ? <ScoreRing score={lead.leadScore ?? 0} reduce={reduce} /> : <Gauge className="h-3 w-3" />}
-            tone={hasScore ? '' : 'bg-orange-100 text-orange-600'}
+            tone={hasScore ? '' : 'bg-orange-100 text-orange-700'}
             label="Score"
             value={hasScore ? lead.leadScore : <span className="text-slate-300">—</span>}
           />
@@ -588,12 +588,12 @@ export function LeadGalleryCard({
                   <span className={cn('min-w-0 flex-1 truncate text-xs', typeKey === 'system' ? 'italic text-slate-500' : 'text-slate-700')}>
                     {text}
                   </span>
-                  <span className="shrink-0 text-[10px] text-slate-400">{ago(activity.createdAt)}</span>
+                  <span className="shrink-0 text-[10px] text-slate-500">{ago(activity.createdAt)}</span>
                 </li>
               );
             })}
             {interactions.length > recent.length && (
-              <li className="pl-1 text-[11px] text-slate-400">+{interactions.length - recent.length} more on the lead page</li>
+              <li className="pl-1 text-[11px] text-slate-500">+{interactions.length - recent.length} more on the lead page</li>
             )}
           </ul>
         )}
@@ -612,7 +612,7 @@ export function LeadGalleryCard({
                 {tag}
               </span>
             ))}
-            {lead.tags.length > 3 && <span className="text-[11px] font-medium text-slate-400">+{lead.tags.length - 3}</span>}
+            {lead.tags.length > 3 && <span className="text-[11px] font-medium text-slate-500">+{lead.tags.length - 3}</span>}
           </div>
         )}
 
@@ -646,7 +646,7 @@ export function LeadGalleryCard({
                 >
                   <OwnerAvatar name={assignee?.name} />
                   <span className="truncate font-medium">{assignee ? assignee.name : 'Unassigned'}</span>
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
                 </button>
               }
             />
@@ -692,7 +692,7 @@ export function LeadGalleryCard({
 function OwnerAvatar({ name }: { name?: string }) {
   if (!name) {
     return (
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400" aria-hidden>
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500" aria-hidden>
         <UserCircle className="h-4 w-4" />
       </span>
     );

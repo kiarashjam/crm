@@ -32,8 +32,8 @@ export function AssignPopover({ assigneeId, members, onAssign, trigger }: Assign
       <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
         {trigger}
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-60 p-1.5" onClick={(e) => e.stopPropagation()}>
-        <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+      <PopoverContent aria-label="Assign an owner" align="start" className="w-60 p-1.5" onClick={(e) => e.stopPropagation()}>
+        <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
           Assign owner
         </div>
         <div className="max-h-64 overflow-y-auto">
@@ -45,7 +45,7 @@ export function AssignPopover({ assigneeId, members, onAssign, trigger }: Assign
               !assigneeId && 'bg-slate-50',
             )}
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500">
               <UserCircle className="h-4 w-4" />
             </span>
             <span className="flex-1 text-slate-600">Unassigned</span>
@@ -68,14 +68,14 @@ export function AssignPopover({ assigneeId, members, onAssign, trigger }: Assign
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-slate-800">{m.name}</span>
-                  {m.email && <span className="block truncate text-[11px] text-slate-400">{m.email}</span>}
+                  {m.email && <span className="block truncate text-[11px] text-slate-500">{m.email}</span>}
                 </span>
                 {active && <Check className="h-4 w-4 shrink-0 text-indigo-600" />}
               </button>
             );
           })}
           {members.length === 0 && (
-            <p className="px-2 py-3 text-center text-xs text-slate-400">No team members to assign.</p>
+            <p className="px-2 py-3 text-center text-xs text-slate-500">No team members to assign.</p>
           )}
         </div>
       </PopoverContent>

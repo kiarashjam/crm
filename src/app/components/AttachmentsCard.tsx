@@ -102,7 +102,7 @@ export default function AttachmentsCard({ entityType, recordId, className }: Att
       </div>
 
       {loading ? (
-        <div className="py-4 text-center text-slate-400"><Loader2 className="mx-auto h-4 w-4 animate-spin" /></div>
+        <div className="py-4 text-center text-slate-500"><Loader2 className="mx-auto h-4 w-4 animate-spin" /></div>
       ) : items.length === 0 ? (
         <button
           type="button"
@@ -122,15 +122,15 @@ export default function AttachmentsCard({ entityType, recordId, className }: Att
         <ul className="space-y-1.5">
           {items.map((a) => (
             <li key={a.id} className="group flex items-center gap-3 rounded-lg border border-slate-100 px-3 py-2">
-              <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+              <FileText className="h-4 w-4 shrink-0 text-slate-500" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-slate-700">{a.fileName}</p>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-500">
                   {formatSize(a.size)}{a.uploadedByName ? ` · ${a.uploadedByName}` : ''}
                 </p>
               </div>
-              <button type="button" onClick={() => download(a)} title="Download" className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Download className="h-4 w-4" /></button>
-              <button type="button" onClick={() => remove(a)} title="Remove" className="rounded p-1.5 text-slate-400 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+              <button type="button" onClick={() => download(a)} title="Download" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"><Download className="h-4 w-4" /></button>
+              <button type="button" onClick={() => remove(a)} title="Remove" className="rounded p-1.5 text-slate-500 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
             </li>
           ))}
         </ul>

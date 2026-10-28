@@ -218,7 +218,7 @@ export default function Households() {
       <button
         type="button"
         onClick={() => openAddMember(r.household.id)}
-        className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
         aria-label="Add member"
       >
         <UserPlus className="w-4 h-4" />
@@ -226,7 +226,7 @@ export default function Households() {
       <button
         type="button"
         onClick={() => removeHousehold(r.household.id, r.household.name)}
-        className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
         aria-label="Delete household"
       >
         <Trash2 className="w-4 h-4" />
@@ -265,7 +265,7 @@ export default function Households() {
 
           <div className="flex flex-wrap items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -277,7 +277,7 @@ export default function Households() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -362,7 +362,7 @@ export default function Households() {
                             <p className="text-xs text-slate-500">
                               {row.link.role}
                               {row.link.rollUpBilling && row.link.role !== 'Primary' && (
-                                <span className="ml-1.5 text-teal-600">· rolls up</span>
+                                <span className="ml-1.5 text-teal-700">· rolls up</span>
                               )}
                             </p>
                           </div>
@@ -371,7 +371,7 @@ export default function Households() {
                           <button
                             type="button"
                             onClick={() => removeMember(row.link.id)}
-                            className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 shrink-0"
+                            className="rounded p-1 text-slate-500 hover:bg-rose-50 hover:text-rose-600 shrink-0"
                             aria-label="Remove from household"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -417,7 +417,7 @@ export default function Households() {
           <div className="space-y-4 py-2">
             <div>
               <Label>Household name</Label>
-              <Input
+              <Input aria-label="Household name"
                 value={createForm.name}
                 onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
                 placeholder="e.g. Hartwell, Okafor"
@@ -429,7 +429,7 @@ export default function Households() {
                 value={createForm.primaryMemberId}
                 onValueChange={(v) => setCreateForm({ ...createForm, primaryMemberId: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Primary member">
                   <SelectValue placeholder="Pick a member" />
                 </SelectTrigger>
                 <SelectContent>
@@ -443,7 +443,7 @@ export default function Households() {
             </div>
             <div>
               <Label>Notes</Label>
-              <Input
+              <Input aria-label="Notes"
                 value={createForm.notes}
                 onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
               />
@@ -479,7 +479,7 @@ export default function Households() {
                 value={addForm.memberId}
                 onValueChange={(v) => setAddForm({ ...addForm, memberId: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Member">
                   <SelectValue placeholder="Pick a member" />
                 </SelectTrigger>
                 <SelectContent>
@@ -497,7 +497,7 @@ export default function Households() {
                 value={addForm.role}
                 onValueChange={(v) => setAddForm({ ...addForm, role: v as HouseholdRole })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -517,6 +517,7 @@ export default function Households() {
                 </p>
               </div>
               <Switch
+                aria-label="Roll up billing"
                 checked={addForm.rollUp}
                 onCheckedChange={(c) => setAddForm({ ...addForm, rollUp: c })}
               />

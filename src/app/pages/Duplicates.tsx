@@ -143,16 +143,16 @@ function KindCard<T extends { id: string }>({ index, spec, found }: { index: num
             <li key={g.key} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-sm">
               <span className="min-w-0 flex-1 truncate font-medium text-slate-700">{spec.title(g.records[0]!)}</span>
               <span className="shrink-0 rounded-full bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-700">×{g.records.length}</span>
-              <span className="hidden shrink-0 text-[11px] text-slate-400 sm:inline">{g.reason}</span>
+              <span className="hidden shrink-0 text-[11px] text-slate-500 sm:inline">{g.reason}</span>
             </li>
           ))}
-          {groups.length > 3 && <li className="px-2.5 text-xs text-slate-400">and {groups.length - 3} more</li>}
+          {groups.length > 3 && <li className="px-2.5 text-xs text-slate-500">and {groups.length - 3} more</li>}
         </ul>
       )}
 
       <div className="mt-auto flex items-center justify-between gap-2 pt-4">
         {notSameCount > 0 ? (
-          <button type="button" onClick={found.clearNotSame} className="text-xs text-slate-400 underline-offset-2 hover:text-slate-600 hover:underline">
+          <button type="button" onClick={found.clearNotSame} className="text-xs text-slate-500 underline-offset-2 hover:text-slate-600 hover:underline">
             {notSameCount} marked not the same · show again
           </button>
         ) : <span />}

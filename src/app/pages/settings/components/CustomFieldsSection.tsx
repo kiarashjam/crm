@@ -112,28 +112,28 @@ export function CustomFieldsSection() {
 
       {/* Existing fields */}
       <div className="rounded-2xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <div className="border-b border-slate-100 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
           Fields on {ENTITIES.find((e) => e.id === entity)?.label}
         </div>
         {loading ? (
-          <div className="py-8 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+          <div className="py-8 text-center text-slate-500"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
         ) : defs.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-slate-400">No custom fields yet.</p>
+          <p className="px-4 py-6 text-center text-sm text-slate-500">No custom fields yet.</p>
         ) : (
           <ul className="divide-y divide-slate-50">
             {defs.map((f) => (
               <li key={f.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <div className="min-w-0">
                   <span className="text-sm font-medium text-slate-800">{f.label}</span>
-                  {f.required && <span className="ml-2 text-xs text-red-500">required</span>}
+                  {f.required && <span className="ml-2 text-xs text-red-700">required</span>}
                   <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-500">
                     {TYPES.find((t) => t.id === f.type)?.label ?? f.type}
                   </span>
                   {f.type === 'select' && f.options && (
-                    <span className="ml-2 truncate text-xs text-slate-400">{f.options.join(', ')}</span>
+                    <span className="ml-2 truncate text-xs text-slate-500">{f.options.join(', ')}</span>
                   )}
                 </div>
-                <button type="button" onClick={() => remove(f)} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                <button type="button" onClick={() => remove(f)} className="rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </li>

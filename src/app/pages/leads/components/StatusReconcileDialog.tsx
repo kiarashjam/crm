@@ -200,7 +200,7 @@ export function StatusReconcileDialog({
                               <span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-medium text-slate-500">
                                 {f.from || '—'}
                               </span>
-                              <ArrowRight className="h-3 w-3 text-slate-400" />
+                              <ArrowRight className="h-3 w-3 text-slate-500" />
                               <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-700">
                                 {f.to}
                               </span>

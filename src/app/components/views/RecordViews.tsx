@@ -190,7 +190,7 @@ export function RecordList<T>({
               </div>
               {meta.map((c) => (
                 <div key={c.id} className={cn('hidden min-w-0 md:block', c.numeric && 'text-right', c.className)}>
-                  <div className="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">{c.label}</div>
+                  <div className="text-[10px] font-semibold tracking-wide text-slate-500 uppercase">{c.label}</div>
                   <div className={cn('truncate text-slate-700', compact ? 'text-xs' : 'text-sm', c.numeric && 'tabular-nums')}>{c.cell(item)}</div>
                 </div>
               ))}

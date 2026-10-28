@@ -1149,7 +1149,7 @@ export default function LeadDetailPage() {
                         <CheckCircle2 className="h-6 w-6" />
                       </motion.span>
                       <p className="mt-3 text-sm font-medium text-slate-600">No tasks yet.</p>
-                      <p className="mt-0.5 text-xs text-slate-400">Add one above, and tick it off here when it is done.</p>
+                      <p className="mt-0.5 text-xs text-slate-500">Add one above, and tick it off here when it is done.</p>
                     </div>
                   ) : (
                     <ul className="space-y-2">
@@ -1320,7 +1320,7 @@ export default function LeadDetailPage() {
                             {isOverdue(nextTask.dueDateUtc) ? 'Overdue · ' : 'Due '}{formatFull(nextTask.dueDateUtc)}
                           </p>
                         ) : (
-                          <p className="mt-0.5 text-xs text-slate-400">No due date</p>
+                          <p className="mt-0.5 text-xs text-slate-500">No due date</p>
                         )}
                       </div>
                     </div>
@@ -1674,7 +1674,7 @@ function CopyButton({ onClick, copied, label }: { onClick: () => void; copied: b
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-400 opacity-0 transition-all hover:bg-slate-100 hover:text-slate-600 focus-visible:opacity-100 group-hover/copy:opacity-100"
+      className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-500 opacity-0 transition-all hover:bg-slate-100 hover:text-slate-600 focus-visible:opacity-100 group-hover/copy:opacity-100"
     >
       {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
     </button>
@@ -1725,7 +1725,7 @@ function ScoreEditor({ score, onSave, readOnly = false, size }: { score: number;
           onBlur={commit}
           className="w-14 rounded-md border border-slate-200 px-1.5 py-1 text-center text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
         />
-        {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+        {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />}
       </div>
     );
   }
@@ -1738,7 +1738,7 @@ function ScoreEditor({ score, onSave, readOnly = false, size }: { score: number;
       className="group relative transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40 rounded-full"
     >
       <ScoreGauge score={score} size={size} strokeWidth={size && size < 72 ? 5 : undefined} hideCaption={!!size && size < 72} />
-      <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-400 opacity-0 shadow ring-1 ring-slate-200 transition-opacity group-hover:opacity-100">
+      <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-500 opacity-0 shadow ring-1 ring-slate-200 transition-opacity group-hover:opacity-100">
         <Pencil className="w-3 h-3" />
       </span>
     </button>

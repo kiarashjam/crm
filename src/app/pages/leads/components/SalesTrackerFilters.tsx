@@ -139,7 +139,7 @@ export function SalesTrackerFilters({ value, onChange }: Props) {
       <div className="min-w-0">
         <Label icon={CircleDollarSign}>Deposit paid</Label>
         <Select value={value.depositPaid} onValueChange={(v) => onChange({ depositPaid: v })}>
-          <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+          <SelectTrigger aria-label="Deposit paid" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -153,7 +153,7 @@ export function SalesTrackerFilters({ value, onChange }: Props) {
       <div className="min-w-0">
         <Label icon={AlertOctagon}>Decline stage</Label>
         <Select value={value.declineStage} onValueChange={(v) => onChange({ declineStage: v })}>
-          <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+          <SelectTrigger aria-label="Decline stage" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -168,7 +168,7 @@ export function SalesTrackerFilters({ value, onChange }: Props) {
       <div className="min-w-0">
         <Label icon={Clock}>Overdue contracts</Label>
         <Select value={value.overdue} onValueChange={(v) => onChange({ overdue: v })}>
-          <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+          <SelectTrigger aria-label="Overdue contracts" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

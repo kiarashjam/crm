@@ -615,7 +615,7 @@ export default function Contacts() {
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-500 hover:text-red-500 transition-all duration-200"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -642,7 +642,7 @@ export default function Contacts() {
                   }`}
                 >
                   <div className={`w-6 h-6 rounded-lg flex items-center justify-center mr-2 transition-all duration-300 ${
-                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-emerald-100 text-emerald-600'
+                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-emerald-100 text-emerald-700'
                   }`}>
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </div>
@@ -677,31 +677,31 @@ export default function Contacts() {
                 <SelectContent>
                   <SelectItem value="name-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Name A-Z
                     </span>
                   </SelectItem>
                   <SelectItem value="name-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Name Z-A
                     </span>
                   </SelectItem>
                   <SelectItem value="lastActivity-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Recently Active
                     </span>
                   </SelectItem>
                   <SelectItem value="createdAt-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Newest First
                     </span>
                   </SelectItem>
                   <SelectItem value="createdAt-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Oldest First
                     </span>
                   </SelectItem>
@@ -724,7 +724,7 @@ export default function Contacts() {
                     Company
                   </label>
                   <Select value={filterCompany} onValueChange={setFilterCompany}>
-                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-emerald-300 transition-colors">
+                    <SelectTrigger aria-label="Company" className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-emerald-300 transition-colors">
                       <SelectValue placeholder="All companies" />
                     </SelectTrigger>
                     <SelectContent>
@@ -744,7 +744,7 @@ export default function Contacts() {
                       {companies.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           <span className="flex items-center gap-2">
-                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                            <Building2 className="w-3.5 h-3.5 text-slate-500" />
                             {c.name}
                           </span>
                         </SelectItem>
@@ -760,7 +760,7 @@ export default function Contacts() {
                     Activity
                   </label>
                   <Select value={filterActivity} onValueChange={(v) => setFilterActivity(v as typeof filterActivity)}>
-                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-emerald-300 transition-colors">
+                    <SelectTrigger aria-label="Activity" className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-emerald-300 transition-colors">
                       <SelectValue placeholder="All activity" />
                     </SelectTrigger>
                     <SelectContent>
@@ -899,7 +899,7 @@ export default function Contacts() {
           /* No results state */
           <div className="flex items-center gap-3 p-6 rounded-xl bg-white border border-slate-200">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-              <Search className="w-6 h-6 text-slate-400" />
+              <Search className="w-6 h-6 text-slate-500" />
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-700">No contacts match your filters</p>
@@ -975,7 +975,7 @@ export default function Contacts() {
                         </h3>
                         {contact.jobTitle && (
                           <p className="text-sm text-slate-500 truncate flex items-center gap-1.5">
-                            <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                            <Briefcase className="w-3.5 h-3.5 text-slate-500" />
                             {contact.jobTitle}
                           </p>
                         )}
@@ -999,7 +999,7 @@ export default function Contacts() {
                               if (contact.companyId) navigate(`/companies/${contact.companyId}`);
                             }}
                           >
-                            <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                            <Building2 className="w-3.5 h-3.5 text-slate-500" />
                             {company}
                           </p>
                         )}
@@ -1055,11 +1055,11 @@ export default function Contacts() {
                                 className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-left group/deal"
                               >
                                 <span className="text-xs font-medium text-slate-700 truncate group-hover/deal:text-blue-600 transition-colors">{deal.name}</span>
-                                <span className="text-xs text-emerald-600 font-semibold shrink-0 ml-2">{deal.currency || '$'}{deal.value}</span>
+                                <span className="text-xs text-emerald-700 font-semibold shrink-0 ml-2">{deal.currency || '$'}{deal.value}</span>
                               </button>
                             ))}
                             {contactDeals.length > 3 && (
-                              <p className="text-xs text-slate-400 px-2">+{contactDeals.length - 3} more</p>
+                              <p className="text-xs text-slate-500 px-2">+{contactDeals.length - 3} more</p>
                             )}
                           </div>
                         </div>
@@ -1080,11 +1080,11 @@ export default function Contacts() {
                             {contactTasks.slice(0, 3).map(task => (
                               <div key={task.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${task.status === 'completed' ? 'bg-emerald-400' : task.status === 'in_progress' ? 'bg-blue-400' : 'bg-slate-300'}`} />
-                                <span className={`text-xs font-medium truncate ${task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{task.title}</span>
+                                <span className={`text-xs font-medium truncate ${task.status === 'completed' ? 'text-slate-500 line-through' : 'text-slate-700'}`}>{task.title}</span>
                               </div>
                             ))}
                             {contactTasks.length > 3 && (
-                              <p className="text-xs text-slate-400 px-2">+{contactTasks.length - 3} more</p>
+                              <p className="text-xs text-slate-500 px-2">+{contactTasks.length - 3} more</p>
                             )}
                           </div>
                         </div>
@@ -1216,7 +1216,7 @@ export default function Contacts() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="group">
                   <Label htmlFor="contact-phone" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                    <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-600">
+                    <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700">
                       <Phone className="w-3.5 h-3.5" />
                     </div>
                     Phone
@@ -1250,7 +1250,7 @@ export default function Contacts() {
               {/* Company Select */}
               <div className="group">
                 <Label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-600">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-700">
                     <Building2 className="w-3.5 h-3.5" />
                   </div>
                   Company
@@ -1259,17 +1259,17 @@ export default function Contacts() {
                   value={form.companyId || 'none'}
                   onValueChange={(v) => setForm((f) => ({ ...f, companyId: v === 'none' ? '' : v }))}
                 >
-                  <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-blue-300 focus:ring-blue-100">
+                  <SelectTrigger aria-label="Company" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-blue-300 focus:ring-blue-100">
                     <SelectValue placeholder="Select a company" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">
-                      <span className="text-slate-400">— No company —</span>
+                      <span className="text-slate-500">— No company —</span>
                     </SelectItem>
                     {companies.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         <span className="flex items-center gap-2">
-                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                          <Building2 className="w-3.5 h-3.5 text-slate-500" />
                           {c.name}
                         </span>
                       </SelectItem>
@@ -1286,7 +1286,7 @@ export default function Contacts() {
                   </div>
                   Do Not Contact
                 </Label>
-                <button
+                <button aria-label="Do Not Contact"
                   type="button"
                   role="switch"
                   aria-checked={form.doNotContact}
@@ -1305,7 +1305,7 @@ export default function Contacts() {
                   </div>
                   Notes / Description
                 </Label>
-                <textarea
+                <textarea aria-label="Notes / Description"
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   placeholder="Add notes about this contact..."

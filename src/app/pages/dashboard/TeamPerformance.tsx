@@ -90,7 +90,7 @@ export function TeamPerformance({ members, loaded, failed }: TeamPerformanceProp
                 {member.dealCount} deal{member.dealCount === 1 ? '' : 's'}
               </p>
             </div>
-            <p className="text-sm font-bold text-emerald-600">
+            <p className="text-sm font-bold text-emerald-700">
               {formatMoney(member.value, member.currency)}
             </p>
           </div>

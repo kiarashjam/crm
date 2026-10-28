@@ -103,7 +103,7 @@ export function ViewSwitcher({ view, columns, className }: Props) {
             {view.customised && <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-orange-500 ring-2 ring-white" aria-hidden />}
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-80 overflow-hidden rounded-2xl p-0">
+        <PopoverContent aria-label="Saved views" align="end" className="w-80 overflow-hidden rounded-2xl p-0">
           <div className="border-b border-slate-100 bg-gradient-to-r from-orange-50 via-pink-50 to-violet-50 px-4 py-3">
             <p className="text-sm font-semibold text-slate-900">View options</p>
             <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
@@ -114,7 +114,7 @@ export function ViewSwitcher({ view, columns, className }: Props) {
 
           <div className="space-y-4 p-4">
             <section>
-              <h3 className="mb-2 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Layout</h3>
+              <h3 className="mb-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">Layout</h3>
               <div role="radiogroup" aria-label="Layout" className={cn('grid gap-2', view.layouts.length > 2 ? 'grid-cols-2' : 'grid-cols-2')}>
                 {view.layouts.map((layout) => {
                   const { label, icon: Icon, hint } = LAYOUT_INFO[layout];
@@ -145,7 +145,7 @@ export function ViewSwitcher({ view, columns, className }: Props) {
             </section>
 
             <section>
-              <h3 className="mb-2 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Spacing</h3>
+              <h3 className="mb-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">Spacing</h3>
               <div role="radiogroup" aria-label="Spacing" className="relative grid grid-cols-2 rounded-xl bg-slate-100 p-1">
                 {DENSITY.map(({ value, label, icon: Icon }) => {
                   const on = view.density === value;
@@ -175,7 +175,7 @@ export function ViewSwitcher({ view, columns, className }: Props) {
 
             {columnsApply && (
               <section>
-                <h3 className="mb-2 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Columns</h3>
+                <h3 className="mb-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">Columns</h3>
                 <ul className="max-h-48 space-y-0.5 overflow-y-auto pr-1">
                   {choosable.map((column) => {
                     const shown = view.shows(column.id, column.byDefault ?? true);
@@ -193,7 +193,7 @@ export function ViewSwitcher({ view, columns, className }: Props) {
           </div>
 
           <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/70 px-4 py-2.5">
-            <span className="text-xs text-slate-400">{view.customised ? 'Your own view' : 'As the page comes'}</span>
+            <span className="text-xs text-slate-500">{view.customised ? 'Your own view' : 'As the page comes'}</span>
             <button
               type="button"
               onClick={view.reset}

@@ -280,7 +280,7 @@ export default function Communications() {
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -292,7 +292,7 @@ export default function Communications() {
               value={channelFilter}
               onValueChange={(v) => setChannelFilter(v as 'All' | CommChannel)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-36">
+              <SelectTrigger aria-label="Filter by channel" className="h-11 rounded-xl md:w-36">
                 <SelectValue placeholder="Channel" />
               </SelectTrigger>
               <SelectContent>
@@ -308,7 +308,7 @@ export default function Communications() {
               value={categoryFilter}
               onValueChange={(v) => setCategoryFilter(v as 'All' | CommCategory)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-44">
+              <SelectTrigger aria-label="Filter by category" className="h-11 rounded-xl md:w-44">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
@@ -325,7 +325,7 @@ export default function Communications() {
 
           {/* Feed */}
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -373,16 +373,16 @@ export default function Communications() {
                         <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{c.status}</span>
                       </div>
                       {view.density !== 'compact' && <p className="mt-2 text-sm text-slate-500 line-clamp-2">{c.preview}</p>}
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">{c.category}</span>
                         {c.openedAtUtc && (
-                          <span className="inline-flex items-center gap-1 text-emerald-600"><Eye className="w-3 h-3" /> opened</span>
+                          <span className="inline-flex items-center gap-1 text-emerald-700"><Eye className="w-3 h-3" /> opened</span>
                         )}
                         {c.clickedAtUtc && (
                           <span className="inline-flex items-center gap-1 text-violet-600"><MousePointerClick className="w-3 h-3" /> clicked</span>
                         )}
                       </div>
-                      <div className="mt-auto flex items-center justify-between pt-3 text-xs text-slate-400">
+                      <div className="mt-auto flex items-center justify-between pt-3 text-xs text-slate-500">
                         <span>{formatDateTime(c.sentAtUtc)}</span>
                         {communicationActions(c)}
                       </div>
@@ -415,11 +415,11 @@ export default function Communications() {
                           </span>
                         </div>
                         <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{c.preview}</p>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-400">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
                           <span>To <span className="font-medium text-slate-600">{c.memberName}</span></span>
                           <span>{formatDateTime(c.sentAtUtc)}</span>
                           {c.openedAtUtc && (
-                            <span className="inline-flex items-center gap-1 text-emerald-600">
+                            <span className="inline-flex items-center gap-1 text-emerald-700">
                               <Eye className="w-3 h-3" /> opened {formatDateTime(c.openedAtUtc)}
                             </span>
                           )}
@@ -457,7 +457,7 @@ export default function Communications() {
             <div>
               <Label>To member</Label>
               <Select value={form.memberId} onValueChange={(v) => setForm({ ...form, memberId: v })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="To member">
                   <SelectValue placeholder="Pick a member" />
                 </SelectTrigger>
                 <SelectContent>
@@ -473,7 +473,7 @@ export default function Communications() {
               <div>
                 <Label>Channel</Label>
                 <Select value={form.channel} onValueChange={(v) => setForm({ ...form, channel: v as CommChannel })}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Channel">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -491,7 +491,7 @@ export default function Communications() {
                   value={form.category}
                   onValueChange={(v) => setForm({ ...form, category: v as CommCategory })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Category">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -506,14 +506,14 @@ export default function Communications() {
             </div>
             <div>
               <Label>Subject / message</Label>
-              <Input
+              <Input aria-label="Subject / message"
                 value={form.subject}
                 onChange={(e) => setForm({ ...form, subject: e.target.value })}
               />
             </div>
             <div>
               <Label>Preview body</Label>
-              <Textarea
+              <Textarea aria-label="Preview body"
                 value={form.preview}
                 onChange={(e) => setForm({ ...form, preview: e.target.value })}
                 rows={3}

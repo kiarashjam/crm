@@ -1606,7 +1606,7 @@ export default function Leads() {
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-500 hover:text-red-500 transition-all duration-200"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -1633,7 +1633,7 @@ export default function Leads() {
                   }`}
                 >
                   <div className={`w-6 h-6 rounded-lg flex items-center justify-center mr-2 transition-all duration-300 ${
-                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-orange-100 text-orange-600'
+                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-orange-100 text-orange-700'
                   }`}>
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </div>
@@ -1670,49 +1670,49 @@ export default function Leads() {
                 <SelectContent>
                   <SelectItem value="createdAt-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Date added · newest first
                     </span>
                   </SelectItem>
                   <SelectItem value="createdAt-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Date added · oldest first
                     </span>
                   </SelectItem>
                   <SelectItem value="name-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Name A-Z
                     </span>
                   </SelectItem>
                   <SelectItem value="name-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Name Z-A
                     </span>
                   </SelectItem>
                   <SelectItem value="status-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Status A-Z
                     </span>
                   </SelectItem>
                   <SelectItem value="status-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Status Z-A
                     </span>
                   </SelectItem>
                   <SelectItem value="email-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Email A-Z
                     </span>
                   </SelectItem>
                   <SelectItem value="email-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Email Z-A
                     </span>
                   </SelectItem>
@@ -1735,7 +1735,7 @@ export default function Leads() {
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900 leading-none">Refine results</h3>
-                    <p className="text-[11px] text-slate-400 mt-1.5 leading-none">
+                    <p className="text-[11px] text-slate-500 mt-1.5 leading-none">
                       {activeFilterCount > 0
                         ? `${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active`
                         : 'No filters applied'}
@@ -1777,7 +1777,7 @@ export default function Leads() {
                     Source
                   </label>
                   <Select value={filterSource} onValueChange={setFilterSource}>
-                    <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+                    <SelectTrigger aria-label="Source" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
                       <SelectValue placeholder="All sources" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1798,7 +1798,7 @@ export default function Leads() {
                     Conversion
                   </label>
                   <Select value={filterConverted} onValueChange={(v) => setFilterConverted(v as typeof filterConverted)}>
-                    <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+                    <SelectTrigger aria-label="Conversion" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
                       <SelectValue placeholder="All leads" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1826,7 +1826,7 @@ export default function Leads() {
                     Assignment
                   </label>
                   <Select value={filterAssignment} onValueChange={setFilterAssignment}>
-                    <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+                    <SelectTrigger aria-label="Assignment" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
                       <SelectValue placeholder="All assignments" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1843,7 +1843,7 @@ export default function Leads() {
                       )}
                       <SelectItem value="unassigned">
                         <span className="flex items-center gap-2">
-                          <UserCircle className="w-3.5 h-3.5 text-slate-400" />
+                          <UserCircle className="w-3.5 h-3.5 text-slate-500" />
                           Unassigned
                         </span>
                       </SelectItem>
@@ -1877,7 +1877,7 @@ export default function Leads() {
           {/* Active Filter Pills */}
           {(activeFilterCount > 0 || searchQuery) && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-400">Showing:</span>
+              <span className="text-xs text-slate-500">Showing:</span>
               {searchQuery && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                   <Search className="w-3 h-3" />
@@ -1936,7 +1936,7 @@ export default function Leads() {
                 filters={salesFilters}
                 onClear={(key) => patchSalesFilters({ [key]: EMPTY_SALES_TRACKER_FILTERS[key] })}
               />
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-slate-500">
                 {filteredLeads.length} of {totalCount} leads
               </span>
             </div>
@@ -1946,11 +1946,11 @@ export default function Leads() {
           {filteredLeads.length === 0 && !loading && totalCount > 0 && (
             <div className="mt-4 flex items-center gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
               <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center">
-                <Search className="w-5 h-5 text-slate-400" />
+                <Search className="w-5 h-5 text-slate-500" />
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-800">No leads match your filters</p>
-                <p className="text-xs text-slate-400 mt-0.5">Try adjusting your search or filter criteria</p>
+                <p className="text-xs text-slate-500 mt-0.5">Try adjusting your search or filter criteria</p>
               </div>
               <Button variant="outline" size="sm" onClick={clearFilters} className="ml-auto border-slate-200 text-slate-700 hover:bg-white">
                 Clear filters
@@ -2259,7 +2259,7 @@ export default function Leads() {
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    convertForm.createContact ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
+                    convertForm.createContact ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     <UserPlus className="w-5 h-5" />
                   </div>
@@ -2276,7 +2276,7 @@ export default function Leads() {
                       <div className="w-full border-t border-slate-200" />
                     </div>
                     <div className="relative flex justify-center">
-                      <span className="bg-white px-2 text-xs text-slate-400">or use existing</span>
+                      <span className="bg-white px-2 text-xs text-slate-500">or use existing</span>
                     </div>
                   </div>
                 )}
@@ -2294,7 +2294,7 @@ export default function Leads() {
                       {convertOptions.contacts.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           <span className="flex items-center gap-2">
-                            <Users className="w-3.5 h-3.5 text-slate-400" />
+                            <Users className="w-3.5 h-3.5 text-slate-500" />
                             {c.name} {c.email ? `(${c.email})` : ''}
                           </span>
                         </SelectItem>
@@ -2324,7 +2324,7 @@ export default function Leads() {
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    convertForm.createNewCompany ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400'
+                    convertForm.createNewCompany ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     <Building2 className="w-5 h-5" />
                   </div>
@@ -2355,7 +2355,7 @@ export default function Leads() {
                         <div className="w-full border-t border-slate-200" />
                       </div>
                       <div className="relative flex justify-center">
-                        <span className="bg-white px-2 text-xs text-slate-400">or link to existing</span>
+                        <span className="bg-white px-2 text-xs text-slate-500">or link to existing</span>
                       </div>
                     </div>
                     <Select
@@ -2370,7 +2370,7 @@ export default function Leads() {
                         {companies.map((c) => (
                           <SelectItem key={c.id} value={c.id}>
                             <span className="flex items-center gap-2">
-                              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                              <Building2 className="w-3.5 h-3.5 text-slate-500" />
                               {c.name}
                             </span>
                           </SelectItem>
@@ -2401,7 +2401,7 @@ export default function Leads() {
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    convertForm.createDeal ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400'
+                    convertForm.createDeal ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     <Handshake className="w-5 h-5" />
                   </div>
@@ -2478,7 +2478,7 @@ export default function Leads() {
                           value={convertForm.dealStage || 'Qualification'}
                           onValueChange={(v) => setConvertForm((f) => ({ ...f, dealStage: v }))}
                         >
-                          <SelectTrigger className="mt-1.5 h-10 bg-white">
+                          <SelectTrigger aria-label="Stage" className="mt-1.5 h-10 bg-white">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -2499,7 +2499,7 @@ export default function Leads() {
                         <div className="w-full border-t border-slate-200" />
                       </div>
                       <div className="relative flex justify-center">
-                        <span className="bg-white px-2 text-xs text-slate-400">or attach to existing</span>
+                        <span className="bg-white px-2 text-xs text-slate-500">or attach to existing</span>
                       </div>
                     </div>
                     <Select
@@ -2514,7 +2514,7 @@ export default function Leads() {
                         {convertOptions.deals.map((d) => (
                           <SelectItem key={d.id} value={d.id}>
                             <span className="flex items-center gap-2">
-                              <Handshake className="w-3.5 h-3.5 text-slate-400" />
+                              <Handshake className="w-3.5 h-3.5 text-slate-500" />
                               {d.name} ({d.value})
                             </span>
                           </SelectItem>

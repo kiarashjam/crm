@@ -161,7 +161,7 @@ function Stat({ stat, index, reduce }: { stat: PageStat; index: number; reduce: 
         <span className="block truncate text-lg font-bold leading-tight tabular-nums text-slate-900">{value}</span>
         <span className="block truncate text-[11px] font-medium text-slate-500">
           {stat.label}
-          {stat.hint && <span className="font-normal text-slate-400"> · {stat.hint}</span>}
+          {stat.hint && <span className="font-normal text-slate-500"> · {stat.hint}</span>}
         </span>
       </span>
       {stat.pressed && (

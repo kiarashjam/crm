@@ -95,7 +95,7 @@ describe('EmptyState', () => {
     );
     
     const button = screen.getByText('Add');
-    expect(button).toHaveClass('bg-teal-600');
+    expect(button).toHaveClass('bg-teal-700');
   });
 
   it('applies custom className', () => {

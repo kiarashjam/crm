@@ -223,7 +223,7 @@ export default function Campaigns() {
       <button
         type="button"
         onClick={() => remove(c)}
-        className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
         aria-label={`Delete ${c.name}`}
       >
         <Trash2 className="w-4 h-4" />
@@ -285,7 +285,7 @@ export default function Campaigns() {
 
           <div className="flex flex-wrap items-center gap-3 mb-6">
             <div className="relative flex-1 min-w-[12rem] max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -297,7 +297,7 @@ export default function Campaigns() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -426,7 +426,7 @@ export default function Campaigns() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
             <div className="md:col-span-2">
               <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              <Input aria-label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div>
               <Label>Channel</Label>
@@ -434,7 +434,7 @@ export default function Campaigns() {
                 value={form.channel}
                 onValueChange={(v) => setForm({ ...form, channel: v as CommChannel })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Channel">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -452,7 +452,7 @@ export default function Campaigns() {
                 value={form.category}
                 onValueChange={(v) => setForm({ ...form, category: v as CommCategory })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Category">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -466,14 +466,14 @@ export default function Campaigns() {
             </div>
             <div className="md:col-span-2">
               <Label>Subject</Label>
-              <Input
+              <Input aria-label="Subject"
                 value={form.subject}
                 onChange={(e) => setForm({ ...form, subject: e.target.value })}
               />
             </div>
             <div className="md:col-span-2">
               <Label>Body</Label>
-              <Textarea
+              <Textarea aria-label="Body"
                 value={form.body}
                 onChange={(e) => setForm({ ...form, body: e.target.value })}
                 rows={4}
@@ -537,7 +537,7 @@ export default function Campaigns() {
             </div>
             <div className="md:col-span-2">
               <Label>Schedule for (optional)</Label>
-              <Input
+              <Input aria-label="Schedule for (optional)"
                 type="datetime-local"
                 value={form.scheduledAt}
                 onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}

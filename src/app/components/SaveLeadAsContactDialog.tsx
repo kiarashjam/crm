@@ -115,21 +115,21 @@ export default function SaveLeadAsContactDialog({
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <Label htmlFor="sc-email" className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-slate-400" /> Email</Label>
+              <Label htmlFor="sc-email" className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-slate-500" /> Email</Label>
               <Input id="sc-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1" />
             </div>
             <div>
-              <Label htmlFor="sc-phone" className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-slate-400" /> Phone</Label>
+              <Label htmlFor="sc-phone" className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-slate-500" /> Phone</Label>
               <Input id="sc-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1" placeholder="Optional" />
             </div>
           </div>
           <div>
-            <Label htmlFor="sc-title" className="flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5 text-slate-400" /> Job title</Label>
+            <Label htmlFor="sc-title" className="flex items-center gap-1.5"><Briefcase className="h-3.5 w-3.5 text-slate-500" /> Job title</Label>
             <Input id="sc-title" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} className="mt-1" placeholder="Optional" />
           </div>
           {companyName && (
             <p className="flex items-center gap-1.5 text-xs text-slate-500">
-              <Building2 className="h-3.5 w-3.5 text-slate-400" />
+              <Building2 className="h-3.5 w-3.5 text-slate-500" />
               Will be linked to <span className="font-medium text-slate-700">{companyName}</span>
             </p>
           )}

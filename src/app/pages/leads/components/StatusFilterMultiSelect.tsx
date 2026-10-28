@@ -58,9 +58,9 @@ export function StatusFilterMultiSelect({ options, selected, onChange }: StatusF
           <ChevronDown className="w-4 h-4 shrink-0 opacity-70" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-60 p-2">
+      <PopoverContent aria-label="Filter by status" align="start" className="w-60 p-2">
         <div className="flex items-center justify-between px-1 pb-1.5">
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
             <Tag className="w-3 h-3" />
             Status
           </span>

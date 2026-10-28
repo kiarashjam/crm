@@ -80,7 +80,7 @@ export default function CustomFieldsCard({ entityType, recordId, className }: Cu
         )}
       </div>
       {loading ? (
-        <div className="py-4 text-center text-slate-400"><Loader2 className="mx-auto h-4 w-4 animate-spin" /></div>
+        <div className="py-4 text-center text-slate-500"><Loader2 className="mx-auto h-4 w-4 animate-spin" /></div>
       ) : (
         <div className="space-y-3">
           {defs.map((f) => {
@@ -89,7 +89,7 @@ export default function CustomFieldsCard({ entityType, recordId, className }: Cu
               <div key={f.id}>
                 {f.type !== 'checkbox' && (
                   <Label htmlFor={`cf-${f.id}`} className="text-xs text-slate-500">
-                    {f.label}{f.required && <span className="text-red-500"> *</span>}
+                    {f.label}{f.required && <span className="text-red-700"> *</span>}
                   </Label>
                 )}
                 {f.type === 'select' ? (

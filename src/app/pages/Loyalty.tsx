@@ -219,7 +219,7 @@ export default function Loyalty() {
     <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${KIND_BADGE[e.kind]}`}>{e.kind}</span>
   );
   const signedPoints = (e: LoyaltyEntry) => (
-    <span className={`font-semibold ${e.points >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+    <span className={`font-semibold ${e.points >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
       {e.points >= 0 ? '+' : ''}
       {formatPoints(e.points)}
     </span>
@@ -231,7 +231,7 @@ export default function Loyalty() {
       type="button"
       onClick={() => remove(e)}
       disabled={deletingId === e.id}
-      className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+      className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
       aria-label={`Delete entry for ${e.memberName}`}
     >
       {deletingId === e.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -313,7 +313,7 @@ export default function Loyalty() {
                 <div className={`h-2 -mx-4 -mt-4 mb-3 bg-gradient-to-r ${TIER_GRADIENT[t]}`} />
                 <p className="text-sm text-slate-500">{t}</p>
                 <p className="text-xl font-bold text-slate-900 mt-1">{TIER_MULTIPLIERS[t]}×</p>
-                <p className="text-xs text-slate-400 mt-1">points multiplier</p>
+                <p className="text-xs text-slate-500 mt-1">points multiplier</p>
               </div>
             ))}
           </div>
@@ -328,7 +328,7 @@ export default function Loyalty() {
             <TabsContent value="ledger">
               <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
                 <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <Input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -340,7 +340,7 @@ export default function Loyalty() {
                   value={kindFilter}
                   onValueChange={(v) => setKindFilter(v as 'All' | LoyaltyEntryKind)}
                 >
-                  <SelectTrigger className="h-11 rounded-xl md:w-44">
+                  <SelectTrigger aria-label="Filter by entry" className="h-11 rounded-xl md:w-44">
                     <SelectValue placeholder="Kind" />
                   </SelectTrigger>
                   <SelectContent>
@@ -355,7 +355,7 @@ export default function Loyalty() {
               </div>
 
               {loading ? (
-                <div className="flex items-center justify-center py-20 text-slate-400">
+                <div className="flex items-center justify-center py-20 text-slate-500">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : filteredEntries.length === 0 ? (
@@ -545,7 +545,7 @@ export default function Loyalty() {
             <div>
               <Label>Member</Label>
               <Select value={form.memberId} onValueChange={(v) => setForm({ ...form, memberId: v })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Member">
                   <SelectValue placeholder="Pick a member" />
                 </SelectTrigger>
                 <SelectContent>
@@ -561,7 +561,7 @@ export default function Loyalty() {
               <div>
                 <Label>Kind</Label>
                 <Select value={form.kind} onValueChange={(v) => setForm({ ...form, kind: v as LoyaltyEntryKind })}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Kind">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -578,7 +578,7 @@ export default function Loyalty() {
                   value={form.reason}
                   onValueChange={(v) => setForm({ ...form, reason: v as LoyaltyReason })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Reason">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

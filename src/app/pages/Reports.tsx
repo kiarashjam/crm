@@ -275,7 +275,7 @@ export default function Reports() {
             {d.mixedCurrency && (
               <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
                 <h3 className="text-sm font-bold text-slate-800">Other currencies</h3>
-                <p className="mt-0.5 text-[11px] text-slate-400">
+                <p className="mt-0.5 text-[11px] text-slate-500">
                   Totals across all deal states. Listed rather than converted, because there is no
                   exchange rate in the system to convert them with.
                 </p>

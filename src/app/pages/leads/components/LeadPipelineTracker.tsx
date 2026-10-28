@@ -146,7 +146,7 @@ const SURFACE: Record<PhaseState, string> = {
   lost: 'border-rose-200 bg-white',
 };
 const BADGE: Record<PhaseState, string> = {
-  idle: 'bg-slate-100 text-slate-400',
+  idle: 'bg-slate-100 text-slate-500',
   active: 'bg-indigo-600 text-white',
   done: 'bg-emerald-500 text-white',
   lost: 'bg-rose-500 text-white',
@@ -161,7 +161,7 @@ const PILL_TEXT: Record<PhaseState, string | null> = {
   idle: null, active: 'In progress', done: 'Complete', lost: 'Stopped',
 };
 const CAPTION: Record<PhaseState, string> = {
-  idle: 'text-slate-400',
+  idle: 'text-slate-500',
   active: 'text-slate-600',
   done: 'text-emerald-700',
   lost: 'text-rose-700',
@@ -229,7 +229,7 @@ function Choices<T extends string>({
             )}
             {o.label}
             {!active && o.hint && (
-              <span className="ml-1.5 text-[10px] font-semibold text-slate-400">
+              <span className="ml-1.5 text-[10px] font-semibold text-slate-500">
                 → {o.hint}
               </span>
             )}
@@ -384,7 +384,7 @@ function DateField({
             initial={reduce ? false : { scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={t.chipCheck}
-            className="grid place-items-center text-emerald-600"
+            className="grid place-items-center text-emerald-700"
           >
             <Check className="h-3 w-3" strokeWidth={3} />
           </motion.span>
@@ -448,7 +448,7 @@ function ValueChips({ steps }: { steps: PhaseStep[] }) {
         </span>
       ))}
       {values.length > 2 && (
-        <span className="text-[10px] font-medium text-slate-400">+{values.length - 2}</span>
+        <span className="text-[10px] font-medium text-slate-500">+{values.length - 2}</span>
       )}
     </span>
   );
@@ -620,7 +620,7 @@ function PhaseCard({
             animate={{ rotate: open ? 180 : 0 }}
             transition={t.chevron}
             className={cn(
-              'grid h-6 w-6 place-items-center rounded-lg text-slate-400',
+              'grid h-6 w-6 place-items-center rounded-lg text-slate-500',
               open && 'bg-slate-100 text-slate-500',
             )}
           >
@@ -957,7 +957,7 @@ export function LeadPipelineTracker({ value, disabled = false, onChange, preview
                     </span>
                     <span aria-hidden className={cn(
                       'hidden text-center text-[10px] font-medium leading-tight sm:block',
-                      isDone ? 'text-emerald-700' : isCurrent ? tone.label : isLostHere ? 'text-rose-700' : 'text-slate-400',
+                      isDone ? 'text-emerald-700' : isCurrent ? tone.label : isLostHere ? 'text-rose-700' : 'text-slate-500',
                     )}>
                       {title}
                     </span>

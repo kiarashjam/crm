@@ -280,7 +280,7 @@ function OpenLink({ item }: { item: WorkSuggestion }) {
 function Refreshing({ on }: { on: boolean }) {
   if (!on) return null;
   return (
-    <span className="inline-flex items-center text-slate-400" role="status">
+    <span className="inline-flex items-center text-slate-500" role="status">
       <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden="true" />
       <span className="sr-only">Updating next steps</span>
     </span>
@@ -378,7 +378,7 @@ function CloseButton({ onClose }: { onClose: () => void }) {
       onClick={onClose}
       aria-label="Close next steps"
       title="Close. Open it again from its icon."
-      className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200', focusRing)}
+      className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200', focusRing)}
     >
       <X className="h-4 w-4" aria-hidden="true" />
     </button>
@@ -480,7 +480,7 @@ function QuietRow({ message, refreshing, onAsk, onClose }: {
             initial={reduce ? false : { scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.15 }}
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
             aria-hidden="true"
           >
             <Check className="h-3.5 w-3.5" />
@@ -499,7 +499,7 @@ function QuietRow({ message, refreshing, onAsk, onClose }: {
 const STEP_TONE: Record<PlanLine['state'], string> = {
   done: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300',
   now: 'border-orange-300 bg-orange-50 text-orange-800 ring-2 ring-orange-200 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-200 dark:ring-orange-900',
-  later: 'border-slate-200 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500',
+  later: 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500',
   stopped: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300',
 };
 const STEP_WORD: Record<PlanLine['state'], string> = { done: 'done', now: 'current stage', later: 'not reached', stopped: 'stopped' };
@@ -549,7 +549,7 @@ function RecordStrip({ href, step, items, lists, gaps, refreshing, chatOpen, onA
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
         <IconTile busy={refreshing} />
         <div className="min-w-0 flex-1">
-          <h2 id="next-actions-heading" className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-orange-600 dark:text-orange-400">
+          <h2 id="next-actions-heading" className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400">
             Next for this {recordNoun(href)}
             <Refreshing on={refreshing} />
           </h2>
@@ -724,7 +724,7 @@ export function NextActions() {
             initial={reduce ? false : { scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: 'spring', stiffness: 400, damping: 15, delay: 0.15 }}
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
             aria-hidden="true"
           >
             <Check className="h-4 w-4" />

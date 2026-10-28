@@ -499,7 +499,7 @@ export function FAQItemNew({
                 isOpen ? 'bg-slate-900 rotate-180' : 'bg-slate-100 group-hover:bg-slate-200'
               }`}>
                 <ChevronDown className={`w-4 h-4 transition-colors duration-300 ${
-                  isOpen ? 'text-white' : 'text-slate-400'
+                  isOpen ? 'text-white' : 'text-slate-500'
                 }`} />
               </div>
             </div>

@@ -81,7 +81,7 @@ function EnumSelect<T extends string>({
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={SENTINEL}>
-          <span className="text-slate-400">—</span>
+          <span className="text-slate-500">—</span>
         </SelectItem>
         {options
           .filter((o) => o !== '')
@@ -320,11 +320,11 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
 
       <div className="mt-4 grid grid-cols-2 gap-2">
         <div className="rounded-lg bg-white/70 border border-slate-200 px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Decline stage</p>
+          <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Decline stage</p>
           <p className="text-sm font-semibold text-slate-800 mt-0.5">{computed.stage || '—'}</p>
         </div>
         <div className="rounded-lg bg-white/70 border border-slate-200 px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold flex items-center gap-1">
             <Clock className="w-3 h-3" /> Days outstanding
           </p>
           <p className="text-sm font-semibold text-slate-800 mt-0.5">
@@ -332,7 +332,7 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
           </p>
         </div>
         <div className="rounded-lg bg-white/70 border border-slate-200 px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold flex items-center gap-1">
+          <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold flex items-center gap-1">
             <TrendingUp className="w-3 h-3" /> Days to sign
           </p>
           <p className="text-sm font-semibold text-slate-800 mt-0.5">
@@ -340,7 +340,7 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
           </p>
         </div>
         <div className="rounded-lg bg-white/70 border border-slate-200 px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Meeting week</p>
+          <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Meeting week</p>
           <p className="text-sm font-semibold text-slate-800 mt-0.5">
             {computed.week == null ? '—' : computed.week}
           </p>

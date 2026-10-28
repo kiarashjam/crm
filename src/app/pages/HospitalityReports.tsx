@@ -216,7 +216,7 @@ export default function HospitalityReports() {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <AppHeader />
-        <div className="flex items-center justify-center py-20 text-slate-400">
+        <div className="flex items-center justify-center py-20 text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       </div>
@@ -313,7 +313,7 @@ export default function HospitalityReports() {
                         <span className="text-slate-700">{tier}</span>
                         <span className="font-semibold text-slate-900">
                           {count}{' '}
-                          <span className="text-xs text-slate-400">({Math.round(pct)}%)</span>
+                          <span className="text-xs text-slate-500">({Math.round(pct)}%)</span>
                         </span>
                       </div>
                       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -366,7 +366,7 @@ export default function HospitalityReports() {
                       className="flex items-center justify-between gap-2 text-sm"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="text-xs font-bold text-slate-400 w-5">{idx + 1}</span>
+                        <span className="text-xs font-bold text-slate-500 w-5">{idx + 1}</span>
                         <span className="font-medium text-slate-900 truncate">
                           {row.member.firstName} {row.member.lastName}
                         </span>
@@ -390,7 +390,7 @@ export default function HospitalityReports() {
                 <p className="text-sm text-slate-500 mt-2">
                   {eventAttendance.totalReg} reserved across {eventAttendance.totalCapacity} seats
                 </p>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   {eventAttendance.count} published events · {eventAttendance.totalWait} on waitlist
                 </p>
               </div>
@@ -424,5 +424,5 @@ function Card({
 }
 
 function Empty() {
-  return <p className="text-sm text-slate-400">Not enough data yet.</p>;
+  return <p className="text-sm text-slate-500">Not enough data yet.</p>;
 }

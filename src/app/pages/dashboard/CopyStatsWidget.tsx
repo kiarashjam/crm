@@ -20,21 +20,21 @@ export function CopyStatsWidget({ stats }: CopyStatsWidgetProps) {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <FileOutput className="w-4 h-4 text-slate-400" />
+            <FileOutput className="w-4 h-4 text-slate-500" />
             <span className="text-sm text-slate-300">This week</span>
           </div>
           <span className="text-lg font-bold">{stats.sentThisWeek}</span>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Send className="w-4 h-4 text-slate-400" />
+            <Send className="w-4 h-4 text-slate-500" />
             <span className="text-sm text-slate-300">Total sent</span>
           </div>
           <span className="text-lg font-bold">{stats.totalSent}</span>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <LayoutTemplate className="w-4 h-4 text-slate-400" />
+            <LayoutTemplate className="w-4 h-4 text-slate-500" />
             <span className="text-sm text-slate-300">Templates</span>
           </div>
           <span className="text-lg font-bold">{stats.templateCount ?? '—'}</span>

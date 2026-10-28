@@ -90,7 +90,7 @@ export default function ReferredLeadsCard({
                     Converted
                   </span>
                 )}
-                <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-hover:text-violet-600 motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5" aria-hidden="true" />
+                <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-hover:text-violet-600 motion-safe:group-hover:-translate-y-0.5 motion-safe:group-hover:translate-x-0.5" aria-hidden="true" />
               </Link>
             </motion.li>
           ))}

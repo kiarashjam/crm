@@ -125,7 +125,7 @@ export default function Help() {
                 <li>You can delete your account and data whenever you want</li>
                 <li>We follow GDPR, CCPA, and similar privacy rules</li>
               </ul>
-              <Link to="/privacy" className="text-teal-600 hover:text-teal-700 font-medium focus-visible:underline">
+              <Link to="/privacy" className="text-teal-700 hover:text-teal-800 font-medium focus-visible:underline">
                 Full Privacy Policy →
               </Link>
             </div>
@@ -140,7 +140,7 @@ export default function Help() {
             </div>
             <div className="bg-gradient-to-r from-teal-600 to-teal-500 rounded-2xl shadow-lg shadow-teal-200/50 p-8 text-white">
               <p className="text-lg mb-4">Something unclear or broken? We’re here to help.</p>
-              <a href="mailto:support@example.com" className="inline-block bg-white text-teal-600 hover:bg-slate-50 px-6 py-3 rounded-2xl font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-teal-500">
+              <a href="mailto:support@example.com" className="inline-block bg-white text-teal-700 hover:bg-slate-50 px-6 py-3 rounded-2xl font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-teal-500">
                 Contact Support
               </a>
             </div>

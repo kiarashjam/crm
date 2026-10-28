@@ -64,7 +64,7 @@ import {
 
 // Role mapping
 const ROLES = {
-  0: { label: 'Owner', icon: Crown, color: 'text-amber-600', bg: 'bg-amber-100', bgGradient: 'from-amber-500 to-orange-500' },
+  0: { label: 'Owner', icon: Crown, color: 'text-amber-700', bg: 'bg-amber-100', bgGradient: 'from-amber-500 to-orange-500' },
   1: { label: 'Member', icon: UserCircle, color: 'text-slate-600', bg: 'bg-slate-100', bgGradient: 'from-slate-500 to-slate-600' },
   2: { label: 'Manager', icon: ShieldCheck, color: 'text-blue-600', bg: 'bg-blue-100', bgGradient: 'from-blue-500 to-indigo-500' },
   3: { label: 'Viewer', icon: Eye, color: 'text-violet-600', bg: 'bg-violet-100', bgGradient: 'from-violet-500 to-purple-500' },
@@ -165,7 +165,7 @@ function MemberDetailPanel({
               <p className="text-lg font-bold text-slate-900">{mockStats.leadsAssigned}</p>
             </div>
             <div className="bg-emerald-50 rounded-xl p-3">
-              <div className="flex items-center gap-2 text-emerald-600 text-xs mb-1">
+              <div className="flex items-center gap-2 text-emerald-700 text-xs mb-1">
                 <Handshake className="w-3.5 h-3.5" />
                 Deals Won
               </div>
@@ -179,7 +179,7 @@ function MemberDetailPanel({
               <p className="text-lg font-bold text-blue-700">{mockStats.tasksCompleted}</p>
             </div>
             <div className="bg-amber-50 rounded-xl p-3">
-              <div className="flex items-center gap-2 text-amber-600 text-xs mb-1">
+              <div className="flex items-center gap-2 text-amber-700 text-xs mb-1">
                 <Activity className="w-3.5 h-3.5" />
                 Activities
               </div>
@@ -197,7 +197,7 @@ function MemberDetailPanel({
           <div className="space-y-3">
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
               <span className="text-sm text-slate-600">Conversion Rate</span>
-              <span className="text-sm font-bold text-emerald-600">{mockStats.conversionRate}%</span>
+              <span className="text-sm font-bold text-emerald-700">{mockStats.conversionRate}%</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
               <span className="text-sm text-slate-600">Avg Response Time</span>
@@ -225,7 +225,7 @@ function MemberDetailPanel({
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm text-slate-700">{activity.action}</p>
-                  <p className="text-xs text-slate-400">{activity.time}</p>
+                  <p className="text-xs text-slate-500">{activity.time}</p>
                 </div>
               </div>
             ))}
@@ -243,7 +243,7 @@ function MemberDetailPanel({
                 value={member.role.toString()}
                 onValueChange={(v) => onRoleChange(parseInt(v))}
               >
-                <SelectTrigger className="h-10">
+                <SelectTrigger aria-label="Change Role" className="h-10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -725,7 +725,7 @@ export default function Team() {
                       <button
                         type="button"
                         onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-500 hover:text-red-500 transition-all duration-200"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -737,7 +737,7 @@ export default function Team() {
                 <div className="relative group/filter">
                   <div className="absolute inset-0 bg-violet-200/50 rounded-xl blur-lg opacity-0 group-hover/filter:opacity-60 transition-all duration-300" />
                   <Select value={roleFilter} onValueChange={setRoleFilter}>
-                    <SelectTrigger className="relative w-full sm:w-[180px] h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
+                    <SelectTrigger aria-label="Filter by role" className="relative w-full sm:w-[180px] h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-lg bg-violet-100 flex items-center justify-center">
                           <Filter className="w-3.5 h-3.5 text-violet-600" />
@@ -943,7 +943,7 @@ export default function Team() {
                         </div>
                         <div>
                           <p className="font-medium text-slate-700">{invite.email}</p>
-                          <p className="text-xs text-slate-400 flex items-center gap-1">
+                          <p className="text-xs text-slate-500 flex items-center gap-1">
                             <Clock className="w-3 h-3" />
                             Sent {new Date(invite.createdAtUtc).toLocaleDateString()} · Expires {new Date(invite.expiresAtUtc).toLocaleDateString()}
                           </p>

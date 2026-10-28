@@ -147,7 +147,7 @@ export default function History() {
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-500 hover:text-red-500 transition-all duration-200"
                     >
                       <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M18 6 6 18" /><path d="m6 6 12 12" />
@@ -191,7 +191,7 @@ export default function History() {
                     className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:border-cyan-200 ${liftOnHover}`}
                   >
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center flex-shrink-0 text-teal-600">
+                      <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center flex-shrink-0 text-teal-700">
                         <Icon className="w-6 h-6" aria-hidden />
                       </div>
 
@@ -212,7 +212,7 @@ export default function History() {
                           <button
                             type="button"
                             onClick={() => handleCopy(item.id, item.copy)}
-                            className="flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-medium transition-colors focus-visible:rounded"
+                            className="flex items-center gap-2 text-sm text-orange-700 hover:text-orange-800 font-medium transition-colors focus-visible:rounded"
                             aria-label={copiedId === item.id ? 'Copied' : 'Copy to clipboard'}
                           >
                             <Copy className="w-4 h-4" aria-hidden />
@@ -221,7 +221,7 @@ export default function History() {
                           <button
                             type="button"
                             onClick={() => handleSendAgain(item)}
-                            className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700 font-medium transition-colors focus-visible:rounded"
+                            className="flex items-center gap-2 text-sm text-teal-700 hover:text-teal-800 font-medium transition-colors focus-visible:rounded"
                             aria-label="Attach this writing to a record"
                           >
                             <Paperclip className="w-4 h-4" aria-hidden />
@@ -230,7 +230,7 @@ export default function History() {
                           <button
                             type="button"
                             onClick={() => handleRegenerate(item)}
-                            className="flex items-center gap-2 text-sm text-orange-600 hover:text-orange-700 font-medium transition-colors focus-visible:rounded"
+                            className="flex items-center gap-2 text-sm text-orange-700 hover:text-orange-800 font-medium transition-colors focus-visible:rounded"
                             aria-label="Regenerate copy"
                           >
                             <RotateCcw className="w-4 h-4" aria-hidden />

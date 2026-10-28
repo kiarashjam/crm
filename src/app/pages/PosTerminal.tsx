@@ -268,7 +268,7 @@ export default function PosTerminal() {
             {/* Search */}
             <StaggerItem as="section" index={0} className="lg:col-span-1 bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <div className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <Input
                   autoFocus
                   value={search}
@@ -278,7 +278,7 @@ export default function PosTerminal() {
                 />
               </div>
               {loading ? (
-                <div className="text-center py-10 text-slate-400">
+                <div className="text-center py-10 text-slate-500">
                   <Loader2 className="w-5 h-5 animate-spin inline" />
                 </div>
               ) : (
@@ -462,7 +462,7 @@ export default function PosTerminal() {
                 value={visitForm.venue}
                 onValueChange={(v) => setVisitForm({ ...visitForm, venue: v as VisitVenue })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Venue">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -476,7 +476,7 @@ export default function PosTerminal() {
             </div>
             <div>
               <Label>Guests</Label>
-              <Input
+              <Input aria-label="Guests"
                 type="number"
                 min="0"
                 value={visitForm.guests}
@@ -509,7 +509,7 @@ export default function PosTerminal() {
                 value={tabForm.venue}
                 onValueChange={(v) => setTabForm({ venue: v as TabVenue })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Venue">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -547,7 +547,7 @@ export default function PosTerminal() {
                 value={chargeForm.kind}
                 onValueChange={(v) => setChargeForm({ ...chargeForm, kind: v as ChargeKind })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Kind">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -561,14 +561,14 @@ export default function PosTerminal() {
             </div>
             <div>
               <Label>Description</Label>
-              <Input
+              <Input aria-label="Description"
                 value={chargeForm.description}
                 onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
               />
             </div>
             <div>
               <Label>Amount ($)</Label>
-              <Input
+              <Input aria-label="Amount ($)"
                 type="number"
                 min="0"
                 step="0.01"
@@ -601,7 +601,7 @@ export default function PosTerminal() {
           <div className="space-y-4 py-2">
             <div>
               <Label>Gift card code</Label>
-              <Input
+              <Input aria-label="Gift card code"
                 value={gcForm.code}
                 onChange={(e) => setGcForm({ ...gcForm, code: e.target.value })}
                 placeholder="GIFT-XXXX-XXXX-XXXX"
@@ -610,7 +610,7 @@ export default function PosTerminal() {
             </div>
             <div>
               <Label>Amount to apply ($)</Label>
-              <Input
+              <Input aria-label="Amount to apply ($)"
                 type="number"
                 min="0"
                 step="0.01"
@@ -645,7 +645,7 @@ export default function PosTerminal() {
           <div className="space-y-4 py-2">
             <div>
               <Label>Points to redeem</Label>
-              <Input
+              <Input aria-label="Points to redeem"
                 type="number"
                 min="0"
                 max={memberPoints}
@@ -685,7 +685,7 @@ function Mini({
   value: string;
   tone: 'rose' | 'amber' | 'slate';
 }) {
-  const c = tone === 'rose' ? 'text-rose-600' : tone === 'amber' ? 'text-amber-600' : 'text-slate-900';
+  const c = tone === 'rose' ? 'text-rose-600' : tone === 'amber' ? 'text-amber-700' : 'text-slate-900';
   return (
     <div className="rounded-lg bg-slate-50 p-3">
       <div className="flex items-center gap-1.5 text-xs text-slate-500 uppercase tracking-wide">
@@ -698,8 +698,8 @@ function Mini({
 
 const COLOR: Record<string, string> = {
   cyan: 'from-cyan-500 to-blue-500 text-cyan-600',
-  amber: 'from-amber-500 to-orange-500 text-amber-600',
-  emerald: 'from-emerald-500 to-teal-500 text-emerald-600',
+  amber: 'from-amber-500 to-orange-500 text-amber-700',
+  emerald: 'from-emerald-500 to-teal-500 text-emerald-700',
   rose: 'from-rose-500 to-pink-500 text-rose-600',
   violet: 'from-violet-500 to-purple-500 text-violet-600',
   slate: 'from-slate-500 to-slate-700 text-slate-600',

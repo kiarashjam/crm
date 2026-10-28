@@ -297,7 +297,7 @@ export default function Reservations() {
       <button
         type="button"
         onClick={() => openEdit(r)}
-        className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
         aria-label="Edit reservation"
       >
         <Pencil className="h-4 w-4" />
@@ -306,7 +306,7 @@ export default function Reservations() {
         type="button"
         onClick={() => remove(r)}
         disabled={deletingId === r.id}
-        className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+        className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
         aria-label="Delete reservation"
       >
         {deletingId === r.id ? (
@@ -405,7 +405,7 @@ export default function Reservations() {
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -414,7 +414,7 @@ export default function Reservations() {
               />
             </div>
             <Select value={resourceFilter} onValueChange={setResourceFilter}>
-              <SelectTrigger className="h-11 rounded-xl md:w-56">
+              <SelectTrigger aria-label="Filter by resource" className="h-11 rounded-xl md:w-56">
                 <SelectValue placeholder="Resource" />
               </SelectTrigger>
               <SelectContent>
@@ -430,7 +430,7 @@ export default function Reservations() {
               value={statusFilter}
               onValueChange={(v) => setStatusFilter(v as 'All' | ReservationStatus)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-44">
+              <SelectTrigger aria-label="Filter by status" className="h-11 rounded-xl md:w-44">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -447,7 +447,7 @@ export default function Reservations() {
 
           {/* List */}
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -507,10 +507,10 @@ export default function Reservations() {
                           <span className="truncate">{r.resourceName}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" /> {formatDateTime(r.startAtUtc)}
+                          <Clock className="w-3.5 h-3.5 text-slate-500" /> {formatDateTime(r.startAtUtc)}
                         </div>
                         <div className="flex items-center gap-2">
-                          <Users className="w-3.5 h-3.5 text-slate-400" /> Party of {r.partySize}
+                          <Users className="w-3.5 h-3.5 text-slate-500" /> Party of {r.partySize}
                         </div>
                       </div>
                       {r.notes && view.density !== 'compact' && (
@@ -591,7 +591,7 @@ export default function Reservations() {
             <div className="md:col-span-2">
               <Label>Resource</Label>
               <Select value={form.resourceId} onValueChange={(v) => setForm({ ...form, resourceId: v })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Resource">
                   <SelectValue placeholder="Pick a resource" />
                 </SelectTrigger>
                 <SelectContent>
@@ -654,7 +654,7 @@ export default function Reservations() {
                 value={form.status}
                 onValueChange={(v) => setForm({ ...form, status: v as ReservationStatus })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

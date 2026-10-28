@@ -83,8 +83,9 @@ export default function ResetPassword() {
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
             <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 mb-2">New password</label>
+              <label htmlFor="reset-new-password" className="block text-sm font-medium text-slate-700 mb-2">New password</label>
               <input
+                id="reset-new-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -96,8 +97,9 @@ export default function ResetPassword() {
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-2">Confirm password</label>
+              <label htmlFor="reset-confirm-password" className="block text-sm font-medium text-slate-700 mb-2">Confirm password</label>
               <input
+                id="reset-confirm-password"
                 type="password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
@@ -123,7 +125,7 @@ export default function ResetPassword() {
 
             <p className="text-center text-sm text-slate-500 mt-6">
               Need a new link?{' '}
-              <Link to="/forgot-password" className="text-orange-600 hover:text-orange-700 font-semibold focus-visible:underline">
+              <Link to="/forgot-password" className="text-orange-700 hover:text-orange-800 font-semibold focus-visible:underline">
                 Request again
               </Link>
             </p>

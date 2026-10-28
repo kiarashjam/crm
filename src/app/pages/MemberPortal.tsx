@@ -173,7 +173,7 @@ export default function MemberPortal() {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <AppHeader />
-        <div className="flex items-center justify-center py-20 text-slate-400">
+        <div className="flex items-center justify-center py-20 text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       </div>
@@ -199,7 +199,7 @@ export default function MemberPortal() {
               </p>
             </div>
             <Select value={selectedId} onValueChange={setSelectedId}>
-              <SelectTrigger className="w-full bg-white sm:w-56">
+              <SelectTrigger aria-label="Preview as member" className="w-full bg-white sm:w-56">
                 <SelectValue placeholder="Member" />
               </SelectTrigger>
               <SelectContent>
@@ -247,16 +247,16 @@ export default function MemberPortal() {
               >
                 <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
                   <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 ring-1 ring-slate-200/70">
-                    <Mail className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                    <Mail className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
                     <span className="truncate">{member.email}</span>
                   </span>
                   {member.phone && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 ring-1 ring-slate-200/70">
-                      <Phone className="h-3.5 w-3.5 text-slate-400" aria-hidden /> {member.phone}
+                      <Phone className="h-3.5 w-3.5 text-slate-500" aria-hidden /> {member.phone}
                     </span>
                   )}
                   <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2.5 py-1 ring-1 ring-slate-200/70">
-                    <CalendarClock className="h-3.5 w-3.5 text-slate-400" aria-hidden /> Renews {formatDate(member.renewsAtUtc)}
+                    <CalendarClock className="h-3.5 w-3.5 text-slate-500" aria-hidden /> Renews {formatDate(member.renewsAtUtc)}
                   </span>
                 </div>
               </PageHero>
@@ -369,7 +369,7 @@ export default function MemberPortal() {
                         </div>
                         <span
                           className={`font-semibold ${
-                            e.points >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                            e.points >= 0 ? 'text-emerald-700' : 'text-rose-600'
                           }`}
                         >
                           {e.points >= 0 ? '+' : ''}
@@ -389,7 +389,7 @@ export default function MemberPortal() {
                 <QuickLink index={3} href="/visits" icon={<ScanLine />} label="Recent visits" />
               </div>
 
-              <p className="text-xs text-slate-400 text-center mt-10">
+              <p className="text-xs text-slate-500 text-center mt-10">
                 This is a read-only preview of the member portal. Account changes flow through staff workflows.
               </p>
             </>
