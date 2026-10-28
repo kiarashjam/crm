@@ -159,7 +159,7 @@ export function SalesTrackerPanel({ leads }: Props) {
         type="button"
         onClick={() => setCollapsed(false)}
         aria-expanded={false}
-        className="group mb-5 flex w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50 via-white to-violet-50 px-3 py-2.5 text-left shadow-sm transition-[box-shadow,border-color] hover:border-orange-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
+        className="group mb-5 flex w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-orange-100 bg-gradient-to-r from-orange-50 via-white to-violet-50 px-3 py-2.5 text-left shadow-sm dark:border-slate-700 dark:from-orange-500/10 dark:via-slate-800 dark:to-violet-500/10 transition-[box-shadow,border-color] hover:border-orange-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)]"
       >
         <span className="flex min-w-0 items-center gap-2.5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-pink-500 text-white shadow-sm transition-transform duration-300 group-hover:-rotate-6">

@@ -47,32 +47,32 @@ interface Tone {
 // Static class strings, because Tailwind only ships the classes it can read.
 const TONES: Record<ToneKey, Tone> = {
   sky: {
-    wash: 'from-sky-100 via-sky-50/70 to-white', blob: 'bg-sky-300/50',
+    wash: 'from-sky-100 via-sky-50/70 to-white dark:from-sky-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-sky-300/50',
     card: 'hover:border-sky-300 hover:shadow-sky-500/20 focus-visible:ring-sky-400',
     avatar: 'from-sky-400 to-blue-600 shadow-sky-500/30', text: 'text-sky-700', chip: 'bg-sky-50 text-sky-700 ring-sky-200/70',
   },
   violet: {
-    wash: 'from-violet-100 via-violet-50/70 to-white', blob: 'bg-violet-300/50',
+    wash: 'from-violet-100 via-violet-50/70 to-white dark:from-violet-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-violet-300/50',
     card: 'hover:border-violet-300 hover:shadow-violet-500/20 focus-visible:ring-violet-400',
     avatar: 'from-violet-500 to-purple-600 shadow-violet-500/30', text: 'text-violet-700', chip: 'bg-violet-50 text-violet-700 ring-violet-200/70',
   },
   amber: {
-    wash: 'from-amber-100 via-amber-50/70 to-white', blob: 'bg-amber-300/50',
+    wash: 'from-amber-100 via-amber-50/70 to-white dark:from-amber-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-amber-300/50',
     card: 'hover:border-amber-300 hover:shadow-amber-500/20 focus-visible:ring-amber-400',
     avatar: 'from-amber-400 to-orange-500 shadow-amber-500/30', text: 'text-amber-700', chip: 'bg-amber-50 text-amber-700 ring-amber-200/70',
   },
   pink: {
-    wash: 'from-pink-100 via-pink-50/70 to-white', blob: 'bg-pink-300/50',
+    wash: 'from-pink-100 via-pink-50/70 to-white dark:from-pink-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-pink-300/50',
     card: 'hover:border-pink-300 hover:shadow-pink-500/20 focus-visible:ring-pink-400',
     avatar: 'from-pink-500 to-fuchsia-600 shadow-pink-500/30', text: 'text-pink-700', chip: 'bg-pink-50 text-pink-700 ring-pink-200/70',
   },
   teal: {
-    wash: 'from-teal-100 via-teal-50/70 to-white', blob: 'bg-teal-300/50',
+    wash: 'from-teal-100 via-teal-50/70 to-white dark:from-teal-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-teal-300/50',
     card: 'hover:border-teal-300 hover:shadow-teal-500/20 focus-visible:ring-teal-400',
     avatar: 'from-teal-400 to-cyan-600 shadow-teal-500/30', text: 'text-teal-700', chip: 'bg-teal-50 text-teal-700 ring-teal-200/70',
   },
   emerald: {
-    wash: 'from-emerald-100 via-emerald-50/70 to-white', blob: 'bg-emerald-300/50',
+    wash: 'from-emerald-100 via-emerald-50/70 to-white dark:from-emerald-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-emerald-300/50',
     card: 'hover:border-emerald-300 hover:shadow-emerald-500/20 focus-visible:ring-emerald-400',
     avatar: 'from-emerald-500 to-teal-500 shadow-emerald-500/30', text: 'text-emerald-700', chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200/70',
   },
@@ -82,7 +82,7 @@ const TONES: Record<ToneKey, Tone> = {
     avatar: 'from-rose-400 to-slate-400 shadow-rose-500/20', text: 'text-rose-700', chip: 'bg-rose-50 text-rose-700 ring-rose-200/70',
   },
   indigo: {
-    wash: 'from-indigo-100 via-indigo-50/70 to-white', blob: 'bg-indigo-300/50',
+    wash: 'from-indigo-100 via-indigo-50/70 to-white dark:from-indigo-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-indigo-300/50',
     card: 'hover:border-indigo-300 hover:shadow-indigo-500/20 focus-visible:ring-indigo-400',
     avatar: 'from-indigo-500 to-purple-600 shadow-indigo-500/30', text: 'text-indigo-700', chip: 'bg-indigo-50 text-indigo-700 ring-indigo-200/70',
   },

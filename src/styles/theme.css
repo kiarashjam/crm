@@ -821,6 +821,14 @@
 .dark .text-sky-700:not([class*="dark:text-"]) { color: #38bdf8 !important; }
 .dark .text-rose-600:not([class*="dark:text-"]) { color: #fb7185 !important; }
 .dark .text-violet-600:not([class*="dark:text-"]) { color: #a78bfa !important; }
+.dark .text-violet-700:not([class*="dark:text-"]) { color: #c4b5fd !important; }
+.dark .text-rose-900:not([class*="dark:text-"]) { color: #fecdd3 !important; }
+.dark .text-amber-900:not([class*="dark:text-"]) { color: #fde68a !important; }
+
+/* Translucent slate tints (segmented controls, wells) stayed light in dark mode. */
+.dark :is([class*="bg-slate-50/"], [class*="bg-slate-100/"]):not([class*="dark:bg-"]) {
+  background-color: color-mix(in srgb, var(--background-subtle, #1e293b) 80%, transparent) !important;
+}
 .dark .text-pink-700:not([class*="dark:text-"]) { color: #f472b6 !important; }
 .dark .text-cyan-700:not([class*="dark:text-"]) { color: #22d3ee !important; }
 .dark .text-teal-800:not([class*="dark:text-"]) { color: #5eead4 !important; }
