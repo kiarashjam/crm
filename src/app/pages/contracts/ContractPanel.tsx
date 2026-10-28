@@ -119,7 +119,7 @@ function AuditTrail({ contract }: { contract: Contract }) {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="font-medium text-slate-700">{e.detail || e.type}</span>
-                    <span className="mt-0.5 block text-slate-400">
+                    <span className="mt-0.5 block text-slate-500">
                       {new Date(e.atUtc).toLocaleString()}
                       {e.actorLabel ? ` · ${e.actorLabel}` : ''}
                     </span>
@@ -255,7 +255,7 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
       <Card>
         <Header />
         <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden />
           <p className="text-sm text-slate-600">
             Contracts need a connected backend — a signing link has to point somewhere
             real. This is deliberately not faked in demo mode.
@@ -294,7 +294,7 @@ export function ContractPanel({ leadId, leadName, readOnly }: Props) {
               </label>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-slate-400">
+          <p className="mt-2 text-[11px] text-slate-500">
             Anything left blank stays visible in the draft as a placeholder — the
             contract cannot be sent until it is filled in.
           </p>

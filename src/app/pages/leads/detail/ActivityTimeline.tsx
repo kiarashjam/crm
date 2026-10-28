@@ -116,7 +116,7 @@ export function ActivityTimeline({
           <Sparkles className="h-4 w-4 text-fuchsia-500" aria-hidden />
           {emptyHint}
         </p>
-        <p className="mt-1 text-xs text-slate-400">{emptyDetail}</p>
+        <p className="mt-1 text-xs text-slate-500">{emptyDetail}</p>
       </div>
     );
   }
@@ -128,7 +128,7 @@ export function ActivityTimeline({
           <div className="sticky top-0 z-10 -mx-1 mb-3 flex items-center gap-3 bg-gradient-to-b from-white via-white to-white/90 px-1 py-1 backdrop-blur">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{relativeDayLabel(day)}</span>
             <span className="h-px flex-1 bg-slate-100" />
-            <span className="text-xs text-slate-400">{items.length} item{items.length === 1 ? '' : 's'}</span>
+            <span className="text-xs text-slate-500">{items.length} item{items.length === 1 ? '' : 's'}</span>
           </div>
           <ol className="relative ml-3">
             {/* The rail: a soft line of colour the entries hang off. */}
@@ -178,7 +178,7 @@ export function ActivityTimeline({
                           <span className="truncate text-sm font-medium text-slate-800">{activity.subject}</span>
                         )}
                       </div>
-                      <span className="shrink-0 text-xs text-slate-400">{timeLabel(created)}</span>
+                      <span className="shrink-0 text-xs text-slate-500">{timeLabel(created)}</span>
                     </div>
                     {activity.body && (
                       <p className={cn(

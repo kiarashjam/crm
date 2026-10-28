@@ -115,7 +115,7 @@ export function InlineField({
             onMouseDown={(e) => e.preventDefault()}
             onClick={commit}
             disabled={saving}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
             aria-label="Save"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -125,7 +125,7 @@ export function InlineField({
             onMouseDown={(e) => e.preventDefault()}
             onClick={cancel}
             disabled={saving}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
             aria-label="Cancel"
           >
             <X className="h-4 w-4" />
@@ -145,13 +145,13 @@ export function InlineField({
         >
           <span className="flex min-w-0 items-center gap-2">
             {icon && (
-              <span className="shrink-0 text-slate-400 transition-colors group-hover/row:text-indigo-500">
+              <span className="shrink-0 text-slate-500 transition-colors group-hover/row:text-indigo-500">
                 {icon}
               </span>
             )}
             <span className={cn(
               'min-w-0 truncate transition-colors',
-              !value && 'italic text-slate-400',
+              !value && 'italic text-slate-500',
               value && 'group-hover/row:text-slate-900',
             )}>
               {renderValue ? renderValue(value) : (value || emptyHint)}

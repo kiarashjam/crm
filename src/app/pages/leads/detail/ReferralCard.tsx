@@ -81,7 +81,7 @@ export function ReferralCard({
   const picker = (trigger: React.ReactNode) => (
     <Popover open={open} onOpenChange={(next) => { if (!saving) setOpen(next); }}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent align="end" className="w-[300px] p-0">
+      <PopoverContent aria-label={`Who referred ${firstName}`} align="end" className="w-[300px] p-0">
         <Command>
           <CommandInput placeholder="Search contacts by name, email, or company" />
           <CommandList>
@@ -193,7 +193,7 @@ export function ReferralCard({
                   disabled={!!saving}
                   aria-label={`Remove ${referrerName} as the referrer`}
                   title="Remove referrer"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:opacity-50"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:opacity-50"
                 >
                   {saving === 'clear' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
                 </button>
@@ -209,7 +209,7 @@ export function ReferralCard({
             >
               <p className="text-sm text-slate-600">No referrer recorded.</p>
               {readOnly ? (
-                <p className="mt-1 text-xs text-slate-400">A writer in this workspace can add who referred {firstName}.</p>
+                <p className="mt-1 text-xs text-slate-500">A writer in this workspace can add who referred {firstName}.</p>
               ) : picker(
                 <Button
                   type="button"

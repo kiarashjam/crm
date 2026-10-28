@@ -24,8 +24,8 @@ const TYPE_ICON: Record<NotificationType, React.ElementType> = {
 };
 
 const TYPE_TONE: Record<NotificationType, string> = {
-  task: 'bg-orange-100 text-orange-600',
-  deal: 'bg-emerald-100 text-emerald-600',
+  task: 'bg-orange-100 text-orange-700',
+  deal: 'bg-emerald-100 text-emerald-700',
   lead: 'bg-blue-100 text-blue-600',
   mention: 'bg-violet-100 text-violet-600',
   system: 'bg-slate-100 text-slate-500',
@@ -127,7 +127,7 @@ export default function NotificationBell() {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[360px] max-w-[calc(100vw-2rem)] p-0">
+      <PopoverContent aria-label="Notifications" align="end" className="w-[360px] max-w-[calc(100vw-2rem)] p-0">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-800">Notifications</h3>
           {unread > 0 && (
@@ -142,7 +142,7 @@ export default function NotificationBell() {
         </div>
         <div className="max-h-[400px] overflow-y-auto">
           {items.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-slate-400">
+            <div className="px-4 py-10 text-center text-sm text-slate-500">
               {loading ? 'Loading…' : "You're all caught up."}
             </div>
           ) : (
@@ -170,7 +170,7 @@ export default function NotificationBell() {
                           {!n.read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500" />}
                         </span>
                         {n.message && <span className="mt-0.5 block truncate text-xs text-slate-500">{n.message}</span>}
-                        <span className="mt-0.5 block text-[11px] text-slate-400">{relativeTime(n.createdAtUtc)}</span>
+                        <span className="mt-0.5 block text-[11px] text-slate-500">{relativeTime(n.createdAtUtc)}</span>
                       </span>
                     </button>
                   </li>

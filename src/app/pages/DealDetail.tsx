@@ -340,7 +340,7 @@ export default function DealDetail() {
                   <div className="py-8 text-center">
                     <ActivityIcon className="mx-auto mb-3 h-10 w-10 text-slate-300" />
                     <p className="text-sm font-medium text-slate-500">No activities yet</p>
-                    <p className="mt-1 text-xs text-slate-400">Log your first activity above to start tracking</p>
+                    <p className="mt-1 text-xs text-slate-500">Log your first activity above to start tracking</p>
                   </div>
                 ) : (
                   <ul className="max-h-[560px] space-y-2 overflow-y-auto pr-1">
@@ -386,11 +386,11 @@ export default function DealDetail() {
                           <div className="min-w-0 flex-1">
                             <p className={cn(
                               'truncate text-sm font-medium',
-                              task.status === 'completed' ? 'text-slate-400 line-through' : 'text-slate-700 group-hover:text-violet-700 dark:text-slate-200'
+                              task.status === 'completed' ? 'text-slate-500 line-through' : 'text-slate-700 group-hover:text-violet-700 dark:text-slate-200'
                             )}>
                               {task.title}
                             </p>
-                            <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
+                            <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-500">
                               <span className="capitalize">{task.status?.replace('_', ' ')}</span>
                               {task.dueDateUtc && (
                                 <>
@@ -403,7 +403,7 @@ export default function DealDetail() {
                                   <span>&middot;</span>
                                   <span className={cn(
                                     'capitalize',
-                                    task.priority === 'high' && 'text-red-500',
+                                    task.priority === 'high' && 'text-red-700',
                                     task.priority === 'medium' && 'text-amber-500'
                                   )}>{task.priority}</span>
                                 </>

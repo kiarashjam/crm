@@ -103,10 +103,11 @@ function ReasonTableView({ table, label, noun }: {
 }) {
   return (
     <>
-      <div className="overflow-x-auto">
+      {/* Focusable, so a keyboard can scroll a table wider than the screen. */}
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={label}>
         <table aria-label={label} className="w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-400">
+            <tr className="border-b border-slate-200 text-[10px] uppercase tracking-wider text-slate-500">
               <th className="py-2 pr-3 font-semibold">Phase</th>
               {table.columns.map((c) => (
                 <th key={c.key} className="py-2 pr-3 text-right font-semibold">{c.label}</th>
@@ -122,7 +123,7 @@ function ReasonTableView({ table, label, noun }: {
               <tr key={`${row.phase}:${row.kind}`} className="border-b border-slate-100 last:border-b-0">
                 <td className="py-2 pr-3 font-semibold text-slate-800">
                   {row.phaseTitle}
-                  <span className="ml-1 font-normal text-slate-400">· phase {row.phase}</span>
+                  <span className="ml-1 font-normal text-slate-500">· phase {row.phase}</span>
                 </td>
                 {table.columns.map((c) => (
                   <td key={c.key} className="py-2 pr-3 text-right tabular-nums text-slate-600">
@@ -241,7 +242,7 @@ export function SalesTrackerReport({ leads }: Props) {
                 <div className="flex items-center justify-between text-sm">
                   <div>
                     <p className="font-medium text-slate-700">{r.label}</p>
-                    <p className="text-[11px] text-slate-400">{r.sub}</p>
+                    <p className="text-[11px] text-slate-500">{r.sub}</p>
                   </div>
                   <span className="font-bold text-slate-900 tabular-nums">{fmtPct(r.value)}</span>
                 </div>
@@ -279,7 +280,7 @@ export function SalesTrackerReport({ leads }: Props) {
           <KpiTile label="Outstanding > 30 days" value={timing.outstandingOver30} sub="Flagged overdue" icon={AlertOctagon} tone="bg-rose-50 text-rose-600" />
           <KpiTile label="Outstanding > 14 days" value={timing.outstandingOver14} sub="Approaching overdue" icon={Clock} tone="bg-amber-50 text-amber-600" />
         </div>
-        <p className="mt-3 text-[11px] text-slate-400 leading-relaxed">
+        <p className="mt-3 text-[11px] text-slate-500 leading-relaxed">
           ℹ️ Timing metrics require Contract Sent Date and Signature Date on the Lead detail. Leads with neither are ignored.
         </p>
       </ChartCard>
@@ -298,7 +299,7 @@ export function SalesTrackerReport({ leads }: Props) {
 
         <ChartCard title="Drop-off breakdown" subtitle="Share of each drop-off reason">
           {dropOffBreakdown.every((r) => r.value === 0) ? (
-            <div className="flex h-[260px] items-center justify-center text-sm text-slate-400">No drop-offs yet</div>
+            <div className="flex h-[260px] items-center justify-center text-sm text-slate-500">No drop-offs yet</div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -339,7 +340,7 @@ export function SalesTrackerReport({ leads }: Props) {
               <Bar dataKey="signed" name="Signed" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={22} />
             </BarChart>
           </ResponsiveContainer>
-          <p className="mt-2 text-[11px] text-slate-400 leading-relaxed">
+          <p className="mt-2 text-[11px] text-slate-500 leading-relaxed">
             ℹ️ Weekly contracts sent &amp; signed use the meeting-date week as a proxy — mirrors the Excel note about column J.
           </p>
         </ChartCard>
@@ -385,7 +386,7 @@ export function SalesTrackerReport({ leads }: Props) {
 
         <ChartCard title="Contract status" subtitle="Signed vs pending vs to-be-sent vs declined">
           {contractStatus.every((r) => r.value === 0) ? (
-            <div className="flex h-[280px] items-center justify-center text-sm text-slate-400">No contracts yet</div>
+            <div className="flex h-[280px] items-center justify-center text-sm text-slate-500">No contracts yet</div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={contractStatus} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
@@ -403,7 +404,7 @@ export function SalesTrackerReport({ leads }: Props) {
 
         <ChartCard title="Membership status" subtitle="Where paid vs signed vs pending">
           {membership.every((r) => r.value === 0) ? (
-            <div className="flex h-[280px] items-center justify-center text-sm text-slate-400">No members yet</div>
+            <div className="flex h-[280px] items-center justify-center text-sm text-slate-500">No members yet</div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -419,7 +420,7 @@ export function SalesTrackerReport({ leads }: Props) {
 
         <ChartCard title="Post-meeting outcome" subtitle="Interested / Not / Pending — Excel §Outcome">
           {outcome.every((r) => r.value === 0) ? (
-            <div className="flex h-[280px] items-center justify-center text-sm text-slate-400">No meetings yet</div>
+            <div className="flex h-[280px] items-center justify-center text-sm text-slate-500">No meetings yet</div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -439,7 +440,7 @@ export function SalesTrackerReport({ leads }: Props) {
       {/* Weekly table (numeric detail alongside the chart) */}
       <div className="mt-6">
         <ChartCard title="Weekly meetings table" subtitle="Same data as the chart above, in tabular form">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Weekly meetings table">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -481,7 +482,7 @@ export function SalesTrackerReport({ leads }: Props) {
           {reasonTablesByKind.rejection.rows.length > 0 && (
             <div className="mt-5 border-t border-slate-100 pt-4">
               <h4 className="text-xs font-semibold text-slate-700">Turned down by us</h4>
-              <p className="mb-2 mt-0.5 text-[11px] text-slate-400">
+              <p className="mb-2 mt-0.5 text-[11px] text-slate-500">
                 Applications we declined, by the reason recorded. Kept apart from the
                 reasons above: those were the client&rsquo;s decision, these are ours.
               </p>

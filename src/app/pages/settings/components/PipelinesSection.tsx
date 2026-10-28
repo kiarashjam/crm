@@ -153,7 +153,7 @@ export function PipelinesSection({
                     >
                       <ChevronRight className={`w-4 h-4 transition-transform ${expandedPipelineId === p.id ? 'rotate-90' : ''}`} />
                       {p.name}
-                      <span className="text-xs text-slate-400 font-normal">
+                      <span className="text-xs text-slate-500 font-normal">
                         ({(pipelineStages[p.id] ?? p.dealStages ?? []).length} stages)
                       </span>
                     </button>
@@ -223,7 +223,7 @@ export function PipelinesSection({
                                   </span>
                                   <span className="font-medium text-slate-800">
                                     {s.name}
-                                    {s.isWon && <span className="text-emerald-600 text-xs ml-1">(Won)</span>}
+                                    {s.isWon && <span className="text-emerald-700 text-xs ml-1">(Won)</span>}
                                     {s.isLost && <span className="text-red-600 text-xs ml-1">(Lost)</span>}
                                   </span>
                                 </div>

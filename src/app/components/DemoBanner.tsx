@@ -55,7 +55,7 @@ export default function DemoBanner() {
           type="button"
           onClick={handleReset}
           disabled={resetting}
-          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white/60 px-2 py-0.5 text-xs font-semibold text-amber-800 hover:bg-white disabled:opacity-60 transition-colors"
+          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white/60 px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-white disabled:opacity-60 transition-colors"
           aria-label="Reset demo data"
         >
           <RotateCcw className={`w-3 h-3 ${resetting ? 'animate-spin' : ''}`} aria-hidden />

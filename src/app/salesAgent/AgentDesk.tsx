@@ -741,7 +741,7 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
             </motion.button>
           </div>
         </form>
-        <p className="mt-2 hidden items-center gap-1.5 text-[11px] text-slate-400 sm:flex">
+        <p className="mt-2 hidden items-center gap-1.5 text-[11px] text-slate-500 sm:flex">
           <ShieldCheck className="h-3 w-3" aria-hidden="true" />
           Enter to send, Shift+Enter for a new line. A change runs only when you press its button, and only once.
         </p>

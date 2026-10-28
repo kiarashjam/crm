@@ -106,7 +106,7 @@ export function ListTaskCard({
       onClick={handleCardClick}
       className={`group relative bg-white rounded-xl border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden cursor-pointer ${
         isSelected ? 'border-orange-400 ring-2 ring-orange-200 bg-orange-50/30' : 'border-slate-200'
-      } ${task.status === 'completed' || task.status === 'cancelled' ? 'opacity-60' : ''}`}
+      } ${task.status === 'completed' || task.status === 'cancelled' ? '!bg-slate-50 saturate-50' : ''}`}
     >
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${priority.borderColor.replace('border-l-', 'bg-')}`} />
 
@@ -128,7 +128,7 @@ export function ListTaskCard({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" className="mt-0.5 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 transition-transform hover:scale-110">
+            <button type="button" aria-label={`Status: ${status.label}. Change status of ${task.title}`} className="mt-0.5 shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 transition-transform hover:scale-110">
               <StatusIcon className={`w-5 h-5 ${status.color}`} />
             </button>
           </DropdownMenuTrigger>
@@ -188,7 +188,7 @@ export function ListTaskCard({
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className="max-h-48 overflow-y-auto">
                       <DropdownMenuItem onClick={() => onAssigneeChange(task, null)}>
-                        <UserX className="w-4 h-4 mr-2 text-slate-400" />
+                        <UserX className="w-4 h-4 mr-2 text-slate-500" />
                         Unassign
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
@@ -218,7 +218,7 @@ export function ListTaskCard({
                       {task.dealId && (
                         <>
                           <DropdownMenuItem onClick={() => onDealChange(task, null)}>
-                            <Unlink className="w-4 h-4 mr-2 text-slate-400" />
+                            <Unlink className="w-4 h-4 mr-2 text-slate-500" />
                             Unlink deal
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
@@ -246,7 +246,7 @@ export function ListTaskCard({
                       {task.leadId && (
                         <>
                           <DropdownMenuItem onClick={() => onLeadChange(task, null)}>
-                            <Unlink className="w-4 h-4 mr-2 text-slate-400" />
+                            <Unlink className="w-4 h-4 mr-2 text-slate-500" />
                             Unlink lead
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />

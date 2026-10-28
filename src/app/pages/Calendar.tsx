@@ -143,7 +143,7 @@ export default function Calendar() {
           />
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : (
@@ -153,13 +153,13 @@ export default function Calendar() {
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-lg font-semibold text-slate-900">{formatMonth(cursor)}</h2>
                   <div className="flex items-center gap-1.5">
-                    <Button variant="outline" size="sm" onClick={goPrev}>
+                    <Button variant="outline" size="sm" onClick={goPrev} aria-label="Previous month">
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
                     <Button variant="outline" size="sm" onClick={goToday}>
                       Today
                     </Button>
-                    <Button variant="outline" size="sm" onClick={goNext}>
+                    <Button variant="outline" size="sm" onClick={goNext} aria-label="Next month">
                       <ChevronRight className="w-4 h-4" />
                     </Button>
                   </div>
@@ -169,7 +169,7 @@ export default function Calendar() {
                   {WEEKDAYS.map((w) => (
                     <div
                       key={w}
-                      className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wide py-1"
+                      className="text-center text-xs font-semibold text-slate-500 uppercase tracking-wide py-1"
                     >
                       {w}
                     </div>
@@ -192,13 +192,13 @@ export default function Calendar() {
                           isSelected
                             ? 'border-cyan-400 ring-2 ring-cyan-200 bg-cyan-50'
                             : 'border-transparent hover:bg-slate-50'
-                        } ${!inMonth ? 'opacity-40' : ''}`}
+                        } ${!inMonth ? 'bg-slate-50' : ''}`}
                       >
                         <div
                           className={`text-xs font-semibold mb-1 ${
                             isToday
-                              ? 'inline-flex items-center justify-center w-5 h-5 rounded-full bg-cyan-600 text-white'
-                              : 'text-slate-700'
+                              ? 'inline-flex items-center justify-center w-5 h-5 rounded-full bg-cyan-700 text-white'
+                              : inMonth ? 'text-slate-700' : 'text-slate-500'
                           }`}
                         >
                           {d.getDate()}
@@ -221,7 +221,7 @@ export default function Calendar() {
                             </div>
                           ))}
                           {evs.length + rsvs.length > 2 && (
-                            <div className="text-[10px] text-slate-400">
+                            <div className="text-[10px] text-slate-500">
                               +{evs.length + rsvs.length - 2} more
                             </div>
                           )}
@@ -234,7 +234,7 @@ export default function Calendar() {
 
               {/* Day detail */}
               <StaggerItem index={1} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                <p className="text-xs uppercase tracking-wider text-slate-400">
+                <p className="text-xs uppercase tracking-wider text-slate-500">
                   {selectedDay.toLocaleDateString(undefined, { weekday: 'long' })}
                 </p>
                 <h2 className="text-2xl font-bold text-slate-900 mb-4">
@@ -249,7 +249,7 @@ export default function Calendar() {
                     <CalendarHeart className="w-4 h-4 text-pink-600" /> Events ({selectedEvents.length})
                   </h3>
                   {selectedEvents.length === 0 ? (
-                    <p className="text-xs text-slate-400">No events.</p>
+                    <p className="text-xs text-slate-500">No events.</p>
                   ) : (
                     <ul className="space-y-1.5">
                       {selectedEvents.map((e, index) => (
@@ -277,7 +277,7 @@ export default function Calendar() {
                     <CalendarClock className="w-4 h-4 text-emerald-600" /> Reservations ({selectedReservations.length})
                   </h3>
                   {selectedReservations.length === 0 ? (
-                    <p className="text-xs text-slate-400">No reservations.</p>
+                    <p className="text-xs text-slate-500">No reservations.</p>
                   ) : (
                     <ul className="space-y-1.5">
                       {selectedReservations.map((r, index) => (

@@ -193,7 +193,7 @@ export default function SendToCrm() {
                 }
               />
 
-              <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+              <div className="grid w-full max-w-6xl grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
                 <StaggerItem as="section" index={0} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
                   <div className="mb-4 flex items-baseline justify-between gap-3">
                     <label htmlFor="attach-copy" className="text-sm font-medium text-slate-700">
@@ -256,7 +256,7 @@ export default function SendToCrm() {
                       Search {typeLabel.toLowerCase()}s
                     </label>
                     <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" aria-hidden />
                       <input
                         id="attach-search"
                         type="search"
@@ -301,7 +301,7 @@ export default function SendToCrm() {
                                   value={record.id}
                                   checked={selected}
                                   onChange={() => setSelectedRecord({ id: record.id, name: record.name })}
-                                  className="h-4 w-4 text-orange-600 focus:ring-orange-500 focus:ring-offset-0"
+                                  className="h-4 w-4 text-orange-700 focus:ring-orange-500 focus:ring-offset-0"
                                 />
                                 <span className="ml-3 min-w-0">
                                   <span className="block truncate font-medium text-slate-900">{record.name}</span>

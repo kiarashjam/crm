@@ -160,9 +160,9 @@ export function AddLeadDialog({
                       >
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
                           isActive
-                            ? 'bg-white text-orange-600 shadow-lg scale-110'
+                            ? 'bg-white text-orange-700 shadow-lg scale-110'
                             : isPast
-                              ? 'bg-white/90 text-orange-600'
+                              ? 'bg-white/90 text-orange-700'
                               : 'bg-white/20 text-white'
                         }`}>
                           {isPast ? (
@@ -188,7 +188,7 @@ export function AddLeadDialog({
         {/* Step description banner */}
         <div className="px-6 py-3 bg-gradient-to-r from-orange-50 to-amber-50/50 border-b border-orange-100 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-100 text-orange-600">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-100 text-orange-700">
               {currentStepConfig && <currentStepConfig.icon className="w-4 h-4" />}
             </div>
             <div>
@@ -216,7 +216,7 @@ export function AddLeadDialog({
               {/* Name Field */}
               <div className="group">
                 <Label htmlFor="lead-name" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-orange-100 text-orange-600">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-orange-100 text-orange-700">
                     <User className="w-3.5 h-3.5" />
                   </div>
                   Full Name <span className="text-orange-500">*</span>
@@ -255,11 +255,11 @@ export function AddLeadDialog({
               {/* Phone Field */}
               <div className="group">
                 <Label htmlFor="lead-phone" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-600">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700">
                     <Phone className="w-3.5 h-3.5" />
                   </div>
                   Phone Number
-                  <span className="text-slate-400 text-xs font-normal ml-1">(optional)</span>
+                  <span className="text-slate-500 text-xs font-normal ml-1">(optional)</span>
                 </Label>
                 <Input
                   id="lead-phone"
@@ -278,13 +278,13 @@ export function AddLeadDialog({
                     <UserPlus className="w-3.5 h-3.5" />
                   </div>
                   Referred By
-                  <span className="text-slate-400 text-xs font-normal ml-1">(optional)</span>
+                  <span className="text-slate-500 text-xs font-normal ml-1">(optional)</span>
                 </Label>
                 <Select
                   value={form.referredByContactId || 'none'}
                   onValueChange={(v) => setForm((f) => ({ ...f, referredByContactId: v === 'none' ? '' : v }))}
                 >
-                  <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
+                  <SelectTrigger aria-label="Referred By (optional)" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
                     <SelectValue placeholder="Select contact (or none)" />
                   </SelectTrigger>
                   <SelectContent>
@@ -294,7 +294,7 @@ export function AddLeadDialog({
                     {contacts.map((contact) => (
                       <SelectItem key={contact.id} value={contact.id}>
                         <span className="flex items-center gap-2">
-                          <User className="w-3.5 h-3.5 text-slate-400" />
+                          <User className="w-3.5 h-3.5 text-slate-500" />
                           {contact.name} {contact.email ? `(${contact.email})` : ''}
                         </span>
                       </SelectItem>
@@ -322,13 +322,13 @@ export function AddLeadDialog({
                     <Building2 className="w-3.5 h-3.5" />
                   </div>
                   Company
-                  <span className="text-slate-400 text-xs font-normal ml-1">(optional)</span>
+                  <span className="text-slate-500 text-xs font-normal ml-1">(optional)</span>
                 </Label>
                 <Select
                   value={form.companyId || 'none'}
                   onValueChange={(v) => setForm((f) => ({ ...f, companyId: v === 'none' ? '' : v }))}
                 >
-                  <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
+                  <SelectTrigger aria-label="Company (optional)" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
                     <SelectValue placeholder="No company" />
                   </SelectTrigger>
                   <SelectContent>
@@ -338,7 +338,7 @@ export function AddLeadDialog({
                     {companies.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         <span className="flex items-center gap-2">
-                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                          <Building2 className="w-3.5 h-3.5 text-slate-500" />
                           {c.name}
                         </span>
                       </SelectItem>
@@ -351,7 +351,7 @@ export function AddLeadDialog({
               {/* Source Select - Enhanced with visual cards */}
               <div className="group">
                 <Label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-600">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-700">
                     <Sparkles className="w-3.5 h-3.5" />
                   </div>
                   Lead Source
@@ -443,7 +443,7 @@ export function AddLeadDialog({
                         <span className={`flex items-center justify-center w-8 h-8 rounded-full text-sm transition-all ${
                           isSelected 
                             ? `${colors.selectedBg} text-white shadow-sm` 
-                            : 'bg-slate-100 text-slate-400'
+                            : 'bg-slate-100 text-slate-500'
                         }`}>
                           {isSelected ? <Check className="w-4 h-4" /> : colors.icon}
                         </span>
@@ -463,18 +463,18 @@ export function AddLeadDialog({
                     <Tag className="w-3.5 h-3.5" />
                   </div>
                   Lifecycle Stage
-                  <span className="text-slate-400 text-xs font-normal ml-1">(optional)</span>
+                  <span className="text-slate-500 text-xs font-normal ml-1">(optional)</span>
                 </Label>
                 <Select
                   value={form.lifecycleStage || 'none'}
                   onValueChange={(v) => setForm((f) => ({ ...f, lifecycleStage: v === 'none' ? '' : v }))}
                 >
-                  <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
+                  <SelectTrigger aria-label="Lifecycle Stage (optional)" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
                     <SelectValue placeholder="Select lifecycle stage" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">
-                      <span className="text-slate-400">— None —</span>
+                      <span className="text-slate-500">— None —</span>
                     </SelectItem>
                     {LIFECYCLE_STAGES.map((stage) => (
                       <SelectItem key={stage} value={stage}>
@@ -491,11 +491,11 @@ export function AddLeadDialog({
               {/* Lead Score */}
               <div className="group">
                 <Label htmlFor="lead-score" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-600">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700">
                     <Sparkles className="w-3.5 h-3.5" />
                   </div>
                   Lead Score
-                  <span className="text-slate-400 text-xs font-normal ml-1">(0-100, optional)</span>
+                  <span className="text-slate-500 text-xs font-normal ml-1">(0-100, optional)</span>
                 </Label>
                 <Input
                   id="lead-score"
@@ -530,7 +530,7 @@ export function AddLeadDialog({
                     <Briefcase className="w-3.5 h-3.5" />
                   </div>
                   Description / Notes
-                  <span className="text-slate-400 text-xs font-normal ml-1">(optional)</span>
+                  <span className="text-slate-500 text-xs font-normal ml-1">(optional)</span>
                 </Label>
                 <textarea
                   id="lead-description"

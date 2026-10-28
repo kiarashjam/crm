@@ -261,7 +261,7 @@ export default function SignContract() {
             <FileText className="h-5 w-5 text-white" aria-hidden />
           </span>
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold tracking-[0.14em] text-orange-600 uppercase">
+            <p className="text-[11px] font-semibold tracking-[0.14em] text-orange-700 uppercase">
               {contract.organizationName}
             </p>
             <h1 className="mt-0.5 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
@@ -299,7 +299,7 @@ export default function SignContract() {
             <SignedBlock contract={contract} />
           ) : !contract.canSign ? (
             <div className="flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" aria-hidden />
               <div>
                 <h2 className="text-sm font-bold text-slate-800">Not available for signature</h2>
                 <p className="mt-1 text-sm text-slate-600">{contract.blocked}</p>
@@ -344,7 +344,7 @@ export default function SignContract() {
                   type="checkbox"
                   checked={agreed}
                   onChange={(e) => { setAgreed(e.target.checked); setProblem(null); }}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-orange-600"
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-orange-700"
                 />
                 <span className="text-sm leading-relaxed text-slate-700">
                   I have read the contract above and I agree to be bound by it.
@@ -434,7 +434,7 @@ export default function SignContract() {
             agreements but is NOT the qualified signature that Swiss law requires
             where written form is mandatory. */}
         <div className="mt-7 flex items-start gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" aria-hidden />
           <p className="text-[12.5px] leading-relaxed text-slate-500">
             <strong className="font-semibold text-slate-700">About this signature.</strong>{' '}
             Signing records your typed name together with the date, time, your network

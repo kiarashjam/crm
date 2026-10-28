@@ -55,7 +55,7 @@ function EnumSelect<T extends string>({
         <SelectValue placeholder={placeholder ?? '—'} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={SENTINEL}><span className="text-slate-400">—</span></SelectItem>
+        <SelectItem value={SENTINEL}><span className="text-slate-500">—</span></SelectItem>
         {options
           .filter((o) => o !== '')
           .map((opt) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
@@ -126,7 +126,7 @@ export function InlineSalesEditorPopover({ lead, leadName, trigger, onSaved, sta
       <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
         {trigger}
       </PopoverTrigger>
-      <PopoverContent
+      <PopoverContent aria-label={leadName ? `Pipeline for ${leadName}` : "Lead pipeline"}
         align="end"
         className="w-[380px] p-0 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
@@ -194,7 +194,7 @@ export function InlineSalesEditorPopover({ lead, leadName, trigger, onSaved, sta
           </div>
           <div className="space-y-1">
             <Label className="text-[10px] text-slate-500">Notes</Label>
-            <Textarea
+            <Textarea aria-label="Notes"
               value={extras.salesNotes}
               onChange={(e) => setExtras((p) => ({ ...p, salesNotes: e.target.value }))}
               onBlur={() => void commit({ salesNotes: extras.salesNotes })}

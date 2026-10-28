@@ -129,7 +129,7 @@ export function MemberDetailPanel({
               <p className="text-lg font-bold text-slate-900">{mockStats.leadsAssigned}</p>
             </div>
             <div className="bg-emerald-50 rounded-xl p-3">
-              <div className="flex items-center gap-2 text-emerald-600 text-xs mb-1">
+              <div className="flex items-center gap-2 text-emerald-700 text-xs mb-1">
                 <Handshake className="w-3.5 h-3.5" />
                 Deals Won
               </div>
@@ -143,7 +143,7 @@ export function MemberDetailPanel({
               <p className="text-lg font-bold text-blue-700">{mockStats.tasksCompleted}</p>
             </div>
             <div className="bg-amber-50 rounded-xl p-3">
-              <div className="flex items-center gap-2 text-amber-600 text-xs mb-1">
+              <div className="flex items-center gap-2 text-amber-700 text-xs mb-1">
                 <Activity className="w-3.5 h-3.5" />
                 Activities
               </div>
@@ -161,7 +161,7 @@ export function MemberDetailPanel({
           <div className="space-y-3">
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
               <span className="text-sm text-slate-600">Conversion Rate</span>
-              <span className="text-sm font-bold text-emerald-600">{mockStats.conversionRate === '—' ? '—' : `${mockStats.conversionRate}%`}</span>
+              <span className="text-sm font-bold text-emerald-700">{mockStats.conversionRate === '—' ? '—' : `${mockStats.conversionRate}%`}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
               <span className="text-sm text-slate-600">Avg Response Time</span>
@@ -184,7 +184,7 @@ export function MemberDetailPanel({
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm text-slate-700">{activity.action}</p>
-                  <p className="text-xs text-slate-400">{activity.time}</p>
+                  <p className="text-xs text-slate-500">{activity.time}</p>
                 </div>
               </div>
             ))}
@@ -202,7 +202,7 @@ export function MemberDetailPanel({
                 value={member.role.toString()}
                 onValueChange={(v) => onRoleChange(parseInt(v))}
               >
-                <SelectTrigger className="h-10">
+                <SelectTrigger aria-label="Change Role" className="h-10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

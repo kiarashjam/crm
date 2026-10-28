@@ -184,7 +184,7 @@ export default function Members() {
       <button
         type="button"
         onClick={() => openEdit(m)}
-        className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
         aria-label="Edit member"
       >
         <Pencil className="h-4 w-4" />
@@ -193,7 +193,7 @@ export default function Members() {
         type="button"
         onClick={() => remove(m)}
         disabled={deletingId === m.id}
-        className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+        className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
         aria-label="Remove member"
       >
         {deletingId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -325,7 +325,7 @@ export default function Members() {
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -337,7 +337,7 @@ export default function Members() {
               value={tierFilter}
               onValueChange={(v) => setTierFilter(v as 'All' | MemberTier)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-44">
+              <SelectTrigger aria-label="Filter by tier" className="h-11 rounded-xl md:w-44">
                 <SelectValue placeholder="Tier" />
               </SelectTrigger>
               <SelectContent>
@@ -353,7 +353,7 @@ export default function Members() {
               value={statusFilter}
               onValueChange={(v) => setStatusFilter(v as 'All' | MemberStatus)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-44">
+              <SelectTrigger aria-label="Filter by status" className="h-11 rounded-xl md:w-44">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -370,7 +370,7 @@ export default function Members() {
 
           {/* List */}
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -421,11 +421,11 @@ export default function Members() {
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-sm">
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-slate-400">Dues</p>
+                        <p className="text-[10px] uppercase tracking-wide text-slate-500">Dues</p>
                         <p className="font-semibold text-slate-900">{formatCurrency(m.duesAmount)}<span className="text-xs font-normal text-slate-500"> /{m.duesFrequency.toLowerCase()}</span></p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-slate-400">House</p>
+                        <p className="text-[10px] uppercase tracking-wide text-slate-500">House</p>
                         <p className={`font-semibold ${m.houseAccountBalance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatCurrency(m.houseAccountBalance)}</p>
                       </div>
                     </div>
@@ -495,7 +495,7 @@ export default function Members() {
                       </div>
                       <div className="flex items-center gap-6 md:gap-8">
                         <div className="text-right">
-                          <p className="text-xs uppercase tracking-wide text-slate-400">Dues</p>
+                          <p className="text-xs uppercase tracking-wide text-slate-500">Dues</p>
                           <p className="font-semibold text-slate-900">
                             {formatCurrency(m.duesAmount)}
                             <span className="text-xs font-normal text-slate-500">
@@ -504,7 +504,7 @@ export default function Members() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs uppercase tracking-wide text-slate-400">House</p>
+                          <p className="text-xs uppercase tracking-wide text-slate-500">House</p>
                           <p
                             className={`font-semibold ${
                               m.houseAccountBalance < 0 ? 'text-rose-600' : 'text-slate-900'
@@ -516,7 +516,7 @@ export default function Members() {
                         <div className="flex items-center gap-1">
                           <Link
                             to={`/members/${m.id}`}
-                            className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                             aria-label="Open member"
                           >
                             <ChevronRight className="h-4 w-4" />
@@ -589,7 +589,7 @@ export default function Members() {
                   })
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Tier">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -604,7 +604,7 @@ export default function Members() {
             <div>
               <Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as MemberStatus })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -633,7 +633,7 @@ export default function Members() {
                 value={form.duesFrequency}
                 onValueChange={(v) => setForm({ ...form, duesFrequency: v as DuesFrequency })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Frequency">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

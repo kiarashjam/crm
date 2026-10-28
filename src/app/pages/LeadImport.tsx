@@ -324,11 +324,11 @@ Bob Wilson,bob@example.com,,ads,New,`;
                         ? 'bg-emerald-500 text-white'
                         : isActive
                           ? 'bg-orange-500 text-white shadow-lg shadow-orange-200/50'
-                          : 'bg-white/80 text-slate-400 ring-1 ring-slate-200'
+                          : 'bg-white/80 text-slate-500 ring-1 ring-slate-200'
                     }`}>
                       {isComplete ? <Check className="w-4 h-4" /> : i + 1}
                     </div>
-                    <span className={`mt-1.5 text-xs font-medium ${isActive || isComplete ? 'text-slate-700' : 'text-slate-400'}`}>
+                    <span className={`mt-1.5 text-xs font-medium ${isActive || isComplete ? 'text-slate-700' : 'text-slate-500'}`}>
                       {label}
                     </span>
                   </div>
@@ -372,7 +372,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
                     ? 'bg-orange-500 shadow-lg shadow-orange-200/50'
                     : 'bg-gradient-to-br from-slate-100 to-slate-50'
                 }`}>
-                  <FileSpreadsheet className={`w-10 h-10 ${dragActive ? 'text-white' : 'text-slate-400'}`} />
+                  <FileSpreadsheet className={`w-10 h-10 ${dragActive ? 'text-white' : 'text-slate-500'}`} />
                 </div>
                 
                 <h3 className="text-lg font-semibold text-slate-800 mb-2">
@@ -380,7 +380,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
                 </h3>
                 <p className="text-slate-500 mb-4">or click to browse from your computer</p>
                 
-                <div className="flex items-center gap-2 text-sm text-slate-400">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
                   <span>Supported format:</span>
                   <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-600 font-mono">.csv</span>
                 </div>
@@ -471,10 +471,10 @@ Bob Wilson,bob@example.com,,ads,New,`;
                   const info = FIELD_INFO[field];
                   if (!info) return null;
                   const colorClasses = {
-                    orange: 'bg-orange-100 text-orange-600',
+                    orange: 'bg-orange-100 text-orange-700',
                     blue: 'bg-blue-100 text-blue-600',
-                    emerald: 'bg-emerald-100 text-emerald-600',
-                    amber: 'bg-amber-100 text-amber-600',
+                    emerald: 'bg-emerald-100 text-emerald-700',
+                    amber: 'bg-amber-100 text-amber-700',
                     cyan: 'bg-cyan-100 text-cyan-600',
                     purple: 'bg-purple-100 text-purple-600',
                   };
@@ -500,7 +500,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="skip">
-                            <span className="text-slate-400">— Skip this field —</span>
+                            <span className="text-slate-500">— Skip this field —</span>
                           </SelectItem>
                           {csvHeaders.map(header => (
                             <SelectItem key={header} value={header}>{header}</SelectItem>
@@ -522,7 +522,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
                   <div className="flex items-center gap-2">
                     <Label className="text-sm text-slate-500">Source:</Label>
                     <Select value={defaultSource} onValueChange={setDefaultSource}>
-                      <SelectTrigger className="w-32 h-8 text-sm">
+                      <SelectTrigger aria-label="Source" className="w-32 h-8 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -536,7 +536,7 @@ Bob Wilson,bob@example.com,,ads,New,`;
                   <div className="flex items-center gap-2">
                     <Label className="text-sm text-slate-500">Status:</Label>
                     <Select value={defaultStatus} onValueChange={setDefaultStatus}>
-                      <SelectTrigger className="w-32 h-8 text-sm">
+                      <SelectTrigger aria-label="Status" className="w-32 h-8 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -610,12 +610,12 @@ Bob Wilson,bob@example.com,,ads,New,`;
                       const hasError = !row.name || !row.email;
                       return (
                         <StaggerItem as="tr" key={i} index={i} className={hasError ? 'bg-red-50' : 'transition-colors hover:bg-slate-50'}>
-                          <td className="px-4 py-3 text-sm text-slate-400">{i + 1}</td>
+                          <td className="px-4 py-3 text-sm text-slate-500">{i + 1}</td>
                           <td className="px-4 py-3 text-sm font-medium text-slate-800">
-                            {row.name || <span className="text-red-500 italic">Missing</span>}
+                            {row.name || <span className="text-red-700 italic">Missing</span>}
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-600">
-                            {row.email || <span className="text-red-500 italic">Missing</span>}
+                            {row.email || <span className="text-red-700 italic">Missing</span>}
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-500">{row.phone || '—'}</td>
                           <td className="px-4 py-3 text-sm">
@@ -732,12 +732,12 @@ Bob Wilson,bob@example.com,,ads,New,`;
               
               <div className="flex items-center justify-center gap-6 mt-6">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-emerald-600">{importResult.success}</div>
+                  <div className="text-3xl font-bold text-emerald-700">{importResult.success}</div>
                   <div className="text-sm text-slate-500">Imported</div>
                 </div>
                 <div className="w-px h-12 bg-slate-200" />
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-red-500">{importResult.failed}</div>
+                  <div className="text-3xl font-bold text-red-700">{importResult.failed}</div>
                   <div className="text-sm text-slate-500">Failed</div>
                 </div>
               </div>

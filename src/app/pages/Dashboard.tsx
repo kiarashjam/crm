@@ -341,7 +341,7 @@ export default function Dashboard() {
                     </h3>
                     <button
                       onClick={() => setGeneratedCopy(null)}
-                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                      className="text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                       aria-label="Close"
                     >
                       ×

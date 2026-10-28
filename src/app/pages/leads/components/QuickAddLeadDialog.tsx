@@ -133,7 +133,7 @@ export function QuickAddLeadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px] p-0 gap-0 overflow-hidden">
+      <DialogContent showCloseButton={false} className="sm:max-w-[520px] p-0 gap-0 overflow-hidden">
         <div className="relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-orange-500 via-amber-500 to-rose-500" />
           <div className="absolute inset-0 bg-grid-white/10" />
@@ -152,7 +152,7 @@ export function QuickAddLeadDialog({
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+              className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
               aria-label="Close"
             >
               <X className="h-4 w-4" />
@@ -164,7 +164,7 @@ export function QuickAddLeadDialog({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label htmlFor="quick-add-name" className="text-xs font-semibold text-slate-700">
-                Name <span className="text-red-500">*</span>
+                Name <span className="text-red-700">*</span>
               </Label>
               <Input
                 id="quick-add-name"
@@ -178,7 +178,7 @@ export function QuickAddLeadDialog({
             </div>
             <div>
               <Label htmlFor="quick-add-email" className="text-xs font-semibold text-slate-700">
-                Email <span className="text-red-500">*</span>
+                Email <span className="text-red-700">*</span>
               </Label>
               <Input
                 id="quick-add-email"
@@ -223,7 +223,7 @@ export function QuickAddLeadDialog({
                 <div>
                   <Label className="text-xs font-semibold text-slate-700">Status</Label>
                   <Select value={status} onValueChange={setStatus}>
-                    <SelectTrigger className="mt-1 bg-white">
+                    <SelectTrigger aria-label="Status" className="mt-1 bg-white">
                       <SelectValue placeholder="Pick a status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -238,7 +238,7 @@ export function QuickAddLeadDialog({
                 <div>
                   <Label className="text-xs font-semibold text-slate-700">Source</Label>
                   <Select value={source} onValueChange={setSource}>
-                    <SelectTrigger className="mt-1 bg-white">
+                    <SelectTrigger aria-label="Source" className="mt-1 bg-white">
                       <SelectValue placeholder="How did they find you?" />
                     </SelectTrigger>
                     <SelectContent>
@@ -255,7 +255,7 @@ export function QuickAddLeadDialog({
               <div>
                 <Label className="text-xs font-semibold text-slate-700">Company</Label>
                 <Select value={companyId} onValueChange={setCompanyId}>
-                  <SelectTrigger className="mt-1 bg-white">
+                  <SelectTrigger aria-label="Company" className="mt-1 bg-white">
                     <SelectValue placeholder="No company" />
                   </SelectTrigger>
                   <SelectContent>

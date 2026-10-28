@@ -14,13 +14,13 @@ import { getAuditLog, type AuditEvent, type AuditEntity, type AuditAction } from
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 
 const ACTION_META: Record<AuditAction, { icon: React.ElementType; tone: string }> = {
-  created: { icon: Plus, tone: 'bg-emerald-100 text-emerald-600' },
+  created: { icon: Plus, tone: 'bg-emerald-100 text-emerald-700' },
   updated: { icon: Pencil, tone: 'bg-blue-100 text-blue-600' },
   deleted: { icon: Trash2, tone: 'bg-red-100 text-red-600' },
-  status_changed: { icon: RefreshCw, tone: 'bg-amber-100 text-amber-600' },
+  status_changed: { icon: RefreshCw, tone: 'bg-amber-100 text-amber-700' },
   assigned: { icon: UserPlus, tone: 'bg-violet-100 text-violet-600' },
   email_sent: { icon: Mail, tone: 'bg-indigo-100 text-indigo-600' },
-  merged: { icon: GitMerge, tone: 'bg-teal-100 text-teal-600' },
+  merged: { icon: GitMerge, tone: 'bg-teal-100 text-teal-700' },
   converted: { icon: ArrowRightCircle, tone: 'bg-cyan-100 text-cyan-600' },
 };
 
@@ -102,9 +102,9 @@ export default function AuditLog() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            <div className="flex items-center justify-center py-20 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : shown.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center text-sm text-slate-400">
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center text-sm text-slate-500">
               No audit events yet.
             </div>
           ) : (
@@ -125,7 +125,7 @@ export default function AuditLog() {
                         <p className="text-sm text-slate-700">
                           {e.summary} · {link ? <Link to={link} className="hover:text-indigo-700 hover:underline">{label}</Link> : label}
                         </p>
-                        <p className="mt-0.5 text-xs text-slate-400">
+                        <p className="mt-0.5 text-xs text-slate-500">
                           <span className="capitalize">{e.entityType}</span>
                           {e.actorName ? <> · by {e.actorName}</> : null} · {relTime(e.createdAtUtc)}
                         </p>

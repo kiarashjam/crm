@@ -93,6 +93,7 @@ export function KanbanColumnComponent({
           size="sm"
           className={`h-8 w-8 p-0 rounded-lg hover:bg-white/80 ${column.color}`}
           onClick={() => onOpenCreate(column.status)}
+          aria-label={`Add a task to ${column.label}`}
         >
           <Plus className="w-4 h-4" />
         </Button>
@@ -180,7 +181,7 @@ export function KanbanColumnComponent({
                   <ColumnIcon className={`w-6 h-6 ${column.color} opacity-60`} />
                 </div>
                 <p className="text-sm font-medium text-slate-500 dark:text-slate-400">No tasks here</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Drag tasks here or click add</p>
+                <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">Drag tasks here or click add</p>
               </div>
             )}
           </div>

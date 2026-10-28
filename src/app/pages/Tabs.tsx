@@ -183,7 +183,7 @@ export default function Tabs() {
   /** A tab's items, each removable. */
   const tabItems = (t: OpenTab) =>
     t.items.length === 0 ? (
-      <p className="text-sm text-slate-400 py-3">No items yet.</p>
+      <p className="text-sm text-slate-500 py-3">No items yet.</p>
     ) : (
       <ul className="space-y-1.5">
         {t.items.map((i) => (
@@ -191,7 +191,7 @@ export default function Tabs() {
             <div className="min-w-0 flex-1">
               <span className="text-slate-700">
                 {i.quantity > 1 && (
-                  <span className="text-slate-400">{i.quantity}× </span>
+                  <span className="text-slate-500">{i.quantity}× </span>
                 )}
                 {i.name}
               </span>
@@ -202,7 +202,7 @@ export default function Tabs() {
             <button
               type="button"
               onClick={() => removeItem(t.id, i.id)}
-              className="rounded p-0.5 text-slate-400 hover:text-rose-600"
+              className="-m-1 rounded p-1.5 text-slate-500 hover:text-rose-600"
               aria-label={`Remove ${i.name}`}
             >
               <X className="w-3.5 h-3.5" />
@@ -268,7 +268,7 @@ export default function Tabs() {
         size="sm"
         variant="outline"
         onClick={() => doVoid(t)}
-        className="text-rose-600 hover:bg-rose-50"
+        className="text-rose-700 hover:bg-rose-50"
       >
         Void
       </Button>
@@ -331,7 +331,7 @@ export default function Tabs() {
           />
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : openTabs.length === 0 ? (
@@ -362,7 +362,7 @@ export default function Tabs() {
                   <button
                     type="button"
                     onClick={() => setAddingTo(null)}
-                    className="rounded p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                    className="rounded p-1 text-slate-500 hover:bg-white hover:text-slate-700"
                     aria-label="Close"
                   >
                     <X className="h-4 w-4" />
@@ -457,7 +457,7 @@ export default function Tabs() {
                     <div className="text-right">
                       <p className="font-semibold text-slate-900">{formatCurrency(t.total)}</p>
                       {t.pointsAwarded ? (
-                        <p className="text-xs text-amber-600 inline-flex items-center gap-1">
+                        <p className="text-xs text-amber-700 inline-flex items-center gap-1">
                           <Sparkles className="w-3 h-3" /> +{t.pointsAwarded} pts
                         </p>
                       ) : null}
@@ -483,7 +483,7 @@ export default function Tabs() {
                 value={openForm.memberId}
                 onValueChange={(v) => setOpenForm({ ...openForm, memberId: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Member">
                   <SelectValue placeholder="Pick a member" />
                 </SelectTrigger>
                 <SelectContent>
@@ -502,7 +502,7 @@ export default function Tabs() {
                   value={openForm.venue}
                   onValueChange={(v) => setOpenForm({ ...openForm, venue: v as TabVenue })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Venue">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -516,7 +516,7 @@ export default function Tabs() {
               </div>
               <div>
                 <Label>Server (optional)</Label>
-                <Input
+                <Input aria-label="Server (optional)"
                   value={openForm.serverName}
                   onChange={(e) => setOpenForm({ ...openForm, serverName: e.target.value })}
                 />

@@ -62,17 +62,17 @@ import { RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 
 const STATUS_OPTIONS: { value: TaskStatusType; label: string; icon: typeof Circle; color: string }[] = [
-  { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-400' },
+  { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-500' },
   { value: 'in_progress', label: 'In Progress', icon: Clock, color: 'text-blue-500' },
   { value: 'completed', label: 'Completed', icon: CheckCircle2, color: 'text-emerald-500' },
   { value: 'cancelled', label: 'Cancelled', icon: AlertCircle, color: 'text-red-400' },
 ];
 
 const PRIORITY_OPTIONS: { value: TaskPriorityType; label: string; color: string }[] = [
-  { value: 'none', label: 'None', color: 'text-slate-400' },
+  { value: 'none', label: 'None', color: 'text-slate-500' },
   { value: 'low', label: 'Low', color: 'text-blue-500' },
   { value: 'medium', label: 'Medium', color: 'text-amber-500' },
-  { value: 'high', label: 'High', color: 'text-red-500' },
+  { value: 'high', label: 'High', color: 'text-red-700' },
 ];
 
 function timeAgo(iso: string): string {
@@ -312,7 +312,7 @@ export default function TaskDetail() {
               <div>
                 <Label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</Label>
                 <Select value={task.status} onValueChange={(v) => handleStatusChange(v as TaskStatusType)}>
-                  <SelectTrigger className="h-9 w-[160px] rounded-xl border-slate-200/80 bg-white/80 shadow-sm backdrop-blur">
+                  <SelectTrigger aria-label="Status" className="h-9 w-[160px] rounded-xl border-slate-200/80 bg-white/80 shadow-sm backdrop-blur">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -330,7 +330,7 @@ export default function TaskDetail() {
               <div>
                 <Label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">Priority</Label>
                 <Select value={task.priority} onValueChange={(v) => handlePriorityChange(v as TaskPriorityType)}>
-                  <SelectTrigger className="h-9 w-[140px] rounded-xl border-slate-200/80 bg-white/80 shadow-sm backdrop-blur">
+                  <SelectTrigger aria-label="Priority" className="h-9 w-[140px] rounded-xl border-slate-200/80 bg-white/80 shadow-sm backdrop-blur">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -355,19 +355,19 @@ export default function TaskDetail() {
                   <div className="space-y-4">
                     <div>
                       <Label className="text-xs text-slate-500 mb-1">Title</Label>
-                      <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="text-lg font-semibold" />
+                      <Input aria-label="Title" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="text-lg font-semibold" />
                     </div>
                     <div>
                       <Label className="text-xs text-slate-500 mb-1">Description</Label>
-                      <Textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={3} placeholder="Task description..." />
+                      <Textarea aria-label="Description" value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={3} placeholder="Task description..." />
                     </div>
                     <div>
                       <Label className="text-xs text-slate-500 mb-1">Notes</Label>
-                      <Textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={3} placeholder="Internal notes..." />
+                      <Textarea aria-label="Notes" value={editNotes} onChange={e => setEditNotes(e.target.value)} rows={3} placeholder="Internal notes..." />
                     </div>
                     <div>
                       <Label className="text-xs text-slate-500 mb-1">Due Date</Label>
-                      <Input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} className="w-48" />
+                      <Input aria-label="Due Date" type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} className="w-48" />
                     </div>
                     <div className="flex gap-2">
                       <Button onClick={handleSaveEdit} disabled={saving} size="sm" className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-95">
@@ -388,12 +388,12 @@ export default function TaskDetail() {
               <RecordCard title="Comments" icon={<MessageSquare className="h-3.5 w-3.5" />} tone="emerald" count={comments.length} index={1}>
                 <ul className="mb-4 space-y-2">
                   {commentsLoading && (
-                    <li className="flex items-center justify-center gap-2 py-4 text-sm text-slate-400">
+                    <li className="flex items-center justify-center gap-2 py-4 text-sm text-slate-500">
                       <Loader2 className="w-4 h-4 animate-spin" /> Loading comments...
                     </li>
                   )}
                   {!commentsLoading && comments.length === 0 && (
-                    <li className="py-4 text-center text-sm text-slate-400">No comments yet. Start a discussion!</li>
+                    <li className="py-4 text-center text-sm text-slate-500">No comments yet. Start a discussion!</li>
                   )}
                   {comments.map((c, index) => (
                     <StaggerItem as="li" key={c.id} index={index} className="group flex gap-3 rounded-xl p-3 transition-colors hover:bg-slate-50">
@@ -403,10 +403,10 @@ export default function TaskDetail() {
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 flex items-center gap-2">
                           <span className="text-sm font-medium text-slate-900">{c.authorName}</span>
-                          <span className="text-xs text-slate-400">{timeAgo(c.createdAtUtc)}</span>
+                          <span className="text-xs text-slate-500">{timeAgo(c.createdAtUtc)}</span>
                           <button
                             onClick={() => handleDeleteComment(c.id)}
-                            className="ml-auto text-slate-400 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
+                            className="ml-auto text-slate-500 opacity-0 transition-all hover:text-red-500 group-hover:opacity-100"
                             title="Delete comment"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -439,7 +439,7 @@ export default function TaskDetail() {
                     </Button>
                   </WriteOnly>
                 </div>
-                <p className="mt-2 text-xs text-slate-400">Press Ctrl+Enter to send</p>
+                <p className="mt-2 text-xs text-slate-500">Press Ctrl+Enter to send</p>
               </RecordCard>
             </div>
 
@@ -461,7 +461,7 @@ export default function TaskDetail() {
                   {task.completedAtUtc && (
                     <div className="flex justify-between">
                       <dt className="text-slate-500">Completed</dt>
-                      <dd className="text-emerald-600">{new Date(task.completedAtUtc).toLocaleDateString()}</dd>
+                      <dd className="text-emerald-700">{new Date(task.completedAtUtc).toLocaleDateString()}</dd>
                     </div>
                   )}
                   {task.updatedAtUtc && (
@@ -495,7 +495,7 @@ export default function TaskDetail() {
                     <div className="flex items-center gap-2">
                       <Target className="w-4 h-4 text-orange-500" />
                       <span className="text-slate-500">Lead:</span>
-                      <Link to={`/leads/${task.leadId}`} className="font-medium text-orange-600 hover:underline">
+                      <Link to={`/leads/${task.leadId}`} className="font-medium text-orange-700 hover:underline">
                         {task.leadName || 'View Lead'}
                       </Link>
                     </div>
@@ -510,7 +510,7 @@ export default function TaskDetail() {
                     </div>
                   )}
                   {!task.assigneeName && !task.dealId && !task.leadId && !task.contactId && (
-                    <p className="text-sm text-slate-400">No linked entities</p>
+                    <p className="text-sm text-slate-500">No linked entities</p>
                   )}
                 </dl>
               </RecordCard>

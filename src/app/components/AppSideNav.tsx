@@ -276,7 +276,7 @@ function SideNavBody({ onNavigate }: { onNavigate: () => void }) {
         <div>
           <label htmlFor={filterId} className="sr-only">Find a page</label>
           <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
             <input
               id={filterId}
               value={query}
@@ -348,7 +348,7 @@ function NavCategory({
         <span className={cn('h-6 w-1.5 shrink-0 rounded-full', group.bar)} aria-hidden="true" />
         <span className="min-w-0 flex-1 text-sm font-semibold text-slate-900 dark:text-white">{group.label}</span>
         {!filtering && (
-          <ChevronDown className={cn('h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 motion-reduce:transition-none', expanded && 'rotate-180')} aria-hidden="true" />
+          <ChevronDown className={cn('h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 motion-reduce:transition-none', expanded && 'rotate-180')} aria-hidden="true" />
         )}
       </button>
       <div

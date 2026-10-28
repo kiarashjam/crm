@@ -124,7 +124,7 @@ export function LaunchSequence({ org, destinationLabel, reduceMotion, onComplete
         </motion.div>
 
         <motion.p
-          className="mt-8 text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400"
+          className="mt-8 text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-500"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: reduceMotion ? 0 : 0.26 }}

@@ -209,7 +209,7 @@ export default function Templates() {
   const templateIcon = (t: ExtendedTemplate, size: 'sm' | 'md' = 'md') => {
     const Icon = categoryIcons[t.category] ?? Handshake;
     return (
-      <span className={`flex shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-600 ${size === 'sm' ? 'h-7 w-7' : 'h-10 w-10'}`}>
+      <span className={`flex shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-700 ${size === 'sm' ? 'h-7 w-7' : 'h-10 w-10'}`}>
         <Icon className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-5 w-5'} aria-hidden />
       </span>
     );
@@ -226,7 +226,7 @@ export default function Templates() {
       {t.isSystemTemplate && (
         <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">System</span>
       )}
-      {!t.isSharedWithOrganization && !t.isSystemTemplate && <span className="text-xs text-slate-400">Just you</span>}
+      {!t.isSharedWithOrganization && !t.isSystemTemplate && <span className="text-xs text-slate-500">Just you</span>}
     </span>
   );
 
@@ -238,7 +238,7 @@ export default function Templates() {
           <button
             type="button"
             onClick={() => openEditModal(t)}
-            className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+            className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
             aria-label={`Edit template ${t.title}`}
           >
             <Pencil className="w-4 h-4" />
@@ -247,7 +247,7 @@ export default function Templates() {
             type="button"
             onClick={() => handleDelete(t)}
             disabled={deleting === t.id}
-            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
             aria-label={`Delete template ${t.title}`}
           >
             {deleting === t.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
@@ -257,7 +257,7 @@ export default function Templates() {
       <button
         type="button"
         onClick={() => handleUseTemplate(t)}
-        className="ml-1 whitespace-nowrap rounded-lg px-2 py-1 text-sm font-medium text-orange-600 transition-colors hover:bg-orange-50 hover:text-orange-700 focus-visible:ring-2 focus-visible:ring-orange-500"
+        className="ml-1 whitespace-nowrap rounded-lg px-2 py-1 text-sm font-medium text-orange-700 transition-colors hover:bg-orange-50 hover:text-orange-800 focus-visible:ring-2 focus-visible:ring-orange-500"
       >
         Use →
       </button>
@@ -369,7 +369,7 @@ export default function Templates() {
                           <button
                             type="button"
                             onClick={() => openEditModal(template)}
-                            className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            className="p-1.5 text-slate-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                             aria-label="Edit template"
                           >
                             <Pencil className="w-4 h-4" />
@@ -378,7 +378,7 @@ export default function Templates() {
                             type="button"
                             onClick={() => handleDelete(template)}
                             disabled={deleting === template.id}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                             aria-label="Delete template"
                           >
                             {deleting === template.id ? (
@@ -392,7 +392,7 @@ export default function Templates() {
                     )}
 
                     <div className="flex items-start justify-between mb-4">
-                      <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center text-teal-600">
+                      <div className="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center text-teal-700">
                         <Icon className="w-6 h-6" aria-hidden />
                       </div>
                       <div className="flex gap-1.5">
@@ -421,7 +421,7 @@ export default function Templates() {
                       <button
                         type="button"
                         onClick={() => handleUseTemplate(template)}
-                        className="text-orange-600 hover:text-orange-700 font-medium text-sm transition-colors focus-visible:rounded focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                        className="text-orange-700 hover:text-orange-800 font-medium text-sm transition-colors focus-visible:rounded focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
                       >
                         Use template →
                       </button>
@@ -440,7 +440,7 @@ export default function Templates() {
             <p className="text-sm text-teal-800 mb-4">
               Templates pre-fill the Intelligent Sales Writer with common settings and goals. You can still customize everything before generating.
             </p>
-            <Link to="/help" className="text-teal-600 hover:text-teal-700 font-medium text-sm focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2">
+            <Link to="/help" className="text-teal-700 hover:text-teal-800 font-medium text-sm focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2">
               Learn more about templates →
             </Link>
           </div>
@@ -459,7 +459,7 @@ export default function Templates() {
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-2 text-slate-500 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -597,7 +597,7 @@ export default function Templates() {
                   type="checkbox"
                   checked={formData.isSharedWithOrganization}
                   onChange={(e) => setFormData({ ...formData, isSharedWithOrganization: e.target.checked })}
-                  className="w-5 h-5 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                  className="w-5 h-5 rounded border-slate-300 text-orange-700 focus:ring-orange-500"
                 />
                 <div>
                   <p className="text-sm font-medium text-slate-900">Share with team</p>

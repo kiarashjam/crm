@@ -121,7 +121,7 @@ function DuplicateMergeInner<T extends { id: string }>({ spec, onMerged, classNa
                     </p>
                     <p className="truncate text-xs text-slate-600 sm:text-sm">
                       {groups.length} {groupNoun} {groups.length === 1 ? 'was' : 'were'} entered more than once
-                      {reasons && <span className="text-slate-400"> · {reasons}</span>}
+                      {reasons && <span className="text-slate-500"> · {reasons}</span>}
                     </p>
                   </div>
                   <div className="ml-auto hidden -space-x-2 md:flex" aria-hidden>
@@ -147,7 +147,7 @@ function DuplicateMergeInner<T extends { id: string }>({ spec, onMerged, classNa
                     Review & merge
                     <ArrowRight />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={hide} aria-label="Hide for now" className="text-slate-400 hover:text-slate-600">
+                  <Button variant="ghost" size="icon" onClick={hide} aria-label="Hide for now" className="text-slate-500 hover:text-slate-600">
                     <X />
                   </Button>
                 </div>

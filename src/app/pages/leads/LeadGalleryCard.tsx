@@ -47,32 +47,32 @@ interface Tone {
 // Static class strings, because Tailwind only ships the classes it can read.
 const TONES: Record<ToneKey, Tone> = {
   sky: {
-    wash: 'from-sky-100 via-sky-50/70 to-white', blob: 'bg-sky-300/50',
+    wash: 'from-sky-100 via-sky-50/70 to-white dark:from-sky-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-sky-300/50',
     card: 'hover:border-sky-300 hover:shadow-sky-500/20 focus-visible:ring-sky-400',
     avatar: 'from-sky-400 to-blue-600 shadow-sky-500/30', text: 'text-sky-700', chip: 'bg-sky-50 text-sky-700 ring-sky-200/70',
   },
   violet: {
-    wash: 'from-violet-100 via-violet-50/70 to-white', blob: 'bg-violet-300/50',
+    wash: 'from-violet-100 via-violet-50/70 to-white dark:from-violet-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-violet-300/50',
     card: 'hover:border-violet-300 hover:shadow-violet-500/20 focus-visible:ring-violet-400',
     avatar: 'from-violet-500 to-purple-600 shadow-violet-500/30', text: 'text-violet-700', chip: 'bg-violet-50 text-violet-700 ring-violet-200/70',
   },
   amber: {
-    wash: 'from-amber-100 via-amber-50/70 to-white', blob: 'bg-amber-300/50',
+    wash: 'from-amber-100 via-amber-50/70 to-white dark:from-amber-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-amber-300/50',
     card: 'hover:border-amber-300 hover:shadow-amber-500/20 focus-visible:ring-amber-400',
     avatar: 'from-amber-400 to-orange-500 shadow-amber-500/30', text: 'text-amber-700', chip: 'bg-amber-50 text-amber-700 ring-amber-200/70',
   },
   pink: {
-    wash: 'from-pink-100 via-pink-50/70 to-white', blob: 'bg-pink-300/50',
+    wash: 'from-pink-100 via-pink-50/70 to-white dark:from-pink-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-pink-300/50',
     card: 'hover:border-pink-300 hover:shadow-pink-500/20 focus-visible:ring-pink-400',
     avatar: 'from-pink-500 to-fuchsia-600 shadow-pink-500/30', text: 'text-pink-700', chip: 'bg-pink-50 text-pink-700 ring-pink-200/70',
   },
   teal: {
-    wash: 'from-teal-100 via-teal-50/70 to-white', blob: 'bg-teal-300/50',
+    wash: 'from-teal-100 via-teal-50/70 to-white dark:from-teal-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-teal-300/50',
     card: 'hover:border-teal-300 hover:shadow-teal-500/20 focus-visible:ring-teal-400',
     avatar: 'from-teal-400 to-cyan-600 shadow-teal-500/30', text: 'text-teal-700', chip: 'bg-teal-50 text-teal-700 ring-teal-200/70',
   },
   emerald: {
-    wash: 'from-emerald-100 via-emerald-50/70 to-white', blob: 'bg-emerald-300/50',
+    wash: 'from-emerald-100 via-emerald-50/70 to-white dark:from-emerald-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-emerald-300/50',
     card: 'hover:border-emerald-300 hover:shadow-emerald-500/20 focus-visible:ring-emerald-400',
     avatar: 'from-emerald-500 to-teal-500 shadow-emerald-500/30', text: 'text-emerald-700', chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200/70',
   },
@@ -82,7 +82,7 @@ const TONES: Record<ToneKey, Tone> = {
     avatar: 'from-rose-400 to-slate-400 shadow-rose-500/20', text: 'text-rose-700', chip: 'bg-rose-50 text-rose-700 ring-rose-200/70',
   },
   indigo: {
-    wash: 'from-indigo-100 via-indigo-50/70 to-white', blob: 'bg-indigo-300/50',
+    wash: 'from-indigo-100 via-indigo-50/70 to-white dark:from-indigo-500/20 dark:via-slate-800 dark:to-slate-800', blob: 'bg-indigo-300/50',
     card: 'hover:border-indigo-300 hover:shadow-indigo-500/20 focus-visible:ring-indigo-400',
     avatar: 'from-indigo-500 to-purple-600 shadow-indigo-500/30', text: 'text-indigo-700', chip: 'bg-indigo-50 text-indigo-700 ring-indigo-200/70',
   },
@@ -228,7 +228,7 @@ function ScoreRing({ score, reduce }: { score: number; reduce: boolean }) {
 function Fact({ icon, label, value, title, tone }: { icon: ReactNode; label: string; value: ReactNode; title?: string; tone: string }) {
   return (
     <div className="min-w-0 rounded-xl bg-white/80 px-2.5 py-2 ring-1 ring-slate-200/70" title={title}>
-      <div className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 flex min-w-0 items-center gap-1.5 text-sm font-semibold tabular-nums text-slate-800">
         <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-md', tone)} aria-hidden>{icon}</span>
         <span className="truncate">{value}</span>
@@ -288,26 +288,18 @@ export function LeadGalleryCard({
   return (
     <Reveal
       index={index}
-      role="button"
-      tabIndex={0}
-      aria-label={`Open ${lead.name}`}
       onClick={(e) => {
-        // Controls inside the card (checkbox, links, owner, track, log and their
-        // popovers) do their own thing; only the card itself opens the lead.
+        // A click anywhere on the card opens the lead, for the mouse. Controls inside
+        // it (checkbox, links, owner, track, log and their popovers) do their own
+        // thing. Keyboard and screen-reader users open it from the name, so the card
+        // is not itself a button wrapped around other buttons.
         if ((e.target as HTMLElement).closest('button, a, input, textarea, label, [role="dialog"], [data-radix-popper-content-wrapper]')) return;
         onOpen(lead);
-      }}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen(lead);
-        }
       }}
       className={cn(
         '@container group/card relative flex cursor-pointer flex-col overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm',
         'transition-[translate,box-shadow,border-color] duration-300 ease-out hover:-translate-y-1 hover:shadow-xl motion-reduce:transition-none motion-reduce:hover:translate-y-0',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+        'has-[[data-open-lead]:focus-visible]:-translate-y-1 has-[[data-open-lead]:focus-visible]:shadow-xl',
         selected && 'ring-2 ring-indigo-400 ring-offset-2',
         tone.card,
       )}
@@ -376,10 +368,20 @@ export function LeadGalleryCard({
           </div>
 
           <div className="min-w-0 flex-1 pr-6">
-            <h3 className="truncate text-base font-bold tracking-tight text-slate-900">{lead.name}</h3>
+            <h3 className="truncate text-base font-bold tracking-tight text-slate-900">
+              <button
+                type="button"
+                data-open-lead
+                onClick={() => onOpen(lead)}
+                aria-label={`Open ${lead.name}`}
+                className="max-w-full truncate rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2"
+              >
+                {lead.name}
+              </button>
+            </h3>
             {(company || lead.jobTitle) && (
               <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
-                <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
                 <span className="truncate">{[lead.jobTitle, company].filter(Boolean).join(' · ')}</span>
               </p>
             )}
@@ -423,7 +425,7 @@ export function LeadGalleryCard({
         <div>
           <div className="flex items-center justify-between gap-2">
             <span className={cn('truncate text-xs font-bold', tone.text)}>{life.title}</span>
-            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-400">{life.done}/5</span>
+            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-slate-500">{life.done}/5</span>
           </div>
           <div
             className="mt-1.5 grid grid-cols-5 gap-1"
@@ -466,7 +468,7 @@ export function LeadGalleryCard({
         <div className="grid grid-cols-2 gap-1.5 @sm:grid-cols-4">
           <Fact
             icon={hasScore ? <ScoreRing score={lead.leadScore ?? 0} reduce={reduce} /> : <Gauge className="h-3 w-3" />}
-            tone={hasScore ? '' : 'bg-orange-100 text-orange-600'}
+            tone={hasScore ? '' : 'bg-orange-100 text-orange-700'}
             label="Score"
             value={hasScore ? lead.leadScore : <span className="text-slate-300">—</span>}
           />
@@ -475,7 +477,7 @@ export function LeadGalleryCard({
             tone="bg-sky-100 text-sky-600"
             label="Last touch"
             title={fullDate(touched ?? undefined)}
-            value={touched ? ago(touched) : <span className="text-rose-500">Never</span>}
+            value={touched ? ago(touched) : <span className="text-rose-700">Never</span>}
           />
           <Fact
             icon={<ActivityIcon className="h-3 w-3" />}
@@ -586,12 +588,12 @@ export function LeadGalleryCard({
                   <span className={cn('min-w-0 flex-1 truncate text-xs', typeKey === 'system' ? 'italic text-slate-500' : 'text-slate-700')}>
                     {text}
                   </span>
-                  <span className="shrink-0 text-[10px] text-slate-400">{ago(activity.createdAt)}</span>
+                  <span className="shrink-0 text-[10px] text-slate-500">{ago(activity.createdAt)}</span>
                 </li>
               );
             })}
             {interactions.length > recent.length && (
-              <li className="pl-1 text-[11px] text-slate-400">+{interactions.length - recent.length} more on the lead page</li>
+              <li className="pl-1 text-[11px] text-slate-500">+{interactions.length - recent.length} more on the lead page</li>
             )}
           </ul>
         )}
@@ -610,7 +612,7 @@ export function LeadGalleryCard({
                 {tag}
               </span>
             ))}
-            {lead.tags.length > 3 && <span className="text-[11px] font-medium text-slate-400">+{lead.tags.length - 3}</span>}
+            {lead.tags.length > 3 && <span className="text-[11px] font-medium text-slate-500">+{lead.tags.length - 3}</span>}
           </div>
         )}
 
@@ -644,7 +646,7 @@ export function LeadGalleryCard({
                 >
                   <OwnerAvatar name={assignee?.name} />
                   <span className="truncate font-medium">{assignee ? assignee.name : 'Unassigned'}</span>
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-500" aria-hidden />
                 </button>
               }
             />
@@ -690,7 +692,7 @@ export function LeadGalleryCard({
 function OwnerAvatar({ name }: { name?: string }) {
   if (!name) {
     return (
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400" aria-hidden>
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500" aria-hidden>
         <UserCircle className="h-4 w-4" />
       </span>
     );

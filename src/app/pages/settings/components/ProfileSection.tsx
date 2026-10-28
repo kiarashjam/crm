@@ -32,7 +32,7 @@ export function ProfileSection({
         <div>
           <p className="font-medium text-slate-900">Profile Photo</p>
           <p className="text-sm text-slate-500 mb-2">JPG, PNG or GIF. Max size 2MB.</p>
-          <button className="text-sm text-orange-600 hover:text-orange-700 font-medium">
+          <button className="text-sm text-orange-700 hover:text-orange-800 font-medium">
             Upload photo
           </button>
         </div>
@@ -128,7 +128,7 @@ export function ProfileSection({
           maxLength={500}
           className="w-full px-4 py-3 border border-slate-300 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none resize-none transition-colors"
         />
-        <p className="text-xs text-slate-400 mt-1">{settings.bio?.length || 0}/500 characters</p>
+        <p className="text-xs text-slate-500 mt-1">{settings.bio?.length || 0}/500 characters</p>
       </div>
     </div>
   );

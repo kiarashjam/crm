@@ -374,7 +374,7 @@ export default function MemberDetail() {
                             <p className="text-xs text-slate-500">{formatDateTime(v.visitedAtUtc)}</p>
                           </div>
                           {v.pointsAwarded > 0 && (
-                            <span className="text-xs font-semibold text-amber-600">+{v.pointsAwarded} pts</span>
+                            <span className="text-xs font-semibold text-amber-700">+{v.pointsAwarded} pts</span>
                           )}
                         </li>
                       ))}
@@ -400,7 +400,7 @@ export default function MemberDetail() {
                           </div>
                           <span
                             className={`text-xs font-semibold ${
-                              e.points >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                              e.points >= 0 ? 'text-emerald-700' : 'text-rose-600'
                             }`}
                           >
                             {e.points >= 0 ? '+' : ''}
@@ -454,9 +454,9 @@ export default function MemberDetail() {
                         {memberPayments.slice(0, 5).map((p) => (
                           <li key={p.id} className="flex items-center justify-between">
                             <span className="text-slate-600">
-                              {p.method} {p.reference && <span className="text-slate-400">· {p.reference}</span>}
+                              {p.method} {p.reference && <span className="text-slate-500">· {p.reference}</span>}
                             </span>
-                            <span className="font-semibold text-emerald-600">+{formatCurrency(p.amount)}</span>
+                            <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
                           </li>
                         ))}
                       </ul>
@@ -478,7 +478,7 @@ export default function MemberDetail() {
                         <p className="text-xs text-slate-500">{formatDateTime(v.visitedAtUtc)}</p>
                       </div>
                       {v.pointsAwarded > 0 && (
-                        <span className="text-sm font-semibold text-amber-600">
+                        <span className="text-sm font-semibold text-amber-700">
                           +{v.pointsAwarded} pts
                         </span>
                       )}
@@ -527,7 +527,7 @@ export default function MemberDetail() {
                       </div>
                       <span
                         className={`font-semibold ${
-                          e.points >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                          e.points >= 0 ? 'text-emerald-700' : 'text-rose-600'
                         }`}
                       >
                         {e.points >= 0 ? '+' : ''}
@@ -556,7 +556,7 @@ export default function MemberDetail() {
                         </span>
                       </div>
                       <p className="text-sm text-slate-500 mt-1 line-clamp-2">{c.preview}</p>
-                      <p className="text-xs text-slate-400 mt-1">
+                      <p className="text-xs text-slate-500 mt-1">
                         {c.channel} · {c.category} · {formatDateTime(c.sentAtUtc)}
                       </p>
                     </div>
@@ -586,7 +586,7 @@ export default function MemberDetail() {
             </TabsContent>
           </Tabs>
 
-          <p className="text-xs text-slate-400 mt-8">
+          <p className="text-xs text-slate-500 mt-8">
             {allMembers.length} members on file · viewing {member.firstName} {member.lastName}
           </p>
         </main>
@@ -640,7 +640,7 @@ function DlRow({ label, value }: { label: string; value: string }) {
 function EmptyMini({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <div className="bg-white rounded-2xl border border-dashed border-slate-200 py-12 text-center">
-      <div className="mx-auto w-10 h-10 rounded-xl bg-slate-50 text-slate-400 flex items-center justify-center mb-2">
+      <div className="mx-auto w-10 h-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center mb-2">
         {icon}
       </div>
       <p className="text-sm text-slate-500">{text}</p>

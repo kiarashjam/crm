@@ -19,13 +19,13 @@ interface EmptyStateProps {
 
 const variantStyles = {
   orange: {
-    icon: 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 ring-orange-100 dark:ring-orange-800/50',
-    button: 'bg-orange-600 hover:bg-orange-500 focus-visible:ring-orange-500 dark:bg-orange-500 dark:hover:bg-orange-400',
+    icon: 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 ring-orange-100 dark:ring-orange-800/50',
+    button: 'bg-orange-700 hover:bg-orange-800 focus-visible:ring-orange-500 dark:bg-orange-500 dark:hover:bg-orange-400',
     ring: 'focus-visible:ring-orange-500',
   },
   teal: {
-    icon: 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 ring-teal-100 dark:ring-teal-800/50',
-    button: 'bg-teal-600 hover:bg-teal-500 focus-visible:ring-teal-500 dark:bg-teal-500 dark:hover:bg-teal-400',
+    icon: 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 ring-teal-100 dark:ring-teal-800/50',
+    button: 'bg-teal-700 hover:bg-teal-800 focus-visible:ring-teal-500 dark:bg-teal-500 dark:hover:bg-teal-400',
     ring: 'focus-visible:ring-teal-500',
   },
 };

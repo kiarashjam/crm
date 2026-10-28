@@ -86,8 +86,8 @@ const KIND_META: Record<NextActionKind, { icon: React.ElementType; cta: string }
 };
 
 function scoreTone(score: number): string {
-  if (score >= 70) return 'text-emerald-600';
-  if (score >= 40) return 'text-amber-600';
+  if (score >= 70) return 'text-emerald-700';
+  if (score >= 40) return 'text-amber-700';
   return 'text-slate-500';
 }
 

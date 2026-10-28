@@ -361,7 +361,7 @@ export default function Applications() {
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -373,7 +373,7 @@ export default function Applications() {
               value={statusFilter}
               onValueChange={(v) => setStatusFilter(v as 'All' | ApplicationStatus)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-48">
+              <SelectTrigger aria-label="Filter by status" className="h-11 rounded-xl md:w-48">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -390,7 +390,7 @@ export default function Applications() {
 
           {/* List */}
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -530,19 +530,19 @@ export default function Applications() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
             <div>
               <Label>First name</Label>
-              <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+              <Input aria-label="First name" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
             </div>
             <div>
               <Label>Last name</Label>
-              <Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+              <Input aria-label="Last name" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
             </div>
             <div>
               <Label>Email</Label>
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              <Input aria-label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </div>
             <div>
               <Label>Phone</Label>
-              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              <Input aria-label="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
             <div>
               <Label>Requested tier</Label>
@@ -550,7 +550,7 @@ export default function Applications() {
                 value={form.requestedTier}
                 onValueChange={(v) => setForm({ ...form, requestedTier: v as MemberTier })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Requested tier">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -564,7 +564,7 @@ export default function Applications() {
             </div>
             <div>
               <Label>Referred by</Label>
-              <Input
+              <Input aria-label="Referred by"
                 value={form.referredByName}
                 onChange={(e) => setForm({ ...form, referredByName: e.target.value })}
                 placeholder="Existing member name"
@@ -572,14 +572,14 @@ export default function Applications() {
             </div>
             <div className="md:col-span-2">
               <Label>Occupation</Label>
-              <Input
+              <Input aria-label="Occupation"
                 value={form.occupation}
                 onChange={(e) => setForm({ ...form, occupation: e.target.value })}
               />
             </div>
             <div className="md:col-span-2">
               <Label>Reason for joining</Label>
-              <Textarea
+              <Textarea aria-label="Reason for joining"
                 value={form.reasonForJoining}
                 onChange={(e) => setForm({ ...form, reasonForJoining: e.target.value })}
                 rows={3}
@@ -622,7 +622,7 @@ export default function Applications() {
           </DialogHeader>
           <div className="py-2">
             <Label>Committee notes (optional)</Label>
-            <Textarea
+            <Textarea aria-label="Committee notes (optional)"
               value={reviewerNotes}
               onChange={(e) => setReviewerNotes(e.target.value)}
               rows={3}

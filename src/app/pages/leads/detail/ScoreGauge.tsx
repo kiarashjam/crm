@@ -90,7 +90,7 @@ export function ScoreGauge({ score, size = 96, strokeWidth = 8, hideCaption = fa
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <span className={cn('font-bold tabular-nums leading-none', size < 72 ? 'text-sm' : 'text-xl', valueTone)}>{clamped}</span>
-        {!hideCaption && <span className="mt-0.5 text-[9px] uppercase tracking-widest text-slate-400">Score</span>}
+        {!hideCaption && <span className="mt-0.5 text-[9px] uppercase tracking-widest text-slate-500">Score</span>}
       </div>
     </div>
   );

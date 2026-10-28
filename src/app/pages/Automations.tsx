@@ -117,8 +117,8 @@ export default function Automations() {
     <WriteOnly>
       <div className="flex shrink-0 items-center gap-2">
         <Switch checked={r.enabled} onCheckedChange={() => toggle(r)} aria-label="Enabled" />
-        <button type="button" onClick={() => { setEditing(r); setEditorOpen(true); }} aria-label={`Edit ${r.name}`} className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
-        <button type="button" onClick={() => remove(r)} aria-label={`Delete ${r.name}`} className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { setEditing(r); setEditorOpen(true); }} aria-label={`Edit ${r.name}`} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"><Pencil className="h-4 w-4" /></button>
+        <button type="button" onClick={() => remove(r)} aria-label={`Delete ${r.name}`} className="rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
       </div>
     </WriteOnly>
   );
@@ -174,7 +174,7 @@ export default function Automations() {
           />
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            <div className="flex items-center justify-center py-20 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : rules.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center">
               <Zap className="mx-auto h-10 w-10 text-slate-300" />
@@ -327,14 +327,14 @@ function AutomationEditor({ open, onOpenChange, rule, organizationId, onSaved }:
                 <div key={i} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                   <div className="flex items-center gap-2">
                     <Select value={a.type} onValueChange={(v) => setActionType(i, v as ActionType)}>
-                      <SelectTrigger className="h-8 w-48 bg-white"><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label={`Action ${i + 1}`} className="h-8 w-48 bg-white"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {(Object.keys(ACTION_LABELS) as ActionType[]).map((t) => (
                           <SelectItem key={t} value={t}>{ACTION_LABELS[t]}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <button type="button" onClick={() => setActions((p) => p.filter((_, idx) => idx !== i))} className="ml-auto rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                    <button type="button" onClick={() => setActions((p) => p.filter((_, idx) => idx !== i))} aria-label={`Remove action ${i + 1}`} className="ml-auto rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -343,7 +343,7 @@ function AutomationEditor({ open, onOpenChange, rule, organizationId, onSaved }:
                       <>
                         <Input value={a.config.title ?? ''} onChange={(e) => setConfig(i, 'title', e.target.value)} placeholder="Task title" className="h-8 bg-white" />
                         <div className="flex items-center gap-2 text-sm text-slate-500">
-                          Due in <Input type="number" min={0} value={a.config.dueInDays ?? ''} onChange={(e) => setConfig(i, 'dueInDays', e.target.value)} className="h-8 w-20 bg-white" /> days
+                          Due in <Input aria-label="Due in days" type="number" min={0} value={a.config.dueInDays ?? ''} onChange={(e) => setConfig(i, 'dueInDays', e.target.value)} className="h-8 w-20 bg-white" /> days
                         </div>
                       </>
                     )}

@@ -99,19 +99,19 @@ const HERO: Record<HeroTone, HeroStyle> = {
 };
 
 const STAT: Record<StatTone, { chip: string; bar: string; on: string; hover: string }> = {
-  slate: { chip: 'from-slate-400 to-slate-600 shadow-slate-500/30', bar: 'from-slate-400 to-slate-600', on: 'bg-slate-50 ring-2 ring-slate-400', hover: 'hover:ring-slate-300' },
-  indigo: { chip: 'from-indigo-500 to-violet-500 shadow-indigo-500/30', bar: 'from-indigo-500 to-violet-500', on: 'bg-indigo-50 ring-2 ring-indigo-400', hover: 'hover:ring-indigo-300' },
-  violet: { chip: 'from-violet-500 to-fuchsia-500 shadow-violet-500/30', bar: 'from-violet-500 to-fuchsia-500', on: 'bg-violet-50 ring-2 ring-violet-400', hover: 'hover:ring-violet-300' },
-  blue: { chip: 'from-blue-500 to-indigo-500 shadow-blue-500/30', bar: 'from-blue-500 to-indigo-500', on: 'bg-blue-50 ring-2 ring-blue-400', hover: 'hover:ring-blue-300' },
-  sky: { chip: 'from-sky-400 to-blue-500 shadow-sky-500/30', bar: 'from-sky-400 to-blue-500', on: 'bg-sky-50 ring-2 ring-sky-400', hover: 'hover:ring-sky-300' },
-  cyan: { chip: 'from-cyan-400 to-sky-500 shadow-cyan-500/30', bar: 'from-cyan-400 to-sky-500', on: 'bg-cyan-50 ring-2 ring-cyan-400', hover: 'hover:ring-cyan-300' },
-  teal: { chip: 'from-teal-400 to-cyan-500 shadow-teal-500/30', bar: 'from-teal-400 to-cyan-500', on: 'bg-teal-50 ring-2 ring-teal-400', hover: 'hover:ring-teal-300' },
-  emerald: { chip: 'from-emerald-400 to-teal-500 shadow-emerald-500/30', bar: 'from-emerald-400 to-teal-500', on: 'bg-emerald-50 ring-2 ring-emerald-400', hover: 'hover:ring-emerald-300' },
-  amber: { chip: 'from-amber-400 to-orange-500 shadow-amber-500/30', bar: 'from-amber-400 to-orange-500', on: 'bg-amber-50 ring-2 ring-amber-400', hover: 'hover:ring-amber-300' },
-  orange: { chip: 'from-orange-400 to-pink-500 shadow-orange-500/30', bar: 'from-orange-400 to-pink-500', on: 'bg-orange-50 ring-2 ring-orange-400', hover: 'hover:ring-orange-300' },
-  rose: { chip: 'from-rose-400 to-pink-500 shadow-rose-500/30', bar: 'from-rose-400 to-pink-500', on: 'bg-rose-50 ring-2 ring-rose-400', hover: 'hover:ring-rose-300' },
-  pink: { chip: 'from-pink-400 to-fuchsia-500 shadow-pink-500/30', bar: 'from-pink-400 to-fuchsia-500', on: 'bg-pink-50 ring-2 ring-pink-400', hover: 'hover:ring-pink-300' },
-  fuchsia: { chip: 'from-fuchsia-500 to-purple-500 shadow-fuchsia-500/30', bar: 'from-fuchsia-500 to-purple-500', on: 'bg-fuchsia-50 ring-2 ring-fuchsia-400', hover: 'hover:ring-fuchsia-300' },
+  slate: { chip: 'from-slate-400 to-slate-600 shadow-slate-500/30', bar: 'from-slate-400 to-slate-600', on: 'bg-slate-50 ring-2 ring-slate-400 dark:bg-slate-800', hover: 'hover:ring-slate-300' },
+  indigo: { chip: 'from-indigo-500 to-violet-500 shadow-indigo-500/30', bar: 'from-indigo-500 to-violet-500', on: 'bg-indigo-50 ring-2 ring-indigo-400 dark:bg-slate-800', hover: 'hover:ring-indigo-300' },
+  violet: { chip: 'from-violet-500 to-fuchsia-500 shadow-violet-500/30', bar: 'from-violet-500 to-fuchsia-500', on: 'bg-violet-50 ring-2 ring-violet-400 dark:bg-slate-800', hover: 'hover:ring-violet-300' },
+  blue: { chip: 'from-blue-500 to-indigo-500 shadow-blue-500/30', bar: 'from-blue-500 to-indigo-500', on: 'bg-blue-50 ring-2 ring-blue-400 dark:bg-slate-800', hover: 'hover:ring-blue-300' },
+  sky: { chip: 'from-sky-400 to-blue-500 shadow-sky-500/30', bar: 'from-sky-400 to-blue-500', on: 'bg-sky-50 ring-2 ring-sky-400 dark:bg-slate-800', hover: 'hover:ring-sky-300' },
+  cyan: { chip: 'from-cyan-400 to-sky-500 shadow-cyan-500/30', bar: 'from-cyan-400 to-sky-500', on: 'bg-cyan-50 ring-2 ring-cyan-400 dark:bg-slate-800', hover: 'hover:ring-cyan-300' },
+  teal: { chip: 'from-teal-400 to-cyan-500 shadow-teal-500/30', bar: 'from-teal-400 to-cyan-500', on: 'bg-teal-50 ring-2 ring-teal-400 dark:bg-slate-800', hover: 'hover:ring-teal-300' },
+  emerald: { chip: 'from-emerald-400 to-teal-500 shadow-emerald-500/30', bar: 'from-emerald-400 to-teal-500', on: 'bg-emerald-50 ring-2 ring-emerald-400 dark:bg-slate-800', hover: 'hover:ring-emerald-300' },
+  amber: { chip: 'from-amber-400 to-orange-500 shadow-amber-500/30', bar: 'from-amber-400 to-orange-500', on: 'bg-amber-50 ring-2 ring-amber-400 dark:bg-slate-800', hover: 'hover:ring-amber-300' },
+  orange: { chip: 'from-orange-400 to-pink-500 shadow-orange-500/30', bar: 'from-orange-400 to-pink-500', on: 'bg-orange-50 ring-2 ring-orange-400 dark:bg-slate-800', hover: 'hover:ring-orange-300' },
+  rose: { chip: 'from-rose-400 to-pink-500 shadow-rose-500/30', bar: 'from-rose-400 to-pink-500', on: 'bg-rose-50 ring-2 ring-rose-400 dark:bg-slate-800', hover: 'hover:ring-rose-300' },
+  pink: { chip: 'from-pink-400 to-fuchsia-500 shadow-pink-500/30', bar: 'from-pink-400 to-fuchsia-500', on: 'bg-pink-50 ring-2 ring-pink-400 dark:bg-slate-800', hover: 'hover:ring-pink-300' },
+  fuchsia: { chip: 'from-fuchsia-500 to-purple-500 shadow-fuchsia-500/30', bar: 'from-fuchsia-500 to-purple-500', on: 'bg-fuchsia-50 ring-2 ring-fuchsia-400 dark:bg-slate-800', hover: 'hover:ring-fuchsia-300' },
 };
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -161,7 +161,7 @@ function Stat({ stat, index, reduce }: { stat: PageStat; index: number; reduce: 
         <span className="block truncate text-lg font-bold leading-tight tabular-nums text-slate-900">{value}</span>
         <span className="block truncate text-[11px] font-medium text-slate-500">
           {stat.label}
-          {stat.hint && <span className="font-normal text-slate-400"> · {stat.hint}</span>}
+          {stat.hint && <span className="font-normal text-slate-500"> · {stat.hint}</span>}
         </span>
       </span>
       {stat.pressed && (
@@ -275,7 +275,7 @@ export default function PageHero({
             {back && (
               <Link
                 to={back.to}
-                className="group/back mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900"
+                className="group/back mb-1 inline-flex min-h-6 items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900"
               >
                 <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover/back:-translate-x-0.5" aria-hidden />
                 {back.label}

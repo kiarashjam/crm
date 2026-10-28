@@ -118,7 +118,7 @@ function CopyTypeCard({
       {/* Description */}
       <span className={cn(
         "text-[11px] mt-1 transition-colors duration-300 hidden sm:block",
-        isSelected ? "text-orange-600/70" : "text-slate-400 group-hover:text-slate-500"
+        isSelected ? "text-orange-700" : "text-slate-500 group-hover:text-slate-500"
       )}>
         {type.desc}
       </span>
@@ -209,7 +209,7 @@ export function SalesWriter({
               <Zap className="w-3.5 h-3.5 text-orange-500" />
               Choose copy type
             </label>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-slate-500">
               {selectedType ? '1 selected' : 'Select one'}
             </span>
           </div>
@@ -247,7 +247,7 @@ export function SalesWriter({
                       <option key={g} value={g}>{g}</option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 pointer-events-none" />
                 </div>
               </div>
 
@@ -284,7 +284,7 @@ export function SalesWriter({
             <div className="space-y-2">
               <label htmlFor="context" className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 Optional context
-                <span className="text-[10px] font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Recommended</span>
+                <span className="text-[10px] font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Recommended</span>
               </label>
               <div className="relative">
                 <textarea
@@ -305,7 +305,7 @@ export function SalesWriter({
             {/* Language selector */}
             <div className="space-y-2">
               <label htmlFor="language" className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <Globe className="w-4 h-4 text-slate-400" />
+                <Globe className="w-4 h-4 text-slate-500" />
                 Output language
               </label>
               <select
@@ -321,7 +321,7 @@ export function SalesWriter({
                 ))}
               </select>
               {language !== 'en' && (
-                <p className="flex items-center gap-2 text-xs text-orange-600 font-medium">
+                <p className="flex items-center gap-2 text-xs text-orange-700 font-medium">
                   <Sparkles className="w-4 h-4" />
                   AI will generate copy in {SUPPORTED_LANGUAGES.find(l => l.code === language)?.name}
                 </p>
@@ -338,7 +338,7 @@ export function SalesWriter({
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                    selectedRecipient ? "bg-orange-100 text-orange-600" : "bg-slate-200/80 text-slate-500"
+                    selectedRecipient ? "bg-orange-100 text-orange-700" : "bg-slate-200/80 text-slate-500"
                   )}>
                     <User className="w-4 h-4" />
                   </div>
@@ -358,7 +358,7 @@ export function SalesWriter({
                   {showRecipientPicker ? (
                     <ChevronUp className="w-4 h-4 text-slate-500" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                    <ChevronDown className="w-4 h-4 text-slate-500" />
                   )}
                 </div>
               </button>
@@ -377,7 +377,7 @@ export function SalesWriter({
                       <button
                         type="button"
                         onClick={() => setSelectedRecipient(null)}
-                        className="p-2 text-slate-400 hover:text-slate-600 hover:bg-white rounded-lg transition-colors"
+                        className="p-2 text-slate-500 hover:text-slate-600 hover:bg-white rounded-lg transition-colors"
                         aria-label="Remove recipient"
                       >
                         <X className="w-4 h-4" />

@@ -126,7 +126,7 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
         <p className="text-slate-600 text-sm">
           Connect the real API (<code className="text-xs bg-slate-100 px-1 rounded">VITE_API_URL</code>) to configure
           inbound webhooks from this screen. To ask Claude about this organization, open{' '}
-          <Link to="/settings?tab=claude" className="text-orange-600 font-medium hover:underline">Claude</Link>.
+          <Link to="/settings?tab=claude" className="text-orange-700 font-medium hover:underline">Claude</Link>.
         </p>
       </div>
     );
@@ -141,7 +141,7 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
         </h2>
         <p className="text-slate-600 text-sm">
           Select an organization to see webhook URLs and passwords. Claude setup is on{' '}
-          <Link to="/settings?tab=claude" className="text-orange-600 font-medium hover:underline">Claude</Link>.
+          <Link to="/settings?tab=claude" className="text-orange-700 font-medium hover:underline">Claude</Link>.
         </p>
       </div>
     );
@@ -165,11 +165,11 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
         </h2>
         <p className="text-slate-600 text-sm mt-1">
           POST JSON leads from external tools on{' '}
-          <Link to="/leads/webhook" className="text-orange-600 font-medium hover:underline">
+          <Link to="/leads/webhook" className="text-orange-700 font-medium hover:underline">
             Lead webhook
           </Link>
           . To let Claude read this organization’s leads and tasks, follow{' '}
-          <Link to="/settings?tab=claude" className="text-orange-600 font-medium hover:underline">
+          <Link to="/settings?tab=claude" className="text-orange-700 font-medium hover:underline">
             Claude
           </Link>
           .

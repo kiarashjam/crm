@@ -207,7 +207,7 @@ export function AccountSection({
           </button>
         )}
 
-        <Link to="/help" className="block text-center text-sm text-orange-600 hover:text-orange-700 font-medium pt-2">
+        <Link to="/help" className="block text-center text-sm text-orange-700 hover:text-orange-800 font-medium pt-2">
           Need help?
         </Link>
       </div>

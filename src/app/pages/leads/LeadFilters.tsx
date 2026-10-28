@@ -72,7 +72,7 @@ export function LeadFilters({
               <button
                 type="button"
                 onClick={() => onSearchChange('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-white/10 hover:bg-red-500/30 flex items-center justify-center text-slate-400 hover:text-red-300 transition-all duration-200"
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-white/10 hover:bg-red-500/30 flex items-center justify-center text-slate-500 hover:text-red-300 transition-all duration-200"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -133,31 +133,31 @@ export function LeadFilters({
               <SelectContent>
                 <SelectItem value="createdAt-desc">
                   <span className="flex items-center gap-2">
-                    <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                    <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                     Newest first
                   </span>
                 </SelectItem>
                 <SelectItem value="createdAt-asc">
                   <span className="flex items-center gap-2">
-                    <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                    <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                     Oldest first
                   </span>
                 </SelectItem>
                 <SelectItem value="name-asc">
                   <span className="flex items-center gap-2">
-                    <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                    <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                     Name A-Z
                   </span>
                 </SelectItem>
                 <SelectItem value="name-desc">
                   <span className="flex items-center gap-2">
-                    <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                    <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                     Name Z-A
                   </span>
                 </SelectItem>
                 <SelectItem value="status-asc">
                   <span className="flex items-center gap-2">
-                    <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                    <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                     Status A-Z
                   </span>
                 </SelectItem>

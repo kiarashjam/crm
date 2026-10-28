@@ -14,7 +14,7 @@ function ToggleSwitch({ checked, onChange, label, description }: ToggleSwitchPro
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <p className="font-medium text-slate-900">{label}</p>
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-600">
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-700">
             <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
             Coming soon
           </span>
@@ -60,7 +60,7 @@ export function NotificationsSection({
       {/* Email Notifications */}
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <Mail className="w-5 h-5 text-slate-400" />
+          <Mail className="w-5 h-5 text-slate-500" />
           <h3 className="font-semibold text-slate-900">Email Notifications</h3>
         </div>
         <div className="space-y-3">
@@ -104,7 +104,7 @@ export function NotificationsSection({
       {/* In-App Notifications */}
       <div className="pt-6 border-t border-slate-200">
         <div className="flex items-center gap-2 mb-4">
-          <Bell className="w-5 h-5 text-slate-400" />
+          <Bell className="w-5 h-5 text-slate-500" />
           <h3 className="font-semibold text-slate-900">In-App Notifications</h3>
         </div>
         <div className="space-y-3">

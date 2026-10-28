@@ -46,9 +46,9 @@ export function BrandSection({ settings, updateSettings }: BrandSectionProps) {
                   onChange={() => updateSettings({ brandTone: opt.value })}
                   className="sr-only"
                 />
-                <Icon className={`w-6 h-6 mb-2 ${isSelected ? 'text-orange-600' : 'text-slate-400'}`} />
+                <Icon className={`w-6 h-6 mb-2 ${isSelected ? 'text-orange-600' : 'text-slate-500'}`} />
                 <p className={`font-medium ${isSelected ? 'text-orange-700' : 'text-slate-900'}`}>{opt.label}</p>
-                <p className={`text-xs mt-1 ${isSelected ? 'text-orange-600/70' : 'text-slate-500'}`}>{opt.desc}</p>
+                <p className={`text-xs mt-1 ${isSelected ? 'text-orange-700' : 'text-slate-500'}`}>{opt.desc}</p>
                 {isSelected && (
                   <div className="absolute top-3 right-3 w-5 h-5 bg-orange-600 rounded-full flex items-center justify-center">
                     <Check className="w-3 h-3 text-white" />

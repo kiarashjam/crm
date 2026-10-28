@@ -268,7 +268,7 @@ export default function ContactDetail() {
           <div className="text-center">
             <User className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <h2 className="text-lg font-semibold text-slate-700">Contact not found</h2>
-            <Link to="/contacts" className="text-emerald-600 text-sm hover:underline mt-2 block">Back to Contacts</Link>
+            <Link to="/contacts" className="text-emerald-700 text-sm hover:underline mt-2 block">Back to Contacts</Link>
           </div>
         </main>
       </div>
@@ -479,20 +479,20 @@ export default function ContactDetail() {
                           </p>
                           <div className="mt-0.5 flex items-center gap-2">
                             {t.dueDateUtc && (
-                              <span className={cn('text-xs', new Date(t.dueDateUtc) < new Date() && t.status !== 'completed' ? 'text-red-500' : 'text-slate-400')}>
+                              <span className={cn('text-xs', new Date(t.dueDateUtc) < new Date() && t.status !== 'completed' ? 'text-red-700' : 'text-slate-500')}>
                                 Due {new Date(t.dueDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                               </span>
                             )}
                             {t.priority && t.priority !== 'none' && (
                               <span className={cn('rounded px-1.5 py-0.5 text-xs',
                                 t.priority === 'high' && 'bg-red-100 text-red-600',
-                                t.priority === 'medium' && 'bg-amber-100 text-amber-600',
+                                t.priority === 'medium' && 'bg-amber-100 text-amber-700',
                                 t.priority === 'low' && 'bg-blue-100 text-blue-600'
                               )}>
                                 {t.priority}
                               </span>
                             )}
-                            {t.assigneeName && <span className="text-xs text-slate-400">{t.assigneeName}</span>}
+                            {t.assigneeName && <span className="text-xs text-slate-500">{t.assigneeName}</span>}
                           </div>
                         </div>
                       </StaggerItem>
@@ -518,7 +518,7 @@ export default function ContactDetail() {
                     <div className="min-w-0">
                       <dt className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500"><Building2 className="h-3 w-3" /> Company</dt>
                       <dd className="mt-0.5 truncate">
-                        <Link to={contact.companyId ? `/companies/${contact.companyId}` : '/companies'} className="font-medium text-emerald-600 hover:underline">
+                        <Link to={contact.companyId ? `/companies/${contact.companyId}` : '/companies'} className="font-medium text-emerald-700 hover:underline">
                           {contact.companyName}
                         </Link>
                       </dd>
@@ -543,7 +543,7 @@ export default function ContactDetail() {
                     <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{contact.description}</p>
                   </div>
                 )}
-                <div className="mt-3 flex gap-4 text-xs text-slate-400">
+                <div className="mt-3 flex gap-4 text-xs text-slate-500">
                   {contact.createdAtUtc && <span>Created {new Date(contact.createdAtUtc).toLocaleDateString()}</span>}
                   {contact.updatedAtUtc && <span>Updated {new Date(contact.updatedAtUtc).toLocaleDateString()}</span>}
                 </div>
@@ -574,7 +574,7 @@ export default function ContactDetail() {
                             </p>
                             <p className="text-xs text-slate-500">{deal.dealStageName || deal.stage || 'No stage'}</p>
                           </div>
-                          <p className="text-sm font-bold text-emerald-600">{dealAmount(deal)}</p>
+                          <p className="text-sm font-bold text-emerald-700">{dealAmount(deal)}</p>
                         </Link>
                       </StaggerItem>
                     ))}

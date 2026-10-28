@@ -58,15 +58,15 @@ import {
 } from '@/app/components/views';
 
 const ACTIVITY_TYPES = [
-  { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-600', borderColor: 'border-emerald-200' },
-  { id: 'meeting', label: 'Meeting', icon: Users, color: 'blue', bgColor: 'bg-blue-100', textColor: 'text-blue-600', borderColor: 'border-blue-200' },
-  { id: 'email', label: 'Email', icon: Mail, color: 'amber', bgColor: 'bg-amber-100', textColor: 'text-amber-600', borderColor: 'border-amber-200' },
+  { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-700', borderColor: 'border-emerald-200' },
+  { id: 'meeting', label: 'Meeting', icon: Users, color: 'blue', bgColor: 'bg-blue-100', textColor: 'text-blue-700', borderColor: 'border-blue-200' },
+  { id: 'email', label: 'Email', icon: Mail, color: 'amber', bgColor: 'bg-amber-100', textColor: 'text-amber-700', borderColor: 'border-amber-200' },
   { id: 'note', label: 'Note', icon: FileText, color: 'slate', bgColor: 'bg-slate-100', textColor: 'text-slate-600', borderColor: 'border-slate-200' },
-  { id: 'video', label: 'Video Call', icon: Video, color: 'purple', bgColor: 'bg-purple-100', textColor: 'text-purple-600', borderColor: 'border-purple-200' },
-  { id: 'demo', label: 'Demo', icon: Presentation, color: 'rose', bgColor: 'bg-rose-100', textColor: 'text-rose-600', borderColor: 'border-rose-200' },
-  { id: 'task', label: 'Task Completed', icon: CheckCircle, color: 'cyan', bgColor: 'bg-cyan-100', textColor: 'text-cyan-600', borderColor: 'border-cyan-200' },
-  { id: 'follow_up', label: 'Follow-up', icon: CalendarClock, color: 'orange', bgColor: 'bg-orange-100', textColor: 'text-orange-600', borderColor: 'border-orange-200' },
-  { id: 'deadline', label: 'Deadline', icon: Clock, color: 'red', bgColor: 'bg-red-100', textColor: 'text-red-600', borderColor: 'border-red-200' },
+  { id: 'video', label: 'Video Call', icon: Video, color: 'purple', bgColor: 'bg-purple-100', textColor: 'text-purple-700', borderColor: 'border-purple-200' },
+  { id: 'demo', label: 'Demo', icon: Presentation, color: 'rose', bgColor: 'bg-rose-100', textColor: 'text-rose-700', borderColor: 'border-rose-200' },
+  { id: 'task', label: 'Task Completed', icon: CheckCircle, color: 'cyan', bgColor: 'bg-cyan-100', textColor: 'text-cyan-700', borderColor: 'border-cyan-200' },
+  { id: 'follow_up', label: 'Follow-up', icon: CalendarClock, color: 'orange', bgColor: 'bg-orange-100', textColor: 'text-orange-700', borderColor: 'border-orange-200' },
+  { id: 'deadline', label: 'Deadline', icon: Clock, color: 'red', bgColor: 'bg-red-100', textColor: 'text-red-700', borderColor: 'border-red-200' },
 ] as const;
 
 function formatDate(iso: string): string {
@@ -536,7 +536,7 @@ export default function Activities() {
             variant="ghost"
             size="sm"
             onClick={() => handleEditActivity(activity)}
-            className={`h-8 w-8 p-0 ${reveal} text-slate-400 hover:text-indigo-600 hover:bg-indigo-50`}
+            className={`h-8 w-8 p-0 ${reveal} text-slate-500 hover:text-indigo-600 hover:bg-indigo-50`}
             aria-label={`Edit activity ${activity.subject || label}`}
           >
             <Pencil className="w-4 h-4" />
@@ -547,7 +547,7 @@ export default function Activities() {
             variant="ghost"
             size="sm"
             onClick={() => setDeleteConfirmActivity(activity)}
-            className={`h-8 w-8 p-0 ${reveal} text-slate-400 hover:text-red-600 hover:bg-red-50`}
+            className={`h-8 w-8 p-0 ${reveal} text-slate-500 hover:text-red-600 hover:bg-red-50`}
             aria-label={`Delete activity ${activity.subject || label}`}
           >
             <Trash2 className="w-4 h-4" />
@@ -571,12 +571,12 @@ export default function Activities() {
                   <Icon className="w-3 h-3" />
                   {label}
                 </span>
-                <span className="text-xs text-slate-400 flex items-center gap-1">
+                <span className="text-xs text-slate-500 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   {formatRelativeDate(activity.createdAt)}
                 </span>
                 {activity.updatedAt && (
-                  <span className="text-xs text-slate-400 italic">(edited)</span>
+                  <span className="text-xs text-slate-500 italic">(edited)</span>
                 )}
               </div>
 
@@ -614,7 +614,7 @@ export default function Activities() {
 
         {/* Footer with timestamp and creator */}
         <div className="px-4 py-2 bg-slate-50/50 border-t border-slate-100">
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-500">
             {formatDate(activity.createdAt)}
             {activity.createdByName && <> &middot; by {activity.createdByName}</>}
           </p>
@@ -637,7 +637,7 @@ export default function Activities() {
             </span>
             <span className="min-w-0">
               <span className="block truncate">{a.subject || label}</span>
-              {a.subject && <span className="block truncate text-xs font-normal text-slate-400">{label}</span>}
+              {a.subject && <span className="block truncate text-xs font-normal text-slate-500">{label}</span>}
             </span>
           </span>
         );
@@ -784,7 +784,7 @@ export default function Activities() {
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-500 hover:text-red-500 transition-all duration-200"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -796,7 +796,7 @@ export default function Activities() {
             <div className="relative group/filter">
               <div className="absolute inset-0 bg-sky-200/50 rounded-xl blur-lg opacity-0 group-hover/filter:opacity-60 transition-all duration-300" />
               <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="relative h-11 w-[160px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-sky-50 hover:border-sky-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-200/60 transition-all duration-300">
+                <SelectTrigger aria-label="Filter by type" className="relative h-11 w-[160px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-sky-50 hover:border-sky-300 focus:border-sky-300 focus:ring-2 focus:ring-sky-200/60 transition-all duration-300">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded-lg bg-sky-100 flex items-center justify-center">
                       <Filter className="w-3.5 h-3.5 text-sky-600" />
@@ -1006,7 +1006,7 @@ export default function Activities() {
           /* No results state */
           <div className="flex items-center gap-3 p-6 rounded-xl bg-white border border-slate-200">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-              <Search className="w-6 h-6 text-slate-400" />
+              <Search className="w-6 h-6 text-slate-500" />
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-700">No activities match your filters</p>
@@ -1047,7 +1047,7 @@ export default function Activities() {
                     <span className="text-sm font-semibold text-slate-700">{dateGroup}</span>
                   </div>
                   <div className="flex-1 h-px bg-slate-200" />
-                  <span className="text-xs text-slate-400">{groupActivities.length} activities</span>
+                  <span className="text-xs text-slate-500">{groupActivities.length} activities</span>
                 </div>
 
                 {/* Activities List */}
@@ -1260,12 +1260,12 @@ export default function Activities() {
                   value={form.contactId || 'none'}
                   onValueChange={(v) => setForm((f) => ({ ...f, contactId: v === 'none' ? '' : v }))}
                 >
-                  <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-indigo-300 focus:ring-indigo-100">
+                  <SelectTrigger aria-label="Contact" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-indigo-300 focus:ring-indigo-100">
                     <SelectValue placeholder="Link to contact" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">
-                      <span className="text-slate-400">— None —</span>
+                      <span className="text-slate-500">— None —</span>
                     </SelectItem>
                     {contacts.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
@@ -1278,7 +1278,7 @@ export default function Activities() {
 
               <div className="group">
                 <Label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-600">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700">
                     <Target className="w-3.5 h-3.5" />
                   </div>
                   Deal
@@ -1287,12 +1287,12 @@ export default function Activities() {
                   value={form.dealId || 'none'}
                   onValueChange={(v) => setForm((f) => ({ ...f, dealId: v === 'none' ? '' : v }))}
                 >
-                  <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-indigo-300 focus:ring-indigo-100">
+                  <SelectTrigger aria-label="Deal" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-indigo-300 focus:ring-indigo-100">
                     <SelectValue placeholder="Link to deal" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">
-                      <span className="text-slate-400">— None —</span>
+                      <span className="text-slate-500">— None —</span>
                     </SelectItem>
                     {deals.map((d) => (
                       <SelectItem key={d.id} value={d.id}>

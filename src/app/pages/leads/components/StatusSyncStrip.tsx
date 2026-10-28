@@ -58,7 +58,7 @@ export function StatusSyncStrip({
         <button
           type="button"
           onClick={() => onToggleEnabled(!enabled)}
-          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+          className="-my-1 inline-flex min-h-6 items-center rounded px-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
         >
           {enabled ? 'Turn off' : 'Turn on'}
         </button>

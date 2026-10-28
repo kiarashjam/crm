@@ -66,12 +66,12 @@ export function StatusChangePopover({
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent
+      <PopoverContent aria-label="Change status"
         align="end"
         className="w-56 p-1"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-2 py-1.5 text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+        <div className="px-2 py-1.5 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
           Change status
         </div>
         <div className="flex flex-col">

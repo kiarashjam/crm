@@ -197,7 +197,7 @@ export default function Visits() {
       type="button"
       onClick={() => remove(v)}
       disabled={deletingId === v.id}
-      className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
+      className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
       aria-label={`Delete visit by ${v.memberName}`}
     >
       {deletingId === v.id ? (
@@ -224,7 +224,7 @@ export default function Visits() {
     { id: 'when', label: 'When', cell: (v) => formatDateTime(v.visitedAtUtc) },
     { id: 'tier', label: 'Tier', cell: (v) => v.memberTier },
     { id: 'guests', label: 'Guests', numeric: true, cell: (v) => v.guestCount || '—' },
-    { id: 'points', label: 'Points', numeric: true, cell: (v) => (v.pointsAwarded > 0 ? <span className="font-semibold text-amber-600">+{v.pointsAwarded}</span> : '—') },
+    { id: 'points', label: 'Points', numeric: true, cell: (v) => (v.pointsAwarded > 0 ? <span className="font-semibold text-amber-700">+{v.pointsAwarded}</span> : '—') },
     { id: 'notes', label: 'Notes', byDefault: false, cell: (v) => <span className="line-clamp-1">{v.notes || '—'}</span> },
   ];
 
@@ -259,7 +259,7 @@ export default function Visits() {
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -271,7 +271,7 @@ export default function Visits() {
               value={venueFilter}
               onValueChange={(v) => setVenueFilter(v as 'All' | VisitVenue)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-44">
+              <SelectTrigger aria-label="Filter by venue" className="h-11 rounded-xl md:w-44">
                 <SelectValue placeholder="Venue" />
               </SelectTrigger>
               <SelectContent>
@@ -288,7 +288,7 @@ export default function Visits() {
 
           {/* Visit feed */}
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -346,7 +346,7 @@ export default function Visits() {
                     {v.notes && view.density !== 'compact' && (
                       <p className="mt-2 text-sm italic text-slate-500 line-clamp-2">{v.notes}</p>
                     )}
-                    <div className="mt-auto flex items-center justify-between pt-3 text-xs text-slate-400">
+                    <div className="mt-auto flex items-center justify-between pt-3 text-xs text-slate-500">
                       <span>{formatDateTime(v.visitedAtUtc)}</span>
                       {visitActions(v)}
                     </div>
@@ -395,8 +395,8 @@ export default function Visits() {
                   </div>
                   {v.pointsAwarded > 0 && (
                     <div className="text-right shrink-0">
-                      <p className="text-xs text-slate-400 uppercase tracking-wide">Earned</p>
-                      <p className="font-semibold text-amber-600">+{v.pointsAwarded}</p>
+                      <p className="text-xs text-slate-500 uppercase tracking-wide">Earned</p>
+                      <p className="font-semibold text-amber-700">+{v.pointsAwarded}</p>
                     </div>
                   )}
                   {visitActions(v)}
@@ -421,7 +421,7 @@ export default function Visits() {
             <div>
               <Label>Member</Label>
               <Select value={form.memberId} onValueChange={(v) => setForm({ ...form, memberId: v })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Member">
                   <SelectValue placeholder="Pick a member" />
                 </SelectTrigger>
                 <SelectContent>
@@ -440,7 +440,7 @@ export default function Visits() {
                   value={form.venue}
                   onValueChange={(v) => setForm({ ...form, venue: v as VisitVenue })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Venue">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -454,7 +454,7 @@ export default function Visits() {
               </div>
               <div>
                 <Label>Guests</Label>
-                <Input
+                <Input aria-label="Guests"
                   type="number"
                   min="0"
                   value={form.guestCount}
@@ -476,7 +476,7 @@ export default function Visits() {
             </div>
             <div>
               <Label>Notes</Label>
-              <Textarea
+              <Textarea aria-label="Notes"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 rows={2}

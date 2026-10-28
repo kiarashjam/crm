@@ -187,7 +187,7 @@ export function ConvertLeadDialog({
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    convertForm.createContact ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
+                    convertForm.createContact ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     <UserPlus className="w-5 h-5" />
                   </div>
@@ -204,7 +204,7 @@ export function ConvertLeadDialog({
                       <div className="w-full border-t border-slate-200" />
                     </div>
                     <div className="relative flex justify-center">
-                      <span className="bg-white px-2 text-xs text-slate-400">or use existing</span>
+                      <span className="bg-white px-2 text-xs text-slate-500">or use existing</span>
                     </div>
                   </div>
                 )}
@@ -222,7 +222,7 @@ export function ConvertLeadDialog({
                       {convertOptions.contacts.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           <span className="flex items-center gap-2">
-                            <Users className="w-3.5 h-3.5 text-slate-400" />
+                            <Users className="w-3.5 h-3.5 text-slate-500" />
                             {c.name} {c.email ? `(${c.email})` : ''}
                           </span>
                         </SelectItem>
@@ -252,7 +252,7 @@ export function ConvertLeadDialog({
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    convertForm.createNewCompany ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400'
+                    convertForm.createNewCompany ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     <Building2 className="w-5 h-5" />
                   </div>
@@ -283,7 +283,7 @@ export function ConvertLeadDialog({
                         <div className="w-full border-t border-slate-200" />
                       </div>
                       <div className="relative flex justify-center">
-                        <span className="bg-white px-2 text-xs text-slate-400">or link to existing</span>
+                        <span className="bg-white px-2 text-xs text-slate-500">or link to existing</span>
                       </div>
                     </div>
                     <Select
@@ -298,7 +298,7 @@ export function ConvertLeadDialog({
                         {companies.map((c) => (
                           <SelectItem key={c.id} value={c.id}>
                             <span className="flex items-center gap-2">
-                              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                              <Building2 className="w-3.5 h-3.5 text-slate-500" />
                               {c.name}
                             </span>
                           </SelectItem>
@@ -329,7 +329,7 @@ export function ConvertLeadDialog({
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    convertForm.createDeal ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400'
+                    convertForm.createDeal ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     <Handshake className="w-5 h-5" />
                   </div>
@@ -406,7 +406,7 @@ export function ConvertLeadDialog({
                           value={convertForm.dealStage || 'Qualification'}
                           onValueChange={(v) => setConvertForm((f) => ({ ...f, dealStage: v }))}
                         >
-                          <SelectTrigger className="mt-1.5 h-10 bg-white">
+                          <SelectTrigger aria-label="Stage" className="mt-1.5 h-10 bg-white">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -427,7 +427,7 @@ export function ConvertLeadDialog({
                         <div className="w-full border-t border-slate-200" />
                       </div>
                       <div className="relative flex justify-center">
-                        <span className="bg-white px-2 text-xs text-slate-400">or attach to existing</span>
+                        <span className="bg-white px-2 text-xs text-slate-500">or attach to existing</span>
                       </div>
                     </div>
                     <Select
@@ -442,7 +442,7 @@ export function ConvertLeadDialog({
                         {convertOptions.deals.map((d) => (
                           <SelectItem key={d.id} value={d.id}>
                             <span className="flex items-center gap-2">
-                              <Handshake className="w-3.5 h-3.5 text-slate-400" />
+                              <Handshake className="w-3.5 h-3.5 text-slate-500" />
                               {d.name} ({d.value})
                             </span>
                           </SelectItem>

@@ -101,7 +101,7 @@ export function LeadCard({ lead, company, onView, onEdit, onDelete, onConvert }:
             variant="ghost"
             size="sm"
             onClick={(e) => { e.stopPropagation(); onEdit(lead); }}
-            className="h-8 w-8 p-0 text-slate-400 hover:text-slate-600"
+            className="h-8 w-8 p-0 text-slate-500 hover:text-slate-600"
           >
             <Pencil className="w-4 h-4" />
           </Button>
@@ -119,7 +119,7 @@ export function LeadCard({ lead, company, onView, onEdit, onDelete, onConvert }:
             variant="ghost"
             size="sm"
             onClick={(e) => { e.stopPropagation(); onDelete(lead); }}
-            className="h-8 w-8 p-0 text-slate-400 hover:text-red-500"
+            className="h-8 w-8 p-0 text-slate-500 hover:text-red-500"
           >
             <Trash2 className="w-4 h-4" />
           </Button>
