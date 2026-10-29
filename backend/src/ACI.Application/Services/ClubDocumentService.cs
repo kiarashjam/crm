@@ -165,6 +165,13 @@ public sealed class ClubDocumentService : IClubDocumentService
                     if (Parse(link.Payload) is { } obj && Text(obj, "householdId") == id.ToString())
                         await _docs.DeleteAsync(link.Id, organizationId, "household-members", ct);
                 break;
+            case "events":
+                // Its guest list goes with it. Nothing shows a deleted event's attendees,
+                // so their names and emails would only have stayed in the table.
+                foreach (var attendee in await _docs.ListAsync(organizationId, "event-attendees", ct))
+                    if (Parse(attendee.Payload) is { } obj && Text(obj, "eventId") == id.ToString())
+                        await _docs.DeleteAsync(attendee.Id, organizationId, "event-attendees", ct);
+                break;
         }
         return true;
     }

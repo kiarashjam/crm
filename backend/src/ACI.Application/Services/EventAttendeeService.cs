@@ -68,7 +68,10 @@ public sealed class EventAttendeeService : IEventAttendeeService
         return list;
     }
 
-    public async Task<Result<JsonObject>> AddAsync(Guid? organizationId, Guid eventId, JsonObject body, CancellationToken ct = default)
+    public Task<Result<JsonObject>> AddAsync(Guid? organizationId, Guid eventId, JsonObject body, CancellationToken ct = default) =>
+        WriteAsync(() => AddCoreAsync(organizationId, eventId, body, ct), ct);
+
+    private async Task<Result<JsonObject>> AddCoreAsync(Guid? organizationId, Guid eventId, JsonObject body, CancellationToken ct)
     {
         var ev = await LoadAsync(organizationId, EventsKind, eventId, ct);
         if (ev == null) return DomainErrors.EventAttendee.EventNotFound;
@@ -87,12 +90,17 @@ public sealed class EventAttendeeService : IEventAttendeeService
 
         var id = Guid.NewGuid();
         attendee["id"] = id.ToString();
-        await SaveAsync(organizationId, AttendeesKind, id, attendee, ct);
+        // The event first: its counts are what another door host may be changing at the
+        // same moment, so that is the save that can lose the race, before anything else.
         await SaveAsync(organizationId, EventsKind, eventId, ev, ct);
+        await SaveAsync(organizationId, AttendeesKind, id, attendee, ct);
         return attendee;
     }
 
-    public async Task<Result<JsonObject>> SetStatusAsync(Guid? organizationId, Guid eventId, Guid attendeeId, JsonObject body, CancellationToken ct = default)
+    public Task<Result<JsonObject>> SetStatusAsync(Guid? organizationId, Guid eventId, Guid attendeeId, JsonObject body, CancellationToken ct = default) =>
+        WriteAsync(() => SetStatusCoreAsync(organizationId, eventId, attendeeId, body, ct), ct);
+
+    private async Task<Result<JsonObject>> SetStatusCoreAsync(Guid? organizationId, Guid eventId, Guid attendeeId, JsonObject body, CancellationToken ct)
     {
         var ev = await LoadAsync(organizationId, EventsKind, eventId, ct);
         if (ev == null) return DomainErrors.EventAttendee.EventNotFound;
@@ -120,24 +128,31 @@ public sealed class EventAttendeeService : IEventAttendeeService
         else attendee.Remove("checkedInAtUtc");
         var countsChanged = Recount(ev, current, next);
 
-        await SaveAsync(organizationId, AttendeesKind, attendeeId, attendee, ct);
         if (countsChanged) await SaveAsync(organizationId, EventsKind, eventId, ev, ct);
+        await SaveAsync(organizationId, AttendeesKind, attendeeId, attendee, ct);
         return attendee;
     }
 
     public async Task<Result> RemoveAsync(Guid? organizationId, Guid eventId, Guid attendeeId, CancellationToken ct = default)
     {
-        var ev = await LoadAsync(organizationId, EventsKind, eventId, ct);
-        if (ev == null) return DomainErrors.EventAttendee.EventNotFound;
-        var attendee = await LoadAttendeeAsync(organizationId, eventId, attendeeId, ct);
-        if (attendee == null) return DomainErrors.EventAttendee.NotFound;
-        if (!await _docs.DeleteAsync(attendeeId, organizationId, AttendeesKind, ct)) return DomainErrors.EventAttendee.NotFound;
-        if (Recount(ev, Text(attendee, "status"), "Cancelled"))
-            await SaveAsync(organizationId, EventsKind, eventId, ev, ct);
-        return Result.Success();
+        var removed = await WriteAsync(async Task<Result<bool>> () =>
+        {
+            var ev = await LoadAsync(organizationId, EventsKind, eventId, ct);
+            if (ev == null) return DomainErrors.EventAttendee.EventNotFound;
+            var attendee = await LoadAttendeeAsync(organizationId, eventId, attendeeId, ct);
+            if (attendee == null) return DomainErrors.EventAttendee.NotFound;
+            if (Recount(ev, Text(attendee, "status"), "Cancelled"))
+                await SaveAsync(organizationId, EventsKind, eventId, ev, ct);
+            if (!await _docs.DeleteAsync(attendeeId, organizationId, AttendeesKind, ct)) return DomainErrors.EventAttendee.NotFound;
+            return Result.Success(true);
+        }, ct);
+        return removed.IsSuccess ? Result.Success() : Result.Failure(removed.Error);
     }
 
-    public async Task<Result<JsonObject>> ImportAsync(Guid? organizationId, Guid eventId, JsonObject body, CancellationToken ct = default)
+    public Task<Result<JsonObject>> ImportAsync(Guid? organizationId, Guid eventId, JsonObject body, CancellationToken ct = default) =>
+        WriteAsync(() => ImportCoreAsync(organizationId, eventId, body, ct), ct);
+
+    private async Task<Result<JsonObject>> ImportCoreAsync(Guid? organizationId, Guid eventId, JsonObject body, CancellationToken ct)
     {
         if (await LoadAsync(organizationId, EventsKind, eventId, ct) == null) return DomainErrors.EventAttendee.EventNotFound;
         var status = Text(body, "status");
@@ -219,6 +234,23 @@ public sealed class EventAttendeeService : IEventAttendeeService
         ev["registeredCount"] = nextRegistered;
         ev["waitlistCount"] = nextWaitlist;
         return true;
+    }
+
+    /// <summary>
+    /// An attendee change and the event's counts are saved as one transaction, so a
+    /// refusal leaves neither. Another door host changing the same event at the same
+    /// moment gets a 409 to show, instead of a 500 and counts that drift from the list.
+    /// </summary>
+    private async Task<Result<T>> WriteAsync<T>(Func<Task<Result<T>>> work, CancellationToken ct)
+    {
+        try
+        {
+            return await _docs.InTransactionAsync(work, ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return DomainErrors.Club.Changed;
+        }
     }
 
     private async Task<List<JsonObject>> AttendeesAsync(Guid? organizationId, Guid eventId, CancellationToken ct)

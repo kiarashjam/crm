@@ -199,4 +199,24 @@ public class EventAttendeesTests
         (await Json(await client.GetAsync($"/api/events/{eventId}/attendees"), "list")).GetArrayLength().Should().Be(1);
         (await EventOf(client, eventId)).GetProperty("registeredCount").GetInt32().Should().Be(1, "it was counted when the browser added it");
     }
+
+    [Fact]
+    public async Task DeletingAnEventDeletesItsGuestList()
+    {
+        // Nothing shows a deleted event's attendees, so their names and emails would only
+        // have stayed in the table.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, org) = await ClubAsync(factory);
+        var eventId = await EventAsync(client, capacity: 40);
+        var keptId = await EventAsync(client, capacity: 40);
+        await Json(await AddGuestAsync(client, eventId, "Claire Martin"), "add attendee");
+        await Json(await AddGuestAsync(client, keptId, "Paul Weber"), "add attendee to the other event");
+
+        (await client.DeleteAsync($"/api/events/{eventId}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var left = await factory.Services.Read(db => db.ClubDocuments
+            .Where(d => d.OrganizationId == org && d.Kind == "event-attendees").Select(d => d.Payload).ToList());
+        left.Should().ContainSingle().Which.Should().Contain("Paul Weber");
+    }
 }
+
