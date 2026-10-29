@@ -187,6 +187,7 @@ Normally you don’t need this: deploying the backend and letting it run `Migrat
 
 **Cost:**  
 - **Static Web App** Free tier: $0/month.  
-- **Azure SQL** Basic: paid. **App Service** uses **F1** (Free) by default; switch to B1 in the script if you have quota and want a paid plan.
+- **Azure SQL** Basic: paid. **App Service** uses **B1** (Basic, paid) with **Always On** by default (`-AppServicePlanSku` takes B1 or above). Not F1: the sequence, reminder and SLA jobs run inside the web app, and a Free plan unloads it when idle, so those jobs stop until someone opens the app.
+- To check an existing deployment: `az appservice plan show -g <resource-group> -n <plan> --query sku.name` should be B1 or above, and `az webapp config show -g <resource-group> -n <web-app> --query alwaysOn` should be `true`. To fix one: `az appservice plan update -g <resource-group> -n <plan> --sku B1`, then `az webapp config set -g <resource-group> -n <web-app> --always-on true`.
 
 **Quota:** If App Service Plan creation fails with *"Operation cannot be completed without additional quota"*, your subscription has no App Service (Free/Basic) quota in that region. Either request a quota increase (Azure Portal → Subscriptions → your subscription → Usage + quotas → App Service), or run the script in another region (e.g. `-Location eastus`) where you have quota.

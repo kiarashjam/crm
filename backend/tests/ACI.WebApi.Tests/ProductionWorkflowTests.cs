@@ -1,12 +1,13 @@
 namespace ACI.WebApi.Tests;
 
 /// <summary>
-/// The GitHub workflows that reach production.
+/// The GitHub workflows and scripts that reach production.
 /// </summary>
 /// <remarks>
-/// A workflow only runs on GitHub, so these read the files. They pin down what was
-/// wrong before: both deploys went to production on a push with no test in front of
-/// them, and the frontend could go out before the backend it calls.
+/// They only run on GitHub or against Azure, so these read the files. They pin down
+/// what was wrong before: both deploys went to production on a push with no test in
+/// front of them, the frontend could go out before the backend it calls, and the
+/// provisioning scripts made a plan that unloads the app, and its jobs, when idle.
 /// </remarks>
 public class ProductionWorkflowTests
 {
@@ -40,6 +41,28 @@ public class ProductionWorkflowTests
         foreach (var command in new[] { "dotnet build ACI.sln", "dotnet test ACI.sln", "npx tsc --noEmit", "npm run lint", "npx vitest run", "npm run build" })
             ci.Should().Contain(command);
         ci.Should().Contain("CADENCE_TEST_SQLSERVER", "the start-up schema tests need a real SQL Server, or they are skipped");
+    }
+
+    [Fact]
+    public void TheProvisioningScriptsMakeAPlanThatKeepsTheAppLoaded()
+    {
+        // The sequence, reminder and SLA jobs run inside the web app. A Free (F1) or
+        // Shared plan has no Always On and unloads the app when nobody uses it, so the
+        // jobs stopped overnight; and a plan above it still needs Always On turned on.
+        var scripts = Directory.GetFiles(Path.Combine(RepoRoot(), "scripts"), "*.ps1")
+            .Where(f => File.ReadAllText(f).Contains("az appservice plan create"))
+            .ToList();
+        scripts.Should().NotBeEmpty();
+        foreach (var path in scripts)
+        {
+            var script = File.ReadAllText(path);
+            var name = Path.GetFileName(path);
+            script.Should().NotMatchRegex(@"--sku\s+(F1|D1|FREE|SHARED)\b", name);
+            script.Should().Contain("--sku $AppServicePlanSku", name);
+            script.Should().Contain("[string]$AppServicePlanSku = \"B1\"", name);
+            script.Should().NotMatchRegex(@"ValidateSet\([^)]*""(F1|D1)""", name);
+            script.Should().Contain("--always-on true", name);
+        }
     }
 
     internal static string RepoRoot()

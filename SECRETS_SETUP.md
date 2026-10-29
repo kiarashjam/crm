@@ -26,7 +26,7 @@ Run the script to create a new resource group with all resources in **West Europ
 | Resource Group | -      | West Europe |
 | Static Web App | Free   | West Europe |
 | SQL Database   | Basic  | West Europe |
-| Web App (API)  | F1 Free| West Europe |
+| Web App (API)  | B1, Always On | West Europe |
 
 **Prerequisites:** Azure CLI installed, logged in (`az login`).
 
