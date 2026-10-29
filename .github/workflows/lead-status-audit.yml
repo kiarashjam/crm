@@ -58,7 +58,13 @@ jobs:
             echo "::error::Set the ADMIN_REPORT_PASSPHRASE secret first: the extract is encrypted with it, as the log is public."
             exit 1
           fi
+          # ---- the input, from the event rather than env, and masked in the log ----
           ORG_NAME=$(jq -r '.inputs.organization // ""' "$GITHUB_EVENT_PATH")
+          # Before the mask: a mask covers one line, so the rest of a multi-line name
+          # would be printed by its own ::add-mask:: line.
+          case "$ORG_NAME" in
+            *[[:cntrl:]]*) echo "::error::The organization must be on one line."; exit 1 ;;
+          esac
           [ -n "$ORG_NAME" ] && echo "::add-mask::$ORG_NAME"
           if [ -z "$ORG_NAME" ]; then echo "::error::The organization is required."; exit 1; fi
 

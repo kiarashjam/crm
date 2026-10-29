@@ -72,6 +72,12 @@ jobs:
           TARGET_EMAIL=$(jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH")
           ORG_NAME=$(jq -r '.inputs.organization // ""' "$GITHUB_EVENT_PATH")
           TARGET_ROLE=$(jq -r '.inputs.role // ""' "$GITHUB_EVENT_PATH")
+          # Before the masks: a mask covers one line, so the rest of a multi-line input
+          # would be printed by its own ::add-mask:: line. A pattern, not grep, which
+          # reads line by line and so never sees a newline.
+          case "$TARGET_EMAIL$ORG_NAME" in
+            *[[:cntrl:]]*) echo "::error::The inputs must be on one line."; exit 1 ;;
+          esac
           [ -n "$TARGET_EMAIL" ] && echo "::add-mask::$TARGET_EMAIL"
           [ -n "$ORG_NAME" ] && echo "::add-mask::$ORG_NAME"
           if [ -z "$TARGET_EMAIL" ] || [ -z "$ORG_NAME" ]; then
@@ -81,9 +87,6 @@ jobs:
             Viewer|Member|Manager) ;;
             *) echo "::error::The role must be Viewer, Member or Manager."; exit 1 ;;
           esac
-          if printf '%s%s' "$TARGET_EMAIL" "$ORG_NAME" | grep -q '[[:cntrl:]]'; then
-            echo "::error::The inputs must be on one line."; exit 1
-          fi
 
           # ---- locate the app and its connection string (never printed) ----
           RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)

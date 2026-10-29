@@ -130,6 +130,68 @@ public class ProductionWorkflowTests
         Workflow("org-clone.yml").Should().Contain("--report \"$RUNNER_TEMP/clone-report.txt\"");
     }
 
+    public static TheoryData<string, string, string> MultiLineInputs => new()
+    {
+        { "org-admin-member.yml", """{"email":"jean@example.ch\nsecond-line-secret","organization":"Pavillon 46","role":"Manager"}""", """{"email":"jean@example.ch","organization":"Pavillon 46","role":"Manager"}""" },
+        { "org-admin-member.yml", """{"email":"jean@example.ch","organization":"Pavillon 46\nsecond-line-secret","role":"Manager"}""", """{"email":"jean@example.ch","organization":"Pavillon 46","role":"Manager"}""" },
+        { "org-clone.yml", """{"source":"Pavillon 46\nsecond-line-secret","name":"Pavillon 46 v2","mode":"dry-run"}""", """{"source":"Pavillon 46","name":"Pavillon 46 v2","mode":"dry-run"}""" },
+        { "lead-status-audit.yml", """{"organization":"Pavillon 46\nsecond-line-secret"}""", """{"organization":"Pavillon 46"}""" },
+    };
+
+    [ShellTheory]
+    [MemberData(nameof(MultiLineInputs))]
+    public async Task AnInputOnMoreThanOneLineIsRefused_BeforeAnyOfItIsPrinted(string file, string multiLine, string oneLine)
+    {
+        // The member workflow's check piped the inputs to grep, which reads line by line
+        // and never sees a newline, so a multi-line input went through. And a mask covers
+        // one line: the ::add-mask:: line printed the rest of such an input in the log.
+        var refused = await RunInputStepAsync(file, multiLine);
+        refused.ExitCode.Should().NotBe(0, refused.Output);
+        refused.Output.Should().Contain("::error::").And.NotContain("second-line-secret");
+
+        // The same step with the input on one line goes through, so the refusal above is the check's.
+        var accepted = await RunInputStepAsync(file, oneLine);
+        accepted.ExitCode.Should().Be(0, accepted.Output);
+        accepted.Output.Should().Contain("::add-mask::Pavillon 46");
+    }
+
+    /// <summary>
+    /// Runs the part of <paramref name="file"/>'s script that reads its inputs from the
+    /// event, as the runner would: from the event marker to where it looks up the app.
+    /// </summary>
+    private static async Task<(int ExitCode, string Output)> RunInputStepAsync(string file, string inputs)
+    {
+        var lines = Workflow(file).Split('\n');
+        var from = Array.FindIndex(lines, l => l.Contains("from the event rather than env"));
+        var to = Array.FindIndex(lines, l => l.Contains("RESOURCE_GROUP=$(az webapp list"));
+        from.Should().BeGreaterThan(-1, file);
+        to.Should().BeGreaterThan(from, file);
+        var indent = lines[from].Length - lines[from].TrimStart().Length;
+        var script = "set -euo pipefail\n" + string.Join("\n", lines[from..to].Select(l => l.Length >= indent ? l[indent..] : l.TrimStart()));
+
+        var directory = Directory.CreateTempSubdirectory("workflow-inputs-");
+        try
+        {
+            var scriptPath = Path.Combine(directory.FullName, "step.sh");
+            var eventPath = Path.Combine(directory.FullName, "event.json");
+            await File.WriteAllTextAsync(scriptPath, script);
+            await File.WriteAllTextAsync(eventPath, $$"""{"inputs":{{inputs}}}""");
+
+            var bash = new System.Diagnostics.ProcessStartInfo("bash") { RedirectStandardOutput = true, RedirectStandardError = true };
+            bash.ArgumentList.Add(scriptPath);
+            bash.Environment["GITHUB_EVENT_PATH"] = eventPath;
+            using var process = System.Diagnostics.Process.Start(bash)!;
+            var stdout = process.StandardOutput.ReadToEndAsync();
+            var stderr = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            return (process.ExitCode, await stdout + await stderr);
+        }
+        finally
+        {
+            directory.Delete(recursive: true);
+        }
+    }
+
     [SqlServerFact]
     public async Task TheMemberTaskNeverChangesTheOwnersRole()
     {
@@ -295,4 +357,20 @@ public class ProductionWorkflowTests
             .Where(l => l.Length > 2 && l.StartsWith("  ") && l[2] != ' ')
             .Select(l => l.Trim().Split(':')[0])
             .ToArray();
+}
+
+/// <summary>
+/// A test that runs part of a workflow's script, as the runner does, with bash and jq.
+/// Both are on every GitHub runner; a machine without them reports the test as skipped.
+/// </summary>
+public sealed class ShellTheoryAttribute : TheoryAttribute
+{
+    public ShellTheoryAttribute()
+    {
+        static bool OnPath(string name) => (Environment.GetEnvironmentVariable("PATH") ?? "")
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            .Any(dir => File.Exists(Path.Combine(dir, name)) || File.Exists(Path.Combine(dir, name + ".exe")));
+        if (!OnPath("bash") || !OnPath("jq"))
+            Skip = "Needs bash and jq on the PATH, as on a GitHub runner.";
+    }
 }
