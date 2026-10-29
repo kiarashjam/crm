@@ -86,7 +86,7 @@ describe('the POS terminal when the server refuses', () => {
     await user.type(screen.getByLabelText('Amount ($)'), '40');
     // The tile and the dialog's button share the name; the dialog's comes last.
     const posts = screen.getAllByRole('button', { name: 'Post charge' });
-    await user.click(posts[posts.length - 1]);
+    await user.click(posts[posts.length - 1]!);
 
     await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith('That member was not found.'));
     expect(toast.success).not.toHaveBeenCalled();
