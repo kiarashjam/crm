@@ -130,5 +130,9 @@ public class PipelineService : IPipelineService
         return Result.Success();
     }
 
-    private static PipelineDto Map(Pipeline e) => new PipelineDto(e.Id, e.OrganizationId, e.Name, e.DisplayOrder);
+    private static PipelineDto Map(Pipeline e) => new PipelineDto(e.Id, e.OrganizationId, e.Name, e.DisplayOrder,
+        (e.DealStages ?? [])
+            .OrderBy(st => st.DisplayOrder)
+            .Select(st => new DealStageDto(st.Id, st.PipelineId, st.Name, st.DisplayOrder, st.IsWon, st.IsLost))
+            .ToList());
 }

@@ -16,6 +16,7 @@ public class DealService : IDealService
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IOrganizationRepository? _organizations;
+    private readonly IDealStageRepository? _stages;
     private readonly ILogger<DealService> _logger;
 
     public DealService(
@@ -24,7 +25,8 @@ public class DealService : IDealService
         ILogger<DealService> logger,
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
-        IOrganizationRepository? organizations = null)
+        IOrganizationRepository? organizations = null,
+        IDealStageRepository? stages = null)
     {
         _repository = repository;
         _activityRepository = activityRepository;
@@ -32,6 +34,7 @@ public class DealService : IDealService
         _automations = automations;
         _webhooks = webhooks;
         _organizations = organizations;
+        _stages = stages;
     }
 
     /// <inheritdoc />
@@ -242,6 +245,27 @@ public class DealService : IDealService
             existing.IsWon = request.IsWon;
             existing.ClosedAtUtc = DateTime.UtcNow;
         }
+
+        // A stage flagged won or lost closes the deal, and moving it back to an open
+        // stage reopens it. The board moves deals by stage, and every report reads
+        // IsWon, so without this a deal in a custom "Signed" stage counted as open.
+        if (request.DealStageId is Guid newStageId && newStageId != oldStageId
+            && _stages != null && organizationId is Guid stageOrg)
+        {
+            var stage = await _stages.GetByIdAsync(newStageId, stageOrg, ct);
+            if (stage == null) return DomainErrors.DealStage.NotFound;
+            existing.PipelineId = stage.PipelineId;
+            existing.Stage = stage.Name;
+            if (request.IsWon == null)
+            {
+                bool? outcome = stage.IsWon ? true : stage.IsLost ? false : null;
+                if (outcome != existing.IsWon)
+                {
+                    existing.IsWon = outcome;
+                    existing.ClosedAtUtc = outcome == null ? null : DateTime.UtcNow;
+                }
+            }
+        }
         if (request.ClosedReason != null) existing.ClosedReason = request.ClosedReason.Trim();
         if (request.ClosedReasonCategory != null) existing.ClosedReasonCategory = request.ClosedReasonCategory.Trim();
         if (request.IsPrivate.HasValue) existing.IsPrivate = request.IsPrivate.Value;
@@ -287,11 +311,11 @@ public class DealService : IDealService
                 await _webhooks.PublishAsync(organizationId, "deal.stage_changed", new { id, existing.Name, stageId = existing.DealStageId }, ct);
         }
 
-        if (_automations != null && request.IsWon == true && previousWon != true)
+        if (_automations != null && existing.IsWon == true && previousWon != true)
             await _automations.DispatchAsync("deal.won", new AutomationEvent(organizationId, userId, $"{id}:won", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
-        if (_webhooks != null && request.IsWon == true && previousWon != true)
+        if (_webhooks != null && existing.IsWon == true && previousWon != true)
             await _webhooks.PublishAsync(organizationId, "deal.won", new { id, existing.Name }, ct);
-        if (_automations != null && request.IsWon == false && previousWon != false)
+        if (_automations != null && existing.IsWon == false && previousWon != false)
             await _automations.DispatchAsync("deal.lost", new AutomationEvent(organizationId, userId, $"{id}:lost", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
 
         _logger.LogInformation(
