@@ -9,9 +9,14 @@
 # Runs against the production database through the same Azure service principal the
 # deploy uses; the connection string is read at run time and masked.
 #
-#   · dry-run (the default): the whole copy is made and checked inside a transaction,
-#     then rolled back. Proves the copy against the real data and keeps nothing.
-#   · copy: the same, committed, and only if the check passes.
+#   · dry-run (the default): writes nothing. Counts what the copy would hold, table by
+#     table, estimates its size, and fails if the database has less than twice that free.
+#   · copy: the same check of the room first, then the copy is made inside a
+#     transaction, checked, and committed only if the check passes.
+#
+# The dry run used to make the whole copy, attachment bytes included, in the production
+# database every tenant shares and roll it back: a large organization could fill the
+# database, failing everyone's writes, and its locks were held until the rollback.
 #
 # The check reads the copy back: each table must hold as many rows as the original (less
 # what is left out on purpose), and nothing in the copy may point at a row of the
@@ -31,7 +36,7 @@ on:
         required: true
         default: 'Pavillon 46 v2'
       mode:
-        description: 'dry-run checks and rolls back; copy keeps it'
+        description: 'dry-run counts and checks the room, writing nothing; copy makes the copy and keeps it if it checks out'
         required: true
         default: 'dry-run'
         type: choice
