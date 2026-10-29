@@ -53,7 +53,9 @@ public sealed class McpController : ControllerBase
         if (string.IsNullOrEmpty(apiKey))
             return Unauthorized(new { error = "Missing API key. Send Authorization: Bearer <key> or X-Api-Key." });
 
-        var organization = await _organizations.GetByApiKeyAsync(apiKey, ct);
+        // Only an MCP key. The lead webhook key sits in website forms and Zapier, and
+        // used to open every lead, contact, deal and task here as the owner.
+        var organization = await _organizations.GetByMcpApiKeyAsync(apiKey, ct);
         if (organization == null)
             return Unauthorized(new { error = "Invalid API key." });
 

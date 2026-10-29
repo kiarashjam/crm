@@ -13,6 +13,13 @@ public class Organization : Common.BaseEntity
     public string? WebhookApiKey { get; set; }
     /// <summary>Timestamp when the webhook API key was created.</summary>
     public DateTime? WebhookApiKeyCreatedAtUtc { get; set; }
+    /// <summary>
+    /// SHA-256 (hex) of the key AI assistants connect with over MCP, which reads the
+    /// whole workspace. Kept apart from <see cref="WebhookApiKey"/>, which only posts
+    /// leads and so ends up in website forms and Zapier; the raw key is shown once.
+    /// </summary>
+    public string? McpApiKeyHash { get; set; }
+    public DateTime? McpApiKeyCreatedAtUtc { get; set; }
     /// <summary>Optional shared password for JSON webhooks. When null or empty, the app default password applies.</summary>
     public string? WebhookPassword { get; set; }
     /// <summary>Where Cadence posts lead and deal events. Empty means it posts nowhere.</summary>

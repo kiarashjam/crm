@@ -391,6 +391,14 @@ try
                     ALTER TABLE [Organizations] ADD [WebhookPassword] nvarchar(256) NULL;
                 END
             ");
+
+            // The MCP key, separate from the lead webhook key (stored as a hash).
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Organizations', N'McpApiKeyHash') IS NULL
+                    ALTER TABLE [Organizations] ADD [McpApiKeyHash] nvarchar(64) NULL;
+                IF COL_LENGTH(N'dbo.Organizations', N'McpApiKeyCreatedAtUtc') IS NULL
+                    ALTER TABLE [Organizations] ADD [McpApiKeyCreatedAtUtc] datetime2 NULL;
+            ");
             
             // Create OrganizationMembers table if missing
             await db.Database.ExecuteSqlRawAsync(@"

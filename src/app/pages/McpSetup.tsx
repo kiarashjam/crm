@@ -3,7 +3,7 @@ import { Copy, Eye, EyeOff, Key, RefreshCw, AlertTriangle, Bot, Check } from 'lu
 import { toast } from 'sonner';
 import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { getApiBaseUrl, servesDemoData } from '@/app/api/apiClient';
-import { generateWebhookApiKey, getWebhookInfo, type WebhookInfo } from '@/app/api/webhook';
+import { generateMcpApiKey, getWebhookInfo, type WebhookInfo } from '@/app/api/webhook';
 import { isOrgAdmin } from '@/app/api/organizations';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { Button } from '@/app/components/ui/button';
@@ -52,6 +52,8 @@ export function ClaudeSection() {
   usePageLoading(loading);
   const [generating, setGenerating] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  // The key exists in full only in the answer to "generate"; the server keeps a hash.
+  const [freshKey, setFreshKey] = useState('');
   const [regenerateConfirm, setRegenerateConfirm] = useState(false);
   const [client, setClient] = useState<McpClient>('claude');
 
@@ -85,7 +87,8 @@ export function ClaudeSection() {
   const serverName = mcpServerName(orgName);
   const base = getApiBaseUrl();
   const mcpUrl = base ? `${base}/mcp` : 'https://your-api.example.com/mcp';
-  const apiKey = info?.apiKey ?? '';
+  const apiKey = freshKey;
+  const hasKey = Boolean(info?.hasMcpApiKey);
   const configKey = apiKey || 'YOUR_API_KEY';
   const bearer = `Bearer ${configKey}`;
   const connectorName = `Cadence — ${orgName}`;
@@ -106,11 +109,11 @@ export function ClaudeSection() {
     if (!currentOrg?.id) return;
     setGenerating(true);
     try {
-      await generateWebhookApiKey(currentOrg.id);
-      const fresh = await getWebhookInfo(currentOrg.id);
-      setInfo(fresh);
+      const key = await generateMcpApiKey(currentOrg.id);
+      setFreshKey(key);
+      setInfo((prev) => (prev ? { ...prev, hasMcpApiKey: true } : prev));
       setShowApiKey(true);
-      toast.success(info?.hasApiKey ? 'API key regenerated' : 'API key generated');
+      toast.success(hasKey ? 'New key made. The old one no longer works.' : 'Key made. Copy it now: it is shown only once.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not generate an API key');
     } finally {
@@ -169,13 +172,14 @@ export function ClaudeSection() {
                       Create the key for {orgName}
                     </h2>
                     <p className="text-sm text-slate-600 mt-3 leading-relaxed">
-                      This key opens only {orgName}. It is the same key as the lead webhook. Regenerating it disconnects Claude and the webhook until you paste the new value.
+                      This key opens only {orgName}, and only for AI assistants: it can read every lead, contact, deal and task, so keep it out of websites and shared documents. It is not the lead webhook key. It is shown once, when you make it; making a new one disconnects assistants until you paste the new value.
                     </p>
                     <div className="mt-4">
                       <KeyPanel
                         apiKey={apiKey}
                         showApiKey={showApiKey}
                         setShowApiKey={setShowApiKey}
+                        hasKey={hasKey}
                         canGenerate={canGenerate}
                         generating={generating}
                         masked={apiKey ? mask(apiKey) : ''}
@@ -284,9 +288,9 @@ export function ClaudeSection() {
       <AlertDialog open={regenerateConfirm} onOpenChange={setRegenerateConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Regenerate the organization API key?</AlertDialogTitle>
+            <AlertDialogTitle>Make a new assistant key?</AlertDialogTitle>
             <AlertDialogDescription>
-              The current key stops working for the lead webhook and for Claude until you paste the new header value.
+              The current key stops working for Claude and other assistants until you paste the new one. The lead webhook is not affected.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -305,6 +309,7 @@ function KeyPanel({
   apiKey,
   showApiKey,
   setShowApiKey,
+  hasKey,
   canGenerate,
   generating,
   masked,
@@ -313,6 +318,7 @@ function KeyPanel({
   onRegenerate,
 }: {
   apiKey: string;
+  hasKey: boolean;
   showApiKey: boolean;
   setShowApiKey: (value: boolean | ((value: boolean) => boolean)) => void;
   canGenerate: boolean;
@@ -327,6 +333,23 @@ function KeyPanel({
       <p className="text-sm text-slate-600">
         Connect the real API (<code className="text-xs bg-slate-100 px-1 rounded">VITE_API_URL</code>) to generate a key. Until then, step 2 shows a placeholder instead of a real key.
       </p>
+    );
+  }
+  if (!apiKey && hasKey) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-slate-600">
+          A key already exists. It was shown once, when it was made, and is not stored. If you no longer have it, make a new one; the old one stops working.
+        </p>
+        {canGenerate ? (
+          <Button type="button" variant="outline" onClick={onRegenerate} className="text-orange-600 border-orange-200 hover:bg-orange-50">
+            <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />
+            Make a new key
+          </Button>
+        ) : (
+          <p className="text-sm text-slate-600">Ask an owner or manager for the key.</p>
+        )}
+      </div>
     );
   }
   if (!apiKey) {

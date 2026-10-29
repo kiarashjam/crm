@@ -36,7 +36,9 @@ const CODE_EXAMPLES = {
     "companyName": "TechCorp",
     "source": "website-form"
   }'`,
-  javascript: `fetch('https://your-domain.com/api/webhook/leads', {
+  javascript: `// Run this on your server (Node.js), never in a web page: anyone can read
+// a key in a page's code. For a form on your website, use a capture form.
+fetch('https://your-domain.com/api/webhook/leads', {
   method: 'POST',
   headers: {
     'X-Api-Key': 'YOUR_API_KEY',

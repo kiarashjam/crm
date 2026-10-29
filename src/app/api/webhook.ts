@@ -11,6 +11,9 @@ export interface WebhookInfo {
   outboundWebhookUrl?: string | null;
   /** Whether events are signed. The secret itself is never sent back. */
   hasOutboundWebhookSecret?: boolean;
+  /** Whether the workspace has an MCP key. The key itself is shown once, when made. */
+  hasMcpApiKey?: boolean;
+  mcpApiKeyCreatedAt?: string | null;
 }
 
 /** A read-only placeholder returned in demo mode so the webhook page renders
@@ -37,6 +40,19 @@ export async function generateWebhookApiKey(orgId: string): Promise<string> {
     return 'demo-key-not-functional';
   }
   const result = await authFetchJson<{ apiKey: string }>(`/api/webhook/organizations/${orgId}/generate-key`, {
+    method: 'POST',
+  });
+  return result.apiKey;
+}
+
+/**
+ * A new key for AI assistants (MCP), replacing any earlier one. Returned once: the
+ * server keeps only its hash. It is separate from the lead webhook key, which website
+ * forms carry and which no longer opens the CRM to an assistant.
+ */
+export async function generateMcpApiKey(orgId: string): Promise<string> {
+  if (servesDemoData()) return 'demo-key-not-functional';
+  const result = await authFetchJson<{ apiKey: string }>(`/api/webhook/organizations/${orgId}/generate-mcp-key`, {
     method: 'POST',
   });
   return result.apiKey;

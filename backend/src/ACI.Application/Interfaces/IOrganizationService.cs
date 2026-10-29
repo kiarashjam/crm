@@ -109,4 +109,10 @@ public interface IOrganizationService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The organization if found.</returns>
     Task<Domain.Entities.Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default);
+
+    /// <summary>A new MCP key for the workspace (owner or manager). Returned once; only its hash is kept.</summary>
+    Task<Result<string>> GenerateMcpApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>The workspace an MCP key belongs to, if any.</summary>
+    Task<Domain.Entities.Organization?> GetByMcpApiKeyAsync(string apiKey, CancellationToken ct = default);
 }

@@ -310,7 +310,9 @@ public sealed class OrganizationService : IOrganizationService
             UsesDefaultWebhookPassword: string.IsNullOrEmpty(org.WebhookPassword),
             PasswordWebhookUrl: string.Empty,
             OutboundWebhookUrl: org.OutboundWebhookUrl,
-            HasOutboundWebhookSecret: !string.IsNullOrEmpty(org.OutboundWebhookSecret)
+            HasOutboundWebhookSecret: !string.IsNullOrEmpty(org.OutboundWebhookSecret),
+            HasMcpApiKey: !string.IsNullOrEmpty(org.McpApiKeyHash),
+            McpApiKeyCreatedAt: org.McpApiKeyCreatedAtUtc
         );
     }
 
@@ -423,4 +425,35 @@ public sealed class OrganizationService : IOrganizationService
     {
         return await _organizationRepository.GetByApiKeyAsync(apiKey, ct);
     }
+
+    public async Task<Result<string>> GenerateMcpApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
+    {
+        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+            return DomainErrors.Organization.NotOwnerOrManager;
+
+        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+        if (org == null) return DomainErrors.Organization.NotFound;
+
+        var randomBytes = new byte[32];
+        RandomNumberGenerator.Fill(randomBytes);
+        var apiKey = "aci_mcp_" + Convert.ToBase64String(randomBytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
+
+        org.McpApiKeyHash = HashMcpKey(apiKey);
+        org.McpApiKeyCreatedAtUtc = DateTime.UtcNow;
+        await _organizationRepository.UpdateAsync(org, ct);
+
+        _logger.LogInformation("Generated MCP API key for organization {OrganizationId} by user {UserId}", organizationId, userId);
+        return apiKey;
+    }
+
+    public async Task<Organization?> GetByMcpApiKeyAsync(string apiKey, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)) return null;
+        return await _organizationRepository.GetByMcpApiKeyHashAsync(HashMcpKey(apiKey.Trim()), ct);
+    }
+
+    /// <summary>Lower-case hex SHA-256: what is stored and looked up, never the key itself.</summary>
+    public static string HashMcpKey(string apiKey) =>
+        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(apiKey))).ToLowerInvariant();
 }

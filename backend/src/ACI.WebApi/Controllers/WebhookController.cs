@@ -241,8 +241,34 @@ public class WebhookController : ControllerBase
         if (userId == null) return Unauthorized();
 
         var result = await _organizationService.GenerateWebhookApiKeyAsync(organizationId, userId.Value, ct);
+        // Not result.ToActionResult(): that is an ActionResult<string>, which this
+        // ActionResult<object> action would wrap as a value and send back as 200.
         if (result.IsFailure)
-            return result.ToActionResult();
+            return result.Error.ToProblemResult();
+
+        return Ok(new { apiKey = result.Value });
+    }
+
+    /// <summary>
+    /// Generates the workspace's MCP key (owner/manager only), replacing any earlier one.
+    /// It is returned once; only its hash is stored. The lead webhook key does not open /mcp.
+    /// </summary>
+    [HttpPost("organizations/{organizationId:guid}/generate-mcp-key")]
+    [Authorize]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<object>> GenerateMcpApiKey(Guid organizationId, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var result = await _organizationService.GenerateMcpApiKeyAsync(organizationId, userId.Value, ct);
+        // Not result.ToActionResult(): that is an ActionResult<string>, which this
+        // ActionResult<object> action would wrap as a value and send back as 200.
+        if (result.IsFailure)
+            return result.Error.ToProblemResult();
 
         return Ok(new { apiKey = result.Value });
     }

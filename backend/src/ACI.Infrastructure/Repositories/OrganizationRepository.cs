@@ -111,6 +111,9 @@ public sealed class OrganizationRepository : IOrganizationRepository
     public async Task<Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default) =>
         await _db.Organizations.FirstOrDefaultAsync(o => o.WebhookApiKey == apiKey, ct);
 
+    public async Task<Organization?> GetByMcpApiKeyHashAsync(string keyHash, CancellationToken ct = default) =>
+        await _db.Organizations.FirstOrDefaultAsync(o => o.McpApiKeyHash == keyHash, ct);
+
     public async Task UpdateAsync(Organization organization, CancellationToken ct = default)
     {
         _db.Organizations.Update(organization);
