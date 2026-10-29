@@ -186,6 +186,7 @@ public sealed class TaskRepository : ITaskRepository
         existing.Description = taskItem.Description;
         existing.DueDateUtc = taskItem.DueDateUtc;
         existing.ReminderDateUtc = taskItem.ReminderDateUtc;
+        existing.ReminderSentAtUtc = taskItem.ReminderSentAtUtc;
         existing.Status = taskItem.Status;
         existing.Priority = taskItem.Priority;
         existing.Completed = taskItem.Completed;

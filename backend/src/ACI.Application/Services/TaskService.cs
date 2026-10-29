@@ -274,10 +274,15 @@ public class TaskService : ITaskService
                 existing.DueDateUtc = request.DueDateUtc;
             
             // Update reminder date
+            var previousReminder = existing.ReminderDateUtc;
             if (request.ClearReminderDate == true)
                 existing.ReminderDateUtc = null;
             else if (request.ReminderDateUtc != null)
                 existing.ReminderDateUtc = request.ReminderDateUtc;
+            // A reminder set or moved is a new one to send. ReminderSentAtUtc still said
+            // the old one had gone, so a reminder moved to tomorrow never came.
+            if (existing.ReminderDateUtc != previousReminder)
+                existing.ReminderSentAtUtc = null;
             
             // Update status
             if (request.Status != null && TryParseStatus(request.Status, out var status))
@@ -819,6 +824,11 @@ public class TaskService : ITaskService
             Title = completed.Title,
             Description = completed.Description,
             DueDateUtc = nextDue,
+            // As far ahead of the due date as this one was. Not carried over, a weekly
+            // task reminded the first week only.
+            ReminderDateUtc = completed.ReminderDateUtc is DateTime reminder
+                ? nextDue - (completed.DueDateUtc.Value - reminder)
+                : null,
             Status = Domain.Enums.TaskStatus.Todo,
             Priority = completed.Priority,
             AssigneeId = completed.AssigneeId,

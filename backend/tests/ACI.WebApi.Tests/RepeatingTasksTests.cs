@@ -39,4 +39,24 @@ public class RepeatingTasksTests
         next.DueDateUtc.Should().Be(due.AddDays(7));
         next.Recurrence.Should().Be("weekly", "the series carries on");
     }
+
+    [Fact]
+    public async Task TheNextOneIsRemindedAsFarAheadAsThisOne()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, userId) = await SignInAsync(factory, "kia@example.ch");
+        client.In(await CreateAsync(factory, userId, "Pavillon46"));
+        var due = new DateTime(2026, 11, 2, 9, 0, 0, DateTimeKind.Utc);
+
+        var task = await Json(await client.PostAsync("/api/tasks", Body(new
+        {
+            title = "Monthly board pack", dueDateUtc = due, reminderDateUtc = due.AddHours(-2), recurrence = "monthly",
+        })), "create");
+        var id = task.GetProperty("id").GetGuid();
+        await Json(await SetStatusAsync(client, id, "completed"), "complete");
+
+        var next = (await factory.Services.Read(db => db.TaskItems.Where(t => t.Title == "Monthly board pack" && t.Id != id).ToList())).Should().ContainSingle().Subject;
+        next.ReminderDateUtc.Should().Be(due.AddMonths(1).AddHours(-2), "only the first one used to be reminded");
+        next.ReminderSentAtUtc.Should().BeNull();
+    }
 }
