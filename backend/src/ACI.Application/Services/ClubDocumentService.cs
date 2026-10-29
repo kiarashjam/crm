@@ -107,7 +107,7 @@ public sealed class ClubDocumentService : IClubDocumentService
         {
             await InsertAsync(organizationId, kind, obj, ct);
             return Result.Success(obj);
-        }, ct);
+        }, ct, kind == "payments" ? DomainErrors.Club.ChargeChanged : null);
     }
 
     public async Task<Result<JsonObject>> UpdateAsync(Guid? organizationId, string kind, Guid id, JsonObject patch, CancellationToken ct = default)
@@ -517,6 +517,11 @@ public sealed class ClubDocumentService : IClubDocumentService
     /// <summary>Saves a prepared record and does what follows from it.</summary>
     private async Task InsertAsync(Guid? organizationId, string kind, JsonObject obj, CancellationToken ct)
     {
+        // The charge is paid down before the payment is written: that save is checked
+        // against the charge as it was when the payment was checked, so of two payments
+        // made at once, the second is refused before it is recorded.
+        if (kind == "payments")
+            await ApplyPaymentAsync(organizationId, Guid.Parse(Text(obj, "chargeId")), Dec(obj, "amount"), ct);
         await Save(organizationId, kind, ReadId(obj)!.Value, obj, ct);
         await AfterCreateAsync(organizationId, kind, obj, ct);
     }
@@ -569,11 +574,22 @@ public sealed class ClubDocumentService : IClubDocumentService
                 if (Amount(obj, "amount") is not { } amount) return DomainErrors.Club.AmountInvalid;
                 if (!PaymentMethods.Contains(Text(obj, "method"))) return DomainErrors.Club.MethodInvalid;
                 if (!StampDate(obj, "receivedAtUtc")) return DomainErrors.Club.DateInvalid("The date received");
+                // A payment settles a charge, and may settle no more than it still owes:
+                // the excess used to be recorded and then lost, as there is no house
+                // credit to put it in. A stale page paying a charge twice is caught here too.
+                if (!Guid.TryParse(Text(obj, "chargeId"), out var chargeId)) return DomainErrors.Club.PaymentChargeRequired;
+                var charge = await Load(organizationId, "charges", chargeId, ct);
+                if (charge == null) return DomainErrors.Club.ChargeNotFound;
+                if (Text(charge, "status") == "Voided") return DomainErrors.Club.ChargeVoided;
+                var owed = Dec(charge, "amount") - Dec(charge, "paidAmount");
+                if (owed <= 0) return DomainErrors.Club.ChargeAlreadyPaid;
+                if (amount > owed) return DomainErrors.Club.Overpaid(owed, amount);
                 obj["amount"] = amount;
+                obj["chargeId"] = chargeId.ToString();
+                obj["memberId"] = Text(charge, "memberId");
+                obj["memberName"] = Text(charge, "memberName");
                 Set(obj, "receivedAtUtc", now);
-                obj["appliedToChargeIds"] = Guid.TryParse(Text(obj, "chargeId"), out var paidCharge)
-                    ? new JsonArray(paidCharge.ToString())
-                    : new JsonArray();
+                obj["appliedToChargeIds"] = new JsonArray(chargeId.ToString());
                 Drop(obj, "status", "voidedAtUtc", "voidedByUserId", "voidedByName", "voidReason");
                 break;
             }
@@ -672,8 +688,6 @@ public sealed class ClubDocumentService : IClubDocumentService
                 await RecomputeBalanceAsync(organizationId, Text(obj, "memberId"), ct);
                 break;
             case "payments":
-                if (Guid.TryParse(Text(obj, "chargeId"), out var chargeId))
-                    await ApplyPaymentAsync(organizationId, chargeId, Dec(obj, "amount"), ct);
                 await RecomputeBalanceAsync(organizationId, Text(obj, "memberId"), ct);
                 break;
             case "households":
@@ -692,12 +706,12 @@ public sealed class ClubDocumentService : IClubDocumentService
         }
     }
 
-    /// <summary>A payment against a charge pays it down, up to what is owed.</summary>
+    /// <summary>A payment pays its charge down. What it may pay was checked when the payment was.</summary>
     private async Task ApplyPaymentAsync(Guid? organizationId, Guid chargeId, decimal amount, CancellationToken ct)
     {
-        var charge = await Load(organizationId, "charges", chargeId, ct);
-        if (charge == null || amount <= 0) return;
-        var paid = Math.Min(Dec(charge, "amount"), Dec(charge, "paidAmount") + amount);
+        // Gone since the payment was checked: someone else changed it.
+        var charge = await Load(organizationId, "charges", chargeId, ct) ?? throw new ConcurrencyConflictException();
+        var paid = Dec(charge, "paidAmount") + amount;
         charge["paidAmount"] = paid;
         if (paid >= Dec(charge, "amount"))
         {

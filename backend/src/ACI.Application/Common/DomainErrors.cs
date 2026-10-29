@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace ACI.Application.Common;
 
 /// <summary>
@@ -642,6 +644,27 @@ public static class DomainErrors
             "Tab.NotOpen.Conflict", status == "Closed"
                 ? "This tab is already closed and posted to the member's account, so it can't be changed."
                 : "This tab was voided, so it can't be changed.");
+
+        public static readonly Error PaymentChargeRequired = new(
+            "Payment.ChargeRequired", "Choose the charge this payment settles. A payment against no charge would not change what the member owes.");
+
+        public static readonly Error ChargeAlreadyPaid = new(
+            "Charge.Paid.Conflict", "This charge is already paid in full.");
+
+        public static readonly Error ChargeVoided = new(
+            "Charge.Voided.Conflict", "This charge was voided, so there is nothing to pay or void on it.");
+
+        public static readonly Error ChargeChanged = new(
+            "Charge.Changed.Conflict", "This charge was paid or changed somewhere else at the same moment, so nothing was saved. Reload and try again.");
+
+        /// <remarks>
+        /// The payment record kept the whole amount while the charge took only what it was
+        /// owed, so the rest vanished: no credit, and a statement that disagreed with the
+        /// balance. There is no house-credit ledger yet, so the overpayment is refused.
+        /// </remarks>
+        public static Error Overpaid(decimal owed, decimal amount) => new(
+            "Payment.Overpaid", string.Create(CultureInfo.InvariantCulture,
+                $"That charge has {owed:0.00} left to pay, so a payment of {amount:0.00} would be more than is owed. Record {owed:0.00} or less."));
 
         public static Error DateInvalid(string what) => new(
             "Club.DateInvalid", $"{what} must be a date.");

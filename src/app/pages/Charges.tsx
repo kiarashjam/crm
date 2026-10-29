@@ -223,6 +223,12 @@ export default function Charges() {
       toast.error('Amount must be positive');
       return;
     }
+    // The server refuses more than is owed: there is no house credit to keep the rest in.
+    const remaining = Math.round((paymentDialog.amount - paymentDialog.paidAmount) * 100) / 100;
+    if (amount > remaining) {
+      toast.error(`Only ${formatCurrency(remaining)} is left to pay on this charge`);
+      return;
+    }
     setSaving(true);
     try {
       await recordPayment({
@@ -236,8 +242,8 @@ export default function Charges() {
       toast.success('Payment recorded');
       setPaymentDialog(null);
       await load();
-    } catch {
-      toast.error('Failed to record payment');
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to record payment');
     } finally {
       setSaving(false);
     }
@@ -675,6 +681,7 @@ export default function Charges() {
               <Input aria-label="Amount ($)"
                 type="number"
                 min="0"
+                max={paymentDialog ? Math.round((paymentDialog.amount - paymentDialog.paidAmount) * 100) / 100 : undefined}
                 step="0.01"
                 value={paymentForm.amount}
                 onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}

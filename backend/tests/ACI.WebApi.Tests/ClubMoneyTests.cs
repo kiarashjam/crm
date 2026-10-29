@@ -183,6 +183,75 @@ public class ClubMoneyTests
         edited.TryGetProperty("lastChargedAtUtc", out _).Should().BeFalse();
     }
 
+    // ── payments ─────────────────────────────────────────────────────────────
+
+    private static async Task<string> ChargeAsync(HttpClient client, Guid memberId, decimal amount, DateTime? dueAtUtc = null) =>
+        (await Json(await client.PostAsync("/api/charges", Body(new
+        {
+            memberId, kind = "Dining", description = "Dinner", amount, dueAtUtc,
+        })), "post charge")).GetProperty("id").GetString()!;
+
+    private static StringContent Payment(Guid memberId, string? chargeId, decimal amount) =>
+        Body(new { memberId, amount, method = "Cash", chargeId });
+
+    private static async Task<JsonElement> ChargeOfAsync(HttpClient client, string chargeId) =>
+        (await Json(await client.GetAsync("/api/charges"), "list charges")).EnumerateArray()
+            .Single(c => c.GetProperty("id").GetString() == chargeId);
+
+    [Fact]
+    public async Task APaymentAboveWhatIsOwedIsRefused_NotQuietlyLost()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var charge = await ChargeAsync(client, memberId, 150);
+
+        var body = await Refused(await client.PostAsync("/api/payments", Payment(memberId, charge, 200)), HttpStatusCode.BadRequest, "paying 200 on 150");
+
+        body.Should().Contain("150.00 left to pay");
+        (await Json(await client.GetAsync("/api/payments"), "payments")).GetArrayLength()
+            .Should().Be(0, "a payment of 200 used to be listed while only 150 of it counted");
+        (await BalanceAsync(client, memberId)).Should().Be(-150);
+
+        await Json(await client.PostAsync("/api/payments", Payment(memberId, charge, 150)), "pay what is owed");
+        (await ChargeOfAsync(client, charge)).GetProperty("status").GetString().Should().Be("Paid");
+        (await BalanceAsync(client, memberId)).Should().Be(0);
+        await Refused(await client.PostAsync("/api/payments", Payment(memberId, charge, 10)), HttpStatusCode.Conflict, "paying a paid charge again");
+    }
+
+    [Fact]
+    public async Task APaymentSettlesACharge()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+
+        await Refused(await client.PostAsync("/api/payments", Payment(memberId, null, 50)), HttpStatusCode.BadRequest,
+            "a payment against nothing, which used to change no balance at all");
+        await Refused(await client.PostAsync("/api/payments", Payment(memberId, Guid.NewGuid().ToString(), 50)), HttpStatusCode.NotFound, "a charge that does not exist");
+        (await Json(await client.GetAsync("/api/payments"), "payments")).GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task TwoPaymentsAtOnceSettleTheChargeOnce()
+    {
+        using var factory = new RaceFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var charge = await ChargeAsync(client, memberId, 150);
+        // The same 150 recorded from two screens: both see 150 owing.
+        factory.Gate.Arm("charges");
+
+        var answers = await Task.WhenAll(
+            client.PostAsync("/api/payments", Payment(memberId, charge, 150)),
+            client.PostAsync("/api/payments", Payment(memberId, charge, 150)));
+
+        answers.Select(a => a.StatusCode).Should().BeEquivalentTo(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict });
+        (await Json(await client.GetAsync("/api/payments"), "payments")).GetArrayLength().Should().Be(1);
+        (await ChargeOfAsync(client, charge)).GetProperty("paidAmount").GetDecimal().Should().Be(150);
+        (await BalanceAsync(client, memberId)).Should().Be(0);
+    }
+
     // ── gift cards ───────────────────────────────────────────────────────────
 
     private static async Task<string> CardAsync(HttpClient client, decimal faceValue, DateTime? expiresAtUtc = null) =>
