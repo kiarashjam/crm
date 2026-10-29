@@ -507,6 +507,7 @@ export default function Pipeline() {
         expectedCloseDateUtc,
         companyId: createForm.companyId || undefined,
         contactId: createForm.contactId || undefined,
+        assigneeId: createForm.assigneeId || undefined,
         description: createForm.description.trim() || undefined,
         probability: createForm.probability ? parseInt(createForm.probability, 10) : undefined,
       });
