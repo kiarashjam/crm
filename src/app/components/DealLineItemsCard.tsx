@@ -128,13 +128,13 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
       </div>
 
       {loading ? (
-        <div className="py-4 text-center text-slate-400"><Loader2 className="mx-auto h-4 w-4 animate-spin" /></div>
+        <div className="py-4 text-center text-slate-500"><Loader2 className="mx-auto h-4 w-4 animate-spin" /></div>
       ) : (
         <>
           {items.length > 0 && (
             <div className="overflow-hidden rounded-lg border border-slate-100">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-400">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">Item</th>
                     <th className="w-16 px-2 py-2 text-right font-semibold">Qty</th>
@@ -172,7 +172,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
                 </tbody>
                 <tfoot>
                   <tr className="border-t border-slate-200 bg-slate-50/60">
-                    <td colSpan={3} className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Total</td>
+                    <td colSpan={3} className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-slate-500">Total</td>
                     <td className="px-3 py-2 text-right text-base font-bold text-slate-900">{fmt(total)}</td>
                     <td />
                   </tr>
@@ -185,7 +185,7 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
           <div className="mt-3 grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.5fr_3rem_6rem_auto]">
             <div className="sm:col-span-1">
               <Select value={productId} onValueChange={pickProduct}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Product or custom…" /></SelectTrigger>
+                <SelectTrigger aria-label="Product" className="h-9"><SelectValue placeholder="Product or custom…" /></SelectTrigger>
                 <SelectContent>
                   {products.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} — {fmt(p.unitPrice)}</SelectItem>)}
                 </SelectContent>

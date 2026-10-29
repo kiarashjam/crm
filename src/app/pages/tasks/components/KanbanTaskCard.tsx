@@ -95,14 +95,14 @@ export function KanbanTaskCard({
       onClick={handleCardClick}
       className={`group relative bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-sm hover:shadow-lg hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 cursor-pointer overflow-hidden ${
         isDragging ? 'opacity-60 scale-[0.98] rotate-1 shadow-2xl ring-2 ring-orange-400/50 cursor-grabbing' : ''
-      } ${task.status === 'completed' ? 'opacity-60' : ''}`}
+      } ${task.status === 'completed' ? '!bg-slate-50 saturate-50' : ''}`}
     >
       {/* Priority indicator - left edge */}
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${priority.borderColor.replace('border-l-', 'bg-')}`} />
       
       {/* Drag handle indicator */}
       <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-40 transition-opacity">
-        <GripVertical className="w-4 h-4 text-slate-400" />
+        <GripVertical className="w-4 h-4 text-slate-500" />
       </div>
       
       <div className="p-4 pl-4">
@@ -115,7 +115,7 @@ export function KanbanTaskCard({
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100">
+              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Actions for ${task.title}`}>
                 <MoreHorizontal className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>

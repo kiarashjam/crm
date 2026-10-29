@@ -225,7 +225,7 @@ export function ClaudeSection() {
                             className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm text-slate-800 hover:border-orange-300 hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
                           >
                             <span>{question}</span>
-                            <Copy className="w-4 h-4 shrink-0 text-slate-400" aria-hidden="true" />
+                            <Copy className="w-4 h-4 shrink-0 text-slate-500" aria-hidden="true" />
                           </button>
                         </li>
                       ))}
@@ -376,7 +376,7 @@ function KeyPanel({
         </div>
       </div>
       {canGenerate && (
-        <Button type="button" variant="outline" onClick={onRegenerate} className="text-orange-600 border-orange-200 hover:bg-orange-50">
+        <Button type="button" variant="outline" onClick={onRegenerate} className="text-orange-700 border-orange-200 hover:bg-orange-50">
           <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />
           Regenerate key
         </Button>

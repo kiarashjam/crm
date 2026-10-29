@@ -33,7 +33,7 @@ function Shell({ children }: { children: React.ReactNode }) {
             <p className="text-xs text-slate-500">Open deal value by stage</p>
           </div>
         </div>
-        <Link to="/deals" className="text-sm text-orange-600 hover:text-orange-700 font-medium flex items-center gap-1">
+        <Link to="/deals" className="text-sm text-orange-700 hover:text-orange-800 font-medium flex items-center gap-1">
           View all <ArrowRight className="w-4 h-4" />
         </Link>
       </div>
@@ -112,7 +112,7 @@ export function PipelineChart({ stages, loaded, failed }: PipelineChartProps) {
           return (
             <div key={block.currency}>
               {showCurrencyHeadings && (
-                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
                   {block.currency}
                 </p>
               )}
@@ -125,7 +125,7 @@ export function PipelineChart({ stages, loaded, failed }: PipelineChartProps) {
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-slate-700">{stage.stageName}</span>
-                          <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                          <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
                             {stage.dealCount} deal{stage.dealCount === 1 ? '' : 's'}
                           </span>
                         </div>

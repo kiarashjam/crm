@@ -257,14 +257,14 @@ export function TaskDetailModal({
   const statusOptions = [
     { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-500', bg: 'bg-slate-100' },
     { value: 'in_progress', label: 'In Progress', icon: Play, color: 'text-blue-600', bg: 'bg-blue-100' },
-    { value: 'completed', label: 'Completed', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-100' },
-    { value: 'cancelled', label: 'Cancelled', icon: XCircle, color: 'text-slate-400', bg: 'bg-slate-100' },
+    { value: 'completed', label: 'Completed', icon: CheckCircle2, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+    { value: 'cancelled', label: 'Cancelled', icon: XCircle, color: 'text-slate-500', bg: 'bg-slate-100' },
   ];
 
   const priorityOptions = [
-    { value: 'none', label: 'None', color: 'text-slate-400', bg: 'bg-slate-100', dot: 'bg-slate-300' },
+    { value: 'none', label: 'None', color: 'text-slate-500', bg: 'bg-slate-100', dot: 'bg-slate-300' },
     { value: 'low', label: 'Low', color: 'text-blue-600', bg: 'bg-blue-100', dot: 'bg-blue-500' },
-    { value: 'medium', label: 'Medium', color: 'text-amber-600', bg: 'bg-amber-100', dot: 'bg-amber-500' },
+    { value: 'medium', label: 'Medium', color: 'text-amber-700', bg: 'bg-amber-100', dot: 'bg-amber-500' },
     { value: 'high', label: 'High', color: 'text-red-600', bg: 'bg-red-100', dot: 'bg-red-500' },
   ];
 
@@ -327,7 +327,7 @@ export function TaskDetailModal({
                   </h1>
                 )}
                 
-                <div className="flex items-center gap-4 mt-4 text-sm text-slate-400">
+                <div className="flex items-center gap-4 mt-4 text-sm text-slate-500">
                   <span className="flex items-center gap-2">
                     <Clock className="w-4 h-4" />
                     Created {formatDateTime(task.createdAtUtc)}
@@ -410,7 +410,7 @@ export function TaskDetailModal({
               <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</label>
                 <Select value={form.status} onValueChange={handleQuickStatusChange}>
-                  <SelectTrigger className="h-14 rounded-2xl border-2 border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-all text-base font-medium">
+                  <SelectTrigger aria-label="Status" className="h-14 rounded-2xl border-2 border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-all text-base font-medium">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -432,7 +432,7 @@ export function TaskDetailModal({
               <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</label>
                 <Select value={form.priority} onValueChange={handleQuickPriorityChange}>
-                  <SelectTrigger className="h-14 rounded-2xl border-2 border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-all text-base font-medium">
+                  <SelectTrigger aria-label="Priority" className="h-14 rounded-2xl border-2 border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-all text-base font-medium">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -466,8 +466,8 @@ export function TaskDetailModal({
                         ? 'border-slate-200 bg-slate-50/50' 
                         : 'border-dashed border-slate-200 bg-slate-50/30'
                   }`}>
-                    <Calendar className={`w-5 h-5 ${isOverdue ? 'text-red-500' : 'text-slate-400'}`} />
-                    <span className={`font-medium ${!task.dueDateUtc ? 'text-slate-400' : ''}`}>
+                    <Calendar className={`w-5 h-5 ${isOverdue ? 'text-red-500' : 'text-slate-500'}`} />
+                    <span className={`font-medium ${!task.dueDateUtc ? 'text-slate-500' : ''}`}>
                       {formatDue(task.dueDateUtc) || 'Not set'}
                     </span>
                   </div>
@@ -486,7 +486,7 @@ export function TaskDetailModal({
                       <SelectItem value="none">
                         <span className="flex items-center gap-3 text-slate-500">
                           <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
-                            <User className="w-4 h-4 text-slate-400" />
+                            <User className="w-4 h-4 text-slate-500" />
                           </div>
                           Unassigned
                         </span>
@@ -507,8 +507,8 @@ export function TaskDetailModal({
                   </Select>
                 ) : (
                   <div className="h-14 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/30 flex items-center px-4 gap-3">
-                    <User className="w-5 h-5 text-slate-400" />
-                    <span className="font-medium text-slate-400">No team members</span>
+                    <User className="w-5 h-5 text-slate-500" />
+                    <span className="font-medium text-slate-500">No team members</span>
                   </div>
                 )}
               </div>
@@ -545,10 +545,10 @@ export function TaskDetailModal({
                     ) : (
                       <div className="flex flex-col items-center justify-center py-12 text-center">
                         <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-                          <MessageSquare className="w-7 h-7 text-slate-400" />
+                          <MessageSquare className="w-7 h-7 text-slate-500" />
                         </div>
                         <p className="text-slate-500 font-medium">No description</p>
-                        <p className="text-sm text-slate-400 mt-1">Click edit to add details</p>
+                        <p className="text-sm text-slate-500 mt-1">Click edit to add details</p>
                       </div>
                     )}
                   </div>
@@ -581,9 +581,9 @@ export function TaskDetailModal({
                     ) : (
                       <div className="flex flex-col items-center justify-center py-10 text-center">
                         <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-                          <FileText className="w-6 h-6 text-slate-400" />
+                          <FileText className="w-6 h-6 text-slate-500" />
                         </div>
-                        <p className="text-slate-400">No notes yet</p>
+                        <p className="text-slate-500">No notes yet</p>
                       </div>
                     )}
                   </div>
@@ -611,7 +611,7 @@ export function TaskDetailModal({
                       <div>
                         <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Lead</label>
                         <Select value={form.leadId || 'none'} onValueChange={handleQuickLeadChange}>
-                          <SelectTrigger className="h-12 rounded-xl border-2 border-slate-200 bg-slate-50/50 hover:bg-slate-100">
+                          <SelectTrigger aria-label="Lead" className="h-12 rounded-xl border-2 border-slate-200 bg-slate-50/50 hover:bg-slate-100">
                             <SelectValue placeholder="No lead" />
                           </SelectTrigger>
                           <SelectContent>
@@ -640,7 +640,7 @@ export function TaskDetailModal({
                       <div>
                         <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 block">Deal</label>
                         <Select value={form.dealId || 'none'} onValueChange={handleQuickDealChange}>
-                          <SelectTrigger className="h-12 rounded-xl border-2 border-slate-200 bg-slate-50/50 hover:bg-slate-100">
+                          <SelectTrigger aria-label="Deal" className="h-12 rounded-xl border-2 border-slate-200 bg-slate-50/50 hover:bg-slate-100">
                             <SelectValue placeholder="No deal" />
                           </SelectTrigger>
                           <SelectContent>
@@ -678,8 +678,8 @@ export function TaskDetailModal({
                         <div className={`h-12 rounded-xl border-2 flex items-center px-4 gap-3 ${
                           task.reminderDateUtc ? 'border-slate-200 bg-slate-50/50' : 'border-dashed border-slate-200 bg-slate-50/30'
                         }`}>
-                          <Bell className="w-5 h-5 text-slate-400" />
-                          <span className={`font-medium ${!task.reminderDateUtc ? 'text-slate-400' : 'text-slate-700'}`}>
+                          <Bell className="w-5 h-5 text-slate-500" />
+                          <span className={`font-medium ${!task.reminderDateUtc ? 'text-slate-500' : 'text-slate-700'}`}>
                             {task.reminderDateUtc ? formatDateTime(task.reminderDateUtc) : 'Not set'}
                           </span>
                         </div>
@@ -717,7 +717,7 @@ export function TaskDetailModal({
                             </div>
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-slate-900 line-clamp-1">{activity.subject || 'Activity'}</p>
-                              <p className="text-xs text-slate-400 mt-0.5">{formatRelativeTime(activity.createdAt)}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{formatRelativeTime(activity.createdAt)}</p>
                             </div>
                           </div>
                         ))}
@@ -725,9 +725,9 @@ export function TaskDetailModal({
                     ) : (
                       <div className="flex flex-col items-center justify-center py-10 text-center">
                         <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
-                          <History className="w-6 h-6 text-slate-400" />
+                          <History className="w-6 h-6 text-slate-500" />
                         </div>
-                        <p className="text-slate-400 text-sm">No activity yet</p>
+                        <p className="text-slate-500 text-sm">No activity yet</p>
                       </div>
                     )}
                   </div>
@@ -735,7 +735,7 @@ export function TaskDetailModal({
 
                 {/* Metadata */}
                 <div className="bg-slate-50 rounded-2xl p-5 space-y-3">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Task Info</p>
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Task Info</p>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-slate-500">ID</span>
@@ -744,7 +744,7 @@ export function TaskDetailModal({
                     {task.completedAtUtc && (
                       <div className="flex justify-between">
                         <span className="text-slate-500">Completed</span>
-                        <span className="text-emerald-600 font-medium">{formatDateTime(task.completedAtUtc)}</span>
+                        <span className="text-emerald-700 font-medium">{formatDateTime(task.completedAtUtc)}</span>
                       </div>
                     )}
                   </div>

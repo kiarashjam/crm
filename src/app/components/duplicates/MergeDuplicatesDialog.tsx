@@ -320,7 +320,7 @@ export function MergeDuplicatesDialog<T extends { id: string }>({ spec, groups, 
                             <span className="block truncate font-semibold text-slate-900">{spec.title(record)}</span>
                             <span className="block truncate text-xs text-slate-500">{spec.subtitle(record) || '—'}</span>
                             {when(spec.created(record)) && (
-                              <span className="mt-1 block text-[11px] text-slate-400">Added {when(spec.created(record))}</span>
+                              <span className="mt-1 block text-[11px] text-slate-500">Added {when(spec.created(record))}</span>
                             )}
                             {onlyHere(record.id).length > 0 && (
                               <span className="mt-1.5 flex flex-wrap gap-1">
@@ -414,7 +414,7 @@ export function MergeDuplicatesDialog<T extends { id: string }>({ spec, groups, 
                             {row.values.map((value, i) => {
                               const used = row.from === i || (row.from === -1 && value !== undefined);
                               return (
-                                <td key={ordered[i]?.id ?? i} className={cn('max-w-[16rem] px-3 py-2 align-top', used ? 'text-slate-900' : 'text-slate-400')}>
+                                <td key={ordered[i]?.id ?? i} className={cn('max-w-[16rem] px-3 py-2 align-top', used ? 'text-slate-900' : 'text-slate-500')}>
                                   <span className="line-clamp-2 break-words">{value ?? <span className="text-slate-300">—</span>}</span>
                                 </td>
                               );

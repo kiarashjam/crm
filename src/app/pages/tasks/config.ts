@@ -24,8 +24,8 @@ export const statusConfig: Record<TaskStatusType, { label: string; color: string
 
 // Priority configuration
 export const priorityConfig: Record<TaskPriorityType, { label: string; color: string; bgColor: string; borderColor: string }> = {
-  high: { label: 'High', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-l-red-500' },
-  medium: { label: 'Medium', color: 'text-amber-600', bgColor: 'bg-amber-50', borderColor: 'border-l-amber-500' },
+  high: { label: 'High', color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-l-red-500' },
+  medium: { label: 'Medium', color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-l-amber-500' },
   low: { label: 'Low', color: 'text-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-l-blue-500' },
   none: { label: 'No priority', color: 'text-slate-400', bgColor: 'bg-slate-50', borderColor: 'border-l-slate-200' },
 };

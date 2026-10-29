@@ -291,7 +291,7 @@ export default function Charges() {
         type="button"
         onClick={() => remove(c)}
         disabled={deletingId === c.id}
-        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
         aria-label={`Delete charge ${c.description}`}
       >
         {deletingId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
@@ -317,7 +317,7 @@ export default function Charges() {
       cell: (c) => (
         <span className="block">
           <span className="block text-slate-700">{c.description}</span>
-          {c.reference && <span className="mt-0.5 block text-xs text-slate-400">{c.reference}</span>}
+          {c.reference && <span className="mt-0.5 block text-xs text-slate-500">{c.reference}</span>}
         </span>
       ),
     },
@@ -376,7 +376,7 @@ export default function Charges() {
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -385,7 +385,7 @@ export default function Charges() {
               />
             </div>
             <Select value={memberFilter} onValueChange={setMemberFilter}>
-              <SelectTrigger className="h-11 rounded-xl md:w-56">
+              <SelectTrigger aria-label="Filter by member" className="h-11 rounded-xl md:w-56">
                 <SelectValue placeholder="Member" />
               </SelectTrigger>
               <SelectContent>
@@ -401,7 +401,7 @@ export default function Charges() {
               value={statusFilter}
               onValueChange={(v) => setStatusFilter(v as 'All' | ChargeStatus)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-44">
+              <SelectTrigger aria-label="Filter by status" className="h-11 rounded-xl md:w-44">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -424,7 +424,7 @@ export default function Charges() {
 
             <TabsContent value="charges">
               {loading ? (
-                <div className="flex items-center justify-center py-20 text-slate-400">
+                <div className="flex items-center justify-center py-20 text-slate-500">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : filteredCharges.length === 0 ? (
@@ -478,7 +478,7 @@ export default function Charges() {
                               Posted {formatDate(c.postedAtUtc)}
                             </p>
                           </div>
-                          {c.reference && <p className="mt-1 font-mono text-xs text-slate-400">{c.reference}</p>}
+                          {c.reference && <p className="mt-1 font-mono text-xs text-slate-500">{c.reference}</p>}
                           <div className="mt-auto pt-3">{chargeActions(c)}</div>
                         </StaggerItem>
                       ))}
@@ -580,7 +580,7 @@ export default function Charges() {
                 value={chargeForm.memberId}
                 onValueChange={(v) => setChargeForm({ ...chargeForm, memberId: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Member">
                   <SelectValue placeholder="Pick a member" />
                 </SelectTrigger>
                 <SelectContent>
@@ -599,7 +599,7 @@ export default function Charges() {
                   value={chargeForm.kind}
                   onValueChange={(v) => setChargeForm({ ...chargeForm, kind: v as ChargeKind })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Kind">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -613,7 +613,7 @@ export default function Charges() {
               </div>
               <div>
                 <Label>Amount ($)</Label>
-                <Input
+                <Input aria-label="Amount ($)"
                   type="number"
                   min="0"
                   step="0.01"
@@ -624,7 +624,7 @@ export default function Charges() {
             </div>
             <div>
               <Label>Description</Label>
-              <Input
+              <Input aria-label="Description"
                 value={chargeForm.description}
                 onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
                 placeholder="e.g. Tasting menu × 2"
@@ -632,7 +632,7 @@ export default function Charges() {
             </div>
             <div>
               <Label>Due date</Label>
-              <Input
+              <Input aria-label="Due date"
                 type="date"
                 value={chargeForm.dueAtUtc}
                 onChange={(e) => setChargeForm({ ...chargeForm, dueAtUtc: e.target.value })}
@@ -672,7 +672,7 @@ export default function Charges() {
           <div className="space-y-4 py-2">
             <div>
               <Label>Amount ($)</Label>
-              <Input
+              <Input aria-label="Amount ($)"
                 type="number"
                 min="0"
                 step="0.01"
@@ -686,7 +686,7 @@ export default function Charges() {
                 value={paymentForm.method}
                 onValueChange={(v) => setPaymentForm({ ...paymentForm, method: v as Payment['method'] })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Method">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -700,7 +700,7 @@ export default function Charges() {
             </div>
             <div>
               <Label>Reference</Label>
-              <Input
+              <Input aria-label="Reference"
                 value={paymentForm.reference}
                 onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
                 placeholder="auth code, check number, etc."

@@ -10,8 +10,8 @@ type QuickLogType = 'call' | 'email' | 'meeting' | 'note';
 const TYPES: { id: QuickLogType; label: string; icon: typeof Phone; tone: string }[] = [
   { id: 'call', label: 'Call', icon: Phone, tone: 'text-blue-600 bg-blue-50 border-blue-200' },
   { id: 'email', label: 'Email', icon: Mail, tone: 'text-purple-600 bg-purple-50 border-purple-200' },
-  { id: 'meeting', label: 'Meeting', icon: Calendar, tone: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
-  { id: 'note', label: 'Note', icon: Briefcase, tone: 'text-amber-600 bg-amber-50 border-amber-200' },
+  { id: 'meeting', label: 'Meeting', icon: Calendar, tone: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+  { id: 'note', label: 'Note', icon: Briefcase, tone: 'text-amber-700 bg-amber-50 border-amber-200' },
 ];
 
 interface QuickLogPopoverProps {
@@ -67,12 +67,12 @@ export function QuickLogPopover({ onSubmit, trigger }: QuickLogPopoverProps) {
       >
         {trigger}
       </PopoverTrigger>
-      <PopoverContent
+      <PopoverContent aria-label="Log an activity"
         align="end"
         className="w-80 p-3 space-y-3"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+        <div className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
           Log activity
         </div>
         <div className="grid grid-cols-4 gap-1.5">
@@ -113,7 +113,7 @@ export function QuickLogPopover({ onSubmit, trigger }: QuickLogPopoverProps) {
           }}
         />
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[11px] text-slate-500">
             <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px]">⌘</kbd>
             {' + '}
             <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd>

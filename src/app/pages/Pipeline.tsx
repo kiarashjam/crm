@@ -697,7 +697,7 @@ export default function Pipeline() {
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 rounded-xl text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+        className="h-8 w-8 rounded-xl text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"
         onClick={() => setEditDeal(deal)}
         aria-label={`Edit ${deal.name}`}
       >
@@ -706,7 +706,7 @@ export default function Pipeline() {
       <Button
         variant="ghost"
         size="icon"
-        className="h-8 w-8 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-600"
+        className="h-8 w-8 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600"
         onClick={() => setDeleteConfirmDeal(deal)}
         aria-label={`Delete ${deal.name}`}
       >
@@ -843,7 +843,7 @@ export default function Pipeline() {
                       <button
                         type="button"
                         onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-500 hover:text-red-500 transition-all duration-200"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -871,7 +871,7 @@ export default function Pipeline() {
                 <div className="relative group/filter">
                   <div className="absolute inset-0 bg-violet-200/50 rounded-xl blur-lg opacity-0 group-hover/filter:opacity-60 transition-all duration-300" />
                   <Select value={filterStage} onValueChange={setFilterStage}>
-                    <SelectTrigger className="relative h-11 w-full sm:w-[200px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
+                    <SelectTrigger aria-label="Filter by stage" className="relative h-11 w-full sm:w-[200px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center">
                           <Filter className="w-3.5 h-3.5 text-violet-600" />
@@ -914,7 +914,7 @@ export default function Pipeline() {
                 {/* HP-10: Assignee filter */}
                 {orgMembers.length > 0 && (
                   <Select value={filterAssignee} onValueChange={setFilterAssignee}>
-                    <SelectTrigger className="relative h-11 w-full sm:w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-fuchsia-50 hover:border-fuchsia-300 focus:border-fuchsia-300 focus:ring-2 focus:ring-fuchsia-200/60 transition-all duration-300">
+                    <SelectTrigger aria-label="Filter by assignee" className="relative h-11 w-full sm:w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-fuchsia-50 hover:border-fuchsia-300 focus:border-fuchsia-300 focus:ring-2 focus:ring-fuchsia-200/60 transition-all duration-300">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-lg bg-fuchsia-100 flex items-center justify-center">
                           <User className="w-3.5 h-3.5 text-fuchsia-600" />
@@ -944,10 +944,11 @@ export default function Pipeline() {
                     onChange={(e) => setFilterValueMin(e.target.value)}
                     className="w-24 h-9 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-900 text-xs px-3 focus:outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/50 focus:bg-white placeholder:text-slate-400"
                   />
-                  <span className="text-xs text-slate-400">—</span>
+                  <span className="text-xs text-slate-500">—</span>
                   <input
                     type="number"
                     placeholder="Max"
+                    aria-label="Maximum deal value"
                     value={filterValueMax}
                     onChange={(e) => setFilterValueMax(e.target.value)}
                     className="w-24 h-9 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-900 text-xs px-3 focus:outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/50 focus:bg-white placeholder:text-slate-400"
@@ -957,13 +958,15 @@ export default function Pipeline() {
                   <span className="text-xs text-slate-500 font-medium whitespace-nowrap">Close date:</span>
                   <input
                     type="date"
+                    aria-label="Close date from"
                     value={filterCloseDateFrom}
                     onChange={(e) => setFilterCloseDateFrom(e.target.value)}
                     className="h-9 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-900 text-xs px-3 focus:outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/50 focus:bg-white"
                   />
-                  <span className="text-xs text-slate-400">—</span>
+                  <span className="text-xs text-slate-500">—</span>
                   <input
                     type="date"
+                    aria-label="Close date to"
                     value={filterCloseDateTo}
                     onChange={(e) => setFilterCloseDateTo(e.target.value)}
                     className="h-9 rounded-lg border border-slate-200 bg-slate-50/80 text-slate-900 text-xs px-3 focus:outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-200/50 focus:bg-white"
@@ -979,7 +982,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                       <Search className="w-3 h-3" />
                       &quot;{searchQuery}&quot;
-                      <button onClick={() => setSearchQuery('')} className="ml-1 hover:text-violet-600 transition-colors">
+                      <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-violet-100 hover:text-violet-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -990,7 +993,7 @@ export default function Pipeline() {
                         className="w-2 h-2 rounded-full bg-emerald-500"
                       />
                       {filterStage}
-                      <button onClick={() => setFilterStage('all')} className="ml-1 hover:text-emerald-900 transition-colors">
+                      <button type="button" onClick={() => setFilterStage('all')} aria-label={`Remove ${filterStage} filter`} className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-emerald-100 hover:text-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -999,7 +1002,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-200">
                       <User className="w-3 h-3" />
                       My Deals
-                      <button onClick={() => setFilterMyDeals(false)} className="ml-1 hover:text-blue-900 transition-colors">
+                      <button type="button" onClick={() => setFilterMyDeals(false)} aria-label="Remove “my deals” filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-blue-100 hover:text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -1008,7 +1011,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-xs font-medium border border-purple-200">
                       <User className="w-3 h-3" />
                       {filterAssignee === 'unassigned' ? 'Unassigned' : orgMembers.find(m => m.userId === filterAssignee)?.name}
-                      <button onClick={() => setFilterAssignee('all')} className="ml-1 hover:text-purple-900 transition-colors">
+                      <button type="button" onClick={() => setFilterAssignee('all')} aria-label="Remove owner filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-purple-100 hover:text-purple-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -1017,7 +1020,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
                       <DollarSign className="w-3 h-3" />
                       {filterValueMin || '0'} – {filterValueMax || '∞'}
-                      <button onClick={() => { setFilterValueMin(''); setFilterValueMax(''); }} className="ml-1 hover:text-amber-900 transition-colors">
+                      <button type="button" onClick={() => { setFilterValueMin(''); setFilterValueMax(''); }} aria-label="Remove value filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -1026,7 +1029,7 @@ export default function Pipeline() {
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium border border-cyan-200">
                       <Calendar className="w-3 h-3" />
                       {filterCloseDateFrom || 'any'} – {filterCloseDateTo || 'any'}
-                      <button onClick={() => { setFilterCloseDateFrom(''); setFilterCloseDateTo(''); }} className="ml-1 hover:text-cyan-900 transition-colors">
+                      <button type="button" onClick={() => { setFilterCloseDateFrom(''); setFilterCloseDateTo(''); }} aria-label="Remove close date filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-cyan-100 hover:text-cyan-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
                         <X className="w-3 h-3" />
                       </button>
                     </span>
@@ -1105,7 +1108,7 @@ export default function Pipeline() {
             className="flex items-center gap-5 p-6 rounded-2xl bg-white border-2 border-dashed border-slate-200 shadow-lg shadow-slate-100"
           >
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
-              <Search className="w-8 h-8 text-slate-400" />
+              <Search className="w-8 h-8 text-slate-500" />
             </div>
             <div className="flex-1">
               <p className="text-base font-semibold text-slate-700">No deals match your filters</p>
@@ -1397,7 +1400,7 @@ export default function Pipeline() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                        className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
                         onClick={() => { setCloseDeal(detailDeal); setCloseAsWon(true); }}
                       >
                         <Trophy className="w-3.5 h-3.5 mr-1" />
@@ -1446,7 +1449,7 @@ export default function Pipeline() {
                         value={activityForm.type}
                         onValueChange={(v) => setActivityForm((f) => ({ ...f, type: v }))}
                       >
-                        <SelectTrigger className="w-28 h-8 text-xs bg-white">
+                        <SelectTrigger aria-label="Activity type" className="w-28 h-8 text-xs bg-white">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -1504,7 +1507,7 @@ export default function Pipeline() {
                       <div className="py-6 text-center">
                         <ActivityIcon className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                         <p className="text-sm text-slate-500">No activities yet</p>
-                        <p className="text-xs text-slate-400 mt-1">Log your first activity above</p>
+                        <p className="text-xs text-slate-500 mt-1">Log your first activity above</p>
                       </div>
                     ) : (
                       dealActivities.map((activity) => (
@@ -1514,14 +1517,14 @@ export default function Pipeline() {
                         >
                           <div className={cn(
                             'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
-                            activity.type === 'call' && 'bg-emerald-100 text-emerald-600',
-                            activity.type === 'email' && 'bg-amber-100 text-amber-600',
+                            activity.type === 'call' && 'bg-emerald-100 text-emerald-700',
+                            activity.type === 'email' && 'bg-amber-100 text-amber-700',
                             activity.type === 'meeting' && 'bg-blue-100 text-blue-600',
                             activity.type === 'note' && 'bg-slate-100 text-slate-600',
                             activity.type === 'video' && 'bg-purple-100 text-purple-600',
                             activity.type === 'demo' && 'bg-rose-100 text-rose-600',
                             activity.type === 'task' && 'bg-cyan-100 text-cyan-600',
-                            activity.type === 'follow_up' && 'bg-orange-100 text-orange-600',
+                            activity.type === 'follow_up' && 'bg-orange-100 text-orange-700',
                             activity.type === 'deadline' && 'bg-red-100 text-red-600',
                             !['call', 'email', 'meeting', 'note', 'video', 'demo', 'task', 'follow_up', 'deadline'].includes(activity.type) && 'bg-slate-100 text-slate-600'
                           )}>
@@ -1540,7 +1543,7 @@ export default function Pipeline() {
                             <div className="flex items-start justify-between gap-2">
                               <div>
                                 <p className="text-sm font-medium text-slate-800 truncate">{activity.subject || activity.type}</p>
-                                <p className="text-xs text-slate-400">
+                                <p className="text-xs text-slate-500">
                                   {activity.type} • {new Date(activity.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                                 </p>
                               </div>
@@ -1595,7 +1598,7 @@ export default function Pipeline() {
           <form onSubmit={handleCreate} className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="group">
               <Label htmlFor="deal-name" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-600">
+                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700">
                   <Briefcase className="w-3.5 h-3.5" />
                 </div>
                 Deal Name <span className="text-emerald-500">*</span>
@@ -1612,7 +1615,7 @@ export default function Pipeline() {
             <div className="grid grid-cols-2 gap-4">
               <div className="group">
                 <Label htmlFor="deal-value" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-600">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-700">
                     <DollarSign className="w-3.5 h-3.5" />
                   </div>
                   Value <span className="text-emerald-500">*</span>
@@ -1637,7 +1640,7 @@ export default function Pipeline() {
                   value={createForm.currency}
                   onValueChange={(v) => setCreateForm((f) => ({ ...f, currency: v }))}
                 >
-                  <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all">
+                  <SelectTrigger aria-label="Currency" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all">
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1663,7 +1666,7 @@ export default function Pipeline() {
                     setCreateForm((f) => ({ ...f, pipelineId: pid, stageId: firstStage?.id ?? f.stageId }));
                   }}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger aria-label="Pipeline" className="mt-1">
                     <SelectValue placeholder="Select pipeline" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1682,7 +1685,7 @@ export default function Pipeline() {
                 value={createForm.stageId || createStageList[0]?.id}
                 onValueChange={(v) => setCreateForm((f) => ({ ...f, stageId: v }))}
               >
-                <SelectTrigger className="mt-1">
+                <SelectTrigger aria-label="Stage" className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1718,7 +1721,7 @@ export default function Pipeline() {
                 value={createForm.companyId || 'none'}
                 onValueChange={(v) => setCreateForm((f) => ({ ...f, companyId: v === 'none' ? '' : v }))}
               >
-                <SelectTrigger className="mt-1">
+                <SelectTrigger aria-label="Company" className="mt-1">
                   <SelectValue placeholder="Optional" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1737,7 +1740,7 @@ export default function Pipeline() {
                 value={createForm.contactId || 'none'}
                 onValueChange={(v) => setCreateForm((f) => ({ ...f, contactId: v === 'none' ? '' : v }))}
               >
-                <SelectTrigger className="mt-1">
+                <SelectTrigger aria-label="Contact" className="mt-1">
                   <SelectValue placeholder="Optional" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1757,7 +1760,7 @@ export default function Pipeline() {
                   value={createForm.assigneeId || 'none'}
                   onValueChange={(v) => setCreateForm((f) => ({ ...f, assigneeId: v === 'none' ? '' : v }))}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger aria-label="Assignee" className="mt-1">
                     <SelectValue placeholder="Optional" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1853,7 +1856,7 @@ export default function Pipeline() {
           <form onSubmit={handleSaveEdit} className="flex-1 overflow-y-auto p-6 space-y-4">
             <div className="group">
               <Label htmlFor="edit-deal-name" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-600">
+                <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700">
                   <Briefcase className="w-3.5 h-3.5" />
                 </div>
                 Deal Name <span className="text-emerald-500">*</span>
@@ -1870,7 +1873,7 @@ export default function Pipeline() {
             <div className="grid grid-cols-2 gap-4">
               <div className="group">
                 <Label htmlFor="edit-deal-value" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-600">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-700">
                     <DollarSign className="w-3.5 h-3.5" />
                   </div>
                   Value <span className="text-emerald-500">*</span>
@@ -1895,7 +1898,7 @@ export default function Pipeline() {
                   value={editForm.currency || 'CHF'}
                   onValueChange={(v) => setEditForm((f) => ({ ...f, currency: v }))}
                 >
-                  <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all">
+                  <SelectTrigger aria-label="Currency" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all">
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1921,7 +1924,7 @@ export default function Pipeline() {
                     setEditForm((f) => ({ ...f, pipelineId: pid, stageId: firstStage?.id ?? f.stageId }));
                   }}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger aria-label="Pipeline" className="mt-1">
                     <SelectValue placeholder="Optional" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1941,7 +1944,7 @@ export default function Pipeline() {
                 value={editForm.stageId || editStageList[0]?.id}
                 onValueChange={(v) => setEditForm((f) => ({ ...f, stageId: v }))}
               >
-                <SelectTrigger className="mt-1">
+                <SelectTrigger aria-label="Stage" className="mt-1">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1969,7 +1972,7 @@ export default function Pipeline() {
                 value={editForm.companyId || 'none'}
                 onValueChange={(v) => setEditForm((f) => ({ ...f, companyId: v === 'none' ? '' : v }))}
               >
-                <SelectTrigger className="mt-1">
+                <SelectTrigger aria-label="Company" className="mt-1">
                   <SelectValue placeholder="Optional" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1989,7 +1992,7 @@ export default function Pipeline() {
                   value={editForm.assigneeId || 'none'}
                   onValueChange={(v) => setEditForm((f) => ({ ...f, assigneeId: v === 'none' ? '' : v }))}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger aria-label="Assignee" className="mt-1">
                     <SelectValue placeholder="Optional" />
                   </SelectTrigger>
                   <SelectContent>

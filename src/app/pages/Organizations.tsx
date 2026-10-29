@@ -410,7 +410,7 @@ export default function Organizations() {
           </div>
           <div className="flex min-w-0 items-center gap-2">
             {user && (
-              <span className="hidden truncate text-xs text-slate-400 sm:block">{user.email}</span>
+              <span className="hidden truncate text-xs text-slate-500 sm:block">{user.email}</span>
             )}
             {cameFromApp ? (
               <Link
@@ -465,7 +465,7 @@ export default function Organizations() {
           {organizations.length > 1 && (
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <div className="relative flex-1 sm:max-w-xl">
-                <Search className="pointer-events-none absolute top-1/2 left-3.5 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                <Search className="pointer-events-none absolute top-1/2 left-3.5 z-10 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden />
                 <input
                   ref={searchRef}
                   value={query}
@@ -481,7 +481,7 @@ export default function Organizations() {
                     type="button"
                     onClick={() => { setQuery(''); setHighlight(0); searchRef.current?.focus(); }}
                     aria-label="Clear search"
-                    className="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:outline-none"
+                    className="absolute top-1/2 right-2 -translate-y-1/2 rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:outline-none"
                   >
                     <X className="h-4 w-4" aria-hidden />
                   </button>
@@ -673,7 +673,7 @@ export default function Organizations() {
         // Desktop only. There is no keyboard to press on a phone, and a fixed
         // strip there is not a hint — it is something permanently covering the
         // bottom of the list.
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 hidden justify-center pb-5 sm:flex">
+        <div aria-hidden className="pointer-events-none fixed inset-x-0 bottom-0 z-10 hidden justify-center pb-5 sm:flex">
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-2.5 text-[11px] text-slate-500 shadow-lg shadow-slate-900/5 backdrop-blur">
             {organizations.length > 1 && (
               <span className="inline-flex items-center gap-1.5">

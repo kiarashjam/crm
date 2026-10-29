@@ -135,7 +135,7 @@ export default function Statements() {
             >
               <div className="flex flex-col md:flex-row md:items-center gap-3">
                 <Select value={memberId} onValueChange={setMemberId}>
-                  <SelectTrigger className="h-9 rounded-xl border-slate-200/80 bg-white/80 text-slate-700 shadow-sm backdrop-blur hover:border-slate-300 hover:bg-white md:w-64">
+                  <SelectTrigger aria-label="Member" className="h-9 rounded-xl border-slate-200/80 bg-white/80 text-slate-700 shadow-sm backdrop-blur hover:border-slate-300 hover:bg-white md:w-64">
                     <SelectValue placeholder="Pick a member" />
                   </SelectTrigger>
                   <SelectContent>
@@ -147,13 +147,13 @@ export default function Statements() {
                   </SelectContent>
                 </Select>
                 <div className="flex items-center gap-1.5">
-                  <Button variant="outline" onClick={goPrev} className={heroSecondary}>
+                  <Button variant="outline" onClick={goPrev} className={heroSecondary} aria-label="Previous month">
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
                   <Button variant="outline" onClick={goCurrent} className={heroSecondary}>
                     Current
                   </Button>
-                  <Button variant="outline" onClick={goNext} className={heroSecondary}>
+                  <Button variant="outline" onClick={goNext} className={heroSecondary} aria-label="Next month">
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                   <span className="ml-3 text-sm font-medium text-slate-700">{monthLabel(cursor)}</span>
@@ -163,7 +163,7 @@ export default function Statements() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : !member ? (
@@ -200,7 +200,7 @@ export default function Statements() {
                 ) : (
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs uppercase tracking-wide text-slate-400 border-b border-slate-200">
+                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
                         <th className="py-2">Date</th>
                         <th className="py-2">Description</th>
                         <th className="py-2">Kind</th>
@@ -217,7 +217,7 @@ export default function Statements() {
                         </StaggerItem>
                       ))}
                       <tr>
-                        <td colSpan={3} className="py-2 text-right text-xs uppercase tracking-wide text-slate-400">
+                        <td colSpan={3} className="py-2 text-right text-xs uppercase tracking-wide text-slate-500">
                           Total
                         </td>
                         <td className="py-2 text-right font-semibold">{formatCurrency(periodCharges)}</td>
@@ -234,7 +234,7 @@ export default function Statements() {
                 ) : (
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs uppercase tracking-wide text-slate-400 border-b border-slate-200">
+                      <tr className="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200">
                         <th className="py-2">Date</th>
                         <th className="py-2">Method</th>
                         <th className="py-2">Reference</th>
@@ -253,7 +253,7 @@ export default function Statements() {
                         </StaggerItem>
                       ))}
                       <tr>
-                        <td colSpan={3} className="py-2 text-right text-xs uppercase tracking-wide text-slate-400">
+                        <td colSpan={3} className="py-2 text-right text-xs uppercase tracking-wide text-slate-500">
                           Total
                         </td>
                         <td className="py-2 text-right font-semibold text-emerald-700">
@@ -271,7 +271,7 @@ export default function Statements() {
                     Questions about this statement? Please contact the membership office.
                   </p>
                   <div className="text-right">
-                    <p className="text-xs uppercase tracking-wide text-slate-400">Closing balance</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Closing balance</p>
                     <p
                       className={`text-2xl font-bold ${
                         closingBalance > 0 ? 'text-rose-700' : 'text-slate-900'

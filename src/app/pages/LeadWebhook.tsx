@@ -275,7 +275,7 @@ export default function LeadWebhook() {
               <Button
                 variant="outline"
                 onClick={() => setRegenerateConfirm(true)}
-                className="text-orange-600 border-orange-200 hover:bg-orange-50"
+                className="text-orange-700 border-orange-200 hover:bg-orange-50"
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Regenerate Key
@@ -373,7 +373,7 @@ export default function LeadWebhook() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="absolute top-2 right-2 text-slate-400 hover:text-slate-100 bg-slate-800/50 hover:bg-slate-700/50"
+                        className="absolute top-2 right-2 text-slate-500 hover:text-slate-100 bg-slate-800/50 hover:bg-slate-700/50"
                         onClick={() => copyToClipboard(CODE_EXAMPLES[selectedLanguage], 'Code example')}
                         aria-label="Copy code example"
                         title="Copy code example"

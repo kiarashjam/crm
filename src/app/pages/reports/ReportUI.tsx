@@ -13,15 +13,15 @@ import { Reveal } from '@/app/components/motion/PageEnter';
 export type Accent = 'indigo' | 'teal' | 'violet' | 'amber' | 'rose' | 'sky' | 'emerald';
 
 const ACCENT_TEXT: Record<Accent, string> = {
-  indigo: 'text-indigo-600', teal: 'text-teal-600', violet: 'text-violet-600',
-  amber: 'text-amber-600', rose: 'text-rose-600', sky: 'text-sky-600',
-  emerald: 'text-emerald-600',
+  indigo: 'text-indigo-600', teal: 'text-teal-700', violet: 'text-violet-600',
+  amber: 'text-amber-700', rose: 'text-rose-600', sky: 'text-sky-600',
+  emerald: 'text-emerald-700',
 };
 const ACCENT_SOFT: Record<Accent, string> = {
-  indigo: 'bg-indigo-50 text-indigo-600', teal: 'bg-teal-50 text-teal-600',
-  violet: 'bg-violet-50 text-violet-600', amber: 'bg-amber-50 text-amber-600',
+  indigo: 'bg-indigo-50 text-indigo-600', teal: 'bg-teal-50 text-teal-700',
+  violet: 'bg-violet-50 text-violet-600', amber: 'bg-amber-50 text-amber-700',
   rose: 'bg-rose-50 text-rose-600', sky: 'bg-sky-50 text-sky-600',
-  emerald: 'bg-emerald-50 text-emerald-600',
+  emerald: 'bg-emerald-50 text-emerald-700',
 };
 const ACCENT_BAR: Record<Accent, string> = {
   indigo: 'from-indigo-500 to-violet-500', teal: 'from-teal-500 to-emerald-500',
@@ -99,7 +99,7 @@ export function Kpi({
       warn ? 'border-amber-200' : 'border-slate-200',
     )}>
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{label}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{label}</span>
         {Icon && (
           <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', ACCENT_SOFT[accent])}>
             <Icon className="h-3.5 w-3.5" />
@@ -108,7 +108,7 @@ export function Kpi({
       </div>
       <p className="mt-1.5 text-2xl font-bold tabular-nums tracking-[-0.02em] text-slate-900">{value}</p>
       {sub && (
-        <p className={cn('mt-0.5 text-[11px]', warn ? 'font-medium text-amber-700' : 'text-slate-400')}>
+        <p className={cn('mt-0.5 text-[11px]', warn ? 'font-medium text-amber-700' : 'text-slate-500')}>
           {sub}
         </p>
       )}
@@ -137,11 +137,11 @@ export function Panel({
     )}>
       <div className="mb-3">
         <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-        {subtitle && <p className="mt-0.5 text-[11px] text-slate-400">{subtitle}</p>}
+        {subtitle && <p className="mt-0.5 text-[11px] text-slate-500">{subtitle}</p>}
       </div>
       {children}
       {hint && (
-        <p className="mt-3 border-t border-slate-100 pt-2 text-[10.5px] leading-relaxed text-slate-400">
+        <p className="mt-3 border-t border-slate-100 pt-2 text-[10.5px] leading-relaxed text-slate-500">
           {hint}
         </p>
       )}
@@ -153,7 +153,7 @@ export function Panel({
 export function NoData({ children = 'Nothing recorded yet.' }: { children?: ReactNode }) {
   return (
     <div className="flex min-h-[120px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 text-center">
-      <p className="text-xs text-slate-400">{children}</p>
+      <p className="text-xs text-slate-500">{children}</p>
     </div>
   );
 }
@@ -221,7 +221,7 @@ export function Funnel({
               <span className="text-xs font-semibold text-slate-700">{s.name}</span>
               <span className="shrink-0 text-xs tabular-nums text-slate-500">
                 <b className="text-slate-900">{s.value}</b>
-                <span className="ml-1.5 text-slate-400">{Math.round(s.share * 100)}%</span>
+                <span className="ml-1.5 text-slate-500">{Math.round(s.share * 100)}%</span>
               </span>
             </div>
             <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-slate-100">
@@ -231,7 +231,7 @@ export function Funnel({
               />
             </div>
             {prev !== null && dropped > 0 && (
-              <p className="mt-1 text-[10.5px] text-rose-500">
+              <p className="mt-1 text-[10.5px] text-rose-700">
                 −{dropped} did not reach this step
               </p>
             )}

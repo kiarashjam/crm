@@ -72,7 +72,7 @@ export default function HospitalitySettings() {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <AppHeader />
-        <div className="flex items-center justify-center py-20 text-slate-400">
+        <div className="flex items-center justify-center py-20 text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       </div>
@@ -197,7 +197,7 @@ export default function HospitalitySettings() {
                         <div className="grid grid-cols-2 gap-3 mb-4">
                           <div>
                             <Label className="text-xs">Monthly dues ($)</Label>
-                            <Input
+                            <Input aria-label="Monthly dues ($)"
                               type="number"
                               min="0"
                               value={cfg.monthlyDues}
@@ -208,7 +208,7 @@ export default function HospitalitySettings() {
                           </div>
                           <div>
                             <Label className="text-xs">Initiation fee ($)</Label>
-                            <Input
+                            <Input aria-label="Initiation fee ($)"
                               type="number"
                               min="0"
                               value={cfg.initiationFee}
@@ -219,7 +219,7 @@ export default function HospitalitySettings() {
                           </div>
                           <div className="col-span-2">
                             <Label className="text-xs">Loyalty multiplier (×)</Label>
-                            <Input
+                            <Input aria-label="Loyalty multiplier (×)"
                               type="number"
                               min="0"
                               step="0.05"
@@ -242,7 +242,7 @@ export default function HospitalitySettings() {
                               <button
                                 type="button"
                                 onClick={() => removeBenefit(tier, i)}
-                                className="rounded p-0.5 text-slate-400 hover:text-rose-600"
+                                className="-m-1 rounded p-1.5 text-slate-500 hover:text-rose-600"
                                 aria-label="Remove benefit"
                               >
                                 <X className="w-3.5 h-3.5" />
@@ -264,7 +264,7 @@ export default function HospitalitySettings() {
                               }
                             }}
                           />
-                          <Button size="sm" variant="outline" onClick={() => addBenefit(tier)}>
+                          <Button size="sm" variant="outline" onClick={() => addBenefit(tier)} aria-label={`Add a ${tier} benefit`}>
                             <Plus className="w-4 h-4" />
                           </Button>
                         </div>
@@ -283,7 +283,7 @@ export default function HospitalitySettings() {
                 <div className="space-y-4">
                   <div>
                     <Label>Base points per $1 spent</Label>
-                    <Input
+                    <Input aria-label="Base points per $1 spent"
                       type="number"
                       min="1"
                       value={settings.basePointsPerDollar}
@@ -300,7 +300,7 @@ export default function HospitalitySettings() {
                   </div>
                   <div>
                     <Label>Points required per $1 of redemption value</Label>
-                    <Input
+                    <Input aria-label="Points required per $1 of redemption value"
                       type="number"
                       min="1"
                       value={settings.pointsPerDollarRedemption}
@@ -317,7 +317,7 @@ export default function HospitalitySettings() {
                   </div>
                   <div>
                     <Label>Event check-in points (base)</Label>
-                    <Input
+                    <Input aria-label="Event check-in points (base)"
                       type="number"
                       min="0"
                       value={settings.eventCheckInPoints}
@@ -332,7 +332,7 @@ export default function HospitalitySettings() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Referral bonus (points)</Label>
-                      <Input
+                      <Input aria-label="Referral bonus (points)"
                         type="number"
                         min="0"
                         value={settings.referralBonus}
@@ -346,7 +346,7 @@ export default function HospitalitySettings() {
                     </div>
                     <div>
                       <Label>Anniversary bonus (points)</Label>
-                      <Input
+                      <Input aria-label="Anniversary bonus (points)"
                         type="number"
                         min="0"
                         value={settings.anniversaryBonus}
@@ -391,7 +391,7 @@ export default function HospitalitySettings() {
             </TabsContent>
           </Tabs>
 
-          <p className="text-xs text-slate-400 mt-8">
+          <p className="text-xs text-slate-500 mt-8">
             Changes apply to all new transactions once saved. Existing ledger entries and charges are
             not retroactively recalculated.
           </p>

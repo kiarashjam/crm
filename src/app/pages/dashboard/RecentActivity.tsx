@@ -38,9 +38,9 @@ function getActivityIcon(type: string) {
 function getActivityIconColor(type: string) {
   switch (type.toLowerCase()) {
     case 'call':
-      return 'bg-emerald-100 text-emerald-600';
+      return 'bg-emerald-100 text-emerald-700';
     case 'email':
-      return 'bg-amber-100 text-amber-600';
+      return 'bg-amber-100 text-amber-700';
     case 'meeting':
       return 'bg-blue-100 text-blue-600';
     case 'note':
@@ -52,7 +52,7 @@ function getActivityIconColor(type: string) {
     case 'task':
       return 'bg-cyan-100 text-cyan-600';
     case 'follow_up':
-      return 'bg-orange-100 text-orange-600';
+      return 'bg-orange-100 text-orange-700';
     case 'deadline':
       return 'bg-red-100 text-red-600';
     default:
@@ -68,7 +68,7 @@ export function RecentActivity({ items, loaded, failed }: RecentActivityProps) {
           <Activity className="w-4 h-4 text-orange-500" />
           <h2 className="text-sm font-bold text-slate-900">Recent Activity</h2>
         </div>
-        <Link to="/activities" className="text-xs text-orange-600 hover:text-orange-700 font-medium">View all</Link>
+        <Link to="/activities" className="text-xs text-orange-700 hover:text-orange-800 font-medium">View all</Link>
       </div>
       <div className="p-5">
         {failed ? (
@@ -95,7 +95,7 @@ export function RecentActivity({ items, loaded, failed }: RecentActivityProps) {
         ) : items.length === 0 ? (
           <div className="text-center py-6">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-              <Activity className="w-5 h-5 text-slate-400" />
+              <Activity className="w-5 h-5 text-slate-500" />
             </div>
             <p className="text-sm text-slate-600 font-medium">No recent CRM activities</p>
             <p className="text-xs text-slate-500 mt-1">Log activities to track your sales interactions</p>
@@ -125,7 +125,7 @@ export function RecentActivity({ items, loaded, failed }: RecentActivityProps) {
                       </p>
                     )}
                   </div>
-                  <span className="text-xs text-slate-400 shrink-0">
+                  <span className="text-xs text-slate-500 shrink-0">
                     {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   </span>
                 </div>

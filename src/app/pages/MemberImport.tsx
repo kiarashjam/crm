@@ -331,7 +331,7 @@ export default function MemberImport() {
                   </>
                 )}
               </Button>
-              <p className="text-xs text-slate-400 mt-3">
+              <p className="text-xs text-slate-500 mt-3">
                 Members start at Pending unless you set status. Dues match the tier defaults; tune
                 per-member afterwards.
               </p>

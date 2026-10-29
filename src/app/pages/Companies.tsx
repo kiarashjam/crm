@@ -564,7 +564,7 @@ export default function Companies() {
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-500 hover:text-red-500 transition-all duration-200"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -615,7 +615,7 @@ export default function Companies() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
+                  <SelectTrigger aria-label="Sort companies by" className="relative h-11 w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-lg bg-violet-100 flex items-center justify-center">
                         <ArrowUpDown className="w-3.5 h-3.5 text-violet-600" />
@@ -626,31 +626,31 @@ export default function Companies() {
                 <SelectContent>
                   <SelectItem value="name-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Name A-Z
                     </span>
                   </SelectItem>
                   <SelectItem value="name-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Name Z-A
                     </span>
                   </SelectItem>
                   <SelectItem value="contacts-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Most Contacts
                     </span>
                   </SelectItem>
                   <SelectItem value="deals-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Most Deals
                     </span>
                   </SelectItem>
                   <SelectItem value="createdAt-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Newest First
                     </span>
                   </SelectItem>
@@ -673,7 +673,7 @@ export default function Companies() {
                     Industry
                   </label>
                   <Select value={filterIndustry} onValueChange={setFilterIndustry}>
-                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-blue-300 transition-colors">
+                    <SelectTrigger aria-label="Industry" className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-blue-300 transition-colors">
                       <SelectValue placeholder="All industries" />
                     </SelectTrigger>
                     <SelectContent>
@@ -681,7 +681,7 @@ export default function Companies() {
                       {INDUSTRIES.map((industry) => (
                         <SelectItem key={industry} value={industry}>
                           <span className="flex items-center gap-2">
-                            <Factory className="w-3.5 h-3.5 text-slate-400" />
+                            <Factory className="w-3.5 h-3.5 text-slate-500" />
                             {industry}
                           </span>
                         </SelectItem>
@@ -697,7 +697,7 @@ export default function Companies() {
                     Company Size
                   </label>
                   <Select value={filterSize} onValueChange={setFilterSize}>
-                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-blue-300 transition-colors">
+                    <SelectTrigger aria-label="Company Size" className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-blue-300 transition-colors">
                       <SelectValue placeholder="All sizes" />
                     </SelectTrigger>
                     <SelectContent>
@@ -829,7 +829,7 @@ export default function Companies() {
           /* No results state */
           <div className="flex items-center gap-3 p-6 rounded-xl bg-white border border-slate-200">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
-              <Search className="w-6 h-6 text-slate-400" />
+              <Search className="w-6 h-6 text-slate-500" />
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-slate-700">No companies match your filters</p>
@@ -952,7 +952,7 @@ export default function Companies() {
                       >
                         <UserCircle className="w-4 h-4 text-blue-500" />
                         <span className="text-sm font-medium text-slate-700">{contactCount}</span>
-                        <span className="text-xs text-slate-400">contacts</span>
+                        <span className="text-xs text-slate-500">contacts</span>
                       </div>
                       <div
                         className="flex items-center gap-1.5 cursor-pointer hover:text-emerald-600 transition-colors"
@@ -961,7 +961,7 @@ export default function Companies() {
                       >
                         <Target className="w-4 h-4 text-emerald-500" />
                         <span className="text-sm font-medium text-slate-700">{dealCount}</span>
-                        <span className="text-xs text-slate-400">deals</span>
+                        <span className="text-xs text-slate-500">deals</span>
                       </div>
                       {dealValue > 0 && (
                         <div
@@ -970,7 +970,7 @@ export default function Companies() {
                           title="View deal value"
                         >
                           <DollarSign className="w-4 h-4 text-amber-500" />
-                          <span className="text-sm font-bold text-amber-600">{formatCurrency(dealValue)}</span>
+                          <span className="text-sm font-bold text-amber-700">{formatCurrency(dealValue)}</span>
                         </div>
                       )}
                     </div>
@@ -987,7 +987,7 @@ export default function Companies() {
                               className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-left group/deal"
                             >
                               <span className="text-xs font-medium text-slate-700 truncate group-hover/deal:text-emerald-600 transition-colors">{deal.name}</span>
-                              <span className="text-xs text-emerald-600 font-semibold shrink-0 ml-2">{deal.currency || '$'}{deal.value}</span>
+                              <span className="text-xs text-emerald-700 font-semibold shrink-0 ml-2">{deal.currency || '$'}{deal.value}</span>
                             </button>
                           ))}
                           {dealCount > 3 && (
@@ -1107,7 +1107,7 @@ export default function Companies() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="group">
                   <Label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                    <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-600">
+                    <div className="flex items-center justify-center w-6 h-6 rounded-md bg-emerald-100 text-emerald-700">
                       <Factory className="w-3.5 h-3.5" />
                     </div>
                     Industry
@@ -1116,12 +1116,12 @@ export default function Companies() {
                     value={form.industry || 'none'}
                     onValueChange={(v) => setForm((f) => ({ ...f, industry: v === 'none' ? '' : v }))}
                   >
-                    <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-violet-300 focus:ring-violet-100">
+                    <SelectTrigger aria-label="Industry" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-violet-300 focus:ring-violet-100">
                       <SelectValue placeholder="Select industry" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">
-                        <span className="text-slate-400">— Select —</span>
+                        <span className="text-slate-500">— Select —</span>
                       </SelectItem>
                       {INDUSTRIES.map((industry) => (
                         <SelectItem key={industry} value={industry}>
@@ -1143,12 +1143,12 @@ export default function Companies() {
                     value={form.size || 'none'}
                     onValueChange={(v) => setForm((f) => ({ ...f, size: v === 'none' ? '' : v }))}
                   >
-                    <SelectTrigger className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-violet-300 focus:ring-violet-100">
+                    <SelectTrigger aria-label="Company Size" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-violet-300 focus:ring-violet-100">
                       <SelectValue placeholder="Select size" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">
-                        <span className="text-slate-400">— Select —</span>
+                        <span className="text-slate-500">— Select —</span>
                       </SelectItem>
                       {COMPANY_SIZES.map((size) => (
                         <SelectItem key={size.value} value={size.value}>
@@ -1163,7 +1163,7 @@ export default function Companies() {
               {/* Location */}
               <div className="group">
                 <Label htmlFor="company-location" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
-                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-600">
+                  <div className="flex items-center justify-center w-6 h-6 rounded-md bg-amber-100 text-amber-700">
                     <MapPin className="w-3.5 h-3.5" />
                   </div>
                   Location

@@ -197,7 +197,7 @@ export default function Donations() {
       <button
         type="button"
         onClick={() => remove(d)}
-        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
         aria-label={`Delete donation from ${donorName(d)}`}
       >
         <Trash2 className="w-4 h-4" />
@@ -267,7 +267,7 @@ export default function Donations() {
 
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -279,7 +279,7 @@ export default function Donations() {
               value={causeFilter}
               onValueChange={(v) => setCauseFilter(v as 'All' | DonationCause)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-56">
+              <SelectTrigger aria-label="Filter by cause" className="h-11 rounded-xl md:w-56">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -295,7 +295,7 @@ export default function Donations() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -375,7 +375,7 @@ export default function Donations() {
             <div>
               <Label>Donor</Label>
               <Select value={form.memberId} onValueChange={(v) => setForm({ ...form, memberId: v })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Donor">
                   <SelectValue placeholder="Pick a member" />
                 </SelectTrigger>
                 <SelectContent>
@@ -394,7 +394,7 @@ export default function Donations() {
                   value={form.cause}
                   onValueChange={(v) => setForm({ ...form, cause: v as DonationCause })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Cause">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -408,7 +408,7 @@ export default function Donations() {
               </div>
               <div>
                 <Label>Amount ($)</Label>
-                <Input
+                <Input aria-label="Amount ($)"
                   type="number"
                   min="0"
                   step="0.01"
@@ -429,7 +429,7 @@ export default function Donations() {
             </div>
             <div>
               <Label>Message</Label>
-              <Textarea
+              <Textarea aria-label="Message"
                 value={form.message}
                 onChange={(e) => setForm({ ...form, message: e.target.value })}
                 rows={2}

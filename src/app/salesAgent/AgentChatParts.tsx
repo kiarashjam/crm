@@ -289,7 +289,7 @@ export function AgentBubble({ text, saved, fresh, reduce, children }: {
               type="button"
               onClick={copy}
               aria-label={copied ? 'Answer copied' : 'Copy this answer'}
-              className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 opacity-0 shadow-sm transition-opacity hover:text-fuchsia-600 focus-visible:opacity-100 group-hover/bubble:opacity-100 dark:border-slate-600 dark:bg-slate-900"
+              className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 opacity-0 shadow-sm transition-opacity hover:text-fuchsia-600 focus-visible:opacity-100 group-hover/bubble:opacity-100 dark:border-slate-600 dark:bg-slate-900"
             >
               {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
             </button>

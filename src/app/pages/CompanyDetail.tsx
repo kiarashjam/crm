@@ -188,7 +188,7 @@ export default function CompanyDetail() {
           <div className="text-center">
             <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <h2 className="text-lg font-semibold text-slate-700">Company not found</h2>
-            <Link to="/companies" className="text-emerald-600 text-sm hover:underline mt-2 block">Back to Companies</Link>
+            <Link to="/companies" className="text-emerald-700 text-sm hover:underline mt-2 block">Back to Companies</Link>
           </div>
         </main>
       </div>
@@ -293,7 +293,7 @@ export default function CompanyDetail() {
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-slate-800 group-hover:text-emerald-700 dark:text-slate-200">{contact.name}</p>
                             <p className="truncate text-xs text-slate-500">{contact.email}</p>
-                            {contact.jobTitle && <p className="truncate text-xs text-slate-400">{contact.jobTitle}</p>}
+                            {contact.jobTitle && <p className="truncate text-xs text-slate-500">{contact.jobTitle}</p>}
                           </div>
                         </Link>
                       </StaggerItem>
@@ -333,7 +333,7 @@ export default function CompanyDetail() {
                             </div>
                           </div>
                           {deal.value && (
-                            <span className="shrink-0 text-sm font-bold text-emerald-600">
+                            <span className="shrink-0 text-sm font-bold text-emerald-700">
                               {formatMoney(parseAmount(deal.value), currencyOf(deal))}
                             </span>
                           )}
@@ -378,7 +378,7 @@ export default function CompanyDetail() {
                     <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">{company.description}</p>
                   </div>
                 )}
-                <div className="mt-3 flex gap-4 text-xs text-slate-400">
+                <div className="mt-3 flex gap-4 text-xs text-slate-500">
                   {company.createdAtUtc && <span>Created {new Date(company.createdAtUtc).toLocaleDateString()}</span>}
                   {company.updatedAtUtc && <span>Updated {new Date(company.updatedAtUtc).toLocaleDateString()}</span>}
                 </div>

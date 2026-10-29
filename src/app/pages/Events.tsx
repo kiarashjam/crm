@@ -289,7 +289,7 @@ export default function Events() {
         <button
           type="button"
           onClick={() => openEdit(e)}
-          className="rounded p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           aria-label={`Edit ${e.name}`}
         >
           <Pencil className="h-4 w-4" />
@@ -298,7 +298,7 @@ export default function Events() {
           type="button"
           onClick={() => remove(e)}
           disabled={deletingId === e.id}
-          className="rounded p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
           aria-label={`Delete ${e.name}`}
         >
           {deletingId === e.id ? (
@@ -370,7 +370,7 @@ export default function Events() {
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -382,7 +382,7 @@ export default function Events() {
               value={statusFilter}
               onValueChange={(v) => setStatusFilter(v as 'All' | EventStatus)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-44">
+              <SelectTrigger aria-label="Filter by status" className="h-11 rounded-xl md:w-44">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -399,7 +399,7 @@ export default function Events() {
 
           {/* List */}
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -482,23 +482,23 @@ export default function Events() {
                       )}
                       <div className="space-y-1.5 mb-4">
                         <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" /> {formatDateTime(e.startAtUtc)}
+                          <Clock className="w-3.5 h-3.5 text-slate-500" /> {formatDateTime(e.startAtUtc)}
                         </div>
                         {e.location && (
                           <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400" /> {e.location}
+                            <MapPin className="w-3.5 h-3.5 text-slate-500" /> {e.location}
                           </div>
                         )}
                         <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <DollarSign className="w-3.5 h-3.5 text-slate-400" />
+                          <DollarSign className="w-3.5 h-3.5 text-slate-500" />
                           <span>
                             <span className="font-medium">{formatCurrency(e.memberPrice)}</span>{' '}
-                            <span className="text-xs text-slate-400">member</span>
+                            <span className="text-xs text-slate-500">member</span>
                             {e.visibility !== 'MembersOnly' && e.guestPrice > 0 && (
                               <>
                                 {' '}·{' '}
                                 <span className="font-medium">{formatCurrency(e.guestPrice)}</span>{' '}
-                                <span className="text-xs text-slate-400">guest</span>
+                                <span className="text-xs text-slate-500">guest</span>
                               </>
                             )}
                           </span>
@@ -618,7 +618,7 @@ export default function Events() {
                 value={form.visibility}
                 onValueChange={(v) => setForm({ ...form, visibility: v as EventVisibility })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Visibility">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -655,7 +655,7 @@ export default function Events() {
             <div>
               <Label>Status</Label>
               <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as EventStatus })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

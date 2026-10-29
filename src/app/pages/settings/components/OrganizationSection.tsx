@@ -82,7 +82,7 @@ export function OrganizationSection({
               </option>
             ))}
           </select>
-          <Link to="/organizations" className="inline-block mt-2 text-sm text-orange-600 hover:text-orange-700 font-medium">
+          <Link to="/organizations" className="inline-block mt-2 text-sm text-orange-700 hover:text-orange-800 font-medium">
             Manage all organizations
           </Link>
         </div>
@@ -123,7 +123,7 @@ export function OrganizationSection({
                 {ownerInvites.map((i) => (
                   <div key={i.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
                     <span className="text-sm text-slate-700">{i.email}</span>
-                    <span className="text-xs text-slate-400">Pending</span>
+                    <span className="text-xs text-slate-500">Pending</span>
                   </div>
                 ))}
               </div>
@@ -145,7 +145,7 @@ export function OrganizationSection({
                         type="button"
                         onClick={() => handleAcceptJr(jr)}
                         disabled={actingJrId === jr.id}
-                        className="p-2 text-emerald-600 hover:bg-emerald-100 rounded-lg disabled:opacity-50"
+                        className="p-2 text-emerald-700 hover:bg-emerald-100 rounded-lg disabled:opacity-50"
                         title="Accept"
                       >
                         <Check className="w-4 h-4" />

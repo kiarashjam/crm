@@ -1542,22 +1542,22 @@ export default function Leads() {
               <>
                 {!isReadOnly && (
                   <>
-                    <Button onClick={() => navigate('/leads/routing')} variant="outline" className={heroSecondary}>
+                    <Button onClick={() => navigate('/leads/routing')} variant="outline" className={heroSecondary} aria-label="Routing">
                       <SlidersHorizontal className="h-4 w-4" />
                       <span className="hidden sm:inline">Routing</span>
                     </Button>
-                    <Button onClick={() => navigate('/leads/webhook')} variant="outline" className={heroSecondary}>
+                    <Button onClick={() => navigate('/leads/webhook')} variant="outline" className={heroSecondary} aria-label="Webhook">
                       <Link2 className="h-4 w-4" />
                       <span className="hidden sm:inline">Webhook</span>
                     </Button>
-                    <Button onClick={() => navigate('/leads/import')} variant="outline" className={heroSecondary}>
+                    <Button onClick={() => navigate('/leads/import')} variant="outline" className={heroSecondary} aria-label="Import">
                       <Upload className="h-4 w-4" />
                       <span className="hidden sm:inline">Import</span>
                     </Button>
                   </>
                 )}
                 {/* Export is read-only, so viewers keep it. */}
-                <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className={`${heroSecondary} disabled:opacity-60`}>
+                <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className={`${heroSecondary} disabled:opacity-60`} aria-label={exporting ? 'Exporting...' : 'Export CSV'}>
                   <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
                   <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export CSV'}</span>
                 </Button>
@@ -1606,7 +1606,7 @@ export default function Leads() {
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-400 hover:text-red-500 transition-all duration-200"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md bg-slate-100 hover:bg-red-50 flex items-center justify-center text-slate-500 hover:text-red-500 transition-all duration-200"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -1633,7 +1633,7 @@ export default function Leads() {
                   }`}
                 >
                   <div className={`w-6 h-6 rounded-lg flex items-center justify-center mr-2 transition-all duration-300 ${
-                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-orange-100 text-orange-600'
+                    showFilters || activeFilterCount > 0 ? 'bg-white/20' : 'bg-orange-100 text-orange-700'
                   }`}>
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </div>
@@ -1657,7 +1657,7 @@ export default function Leads() {
                     setSortDirection(dir);
                   }}
                 >
-                  <SelectTrigger className="relative h-11 w-[190px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
+                  <SelectTrigger aria-label="Sort leads by" className="relative h-11 w-[190px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
                     <div className="flex min-w-0 items-center gap-2">
                       <div className="w-6 h-6 shrink-0 rounded-lg bg-violet-100 flex items-center justify-center">
                         <ArrowUpDown className="w-3.5 h-3.5 text-violet-600" />
@@ -1670,49 +1670,49 @@ export default function Leads() {
                 <SelectContent>
                   <SelectItem value="createdAt-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Date added · newest first
                     </span>
                   </SelectItem>
                   <SelectItem value="createdAt-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Date added · oldest first
                     </span>
                   </SelectItem>
                   <SelectItem value="name-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Name A-Z
                     </span>
                   </SelectItem>
                   <SelectItem value="name-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Name Z-A
                     </span>
                   </SelectItem>
                   <SelectItem value="status-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Status A-Z
                     </span>
                   </SelectItem>
                   <SelectItem value="status-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Status Z-A
                     </span>
                   </SelectItem>
                   <SelectItem value="email-asc">
                     <span className="flex items-center gap-2">
-                      <ArrowUp className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
                       Email A-Z
                     </span>
                   </SelectItem>
                   <SelectItem value="email-desc">
                     <span className="flex items-center gap-2">
-                      <ArrowDown className="w-3.5 h-3.5 text-slate-400" />
+                      <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
                       Email Z-A
                     </span>
                   </SelectItem>
@@ -1735,7 +1735,7 @@ export default function Leads() {
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900 leading-none">Refine results</h3>
-                    <p className="text-[11px] text-slate-400 mt-1.5 leading-none">
+                    <p className="text-[11px] text-slate-500 mt-1.5 leading-none">
                       {activeFilterCount > 0
                         ? `${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} active`
                         : 'No filters applied'}
@@ -1777,7 +1777,7 @@ export default function Leads() {
                     Source
                   </label>
                   <Select value={filterSource} onValueChange={setFilterSource}>
-                    <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+                    <SelectTrigger aria-label="Source" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
                       <SelectValue placeholder="All sources" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1798,7 +1798,7 @@ export default function Leads() {
                     Conversion
                   </label>
                   <Select value={filterConverted} onValueChange={(v) => setFilterConverted(v as typeof filterConverted)}>
-                    <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+                    <SelectTrigger aria-label="Conversion" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
                       <SelectValue placeholder="All leads" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1826,7 +1826,7 @@ export default function Leads() {
                     Assignment
                   </label>
                   <Select value={filterAssignment} onValueChange={setFilterAssignment}>
-                    <SelectTrigger className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
+                    <SelectTrigger aria-label="Assignment" className="w-full h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-orange-300 transition-colors">
                       <SelectValue placeholder="All assignments" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1843,7 +1843,7 @@ export default function Leads() {
                       )}
                       <SelectItem value="unassigned">
                         <span className="flex items-center gap-2">
-                          <UserCircle className="w-3.5 h-3.5 text-slate-400" />
+                          <UserCircle className="w-3.5 h-3.5 text-slate-500" />
                           Unassigned
                         </span>
                       </SelectItem>
@@ -1877,12 +1877,12 @@ export default function Leads() {
           {/* Active Filter Pills */}
           {(activeFilterCount > 0 || searchQuery) && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-400">Showing:</span>
+              <span className="text-xs text-slate-500">Showing:</span>
               {searchQuery && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                   <Search className="w-3 h-3" />
                   &quot;{searchQuery}&quot;
-                  <button onClick={() => setSearchQuery('')} className="ml-0.5 hover:text-orange-600 transition-colors">
+                  <button type="button" onClick={() => setSearchQuery('')} aria-label="Clear search" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-orange-100 hover:text-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -1892,8 +1892,9 @@ export default function Leads() {
                   <Tag className="w-3 h-3" />
                   {status}
                   <button
+                    type="button"
                     onClick={() => setFilterStatuses((prev) => prev.filter((s) => s !== status))}
-                    className="ml-0.5 hover:text-blue-900 transition-colors"
+                    className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-blue-100 hover:text-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                     aria-label={`Remove ${status} filter`}
                   >
                     <X className="w-3 h-3" />
@@ -1904,7 +1905,7 @@ export default function Leads() {
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
                   <Sparkles className="w-3 h-3" />
                   {filterSource}
-                  <button onClick={() => setFilterSource('all')} className="ml-0.5 hover:text-amber-900 transition-colors">
+                  <button type="button" onClick={() => setFilterSource('all')} aria-label={`Remove ${filterSource} filter`} className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -1913,7 +1914,7 @@ export default function Leads() {
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
                   <RefreshCw className="w-3 h-3" />
                   {filterConverted === 'converted' ? 'Converted' : 'Active'}
-                  <button onClick={() => setFilterConverted('all')} className="ml-0.5 hover:text-emerald-900 transition-colors">
+                  <button type="button" onClick={() => setFilterConverted('all')} aria-label={`Remove ${filterConverted === 'converted' ? 'Converted' : 'Active'} filter`} className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-emerald-100 hover:text-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -1926,7 +1927,7 @@ export default function Leads() {
                     : filterAssignment === 'unassigned'
                       ? 'Unassigned'
                       : `Assigned to ${orgMembersById.get(filterAssignment)?.name ?? 'member'}`}
-                  <button onClick={() => setFilterAssignment('all')} className="ml-0.5 hover:text-indigo-900 transition-colors">
+                  <button type="button" onClick={() => setFilterAssignment('all')} aria-label="Remove assignment filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-indigo-100 hover:text-indigo-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
@@ -1935,7 +1936,7 @@ export default function Leads() {
                 filters={salesFilters}
                 onClear={(key) => patchSalesFilters({ [key]: EMPTY_SALES_TRACKER_FILTERS[key] })}
               />
-              <span className="text-xs text-slate-400">
+              <span className="text-xs text-slate-500">
                 {filteredLeads.length} of {totalCount} leads
               </span>
             </div>
@@ -1945,11 +1946,11 @@ export default function Leads() {
           {filteredLeads.length === 0 && !loading && totalCount > 0 && (
             <div className="mt-4 flex items-center gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
               <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center">
-                <Search className="w-5 h-5 text-slate-400" />
+                <Search className="w-5 h-5 text-slate-500" />
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-800">No leads match your filters</p>
-                <p className="text-xs text-slate-400 mt-0.5">Try adjusting your search or filter criteria</p>
+                <p className="text-xs text-slate-500 mt-0.5">Try adjusting your search or filter criteria</p>
               </div>
               <Button variant="outline" size="sm" onClick={clearFilters} className="ml-auto border-slate-200 text-slate-700 hover:bg-white">
                 Clear filters
@@ -2258,7 +2259,7 @@ export default function Leads() {
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    convertForm.createContact ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
+                    convertForm.createContact ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     <UserPlus className="w-5 h-5" />
                   </div>
@@ -2275,7 +2276,7 @@ export default function Leads() {
                       <div className="w-full border-t border-slate-200" />
                     </div>
                     <div className="relative flex justify-center">
-                      <span className="bg-white px-2 text-xs text-slate-400">or use existing</span>
+                      <span className="bg-white px-2 text-xs text-slate-500">or use existing</span>
                     </div>
                   </div>
                 )}
@@ -2293,7 +2294,7 @@ export default function Leads() {
                       {convertOptions.contacts.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           <span className="flex items-center gap-2">
-                            <Users className="w-3.5 h-3.5 text-slate-400" />
+                            <Users className="w-3.5 h-3.5 text-slate-500" />
                             {c.name} {c.email ? `(${c.email})` : ''}
                           </span>
                         </SelectItem>
@@ -2323,7 +2324,7 @@ export default function Leads() {
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    convertForm.createNewCompany ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-400'
+                    convertForm.createNewCompany ? 'bg-purple-500 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     <Building2 className="w-5 h-5" />
                   </div>
@@ -2354,7 +2355,7 @@ export default function Leads() {
                         <div className="w-full border-t border-slate-200" />
                       </div>
                       <div className="relative flex justify-center">
-                        <span className="bg-white px-2 text-xs text-slate-400">or link to existing</span>
+                        <span className="bg-white px-2 text-xs text-slate-500">or link to existing</span>
                       </div>
                     </div>
                     <Select
@@ -2369,7 +2370,7 @@ export default function Leads() {
                         {companies.map((c) => (
                           <SelectItem key={c.id} value={c.id}>
                             <span className="flex items-center gap-2">
-                              <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                              <Building2 className="w-3.5 h-3.5 text-slate-500" />
                               {c.name}
                             </span>
                           </SelectItem>
@@ -2400,7 +2401,7 @@ export default function Leads() {
                   }`}
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${
-                    convertForm.createDeal ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400'
+                    convertForm.createDeal ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     <Handshake className="w-5 h-5" />
                   </div>
@@ -2477,7 +2478,7 @@ export default function Leads() {
                           value={convertForm.dealStage || 'Qualification'}
                           onValueChange={(v) => setConvertForm((f) => ({ ...f, dealStage: v }))}
                         >
-                          <SelectTrigger className="mt-1.5 h-10 bg-white">
+                          <SelectTrigger aria-label="Stage" className="mt-1.5 h-10 bg-white">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -2498,7 +2499,7 @@ export default function Leads() {
                         <div className="w-full border-t border-slate-200" />
                       </div>
                       <div className="relative flex justify-center">
-                        <span className="bg-white px-2 text-xs text-slate-400">or attach to existing</span>
+                        <span className="bg-white px-2 text-xs text-slate-500">or attach to existing</span>
                       </div>
                     </div>
                     <Select
@@ -2513,7 +2514,7 @@ export default function Leads() {
                         {convertOptions.deals.map((d) => (
                           <SelectItem key={d.id} value={d.id}>
                             <span className="flex items-center gap-2">
-                              <Handshake className="w-3.5 h-3.5 text-slate-400" />
+                              <Handshake className="w-3.5 h-3.5 text-slate-500" />
                               {d.name} ({d.value})
                             </span>
                           </SelectItem>

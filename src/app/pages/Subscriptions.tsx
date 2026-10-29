@@ -252,7 +252,7 @@ export default function Subscriptions() {
         <button
           type="button"
           onClick={() => togglePause(s)}
-          className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           aria-label="Pause"
         >
           <Pause className="w-4 h-4" />
@@ -262,7 +262,7 @@ export default function Subscriptions() {
         <button
           type="button"
           onClick={() => togglePause(s)}
-          className="rounded p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-700"
+          className="rounded p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
           aria-label="Resume"
         >
           <Play className="w-4 h-4" />
@@ -272,7 +272,7 @@ export default function Subscriptions() {
         <button
           type="button"
           onClick={() => cancel(s)}
-          className="rounded p-1.5 text-xs text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+          className="rounded p-1.5 text-xs text-slate-500 hover:bg-rose-50 hover:text-rose-600"
         >
           Cancel
         </button>
@@ -280,7 +280,7 @@ export default function Subscriptions() {
       <button
         type="button"
         onClick={() => remove(s)}
-        className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
         aria-label="Delete"
       >
         <Trash2 className="w-4 h-4" />
@@ -363,7 +363,7 @@ export default function Subscriptions() {
 
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -375,7 +375,7 @@ export default function Subscriptions() {
               value={statusFilter}
               onValueChange={(v) => setStatusFilter(v as 'All' | SubscriptionStatus)}
             >
-              <SelectTrigger className="h-11 rounded-xl md:w-44">
+              <SelectTrigger aria-label="Filter by status" className="h-11 rounded-xl md:w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -391,7 +391,7 @@ export default function Subscriptions() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400">
+            <div className="flex items-center justify-center py-20 text-slate-500">
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
@@ -474,7 +474,7 @@ export default function Subscriptions() {
             <div>
               <Label>Member</Label>
               <Select value={form.memberId} onValueChange={(v) => setForm({ ...form, memberId: v })}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Member">
                   <SelectValue placeholder="Pick a member" />
                 </SelectTrigger>
                 <SelectContent>
@@ -488,7 +488,7 @@ export default function Subscriptions() {
             </div>
             <div>
               <Label>Name</Label>
-              <Input
+              <Input aria-label="Name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="e.g. Gold dues, Locker rental"
@@ -497,7 +497,7 @@ export default function Subscriptions() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Amount ($)</Label>
-                <Input
+                <Input aria-label="Amount ($)"
                   type="number"
                   min="0"
                   step="0.01"
@@ -511,7 +511,7 @@ export default function Subscriptions() {
                   value={form.cadence}
                   onValueChange={(v) => setForm({ ...form, cadence: v as SubscriptionCadence })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Cadence">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

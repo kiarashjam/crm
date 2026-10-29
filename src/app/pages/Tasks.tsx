@@ -670,7 +670,7 @@ export default function Tasks() {
               <Checkbox checked={selectedTaskIds.has(t.id)} onCheckedChange={() => toggleTaskSelection(t.id)} aria-label={`Select ${t.title}`} />
             </span>
           )}
-          <span className={cn('truncate', t.status === 'completed' && 'text-slate-400 line-through')}>{t.title}</span>
+          <span className={cn('truncate', t.status === 'completed' && 'text-slate-500 line-through')}>{t.title}</span>
         </span>
       ),
     },
@@ -697,10 +697,10 @@ export default function Tasks() {
   /** Edit and delete, as on the board and in the list. */
   const taskActions = (t: TaskItem) => (
     <WriteOnly>
-      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-700" onClick={() => openEdit(t)} aria-label={`Edit ${t.title}`}>
+      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-500 hover:bg-amber-50 hover:text-amber-700" onClick={() => openEdit(t)} aria-label={`Edit ${t.title}`}>
         <Pencil className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => setDeleteConfirmTask(t)} aria-label={`Delete ${t.title}`}>
+      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600" onClick={() => setDeleteConfirmTask(t)} aria-label={`Delete ${t.title}`}>
         <Trash2 className="h-4 w-4" />
       </Button>
     </WriteOnly>
@@ -908,7 +908,7 @@ export default function Tasks() {
                   </div>
 
                   <Select value={priorityFilter} onValueChange={(v) => setPriorityFilter(v as TaskPriorityType | 'all')}>
-                    <SelectTrigger className="w-36 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
+                    <SelectTrigger aria-label="Filter by priority" className="w-36 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
                       <SelectValue placeholder="Priority" />
                     </SelectTrigger>
                     <SelectContent>
@@ -937,7 +937,7 @@ export default function Tasks() {
 
                   {orgMembers.length > 0 && (
                     <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
-                      <SelectTrigger className="w-40 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
+                      <SelectTrigger aria-label="Filter by assignee" className="w-40 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
                         <SelectValue placeholder="Assignee" />
                       </SelectTrigger>
                       <SelectContent>
@@ -951,7 +951,7 @@ export default function Tasks() {
 
                   {leads.length > 0 && (
                     <Select value={leadFilter} onValueChange={setLeadFilter}>
-                      <SelectTrigger className="w-32 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
+                      <SelectTrigger aria-label="Filter by lead" className="w-32 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
                         <SelectValue placeholder="Lead" />
                       </SelectTrigger>
                       <SelectContent>
@@ -965,7 +965,7 @@ export default function Tasks() {
 
                   {deals.length > 0 && (
                     <Select value={dealFilter} onValueChange={setDealFilter}>
-                      <SelectTrigger className="w-32 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
+                      <SelectTrigger aria-label="Filter by deal" className="w-32 h-11 rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-amber-50 hover:border-amber-300 focus:border-amber-300 focus:ring-2 focus:ring-amber-200/60 transition-all duration-300">
                         <SelectValue placeholder="Deal" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1142,7 +1142,7 @@ export default function Tasks() {
                 <DialogTitle className="text-xl font-bold text-white mb-0.5">
                   {editingTask ? 'Edit Task' : 'Create New Task'}
                 </DialogTitle>
-                <p className="text-sm text-slate-400">
+                <p className="text-sm text-slate-500">
                   {editingTask ? 'Update the task details below' : 'Add a new task to your workflow'}
                 </p>
               </div>
@@ -1155,8 +1155,8 @@ export default function Tasks() {
               {/* Title Field */}
               <div>
                 <Label htmlFor="task-title" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                  <ListTodo className="w-4 h-4 text-slate-400" />
-                  Task Title <span className="text-red-500">*</span>
+                  <ListTodo className="w-4 h-4 text-slate-500" />
+                  Task Title <span className="text-red-700">*</span>
                 </Label>
                 <Input
                   id="task-title"
@@ -1171,7 +1171,7 @@ export default function Tasks() {
               {/* Description Field */}
               <div>
                 <Label htmlFor="task-desc" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-slate-400" />
+                  <FileText className="w-4 h-4 text-slate-500" />
                   Description
                 </Label>
                 <Textarea
@@ -1188,11 +1188,11 @@ export default function Tasks() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-2">
-                    <Circle className="w-4 h-4 text-slate-400" />
+                    <Circle className="w-4 h-4 text-slate-500" />
                     Status
                   </Label>
                   <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v as TaskStatusType }))}>
-                    <SelectTrigger className="h-11 rounded-xl border-slate-200">
+                    <SelectTrigger aria-label="Status" className="h-11 rounded-xl border-slate-200">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1225,11 +1225,11 @@ export default function Tasks() {
                 </div>
                 <div>
                   <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-2">
-                    <Flag className="w-4 h-4 text-slate-400" />
+                    <Flag className="w-4 h-4 text-slate-500" />
                     Priority
                   </Label>
                   <Select value={form.priority} onValueChange={(v) => setForm((f) => ({ ...f, priority: v as TaskPriorityType }))}>
-                    <SelectTrigger className="h-11 rounded-xl border-slate-200">
+                    <SelectTrigger aria-label="Priority" className="h-11 rounded-xl border-slate-200">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1311,11 +1311,11 @@ export default function Tasks() {
               {orgMembers.length > 0 && (
                 <div>
                   <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-2">
-                    <User className="w-4 h-4 text-slate-400" />
+                    <User className="w-4 h-4 text-slate-500" />
                     Assign To
                   </Label>
                   <Select value={form.assigneeId || 'none'} onValueChange={(v) => setForm((f) => ({ ...f, assigneeId: v === 'none' ? '' : v }))}>
-                    <SelectTrigger className="h-11 rounded-xl border-slate-200">
+                    <SelectTrigger aria-label="Assign To" className="h-11 rounded-xl border-slate-200">
                       <SelectValue placeholder="Select team member" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1347,7 +1347,7 @@ export default function Tasks() {
                   <div>
                     <Label className="text-xs font-medium text-slate-600 mb-1.5 block">Lead</Label>
                     <Select value={form.leadId || 'none'} onValueChange={(v) => setForm((f) => ({ ...f, leadId: v === 'none' ? '' : v }))}>
-                      <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white text-sm">
+                      <SelectTrigger aria-label="Lead" className="h-9 rounded-lg border-slate-200 bg-white text-sm">
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1361,7 +1361,7 @@ export default function Tasks() {
                   <div>
                     <Label className="text-xs font-medium text-slate-600 mb-1.5 block">Deal</Label>
                     <Select value={form.dealId || 'none'} onValueChange={(v) => setForm((f) => ({ ...f, dealId: v === 'none' ? '' : v }))}>
-                      <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white text-sm">
+                      <SelectTrigger aria-label="Deal" className="h-9 rounded-lg border-slate-200 bg-white text-sm">
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1375,7 +1375,7 @@ export default function Tasks() {
                   <div>
                     <Label className="text-xs font-medium text-slate-600 mb-1.5 block">Contact</Label>
                     <Select value={form.contactId || 'none'} onValueChange={(v) => setForm((f) => ({ ...f, contactId: v === 'none' ? '' : v }))}>
-                      <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white text-sm">
+                      <SelectTrigger aria-label="Contact" className="h-9 rounded-lg border-slate-200 bg-white text-sm">
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1392,7 +1392,7 @@ export default function Tasks() {
               {/* Notes */}
               <div>
                 <Label htmlFor="task-notes" className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-slate-400" />
+                  <FileText className="w-4 h-4 text-slate-500" />
                   Notes
                 </Label>
                 <Textarea

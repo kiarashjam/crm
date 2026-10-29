@@ -41,11 +41,11 @@ export function getCurrencySymbol(code?: string): string {
 
 export const STAGE_COLORS: Record<string, { bar: string; accent: string; bg: string; border: string }> = {
   Qualification: { bar: '#3b82f6', accent: 'text-blue-600', bg: 'bg-blue-500/10', border: 'border-l-blue-500' },
-  Proposal: { bar: '#f59e0b', accent: 'text-amber-600', bg: 'bg-amber-500/10', border: 'border-l-amber-500' },
+  Proposal: { bar: '#f59e0b', accent: 'text-amber-700', bg: 'bg-amber-500/10', border: 'border-l-amber-500' },
   Negotiation: { bar: '#8b5cf6', accent: 'text-violet-600', bg: 'bg-violet-500/10', border: 'border-l-violet-500' },
   'Contract Sent': { bar: '#0ea5e9', accent: 'text-sky-600', bg: 'bg-sky-500/10', border: 'border-l-sky-500' },
-  'Contract Signed': { bar: '#14b8a6', accent: 'text-teal-600', bg: 'bg-teal-500/10', border: 'border-l-teal-500' },
-  'Closed Won': { bar: '#10b981', accent: 'text-emerald-600', bg: 'bg-emerald-500/10', border: 'border-l-emerald-500' },
+  'Contract Signed': { bar: '#14b8a6', accent: 'text-teal-700', bg: 'bg-teal-500/10', border: 'border-l-teal-500' },
+  'Closed Won': { bar: '#10b981', accent: 'text-emerald-700', bg: 'bg-emerald-500/10', border: 'border-l-emerald-500' },
   'Closed Lost': { bar: '#64748b', accent: 'text-slate-500', bg: 'bg-slate-500/10', border: 'border-l-slate-400' },
 };
 
@@ -219,7 +219,7 @@ export const DealCard = forwardRef(function DealCard({
 
             {/* Assignee — HP-7 */}
             {deal.assigneeName && (
-              <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+              <div className="mt-1.5 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-500">
                 <div className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
                   <User className="w-3 h-3 text-blue-500 dark:text-blue-400" />
                 </div>
@@ -229,13 +229,13 @@ export const DealCard = forwardRef(function DealCard({
             
             {/* HP-7: Task count + HP-8: Add Task */}
             {(taskCount !== undefined || onAddTask) && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+              <div className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-500">
                 <ListTodo className="w-3 h-3" />
                 <span>{taskCount ?? 0} task{taskCount !== 1 ? 's' : ''}</span>
                 {onAddTask && !readOnly && (
                   <button
                     onClick={(e) => { e.stopPropagation(); onAddTask(deal.id); }}
-                    className="ml-auto flex items-center gap-1 text-orange-500 hover:text-orange-400 transition-colors"
+                    className="ml-auto flex items-center gap-1 text-orange-700 hover:text-orange-800 transition-colors"
                     title="Add task to this deal"
                   >
                     <Plus className="w-3 h-3" />
@@ -247,7 +247,7 @@ export const DealCard = forwardRef(function DealCard({
 
             {/* Last Activity */}
             {lastActivity && (
-              <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-500">
                 <Clock className="w-3 h-3" />
                 <span>Last activity: {lastActivity}</span>
               </div>
@@ -260,7 +260,7 @@ export const DealCard = forwardRef(function DealCard({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all"
+              className="h-8 w-8 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-all"
               onClick={(e) => { e.stopPropagation(); onEdit(); }}
               aria-label="Edit deal"
             >
@@ -270,7 +270,7 @@ export const DealCard = forwardRef(function DealCard({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all"
+              className="h-8 w-8 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-all"
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
               aria-label="Delete deal"
             >
@@ -290,7 +290,8 @@ export const DealCard = forwardRef(function DealCard({
               if (s) onMoveStage(deal.id, s.id, s.name);
             }}
           >
-            <SelectTrigger 
+            <SelectTrigger
+              aria-label={`Stage of ${deal.name}`}
               className="h-10 text-xs border-2 border-slate-200 dark:border-slate-600 bg-slate-50/80 dark:bg-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500 rounded-xl transition-all" 
               onClick={(e) => e.stopPropagation()}
             >

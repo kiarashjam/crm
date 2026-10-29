@@ -553,7 +553,7 @@ export default function EventDetail() {
                       </Button>
                     )}
                     {a.status === 'CheckedIn' && a.checkedInAtUtc && (
-                      <span className="text-xs text-emerald-600 inline-flex items-center gap-1">
+                      <span className="text-xs text-emerald-700 inline-flex items-center gap-1">
                         <Check className="w-3 h-3" /> Checked in {formatDateTime(a.checkedInAtUtc)}
                       </span>
                     )}
@@ -645,14 +645,14 @@ export default function EventDetail() {
               <>
                 <div>
                   <Label>Guest name</Label>
-                  <Input
+                  <Input aria-label="Guest name"
                     value={addForm.guestName}
                     onChange={(e) => setAddForm({ ...addForm, guestName: e.target.value })}
                   />
                 </div>
                 <div>
                   <Label>Guest email</Label>
-                  <Input
+                  <Input aria-label="Guest email"
                     type="email"
                     value={addForm.guestEmail}
                     onChange={(e) => setAddForm({ ...addForm, guestEmail: e.target.value })}
@@ -733,7 +733,7 @@ function AttendeeList({
               type="button"
               onClick={() => onRemove(a)}
               disabled={deletingId === a.id}
-              className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+              className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
               aria-label="Remove from event"
             >
               {deletingId === a.id ? (

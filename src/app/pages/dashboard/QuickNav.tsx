@@ -31,7 +31,7 @@ export function QuickNav() {
             </div>
           </div>
           <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100/80 border border-slate-200/60">
-            <Command className="w-3 h-3 text-slate-400" />
+            <Command className="w-3 h-3 text-slate-500" />
             <span className="text-[10px] font-medium text-slate-500">+ K</span>
           </div>
         </div>
@@ -41,7 +41,7 @@ export function QuickNav() {
       <div className="relative px-4 pb-3">
         <div className="flex items-center gap-2 px-1 mb-2">
           <div className="h-px flex-1 bg-gradient-to-r from-slate-200 to-transparent" />
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Core</span>
+          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Core</span>
           <div className="h-px flex-1 bg-gradient-to-l from-slate-200 to-transparent" />
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -108,7 +108,7 @@ export function QuickNav() {
       <div className="relative px-4 pb-3">
         <div className="flex items-center gap-2 px-1 mb-2">
           <div className="h-px flex-1 bg-gradient-to-r from-slate-200 to-transparent" />
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Tools</span>
+          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Tools</span>
           <div className="h-px flex-1 bg-gradient-to-l from-slate-200 to-transparent" />
         </div>
         <div className="grid grid-cols-4 gap-2">
@@ -181,10 +181,10 @@ export function QuickNav() {
             </div>
             <div className="text-left">
               <p className="text-sm font-semibold text-white">View Pipeline</p>
-              <p className="text-[11px] text-slate-400">Track all your active deals</p>
+              <p className="text-[11px] text-slate-500">Track all your active deals</p>
             </div>
           </div>
-          <div className="flex items-center gap-1 text-slate-400 group-hover:text-white transition-colors">
+          <div className="flex items-center gap-1 text-slate-500 group-hover:text-white transition-colors">
             <span className="text-xs font-medium">Open</span>
             <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
           </div>

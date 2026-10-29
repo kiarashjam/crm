@@ -46,7 +46,7 @@ export function SavedForecastPanel() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-bold text-slate-800">Saved forecast for this month</h3>
-          <p className="mt-0.5 text-[11px] text-slate-400">
+          <p className="mt-0.5 text-[11px] text-slate-500">
             {savedAt
               ? `Saved ${new Date(savedAt).toLocaleString()}. Edits to deals since then don’t change it.`
               : 'The weighted total by owner and currency, kept as it is when you save it.'}
@@ -65,7 +65,7 @@ export function SavedForecastPanel() {
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wide text-slate-400">
+              <tr className="text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="py-1.5 pr-3 font-semibold">Owner</th>
                 <th className="py-1.5 pr-3 text-right font-semibold">Weighted</th>
                 <th className="py-1.5 pr-3 text-right font-semibold">Open</th>

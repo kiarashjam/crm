@@ -153,7 +153,7 @@ export default function Login() {
         <main id={MAIN_CONTENT_ID} className="flex flex-1 items-center justify-center px-[var(--page-padding)] pb-10" tabIndex={-1}>
           <div className="w-full max-w-md">
             {/* Mobile logo */}
-            <Link to="/" className="mb-6 flex items-center justify-center gap-2 lg:hidden" aria-hidden>
+            <Link to="/" className="mb-6 flex items-center justify-center gap-2 lg:hidden" aria-hidden tabIndex={-1}>
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg shadow-orange-500/25">
                 <Sparkles className="h-5 w-5" />
               </span>
@@ -238,7 +238,7 @@ export default function Login() {
                     htmlFor="password"
                     icon={<Lock className="h-4 w-4" />}
                     action={mode === 'login' ? (
-                      <Link to="/forgot-password" className="text-xs font-medium text-orange-600 hover:text-orange-700 focus-visible:underline">
+                      <Link to="/forgot-password" className="text-xs font-medium text-orange-700 hover:text-orange-800 focus-visible:underline">
                         Forgot?
                       </Link>
                     ) : undefined}
@@ -256,7 +256,7 @@ export default function Login() {
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
                       aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
                       tabIndex={-1}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -277,7 +277,7 @@ export default function Login() {
 
                   <div className="flex items-center gap-3 py-1" role="presentation" aria-hidden>
                     <div className="h-px flex-1 bg-slate-200" />
-                    <span className="text-xs font-medium uppercase tracking-wider text-slate-400">or</span>
+                    <span className="text-xs font-medium uppercase tracking-wider text-slate-500">or</span>
                     <div className="h-px flex-1 bg-slate-200" />
                   </div>
 
@@ -288,7 +288,7 @@ export default function Login() {
                   >
                     <Play className="h-4 w-4" aria-hidden /> Explore the demo
                   </button>
-                  <p className="text-center text-xs text-slate-400">No account needed — sample data, saved in your browser.</p>
+                  <p className="text-center text-xs text-slate-500">No account needed — sample data, saved in your browser.</p>
                 </form>
               ) : (
                 <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-5">
@@ -329,7 +329,7 @@ export default function Login() {
               )}
             </div>
 
-            <nav className="mt-6 flex items-center justify-center gap-3 text-xs text-slate-400" aria-label="Legal links">
+            <nav className="mt-6 flex items-center justify-center gap-3 text-xs text-slate-500" aria-label="Legal links">
               <Link to="/privacy" className="hover:text-slate-600 focus-visible:underline">Privacy</Link>
               <span aria-hidden>·</span>
               <Link to="/terms" className="hover:text-slate-600 focus-visible:underline">Terms</Link>
@@ -366,7 +366,7 @@ function Field({
         {action}
       </div>
       <div className="relative">
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden>{icon}</span>
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" aria-hidden>{icon}</span>
         {children}
       </div>
     </div>
@@ -393,7 +393,7 @@ const AUTH_ERROR_COPY: Record<AuthErrorKind, {
   icon: React.ElementType; tone: string; title: string; what: string; how: string;
 }> = {
   credentials: {
-    icon: Lock, tone: 'bg-amber-100 text-amber-600',
+    icon: Lock, tone: 'bg-amber-100 text-amber-700',
     title: "Those details didn't match",
     what: "We couldn't sign you in with that email and password.",
     how: 'This usually means the email or password was mistyped, caps lock is on, or the account doesn’t exist yet. Create an account or reset your password to continue.',
@@ -417,7 +417,7 @@ const AUTH_ERROR_COPY: Record<AuthErrorKind, {
     how: 'Authenticator codes rotate every ~30 seconds and can only be used once. Open your authenticator, grab the current code, and enter it promptly.',
   },
   ratelimit: {
-    icon: Clock, tone: 'bg-orange-100 text-orange-600',
+    icon: Clock, tone: 'bg-orange-100 text-orange-700',
     title: 'Too many attempts',
     what: 'Sign-in is paused for a moment.',
     how: 'After several failed attempts we temporarily block sign-in to protect the account. Wait a minute, then try again.',
@@ -463,7 +463,7 @@ function AuthErrorDialog({
         </DialogHeader>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400">Why this happens</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Why this happens</p>
           <p className="text-sm text-slate-600">{copy.how}</p>
         </div>
 
@@ -471,7 +471,7 @@ function AuthErrorDialog({
           <details className="group rounded-xl border border-slate-200 bg-white">
             <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700">
               Technical details
-              <span className="text-slate-400 transition-transform group-open:rotate-180">⌄</span>
+              <span className="text-slate-500 transition-transform group-open:rotate-180">⌄</span>
             </summary>
             <pre className="overflow-x-auto whitespace-pre-wrap break-words border-t border-slate-100 px-3 py-2 font-mono text-[11px] leading-relaxed text-slate-500">
               {info.message}

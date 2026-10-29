@@ -365,7 +365,7 @@ export default function GiftCards() {
             <TabsContent value="cards">
               <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
                 <div className="relative flex-1 max-w-md">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <Input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -377,7 +377,7 @@ export default function GiftCards() {
                   value={statusFilter}
                   onValueChange={(v) => setStatusFilter(v as 'All' | GiftCardStatus)}
                 >
-                  <SelectTrigger className="h-11 rounded-xl md:w-44">
+                  <SelectTrigger aria-label="Filter by status" className="h-11 rounded-xl md:w-44">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -393,7 +393,7 @@ export default function GiftCards() {
               </div>
 
               {loading ? (
-                <div className="flex items-center justify-center py-20 text-slate-400">
+                <div className="flex items-center justify-center py-20 text-slate-500">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : filtered.length === 0 ? (
@@ -480,7 +480,7 @@ export default function GiftCards() {
                               "{c.message}"
                             </p>
                           )}
-                          <p className="text-xs text-slate-400 mt-3">
+                          <p className="text-xs text-slate-500 mt-3">
                             Issued {formatDate(c.issuedAtUtc)}
                             {c.expiresAtUtc && <> · Expires {formatDate(c.expiresAtUtc)}</>}
                           </p>
@@ -506,6 +506,7 @@ export default function GiftCards() {
                                   onClick={() => doVoid(c)}
                                   disabled={voidingId === c.id}
                                   className="text-rose-600 hover:bg-rose-50"
+                                  aria-label={`Void gift card ${c.code}`}
                                 >
                                   {voidingId === c.id ? (
                                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -608,7 +609,7 @@ export default function GiftCards() {
                 value={issueForm.purchaserMemberId}
                 onValueChange={(v) => setIssueForm({ ...issueForm, purchaserMemberId: v === 'none' ? '' : v })}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="Purchaser (optional)">
                   <SelectValue placeholder="Existing member or walk-in" />
                 </SelectTrigger>
                 <SelectContent>
@@ -624,7 +625,7 @@ export default function GiftCards() {
             {!issueForm.purchaserMemberId && (
               <div>
                 <Label>Purchaser name</Label>
-                <Input
+                <Input aria-label="Purchaser name"
                   value={issueForm.purchaserName}
                   onChange={(e) => setIssueForm({ ...issueForm, purchaserName: e.target.value })}
                   placeholder="Walk-in purchaser"
@@ -634,14 +635,14 @@ export default function GiftCards() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Recipient name</Label>
-                <Input
+                <Input aria-label="Recipient name"
                   value={issueForm.recipientName}
                   onChange={(e) => setIssueForm({ ...issueForm, recipientName: e.target.value })}
                 />
               </div>
               <div>
                 <Label>Recipient email</Label>
-                <Input
+                <Input aria-label="Recipient email"
                   type="email"
                   value={issueForm.recipientEmail}
                   onChange={(e) => setIssueForm({ ...issueForm, recipientEmail: e.target.value })}
@@ -651,7 +652,7 @@ export default function GiftCards() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Face value ($)</Label>
-                <Input
+                <Input aria-label="Face value ($)"
                   type="number"
                   min="0"
                   step="0.01"
@@ -661,7 +662,7 @@ export default function GiftCards() {
               </div>
               <div>
                 <Label>Expires</Label>
-                <Input
+                <Input aria-label="Expires"
                   type="date"
                   value={issueForm.expiresAtUtc}
                   onChange={(e) => setIssueForm({ ...issueForm, expiresAtUtc: e.target.value })}
@@ -670,7 +671,7 @@ export default function GiftCards() {
             </div>
             <div>
               <Label>Message</Label>
-              <Textarea
+              <Textarea aria-label="Message"
                 value={issueForm.message}
                 onChange={(e) => setIssueForm({ ...issueForm, message: e.target.value })}
                 rows={2}
@@ -712,7 +713,7 @@ export default function GiftCards() {
           <div className="space-y-4 py-2">
             <div>
               <Label>Amount ($)</Label>
-              <Input
+              <Input aria-label="Amount ($)"
                 type="number"
                 min="0"
                 step="0.01"
@@ -723,14 +724,14 @@ export default function GiftCards() {
             </div>
             <div>
               <Label>Redeemed by</Label>
-              <Input
+              <Input aria-label="Redeemed by"
                 value={redeemForm.redeemedByName}
                 onChange={(e) => setRedeemForm({ ...redeemForm, redeemedByName: e.target.value })}
               />
             </div>
             <div>
               <Label>Applied to</Label>
-              <Input
+              <Input aria-label="Applied to"
                 value={redeemForm.appliedTo}
                 onChange={(e) => setRedeemForm({ ...redeemForm, appliedTo: e.target.value })}
                 placeholder="e.g. Library Bar tab"

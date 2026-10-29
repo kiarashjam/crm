@@ -89,7 +89,7 @@ export function ContractProgress({ contract }: { contract: DescribeInput }) {
                     'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
                     complete && cn(doneFill, doneText),
                     current && cn('bg-white ring-2', tone.ring, tone.text),
-                    !complete && !current && 'bg-slate-100 text-slate-400',
+                    !complete && !current && 'bg-slate-100 text-slate-500',
                   )}
                 >
                   {complete ? <Check className="h-3 w-3" strokeWidth={3} /> : n}
@@ -111,7 +111,7 @@ export function ContractProgress({ contract }: { contract: DescribeInput }) {
               <p
                 className={cn(
                   'mt-1.5 truncate text-[11px] leading-tight',
-                  complete || current ? 'font-semibold text-slate-700' : 'text-slate-400',
+                  complete || current ? 'font-semibold text-slate-700' : 'text-slate-500',
                 )}
                 title={label}
               >

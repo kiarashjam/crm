@@ -113,7 +113,7 @@ export default function Homepage() {
           </div>
           <div>
             <span className="text-xl font-bold text-slate-900 block leading-none">Cadence</span>
-            <span className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider">
+            <span className="text-[10px] font-semibold text-orange-700 uppercase tracking-wider">
               <WaveText text="CRM Platform" />
             </span>
           </div>
@@ -176,7 +176,7 @@ export default function Homepage() {
                 {/* Subheadline */}
                 <p className="text-lg sm:text-xl text-slate-600 mb-10 max-w-xl mx-auto lg:mx-0 leading-relaxed">
                   The all-in-one CRM that combines powerful pipeline management with{' '}
-                  <span className="text-orange-600 font-semibold">Intelligent Sales Writer</span>.
+                  <span className="text-orange-700 font-semibold">Intelligent Sales Writer</span>.
                 </p>
 
                 {/* CTA Buttons */}
@@ -217,7 +217,7 @@ export default function Homepage() {
                       <span className="text-sm font-bold text-slate-900 ml-1">4.9</span>
                     </div>
                     <p className="text-sm text-slate-500">
-                      Trusted by <span className="font-semibold text-orange-600">10,000+</span> sales teams
+                      Trusted by <span className="font-semibold text-orange-700">10,000+</span> sales teams
                     </p>
                   </div>
                 </div>
@@ -444,7 +444,7 @@ export default function Homepage() {
                     </div>
                     <div className="flex-1 flex justify-center">
                       <div 
-                        className="bg-white rounded-lg px-4 py-1.5 text-sm text-slate-400 border border-slate-200 flex items-center gap-2 relative overflow-hidden"
+                        className="bg-white rounded-lg px-4 py-1.5 text-sm text-slate-500 border border-slate-200 flex items-center gap-2 relative overflow-hidden"
                         style={{ animation: 'soft-breathe 4s ease-in-out infinite' }}
                       >
                         {/* URL bar inner glow */}
@@ -543,7 +543,7 @@ export default function Homepage() {
                           Pipeline Stages
                         </h4>
                         <span 
-                          className="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded-full flex items-center gap-1"
+                          className="text-xs font-medium text-orange-700 bg-orange-50 px-2 py-1 rounded-full flex items-center gap-1"
                           style={{ animation: 'pulse 1.5s ease-in-out infinite, text-glow 2s ease-in-out infinite' }}
                         >
                           <TrendingUp className="w-3 h-3" />
@@ -582,7 +582,7 @@ export default function Homepage() {
                       {/* Mini activity feed */}
                       <div className="mt-4 pt-3 border-t border-slate-100 relative">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Recent Activity</span>
+                          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Recent Activity</span>
                           <span 
                             className="text-[9px] text-orange-500 font-medium"
                             style={{ animation: 'pulse 2s ease-in-out infinite' }}
@@ -606,7 +606,7 @@ export default function Homepage() {
                                 style={{ animation: 'pulse 2s ease-in-out infinite' }}
                               />
                               <span className="flex-1 truncate">{activity.text}</span>
-                              <span className="text-slate-400">{activity.time}</span>
+                              <span className="text-slate-500">{activity.time}</span>
                             </div>
                           ))}
                         </div>
@@ -643,7 +643,7 @@ export default function Homepage() {
                         <span style={{ animation: 'sparkle-spin 2s linear infinite' }}>🎉</span>
                       </p>
                       <p 
-                        className="text-xs text-emerald-600 font-semibold"
+                        className="text-xs text-emerald-700 font-semibold"
                         style={{ animation: 'subtle-sway 3s ease-in-out infinite' }}
                       >
                         +$48,500 • Acme Corp
@@ -685,7 +685,7 @@ export default function Homepage() {
                         AI Email Ready
                         <span style={{ animation: 'pulse 1s ease-in-out infinite' }}>✨</span>
                       </p>
-                      <p className="text-xs text-orange-600 font-semibold flex items-center gap-1">
+                      <p className="text-xs text-orange-700 font-semibold flex items-center gap-1">
                         Follow-up drafted 
                         <span className="flex gap-0.5">
                           <span className="w-1 h-1 rounded-full bg-orange-500" style={{ animation: 'bounce 0.6s ease-in-out infinite' }} />
@@ -987,7 +987,7 @@ export default function Homepage() {
                   dominate
                 </span>
               </h2>
-              <p className="text-lg text-slate-400 max-w-2xl mx-auto">
+              <p className="text-lg text-slate-500 max-w-2xl mx-auto">
                 A complete CRM toolkit designed to supercharge your sales process
               </p>
             </div>
@@ -1089,7 +1089,7 @@ export default function Homepage() {
                       <Users className="w-7 h-7 text-white" />
                     </div>
                     <h3 className="text-xl font-bold text-white mb-2">Lead Management</h3>
-                    <p className="text-slate-400 mb-4 flex-1">Capture, score, nurture & convert leads to deals with ease.</p>
+                    <p className="text-slate-500 mb-4 flex-1">Capture, score, nurture & convert leads to deals with ease.</p>
                     
                     {/* Mini visual */}
                     <div className="flex gap-2">
@@ -1124,11 +1124,11 @@ export default function Homepage() {
                       <span className="text-xs font-bold text-violet-400 bg-violet-500/10 px-2 py-1 rounded-full border border-violet-500/20">AI</span>
                     </div>
                     <h3 className="text-xl font-bold text-white mb-2">Intelligent Sales Writer</h3>
-                    <p className="text-slate-400 mb-4 flex-1">5 copy types with adjustable tones and instant generation.</p>
+                    <p className="text-slate-500 mb-4 flex-1">5 copy types with adjustable tones and instant generation.</p>
                     
                     {/* Mini visual - typing animation */}
                     <div className="bg-slate-800/50 rounded-xl p-3 border border-slate-700/50">
-                      <div className="flex items-center gap-2 text-sm text-slate-400">
+                      <div className="flex items-center gap-2 text-sm text-slate-500">
                         <span>Generating</span>
                         <span className="flex gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-violet-400" style={{ animation: 'bounce 0.6s ease-in-out infinite' }} />
@@ -1154,7 +1154,7 @@ export default function Homepage() {
                       <UserCircle className="w-7 h-7 text-white" />
                     </div>
                     <h3 className="text-xl font-bold text-white mb-2">Contact Database</h3>
-                    <p className="text-slate-400 mb-4 flex-1">Complete interaction history at your fingertips.</p>
+                    <p className="text-slate-500 mb-4 flex-1">Complete interaction history at your fingertips.</p>
                     
                     {/* Mini visual - avatars */}
                     <div className="flex -space-x-2">
@@ -1167,7 +1167,7 @@ export default function Homepage() {
                           {String.fromCharCode(65 + i)}
                         </div>
                       ))}
-                      <div className="w-8 h-8 rounded-full bg-slate-700 border-2 border-slate-800 flex items-center justify-center text-xs font-bold text-slate-400">
+                      <div className="w-8 h-8 rounded-full bg-slate-700 border-2 border-slate-800 flex items-center justify-center text-xs font-bold text-slate-500">
                         +99
                       </div>
                     </div>
@@ -1187,7 +1187,7 @@ export default function Homepage() {
                       <Building2 className="w-6 h-6 text-white" />
                     </div>
                     <h3 className="text-lg font-bold text-white mb-1">Company Accounts</h3>
-                    <p className="text-slate-400 text-sm">Link contacts and deals to organizations.</p>
+                    <p className="text-slate-500 text-sm">Link contacts and deals to organizations.</p>
                   </div>
                 </div>
               </div>
@@ -1204,7 +1204,7 @@ export default function Homepage() {
                       <CheckSquare className="w-6 h-6 text-white" />
                     </div>
                     <h3 className="text-lg font-bold text-white mb-1">Task Management</h3>
-                    <p className="text-slate-400 text-sm">Link tasks to leads & deals for organized workflow.</p>
+                    <p className="text-slate-500 text-sm">Link tasks to leads & deals for organized workflow.</p>
                   </div>
                 </div>
               </div>
@@ -1218,7 +1218,7 @@ export default function Homepage() {
                       <Activity className="w-6 h-6 text-white" />
                     </div>
                     <h3 className="text-lg font-bold text-white mb-1">Activity Tracking</h3>
-                    <p className="text-slate-400 text-sm">Log calls, meetings, emails & notes.</p>
+                    <p className="text-slate-500 text-sm">Log calls, meetings, emails & notes.</p>
                   </div>
                 </div>
               </div>
@@ -1231,7 +1231,7 @@ export default function Homepage() {
                       <FileText className="w-6 h-6 text-white" />
                     </div>
                     <h3 className="text-lg font-bold text-white mb-1">Templates Library</h3>
-                    <p className="text-slate-400 text-sm">Sales, Follow-up, Meetings & more.</p>
+                    <p className="text-slate-500 text-sm">Sales, Follow-up, Meetings & more.</p>
                   </div>
                 </div>
               </div>
@@ -1244,7 +1244,7 @@ export default function Homepage() {
                       <BarChart3 className="w-6 h-6 text-white" />
                     </div>
                     <h3 className="text-lg font-bold text-white mb-1">Analytics Dashboard</h3>
-                    <p className="text-slate-400 text-sm">Pipeline value & performance stats.</p>
+                    <p className="text-slate-500 text-sm">Pipeline value & performance stats.</p>
                   </div>
                 </div>
               </div>
@@ -1261,7 +1261,7 @@ export default function Homepage() {
                       <span className="text-xs font-bold text-teal-400 bg-teal-500/10 px-2 py-1 rounded-full border border-teal-500/20">Teams</span>
                     </div>
                     <h3 className="text-lg font-bold text-white mb-1">Organizations</h3>
-                    <p className="text-slate-400 text-sm mb-3 flex-1">Create teams, invite members & manage permissions.</p>
+                    <p className="text-slate-500 text-sm mb-3 flex-1">Create teams, invite members & manage permissions.</p>
                     <div className="flex items-center gap-2">
                       <div className="flex -space-x-2">
                         {['bg-teal-500', 'bg-emerald-500', 'bg-cyan-500'].map((bg, i) => (
@@ -1285,7 +1285,7 @@ export default function Homepage() {
                       <span className="text-xs font-bold text-fuchsia-400 bg-fuchsia-500/10 px-2 py-1 rounded-full border border-fuchsia-500/20">History</span>
                     </div>
                     <h3 className="text-lg font-bold text-white mb-1">Copy History</h3>
-                    <p className="text-slate-400 text-sm mb-3 flex-1">Access, search & regenerate previous content.</p>
+                    <p className="text-slate-500 text-sm mb-3 flex-1">Access, search & regenerate previous content.</p>
                     <div className="space-y-1">
                       {['Sales Email', 'Follow-up'].map((type) => (
                         <div key={type} className="flex items-center gap-2 text-xs">
@@ -1353,7 +1353,7 @@ export default function Homepage() {
                             style={{ transitionDelay: `${i * 50}ms` }}
                           >
                             <div className="w-10 h-10 rounded-xl bg-slate-200 flex items-center justify-center group-hover:bg-red-100 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
-                              <item.icon className="w-5 h-5 text-slate-400 group-hover:text-red-500 transition-colors" />
+                              <item.icon className="w-5 h-5 text-slate-500 group-hover:text-red-500 transition-colors" />
                             </div>
                             <span className="text-slate-600 group-hover:text-slate-800 transition-colors">{item.text}</span>
                           </li>
@@ -1445,7 +1445,7 @@ export default function Homepage() {
                   Write sales copy in{' '}
                   <GlitchText><span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-400">seconds</span></GlitchText>
                 </h2>
-                <p className="text-xl text-slate-400 mb-10">
+                <p className="text-xl text-slate-500 mb-10">
                   Stop staring at blank screens. Our AI understands your brand voice (Professional, Friendly, or Persuasive) and generates personalized content that converts.
                 </p>
 
@@ -1468,7 +1468,7 @@ export default function Homepage() {
                       </ShakeOnHover>
                       <div>
                         <h4 className="font-semibold text-white">{item.title}</h4>
-                        <p className="text-sm text-slate-400">{item.desc}</p>
+                        <p className="text-sm text-slate-500">{item.desc}</p>
                       </div>
                     </div>
                   ))}
@@ -1495,7 +1495,7 @@ export default function Homepage() {
                         </div>
                         <div>
                           <h4 className="font-semibold text-white">Intelligent Sales Writer</h4>
-                          <p className="text-sm text-slate-400 flex items-center gap-1">
+                          <p className="text-sm text-slate-500 flex items-center gap-1">
                             Powered by AI <BouncingDots className="text-orange-400" />
                           </p>
                         </div>
@@ -1509,10 +1509,10 @@ export default function Homepage() {
                           { label: 'Length', value: 'Medium', options: 'Short, Medium, Long' },
                         ].map((field) => (
                           <div key={field.label} className="group">
-                            <label className="text-xs font-medium text-slate-400 block mb-2">{field.label}</label>
+                            <label className="text-xs font-medium text-slate-500 block mb-2">{field.label}</label>
                             <div className="bg-slate-700/50 rounded-xl px-4 py-3 text-white border border-slate-600/50 flex items-center justify-between hover:border-orange-500/50 hover:bg-slate-700 transition-all duration-300 cursor-pointer group-hover:scale-[1.02]">
                               {field.value}
-                              <ChevronDown className="w-4 h-4 text-slate-400 group-hover:rotate-180 transition-transform duration-300" />
+                              <ChevronDown className="w-4 h-4 text-slate-500 group-hover:rotate-180 transition-transform duration-300" />
                             </div>
                           </div>
                         ))}
@@ -1531,7 +1531,7 @@ export default function Homepage() {
                 <FloatingElement className="absolute -bottom-6 -right-6 hidden lg:block" delay={0.5} duration={5} distance={12}>
                   <TiltCard>
                     <div className="bg-white rounded-2xl shadow-2xl p-5 max-w-xs border border-slate-100">
-                      <div className="flex items-center gap-2 text-emerald-600 text-sm font-medium mb-3">
+                      <div className="flex items-center gap-2 text-emerald-700 text-sm font-medium mb-3">
                         <CheckCircle2 className="w-4 h-4 animate-bounce" />
                         Generated in 2.3s
                       </div>
@@ -1851,7 +1851,7 @@ export default function Homepage() {
               <h2 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
                 From signup to <GradientText>success</GradientText>
               </h2>
-              <p className="text-xl text-slate-400 max-w-2xl mx-auto">
+              <p className="text-xl text-slate-500 max-w-2xl mx-auto">
                 Four simple steps to transform your sales process
               </p>
             </AnimatedSection>
@@ -1912,7 +1912,7 @@ export default function Homepage() {
                         <div className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${item.color} opacity-0 group-hover:opacity-10 transition-opacity duration-500 blur-xl`} />
                         
                         <h3 className="text-xl font-bold text-white mb-3 relative">{item.title}</h3>
-                        <p className="text-slate-400 text-sm leading-relaxed relative flex-1">{item.desc}</p>
+                        <p className="text-slate-500 text-sm leading-relaxed relative flex-1">{item.desc}</p>
                         
                         {/* Arrow indicator */}
                         {i < 3 && (
@@ -1955,7 +1955,7 @@ export default function Homepage() {
                       {/* Content */}
                       <div className="flex-1 bg-white/5 backdrop-blur-xl rounded-2xl p-5 border border-white/10 hover:border-orange-500/30 transition-all duration-300">
                         <h3 className="text-lg font-bold text-white mb-2">{item.title}</h3>
-                        <p className="text-slate-400 text-sm">{item.desc}</p>
+                        <p className="text-slate-500 text-sm">{item.desc}</p>
                       </div>
                     </div>
                   </AnimatedSection>
@@ -2005,7 +2005,7 @@ export default function Homepage() {
                 </p>
                 <Link 
                   to="/help" 
-                  className="inline-flex items-center gap-2 text-orange-600 font-semibold hover:gap-3 transition-all"
+                  className="inline-flex items-center gap-2 text-orange-700 font-semibold hover:gap-3 transition-all"
                 >
                   Contact our team
                   <ArrowRight className="w-4 h-4" />
@@ -2175,7 +2175,7 @@ export default function Homepage() {
                   </svg>
                 </span>
               </h2>
-              <p className="text-lg text-slate-400 max-w-2xl mx-auto">
+              <p className="text-lg text-slate-500 max-w-2xl mx-auto">
                 Enterprise-grade encryption, zero-trust architecture, and full compliance — security isn't a feature, it's our foundation.
               </p>
             </div>
@@ -2215,7 +2215,7 @@ export default function Homepage() {
                     </div>
                     
                     <h3 className="text-2xl font-bold text-white mb-3">AES-256 End-to-End Encryption</h3>
-                    <p className="text-slate-400 mb-8 leading-relaxed">
+                    <p className="text-slate-500 mb-8 leading-relaxed">
                       The same encryption standard used by banks and governments worldwide. Your data is encrypted at rest, in transit, and during processing — we can't read it even if we wanted to.
                     </p>
                     
@@ -2265,7 +2265,7 @@ export default function Homepage() {
                     </div>
                     
                     <h3 className="text-lg font-bold text-white mb-2">Multi-Factor Auth</h3>
-                    <p className="text-slate-400 text-sm mb-4">TOTP, SMS, or hardware keys — choose your security level.</p>
+                    <p className="text-slate-500 text-sm mb-4">TOTP, SMS, or hardware keys — choose your security level.</p>
                     
                     {/* Mini visual - animated OTP */}
                     <div className="flex items-center gap-2">
@@ -2298,7 +2298,7 @@ export default function Homepage() {
                     </div>
                     
                     <h3 className="text-lg font-bold text-white mb-2">Tenant Isolation</h3>
-                    <p className="text-slate-400 text-sm mb-4">Complete data separation — your data never touches another org's.</p>
+                    <p className="text-slate-500 text-sm mb-4">Complete data separation — your data never touches another org's.</p>
                     
                     {/* Mini visual - animated bars */}
                     <div className="flex items-center gap-2">
@@ -2329,7 +2329,7 @@ export default function Homepage() {
                     </div>
                     
                     <h3 className="text-lg font-bold text-white mb-2">GDPR & CCPA Ready</h3>
-                    <p className="text-slate-400 text-sm mb-4">Full data export, deletion, and consent management built-in.</p>
+                    <p className="text-slate-500 text-sm mb-4">Full data export, deletion, and consent management built-in.</p>
                     
                     {/* Mini visual - animated connection */}
                     <div className="flex items-center gap-3">
@@ -2359,7 +2359,7 @@ export default function Homepage() {
                     <CheckCircle2 className="w-7 h-7 text-emerald-400" style={{ animation: 'pulse 1.5s ease-in-out infinite' }} />
                   </div>
                   <span className="text-white font-bold">SOC 2 Type II</span>
-                  <span className="text-slate-400 text-sm">Audited & Certified</span>
+                  <span className="text-slate-500 text-sm">Audited & Certified</span>
                   <div className="mt-2 flex items-center gap-1">
                     {[...Array(3)].map((_, i) => (
                       <div 
@@ -2427,7 +2427,7 @@ export default function Homepage() {
                 <MagneticButton>
                   <RippleButton
                     to="/login"
-                    className="group bg-white text-orange-600 px-10 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 shadow-2xl hover:scale-105 transition-all duration-300"
+                    className="group bg-white text-orange-700 px-10 py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 shadow-2xl hover:scale-105 transition-all duration-300"
                   >
                     Get Started Free
                     <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center group-hover:bg-orange-500 group-hover:text-white group-hover:rotate-45 transition-all duration-300">
@@ -2458,7 +2458,7 @@ export default function Homepage() {
       </main>
 
       {/* ==================== FOOTER ==================== */}
-      <footer className="bg-slate-900 text-slate-400 py-20">
+      <footer className="bg-slate-900 text-slate-500 py-20">
         <div className="w-full max-w-[1600px] mx-auto px-6 lg:px-12">
           <div className="grid md:grid-cols-6 gap-8 mb-16">
             <div className="md:col-span-2">
@@ -2473,7 +2473,7 @@ export default function Homepage() {
                   </span>
                 </div>
               </Link>
-              <p className="text-slate-400 mb-6 max-w-xs">
+              <p className="text-slate-500 mb-6 max-w-xs">
                 The all-in-one CRM combining pipeline management with Intelligent Sales Writer.
               </p>
               <div className="flex gap-3">
@@ -2481,7 +2481,7 @@ export default function Homepage() {
                   <MagneticButton key={letter}>
                     <a 
                       href="#" 
-                      className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400 hover:bg-orange-600 hover:text-white hover:scale-110 hover:rotate-6 transition-all duration-300"
+                      className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-500 hover:bg-orange-600 hover:text-white hover:scale-110 hover:rotate-6 transition-all duration-300"
                       style={{ transitionDelay: `${i * 50}ms` }}
                     >
                       {letter}

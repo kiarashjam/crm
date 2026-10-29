@@ -43,7 +43,7 @@ export default function PageHelp() {
           </DialogHeader>
 
           <div className="mt-1">
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">What you can do</p>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">What you can do</p>
             <div className="grid gap-2.5 sm:grid-cols-2">
               {help.features.map((f) => (
                 <div key={f.title} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">

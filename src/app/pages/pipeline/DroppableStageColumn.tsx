@@ -20,11 +20,11 @@ export const DEAL_CARD_TYPE = 'DEAL_CARD';
 // Stage color configurations
 const STAGE_COLORS: Record<string, { bar: string; accent: string; bg: string; border: string }> = {
   Qualification: { bar: '#3b82f6', accent: 'text-blue-600', bg: 'bg-blue-500/10', border: 'border-l-blue-500' },
-  Proposal: { bar: '#f59e0b', accent: 'text-amber-600', bg: 'bg-amber-500/10', border: 'border-l-amber-500' },
+  Proposal: { bar: '#f59e0b', accent: 'text-amber-700', bg: 'bg-amber-500/10', border: 'border-l-amber-500' },
   Negotiation: { bar: '#8b5cf6', accent: 'text-violet-600', bg: 'bg-violet-500/10', border: 'border-l-violet-500' },
   'Contract Sent': { bar: '#0ea5e9', accent: 'text-sky-600', bg: 'bg-sky-500/10', border: 'border-l-sky-500' },
-  'Contract Signed': { bar: '#14b8a6', accent: 'text-teal-600', bg: 'bg-teal-500/10', border: 'border-l-teal-500' },
-  'Closed Won': { bar: '#10b981', accent: 'text-emerald-600', bg: 'bg-emerald-500/10', border: 'border-l-emerald-500' },
+  'Contract Signed': { bar: '#14b8a6', accent: 'text-teal-700', bg: 'bg-teal-500/10', border: 'border-l-teal-500' },
+  'Closed Won': { bar: '#10b981', accent: 'text-emerald-700', bg: 'bg-emerald-500/10', border: 'border-l-emerald-500' },
   'Closed Lost': { bar: '#64748b', accent: 'text-slate-500', bg: 'bg-slate-500/10', border: 'border-l-slate-400' },
 };
 
@@ -174,7 +174,7 @@ export function DroppableStageColumn({
             animate={{ opacity: 1, scale: 1 }}
             className="h-24 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 flex items-center justify-center"
           >
-            <p className="text-sm text-emerald-600 font-medium">Drop here</p>
+            <p className="text-sm text-emerald-700 font-medium">Drop here</p>
           </motion.div>
         )}
         <AnimatePresence mode="popLayout">
@@ -200,9 +200,9 @@ export function DroppableStageColumn({
         {deals.length === 0 && !showDropZone && (
           <div className="h-32 flex flex-col items-center justify-center text-center p-4">
             <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mb-2">
-              <StageIcon className="w-6 h-6 text-slate-400" />
+              <StageIcon className="w-6 h-6 text-slate-500" />
             </div>
-            <p className="text-sm text-slate-400">No deals in this stage</p>
+            <p className="text-sm text-slate-500">No deals in this stage</p>
             <p className="text-xs text-slate-300 mt-1">Drag deals here or create new ones</p>
           </div>
         )}

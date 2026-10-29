@@ -49,7 +49,7 @@ export function ActivityRow({ activity, index }: { activity: Activity; index: nu
       <ActivityKindIcon type={activity.type} />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{activity.subject || kind}</p>
-        <p className="mt-0.5 text-xs text-slate-400">
+        <p className="mt-0.5 text-xs text-slate-500">
           {kind} &middot; {new Date(activity.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
           {activity.createdByName && <> &middot; by {activity.createdByName}</>}
         </p>
@@ -79,7 +79,7 @@ export function ActivityLogForm({ draft, onChange, saving, onSubmit }: {
     >
       <div className="mb-2 flex gap-2">
         <Select value={draft.type} onValueChange={(v) => onChange({ ...draft, type: v })}>
-          <SelectTrigger className="h-9 w-28 bg-white text-sm dark:bg-slate-800"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Activity type" className="h-9 w-28 bg-white text-sm dark:bg-slate-800"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="note">Note</SelectItem>
             <SelectItem value="call">Call</SelectItem>

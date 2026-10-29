@@ -139,13 +139,13 @@ export default function Sequences() {
     return (
       <>
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Enrollments</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Enrollments</span>
           <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setEnrollFor(s)}>
             <Plus className="h-3 w-3" /> Enroll
           </Button>
         </div>
         {enrollments.length === 0 ? (
-          <p className="py-2 text-xs text-slate-400">No one enrolled yet.</p>
+          <p className="py-2 text-xs text-slate-500">No one enrolled yet.</p>
         ) : (
           <ul className="space-y-1.5">
             {enrollments.map((e) => (
@@ -157,14 +157,14 @@ export default function Sequences() {
                     type="button"
                     title={e.status === 'paused' ? 'Resume' : 'Pause'}
                     onClick={() => changeEnrollment(() => setEnrollmentStatus(e.id, e.status === 'paused' ? 'active' : 'paused'), 'Could not change the enrolment')}
-                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                   >
                     {e.status === 'paused' ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
                   </button>
                   <button
                     type="button" title="Remove"
                     onClick={() => changeEnrollment(() => unenroll(e.id), 'Could not remove the enrolment')}
-                    className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    className="rounded p-1 text-slate-500 hover:bg-red-50 hover:text-red-600"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -269,7 +269,7 @@ export default function Sequences() {
           />
 
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-slate-400"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            <div className="flex items-center justify-center py-20 text-slate-500"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : sequences.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white py-16 text-center">
               <Workflow className="mx-auto h-10 w-10 text-slate-300" />
@@ -357,7 +357,7 @@ export default function Sequences() {
                         <Button size="sm" variant="ghost" className="flex-1 gap-1 text-xs" onClick={() => openEdit(s)}>
                           <Pencil className="h-3.5 w-3.5" /> Edit
                         </Button>
-                        <Button size="sm" variant="ghost" className="gap-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => handleDelete(s)}>
+                        <Button size="sm" variant="ghost" className="gap-1 text-xs text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => handleDelete(s)} aria-label={`Delete ${s.name}`}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -375,7 +375,7 @@ export default function Sequences() {
                   <button
                     type="button"
                     onClick={() => setExpanded(null)}
-                    className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
                     aria-label="Close enrollments"
                   >
                     <X className="h-4 w-4" />
@@ -489,9 +489,9 @@ function SequenceEditorDialog({ open, onOpenChange, sequence, onSaved }: {
               {steps.map((st, i) => (
                 <div key={i} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-400">#{i + 1}</span>
+                    <span className="text-xs font-semibold text-slate-500">#{i + 1}</span>
                     <Select value={st.type} onValueChange={(v) => updateStep(i, { type: v as SequenceStepType })}>
-                      <SelectTrigger className="h-8 w-28 bg-white"><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label={`Step ${i + 1} type`} className="h-8 w-28 bg-white"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="email">Email</SelectItem>
                         <SelectItem value="call">Call</SelectItem>
@@ -502,6 +502,7 @@ function SequenceEditorDialog({ open, onOpenChange, sequence, onSaved }: {
                     <div className="flex items-center gap-1 text-sm text-slate-500">
                       <span>after</span>
                       <Input
+                        aria-label={`Days before step ${i + 1}`}
                         type="number" min={0} value={st.dayOffset}
                         onChange={(e) => updateStep(i, { dayOffset: Math.max(0, parseInt(e.target.value, 10) || 0) })}
                         className="h-8 w-16 bg-white"
@@ -509,9 +510,9 @@ function SequenceEditorDialog({ open, onOpenChange, sequence, onSaved }: {
                       <span>days</span>
                     </div>
                     <div className="ml-auto flex items-center gap-0.5">
-                      <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="rounded p-1 text-slate-400 hover:bg-white disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
-                      <button type="button" onClick={() => move(i, 1)} disabled={i === steps.length - 1} className="rounded p-1 text-slate-400 hover:bg-white disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
-                      <button type="button" onClick={() => removeStep(i)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move step ${i + 1} up`} className="rounded p-1.5 text-slate-500 hover:bg-white disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => move(i, 1)} disabled={i === steps.length - 1} aria-label={`Move step ${i + 1} down`} className="rounded p-1.5 text-slate-500 hover:bg-white disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => removeStep(i)} aria-label={`Remove step ${i + 1}`} className="rounded p-1.5 text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
                   {st.type === 'email' && (
@@ -524,7 +525,7 @@ function SequenceEditorDialog({ open, onOpenChange, sequence, onSaved }: {
                     <Input value={st.taskTitle ?? ''} onChange={(e) => updateStep(i, { taskTitle: e.target.value })} placeholder={st.type === 'call' ? 'Call objective' : 'Task title'} className="mt-2 h-8 bg-white" />
                   )}
                   {st.type === 'wait' && (
-                    <p className="mt-2 text-xs text-slate-400">Pauses the cadence for the days set above.</p>
+                    <p className="mt-2 text-xs text-slate-500">Pauses the cadence for the days set above.</p>
                   )}
                 </div>
               ))}
@@ -590,9 +591,9 @@ function EnrollDialog({ sequence, onOpenChange, onEnrolled }: {
         <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search leads…" autoFocus />
         <div className="max-h-[320px] overflow-y-auto">
           {loading ? (
-            <div className="py-8 text-center text-slate-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
+            <div className="py-8 text-center text-slate-500"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
           ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-400">No leads found.</p>
+            <p className="py-8 text-center text-sm text-slate-500">No leads found.</p>
           ) : (
             <ul className="divide-y divide-slate-50">
               {filtered.map((l) => (

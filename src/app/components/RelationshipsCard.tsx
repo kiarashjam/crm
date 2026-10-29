@@ -174,7 +174,7 @@ export default function RelationshipsCard({
           {hasCouple ? 'Add a relative' : `Add ${firstName}'s spouse or a relative`}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[320px] p-0">
+      <PopoverContent aria-label={`Add a relative for ${firstName}`} align="end" className="w-[320px] p-0">
         <div className="flex items-center gap-2 border-b px-3 py-2">
           <label htmlFor={`relationship-type-${ownerKey}`} className="shrink-0 text-xs font-medium text-slate-600">
             Their
@@ -338,7 +338,7 @@ export default function RelationshipsCard({
                           disabled={!!saving}
                           aria-label={`Remove ${relationship.relatedContactName} as ${firstName}'s ${relationshipLabel(relationship.type).toLowerCase()}`}
                           title="Remove relationship"
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:opacity-50"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:opacity-50"
                         >
                           {saving === relationship.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
                         </button>
@@ -349,7 +349,7 @@ export default function RelationshipsCard({
               </ul>
             )}
             {readOnly
-              ? items.length === 0 && <p className="mt-1 text-xs text-slate-400">A writer in this workspace can add {firstName}'s spouse or family.</p>
+              ? items.length === 0 && <p className="mt-1 text-xs text-slate-500">A writer in this workspace can add {firstName}'s spouse or family.</p>
               : picker}
           </>
         )}

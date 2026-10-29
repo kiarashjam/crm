@@ -179,7 +179,7 @@ export default function HospitalityDashboard() {
     return (
       <div className="min-h-screen bg-gradient-subtle">
         <AppHeader />
-        <div className="flex items-center justify-center py-20 text-slate-400">
+        <div className="flex items-center justify-center py-20 text-slate-500">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       </div>
@@ -262,7 +262,7 @@ export default function HospitalityDashboard() {
                         <p className="text-sm font-semibold text-emerald-700">
                           {formatTime(r.startAtUtc)}
                         </p>
-                        <p className="text-xs text-slate-400">{r.status}</p>
+                        <p className="text-xs text-slate-500">{r.status}</p>
                       </div>
                     </li>
                   ))}
@@ -444,7 +444,7 @@ function Card({
     <StaggerItem index={index} className={`bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:border-teal-200 ${liftOnHover}`}>
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold text-slate-900 inline-flex items-center gap-2">
-          <span className="text-slate-400">{icon}</span> {title}
+          <span className="text-slate-500">{icon}</span> {title}
         </h2>
         {href && (
           <Link
@@ -461,7 +461,7 @@ function Card({
 }
 
 function Empty({ text }: { text: string }) {
-  return <p className="text-sm text-slate-400 py-3">{text}</p>;
+  return <p className="text-sm text-slate-500 py-3">{text}</p>;
 }
 
 function QuickLink({ to, icon, label, index }: { to: string; icon: React.ReactNode; label: string; index: number }) {

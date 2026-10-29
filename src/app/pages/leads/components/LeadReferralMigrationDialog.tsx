@@ -117,7 +117,7 @@ export function LeadReferralMigrationDialog({ onMigrated }: { onMigrated?: () =>
             </li>
           ))}
           {pending.length > 50 && (
-            <li className="px-3 py-2 text-center text-xs text-slate-400">+ {pending.length - 50} more</li>
+            <li className="px-3 py-2 text-center text-xs text-slate-500">+ {pending.length - 50} more</li>
           )}
         </ul>
         <div className="mt-2 flex items-center justify-end gap-2">
