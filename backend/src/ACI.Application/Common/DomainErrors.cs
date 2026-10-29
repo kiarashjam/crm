@@ -550,6 +550,70 @@ public static class DomainErrors
     }
 
     /// <summary>
+    /// Club money records: charges, payments, gift cards, tabs, subscriptions, donations.
+    /// </summary>
+    /// <remarks>
+    /// Codes ending ".NotFound" map to 404 and codes ending ".Conflict" to 409: a record
+    /// that moved on (closed, voided, changed by someone else) rather than a bad request.
+    /// </remarks>
+    public static class Club
+    {
+        public static readonly Error MemberNotFound = new(
+            "ClubMember.NotFound", "That member was not found.");
+
+        public static readonly Error RecordNotFound = new(
+            "ClubRecord.NotFound", "That record was not found.");
+
+        public static readonly Error ChargeNotFound = new(
+            "Charge.NotFound", "That charge was not found.");
+
+        public static readonly Error GiftCardNotFound = new(
+            "GiftCard.NotFound", "That gift card was not found.");
+
+        public static readonly Error TabNotFound = new(
+            "Tab.NotFound", "That tab was not found.");
+
+        public static readonly Error SubscriptionNotFound = new(
+            "Subscription.NotFound", "That subscription was not found.");
+
+        public static readonly Error AmountInvalid = new(
+            "Club.AmountInvalid", "The amount must be a number more than 0 and under 1,000,000,000.");
+
+        public static readonly Error ChargeKindInvalid = new(
+            "Charge.KindInvalid", "A charge is one of Dues, Dining, Bar, Event, Spa, Booking, Retail or Other.");
+
+        public static readonly Error DescriptionRequired = new(
+            "Charge.DescriptionRequired", "A charge needs a description.");
+
+        public static readonly Error MethodInvalid = new(
+            "Payment.MethodInvalid", "A payment is made by CardOnFile, Cash, Check, Wire or AppliedCredit.");
+
+        public static readonly Error ExpiryInvalid = new(
+            "GiftCard.ExpiryInvalid", "A gift card's expiry must be a date in the future.");
+
+        public static readonly Error VenueInvalid = new(
+            "Tab.VenueInvalid", "A tab is opened at the Bar, Dining, Spa, Rooftop or PoolDeck.");
+
+        public static readonly Error CadenceInvalid = new(
+            "Subscription.CadenceInvalid", "A subscription is billed Monthly, Quarterly, SemiAnnual or Annual.");
+
+        public static readonly Error SubscriptionStatusInvalid = new(
+            "Subscription.StatusInvalid", "A subscription can be set Active, Paused or Cancelled.");
+
+        public static readonly Error NotEditable = new(
+            "ClubRecord.NotEditable", "This record can't be edited. Void it and post a new one instead.");
+
+        public static readonly Error Changed = new(
+            "ClubRecord.Changed.Conflict", "Someone else changed this at the same moment, so nothing was saved. Reload and try again.");
+
+        public static Error DateInvalid(string what) => new(
+            "Club.DateInvalid", $"{what} must be a date.");
+
+        public static Error TooLong(string what, int max) => new(
+            "Club.TooLong", $"{what} can be at most {max} characters.");
+    }
+
+    /// <summary>
     /// General/shared errors.
     /// </summary>
     public static class General

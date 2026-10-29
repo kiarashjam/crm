@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
+using ACI.WebApi.Extensions;
 using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,9 +20,16 @@ file static class ClubDocs
 
     public static async Task<JsonObject> Body(HttpRequest request, CancellationToken ct)
     {
-        var node = await JsonNode.ParseAsync(request.Body, cancellationToken: ct);
-        return node as JsonObject ?? new JsonObject();
+        // An action such as "void this tab" may be sent with no body at all.
+        using var reader = new StreamReader(request.Body);
+        var text = await reader.ReadToEndAsync(ct);
+        if (string.IsNullOrWhiteSpace(text)) return new JsonObject();
+        return JsonNode.Parse(text) as JsonObject ?? new JsonObject();
     }
+
+    /// <summary>The record, or the refusal as a sentence the screen shows (400, 404 or 409).</summary>
+    public static IActionResult Answer(Result<JsonObject> result) =>
+        result.IsSuccess ? new OkObjectResult(result.Value) : result.Error.ToProblemResult();
 }
 
 [ApiController]
@@ -34,8 +43,8 @@ public class CampaignsController : ControllerBase
     public CampaignsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "campaigns", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "campaigns", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.UpdateAsync(org, "campaigns", id, await ClubDocs.Body(Request, ct), ct); return row == null ? NotFound() : Ok(row); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "campaigns", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "campaigns", id, await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "campaigns", id, ct) ? NoContent() : NotFound(); }
     [HttpPost("{id:guid}/send")] public async Task<IActionResult> Send(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.SendCampaignAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
 }
@@ -51,8 +60,8 @@ public class EventsController : ControllerBase
     public EventsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "events", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "events", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.UpdateAsync(org, "events", id, await ClubDocs.Body(Request, ct), ct); return row == null ? NotFound() : Ok(row); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "events", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "events", id, await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "events", id, ct) ? NoContent() : NotFound(); }
     [HttpPost("{id:guid}/rsvp")] public async Task<IActionResult> Rsvp(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.RsvpAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
 }
@@ -68,7 +77,7 @@ public class DonationsController : ControllerBase
     public DonationsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "donations", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "donations", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "donations", await ClubDocs.Body(Request, ct), ct)); }
     [HttpPost("{id:guid}/acknowledge")] public async Task<IActionResult> Acknowledge(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.AcknowledgeDonationAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "donations", id, ct) ? NoContent() : NotFound(); }
 }
@@ -84,7 +93,7 @@ public class CommunicationsController : ControllerBase
     public CommunicationsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "communications", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "communications", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "communications", await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "communications", id, ct) ? NoContent() : NotFound(); }
 }
 
@@ -99,7 +108,7 @@ public class ChargesController : ControllerBase
     public ChargesController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "charges", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "charges", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "charges", await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "charges", id, ct) ? NoContent() : NotFound(); }
 }
 
@@ -114,7 +123,7 @@ public class PaymentsController : ControllerBase
     public PaymentsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "payments", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "payments", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "payments", await ClubDocs.Body(Request, ct), ct)); }
 }
 
 [ApiController]
@@ -128,8 +137,8 @@ public class ApplicationsController : ControllerBase
     public ApplicationsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "applications", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "applications", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.UpdateAsync(org, "applications", id, await ClubDocs.Body(Request, ct), ct); return row == null ? NotFound() : Ok(row); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "applications", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "applications", id, await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "applications", id, ct) ? NoContent() : NotFound(); }
 }
 
@@ -156,8 +165,8 @@ public class ReservationsController : ControllerBase
     public ReservationsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "reservations", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "reservations", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.UpdateAsync(org, "reservations", id, await ClubDocs.Body(Request, ct), ct); return row == null ? NotFound() : Ok(row); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "reservations", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "reservations", id, await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "reservations", id, ct) ? NoContent() : NotFound(); }
 }
 
@@ -172,8 +181,8 @@ public class HouseholdsController : ControllerBase
     public HouseholdsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "households", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "households", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.UpdateAsync(org, "households", id, await ClubDocs.Body(Request, ct), ct); return row == null ? NotFound() : Ok(row); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "households", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "households", id, await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "households", id, ct) ? NoContent() : NotFound(); }
 }
 
@@ -188,7 +197,7 @@ public class HouseholdMembersController : ControllerBase
     public HouseholdMembersController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "household-members", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "household-members", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "household-members", await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "household-members", id, ct) ? NoContent() : NotFound(); }
 }
 
@@ -203,10 +212,10 @@ public class SubscriptionsController : ControllerBase
     public SubscriptionsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "subscriptions", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "subscriptions", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.UpdateAsync(org, "subscriptions", id, await ClubDocs.Body(Request, ct), ct); return row == null ? NotFound() : Ok(row); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "subscriptions", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "subscriptions", id, await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "subscriptions", id, ct) ? NoContent() : NotFound(); }
-    [HttpPost("{id:guid}/bill")] public async Task<IActionResult> Bill(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.BillSubscriptionAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
+    [HttpPost("{id:guid}/bill")] public async Task<IActionResult> Bill(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.BillSubscriptionAsync(org, id, ct)); }
 }
 
 [ApiController]
@@ -221,9 +230,9 @@ public class GiftCardsController : ControllerBase
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "gift-cards", ct)); }
     [HttpGet("redemptions")] public async Task<IActionResult> Redemptions(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "gift-card-redemptions", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "gift-cards", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPost("{id:guid}/redeem")] public async Task<IActionResult> Redeem(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.RedeemGiftCardAsync(org, id, await ClubDocs.Body(Request, ct), ct); return row == null ? NotFound() : Ok(row); }
-    [HttpPost("{id:guid}/void")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.VoidGiftCardAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "gift-cards", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost("{id:guid}/redeem")] public async Task<IActionResult> Redeem(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.RedeemGiftCardAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost("{id:guid}/void")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidGiftCardAsync(org, id, ct)); }
 }
 
 [ApiController]
@@ -237,11 +246,11 @@ public class TabsController : ControllerBase
     public TabsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "tabs", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.CreateAsync(org, "tabs", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPost("{id:guid}/items")] public async Task<IActionResult> AddItem(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.AddTabItemAsync(org, id, await ClubDocs.Body(Request, ct), ct); return row == null ? NotFound() : Ok(row); }
-    [HttpDelete("{tabId:guid}/items/{itemId:guid}")] public async Task<IActionResult> RemoveItem(Guid tabId, Guid itemId, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.RemoveTabItemAsync(org, tabId, itemId, ct); return row == null ? NotFound() : Ok(row); }
-    [HttpPost("{id:guid}/close")] public async Task<IActionResult> Close(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.CloseTabAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
-    [HttpPost("{id:guid}/void")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); var row = await _docs.VoidTabAsync(org, id, ct); return row == null ? NotFound() : Ok(row); }
+    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "tabs", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost("{id:guid}/items")] public async Task<IActionResult> AddItem(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.AddTabItemAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
+    [HttpDelete("{tabId:guid}/items/{itemId:guid}")] public async Task<IActionResult> RemoveItem(Guid tabId, Guid itemId, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.RemoveTabItemAsync(org, tabId, itemId, ct)); }
+    [HttpPost("{id:guid}/close")] public async Task<IActionResult> Close(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CloseTabAsync(org, id, ct)); }
+    [HttpPost("{id:guid}/void")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidTabAsync(org, id, ct)); }
 }
 
 [ApiController]

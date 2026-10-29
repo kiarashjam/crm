@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 
@@ -9,18 +11,18 @@ namespace ACI.Application.Services;
 public interface IClubDocumentService
 {
     Task<JsonArray> ListAsync(Guid? organizationId, string kind, CancellationToken ct = default);
-    Task<JsonObject> CreateAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct = default);
-    Task<JsonObject?> UpdateAsync(Guid? organizationId, string kind, Guid id, JsonObject patch, CancellationToken ct = default);
+    Task<Result<JsonObject>> CreateAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct = default);
+    Task<Result<JsonObject>> UpdateAsync(Guid? organizationId, string kind, Guid id, JsonObject patch, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct = default);
     Task<JsonObject?> RsvpAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<JsonObject?> AcknowledgeDonationAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
-    Task<JsonObject?> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
-    Task<JsonObject?> VoidGiftCardAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
-    Task<JsonObject?> AddTabItemAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
-    Task<JsonObject?> RemoveTabItemAsync(Guid? organizationId, Guid tabId, Guid itemId, CancellationToken ct = default);
-    Task<JsonObject?> CloseTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
-    Task<JsonObject?> VoidTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
-    Task<JsonObject?> BillSubscriptionAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
+    Task<Result<JsonObject>> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
+    Task<Result<JsonObject>> VoidGiftCardAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
+    Task<Result<JsonObject>> AddTabItemAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
+    Task<Result<JsonObject>> RemoveTabItemAsync(Guid? organizationId, Guid tabId, Guid itemId, CancellationToken ct = default);
+    Task<Result<JsonObject>> CloseTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
+    Task<Result<JsonObject>> VoidTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
+    Task<Result<JsonObject>> BillSubscriptionAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<JsonObject?> SendCampaignAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
     Task<JsonObject> SaveSettingsAsync(Guid? organizationId, JsonObject patch, CancellationToken ct = default);
@@ -30,7 +32,32 @@ public interface IClubDocumentService
 public sealed class ClubDocumentService : IClubDocumentService
 {
     private const string SettingsKind = "hospitality-settings";
+    private const decimal MaxMoney = 1_000_000_000m;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly string[] ChargeKinds = ["Dues", "Dining", "Bar", "Event", "Spa", "Booking", "Retail", "Other"];
+    private static readonly string[] PaymentMethods = ["CardOnFile", "Cash", "Check", "Wire", "AppliedCredit"];
+    private static readonly string[] TabVenues = ["Bar", "Dining", "Spa", "Rooftop", "PoolDeck"];
+    private static readonly string[] Cadences = ["Monthly", "Quarterly", "SemiAnnual", "Annual"];
+
+    /// <summary>
+    /// What a PUT may change on a money record. Everything else on it is the server's:
+    /// a status, a balance, a date the billing run moves.
+    /// </summary>
+    /// <remarks>
+    /// A PUT used to merge any key it was sent, so {"amount": -100} on a subscription
+    /// produced negative dues, and {"status": "Active"} cleared a past-due one. Money
+    /// kinds missing from this list cannot be changed by a PUT at all.
+    /// </remarks>
+    private static readonly Dictionary<string, string[]> Patchable = new(StringComparer.Ordinal)
+    {
+        ["subscriptions"] = ["name", "amount", "cadence", "status", "notes", "nextChargeAtUtc"],
+    };
+
+    private static readonly HashSet<string> MoneyKinds = new(StringComparer.Ordinal)
+    {
+        "charges", "payments", "gift-cards", "gift-card-redemptions", "tabs", "subscriptions", "donations",
+    };
+
     private readonly IClubDocumentRepository _docs;
     private readonly IClubRepository _club;
 
@@ -52,31 +79,46 @@ public sealed class ClubDocumentService : IClubDocumentService
         return array;
     }
 
-    public async Task<JsonObject> CreateAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> CreateAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct = default)
     {
-        var obj = Clone(body);
-        // The server picks the id. Saving looks a row up by id alone, so an id taken from
-        // the request was a way to overwrite any record whose id someone had seen,
-        // including another organization's.
-        var id = Guid.NewGuid();
-        obj["id"] = id.ToString();
-        await StampAsync(organizationId, kind, obj, ct);
-        await Save(organizationId, kind, id, obj, ct);
-        await AfterCreateAsync(organizationId, kind, obj, ct);
-        return obj;
+        var prepared = await PrepareAsync(organizationId, kind, body, ct);
+        if (!prepared.IsSuccess) return prepared;
+        var obj = prepared.Value;
+        return await WriteAsync(async () =>
+        {
+            await InsertAsync(organizationId, kind, obj, ct);
+            return Result.Success(obj);
+        }, ct);
     }
 
-    public async Task<JsonObject?> UpdateAsync(Guid? organizationId, string kind, Guid id, JsonObject patch, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> UpdateAsync(Guid? organizationId, string kind, Guid id, JsonObject patch, CancellationToken ct = default)
     {
         var current = await Load(organizationId, kind, id, ct);
-        if (current == null) return null;
-        foreach (var pair in patch)
-            current[pair.Key] = pair.Value?.DeepClone();
+        if (current == null) return DomainErrors.Club.RecordNotFound;
+        if (MoneyKinds.Contains(kind))
+        {
+            if (!Patchable.TryGetValue(kind, out var allowed)) return DomainErrors.Club.NotEditable;
+            // PastDue is the billing's to say; a person pauses, resumes or cancels.
+            if (patch.ContainsKey("status") && Text(patch, "status") is not ("Active" or "Paused" or "Cancelled"))
+                return DomainErrors.Club.SubscriptionStatusInvalid;
+            foreach (var key in allowed)
+                if (patch.ContainsKey(key))
+                    current[key] = patch[key]?.DeepClone();
+            if (CheckSubscription(current) is { } invalid) return invalid;
+        }
+        else
+        {
+            foreach (var pair in patch)
+                current[pair.Key] = pair.Value?.DeepClone();
+        }
         current["id"] = id.ToString();
         if (kind == "reservations" && patch.ContainsKey("resourceId"))
             await NameResourceAsync(organizationId, current, ct);
-        await Save(organizationId, kind, id, current, ct);
-        return current;
+        return await WriteAsync(async () =>
+        {
+            await Save(organizationId, kind, id, current, ct);
+            return Result.Success(current);
+        }, ct);
     }
 
     public async Task<bool> DeleteAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct = default)
@@ -121,14 +163,14 @@ public sealed class ClubDocumentService : IClubDocumentService
         return row;
     }
 
-    public async Task<JsonObject?> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
     {
         var card = await Load(organizationId, "gift-cards", id, ct);
-        if (card == null || Text(card, "status") != "Active") return null;
+        if (card == null || Text(card, "status") != "Active") return DomainErrors.Club.GiftCardNotFound;
         var remaining = Dec(card, "remainingValue");
         var asked = Dec(body, "amount");
         var amount = Math.Min(asked, remaining);
-        if (amount <= 0) return null;
+        if (amount <= 0) return DomainErrors.Club.GiftCardNotFound;
         remaining -= amount;
         card["remainingValue"] = remaining;
         card["status"] = remaining <= 0 ? "Redeemed" : "Active";
@@ -148,19 +190,19 @@ public sealed class ClubDocumentService : IClubDocumentService
         return redemption;
     }
 
-    public async Task<JsonObject?> VoidGiftCardAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> VoidGiftCardAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
     {
         var card = await Load(organizationId, "gift-cards", id, ct);
-        if (card == null) return null;
+        if (card == null) return DomainErrors.Club.GiftCardNotFound;
         card["status"] = "Voided";
         await Save(organizationId, "gift-cards", id, card, ct);
         return card;
     }
 
-    public async Task<JsonObject?> AddTabItemAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> AddTabItemAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
     {
         var tab = await Load(organizationId, "tabs", id, ct);
-        if (tab == null || Text(tab, "status") != "Open") return null;
+        if (tab == null || Text(tab, "status") != "Open") return DomainErrors.Club.TabNotFound;
         var items = CopyArray(tab["items"] as JsonArray);
         items.Add(new JsonObject
         {
@@ -176,10 +218,10 @@ public sealed class ClubDocumentService : IClubDocumentService
         return tab;
     }
 
-    public async Task<JsonObject?> RemoveTabItemAsync(Guid? organizationId, Guid tabId, Guid itemId, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> RemoveTabItemAsync(Guid? organizationId, Guid tabId, Guid itemId, CancellationToken ct = default)
     {
         var tab = await Load(organizationId, "tabs", tabId, ct);
-        if (tab == null) return null;
+        if (tab == null) return DomainErrors.Club.TabNotFound;
         var items = CopyArray(tab["items"] as JsonArray);
         JsonArray next = new();
         foreach (var item in items)
@@ -193,10 +235,10 @@ public sealed class ClubDocumentService : IClubDocumentService
         return tab;
     }
 
-    public async Task<JsonObject?> CloseTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> CloseTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
     {
         var tab = await Load(organizationId, "tabs", id, ct);
-        if (tab == null || Text(tab, "status") != "Open") return null;
+        if (tab == null || Text(tab, "status") != "Open") return DomainErrors.Club.TabNotFound;
         var items = tab["items"] as JsonArray ?? new JsonArray();
         var total = Total(items);
         tab["total"] = total;
@@ -205,7 +247,7 @@ public sealed class ClubDocumentService : IClubDocumentService
         var itemCount = (tab["items"] as JsonArray)?.Count ?? 0;
         if (total > 0)
         {
-            await CreateAsync(organizationId, "charges", new JsonObject
+            var charge = await CreateAsync(organizationId, "charges", new JsonObject
             {
                 ["memberId"] = tab["memberId"]?.DeepClone(),
                 ["memberName"] = tab["memberName"]?.DeepClone(),
@@ -213,6 +255,7 @@ public sealed class ClubDocumentService : IClubDocumentService
                 ["description"] = $"{label} tab ({itemCount} items)",
                 ["amount"] = total,
             }, ct);
+            if (!charge.IsSuccess) return charge;
         }
         var tier = Text(tab, "memberTier");
         var multiplier = tier switch { "Silver" => 1.25m, "Gold" => 1.5m, "Platinum" => 2m, _ => 1m };
@@ -239,22 +282,22 @@ public sealed class ClubDocumentService : IClubDocumentService
         return tab;
     }
 
-    public async Task<JsonObject?> VoidTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> VoidTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
     {
         var tab = await Load(organizationId, "tabs", id, ct);
-        if (tab == null) return null;
+        if (tab == null) return DomainErrors.Club.TabNotFound;
         tab["status"] = "Voided";
         await Save(organizationId, "tabs", id, tab, ct);
         return tab;
     }
 
-    public async Task<JsonObject?> BillSubscriptionAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> BillSubscriptionAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
     {
         var sub = await Load(organizationId, "subscriptions", id, ct);
-        if (sub == null) return null;
+        if (sub == null) return DomainErrors.Club.SubscriptionNotFound;
         var status = Text(sub, "status");
         if (status is "Cancelled" or "Paused") return sub;
-        await CreateAsync(organizationId, "charges", new JsonObject
+        var charge = await CreateAsync(organizationId, "charges", new JsonObject
         {
             ["memberId"] = sub["memberId"]?.DeepClone(),
             ["memberName"] = sub["memberName"]?.DeepClone(),
@@ -263,9 +306,10 @@ public sealed class ClubDocumentService : IClubDocumentService
             ["amount"] = Dec(sub, "amount"),
             ["dueAtUtc"] = DateTime.UtcNow.AddDays(14).ToString("o"),
         }, ct);
+        if (!charge.IsSuccess) return charge;
         var days = CadenceDays(Text(sub, "cadence"));
         var next = DateTime.UtcNow;
-        if (DateTime.TryParse(Text(sub, "nextChargeAtUtc"), out var parsed)) next = parsed.ToUniversalTime();
+        if (DateTime.TryParse(Text(sub, "nextChargeAtUtc"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var parsed)) next = parsed;
         sub["lastChargedAtUtc"] = DateTime.UtcNow.ToString("o");
         sub["nextChargeAtUtc"] = next.AddDays(days).ToString("o");
         sub["status"] = "Active";
@@ -351,27 +395,81 @@ public sealed class ClubDocumentService : IClubDocumentService
         }
     }
 
-    private async Task StampAsync(Guid? organizationId, string kind, JsonObject obj, CancellationToken ct)
+    /// <summary>A new record from the request body, checked and stamped but not yet saved.</summary>
+    private async Task<Result<JsonObject>> PrepareAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct)
+    {
+        var obj = Clone(body);
+        // The server picks the id. Saving looks a row up by id alone, so an id taken from
+        // the request was a way to overwrite any record whose id someone had seen,
+        // including another organization's.
+        obj["id"] = Guid.NewGuid().ToString();
+        if (await StampAsync(organizationId, kind, obj, ct) is { } invalid) return invalid;
+        return obj;
+    }
+
+    /// <summary>Saves a prepared record and does what follows from it.</summary>
+    private async Task InsertAsync(Guid? organizationId, string kind, JsonObject obj, CancellationToken ct)
+    {
+        await Save(organizationId, kind, ReadId(obj)!.Value, obj, ct);
+        await AfterCreateAsync(organizationId, kind, obj, ct);
+    }
+
+    /// <summary>
+    /// Fills in what the server owns and checks what the client sent.
+    /// </summary>
+    /// <remarks>
+    /// The money fields on these records are worked out here, never taken from the
+    /// request. This used to fill a field only when the request left it out, so a POST
+    /// of a charge with "status":"Paid","paidAmount":500 was stored as paid with no
+    /// payment behind it, a gift card could be issued for 10 with 5,000 on it, and a
+    /// tab opened with "memberTier":"Platinum" earned double points.
+    /// </remarks>
+    private async Task<Error?> StampAsync(Guid? organizationId, string kind, JsonObject obj, CancellationToken ct)
     {
         var now = DateTime.UtcNow.ToString("o");
         switch (kind)
         {
             case "donations":
+                if (Amount(obj, "amount") is not { } gift) return DomainErrors.Club.AmountInvalid;
+                obj["amount"] = gift;
                 Set(obj, "receivedAtUtc", now);
-                Set(obj, "acknowledged", false);
+                // Saying thank you is its own step (POST /acknowledge), not something a new record arrives with.
+                obj["acknowledged"] = false;
                 Set(obj, "isAnonymous", false);
                 break;
             case "charges":
-                Set(obj, "postedAtUtc", now);
-                Set(obj, "paidAmount", 0);
-                Set(obj, "status", "Pending");
+            {
+                if (Amount(obj, "amount") is not { } amount) return DomainErrors.Club.AmountInvalid;
+                if (await StampMemberAsync(organizationId, obj, ct) is { } noMember) return noMember;
+                var chargeKind = Text(obj, "kind").Trim();
+                if (chargeKind.Length == 0) chargeKind = "Other";
+                if (!ChargeKinds.Contains(chargeKind)) return DomainErrors.Club.ChargeKindInvalid;
+                var description = Text(obj, "description").Trim();
+                if (description.Length == 0) return DomainErrors.Club.DescriptionRequired;
+                if (description.Length > 500) return DomainErrors.Club.TooLong("A description", 500);
+                if (!StampDate(obj, "dueAtUtc")) return DomainErrors.Club.DateInvalid("The due date");
+                obj["amount"] = amount;
+                obj["kind"] = chargeKind;
+                obj["description"] = description;
+                obj["postedAtUtc"] = now;
+                obj["paidAmount"] = 0;
+                obj["status"] = "Pending";
+                Drop(obj, "paidAtUtc", "voidedAtUtc", "voidedByUserId", "voidedByName", "voidReason");
                 break;
+            }
             case "payments":
+            {
+                if (Amount(obj, "amount") is not { } amount) return DomainErrors.Club.AmountInvalid;
+                if (!PaymentMethods.Contains(Text(obj, "method"))) return DomainErrors.Club.MethodInvalid;
+                if (!StampDate(obj, "receivedAtUtc")) return DomainErrors.Club.DateInvalid("The date received");
+                obj["amount"] = amount;
                 Set(obj, "receivedAtUtc", now);
-                Set(obj, "appliedToChargeIds", Guid.TryParse(Text(obj, "chargeId"), out var paidCharge)
+                obj["appliedToChargeIds"] = Guid.TryParse(Text(obj, "chargeId"), out var paidCharge)
                     ? new JsonArray(paidCharge.ToString())
-                    : new JsonArray());
+                    : new JsonArray();
+                Drop(obj, "status", "voidedAtUtc", "voidedByUserId", "voidedByName", "voidReason");
                 break;
+            }
             case "applications":
                 Set(obj, "submittedAtUtc", now);
                 Set(obj, "status", "Submitted");
@@ -386,9 +484,13 @@ public sealed class ClubDocumentService : IClubDocumentService
                 await NameResourceAsync(organizationId, obj, ct);
                 break;
             case "subscriptions":
-                Set(obj, "status", "Active");
-                Set(obj, "startedAtUtc", now);
+                if (await StampMemberAsync(organizationId, obj, ct) is { } noSubscriber) return noSubscriber;
+                if (string.IsNullOrWhiteSpace(Text(obj, "cadence"))) obj["cadence"] = "Monthly";
+                obj["status"] = "Active";
+                if (CheckSubscription(obj) is { } invalid) return invalid;
+                obj["startedAtUtc"] = now;
                 Set(obj, "nextChargeAtUtc", DateTime.UtcNow.AddDays(CadenceDays(Text(obj, "cadence"))).ToString("o"));
+                Drop(obj, "lastChargedAtUtc");
                 break;
             case "communications":
                 Set(obj, "sentAtUtc", now);
@@ -401,30 +503,57 @@ public sealed class ClubDocumentService : IClubDocumentService
                 break;
 
             case "gift-cards":
-                Set(obj, "code", GiftCode());
-                Set(obj, "remainingValue", Dec(obj, "faceValue"));
-                Set(obj, "status", "Active");
-                Set(obj, "issuedAtUtc", now);
+            {
+                if (Amount(obj, "faceValue") is not { } face) return DomainErrors.Club.AmountInvalid;
+                if (!StampDate(obj, "expiresAtUtc")) return DomainErrors.Club.ExpiryInvalid;
+                if (ReadDate(obj, "expiresAtUtc") is { } expires && expires <= DateTime.UtcNow) return DomainErrors.Club.ExpiryInvalid;
+                obj["faceValue"] = face;
+                obj["code"] = await NewGiftCodeAsync(organizationId, ct);
+                obj["remainingValue"] = face;
+                obj["status"] = "Active";
+                obj["issuedAtUtc"] = now;
+                Drop(obj, "voidedAtUtc", "voidedByUserId", "voidedByName", "voidReason", "writtenOffValue");
                 break;
+            }
             case "tabs":
-                Set(obj, "items", new JsonArray());
-                Set(obj, "status", "Open");
-                Set(obj, "openedAtUtc", now);
-                Set(obj, "total", 0);
-                if (Guid.TryParse(Text(obj, "memberId"), out var memberId))
-                {
-                    var member = await _club.MemberAsync(memberId, organizationId, ct);
-                    if (member != null)
-                    {
-                        Set(obj, "memberName", $"{member.FirstName} {member.LastName}".Trim());
-                        Set(obj, "memberTier", member.Tier);
-                    }
-                }
+                if (await StampMemberAsync(organizationId, obj, ct, withTier: true) is { } noGuest) return noGuest;
+                if (!TabVenues.Contains(Text(obj, "venue"))) return DomainErrors.Club.VenueInvalid;
+                obj["items"] = new JsonArray();
+                obj["status"] = "Open";
+                obj["openedAtUtc"] = now;
+                obj["total"] = 0;
+                Drop(obj, "closedAtUtc", "pointsAwarded", "chargeId", "voidedAtUtc", "voidedByUserId", "voidedByName", "voidReason");
                 break;
             case "households":
                 Set(obj, "createdAtUtc", now);
                 break;
         }
+        return null;
+    }
+
+    /// <summary>
+    /// The record's member must be one of this club's; their name, and for a tab their
+    /// tier, are copied from the member rather than taken from the request.
+    /// </summary>
+    private async Task<Error?> StampMemberAsync(Guid? organizationId, JsonObject obj, CancellationToken ct, bool withTier = false)
+    {
+        if (!Guid.TryParse(Text(obj, "memberId"), out var memberId)) return DomainErrors.Club.MemberNotFound;
+        var member = await _club.MemberAsync(memberId, organizationId, ct);
+        if (member == null) return DomainErrors.Club.MemberNotFound;
+        obj["memberId"] = member.Id.ToString();
+        obj["memberName"] = $"{member.FirstName} {member.LastName}".Trim();
+        if (withTier) obj["memberTier"] = member.Tier;
+        return null;
+    }
+
+    /// <summary>What a subscription may hold, on create and on a PUT alike.</summary>
+    private static Error? CheckSubscription(JsonObject sub)
+    {
+        if (Amount(sub, "amount") is not { } amount) return DomainErrors.Club.AmountInvalid;
+        sub["amount"] = amount;
+        if (!Cadences.Contains(Text(sub, "cadence"))) return DomainErrors.Club.CadenceInvalid;
+        if (!StampDate(sub, "nextChargeAtUtc")) return DomainErrors.Club.DateInvalid("The next billing date");
+        return null;
     }
 
     /// <summary>What the browser did after these writes, done here so every device sees it.</summary>
@@ -501,6 +630,35 @@ public sealed class ClubDocumentService : IClubDocumentService
         reservation["resourceName"] = resource == null ? "Unknown resource" : Text(resource, "name");
     }
 
+    /// <summary>A code no other card in this workspace has.</summary>
+    private async Task<string> NewGiftCodeAsync(Guid? organizationId, CancellationToken ct)
+    {
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in await _docs.ListAsync(organizationId, "gift-cards", ct))
+            if (Parse(row.Payload) is { } card)
+                taken.Add(Text(card, "code"));
+        string code;
+        do code = GiftCode();
+        while (taken.Contains(code));
+        return code;
+    }
+
+    /// <summary>
+    /// Runs a write as one transaction. A save that lost a race to another request comes
+    /// back as a 409 the screen can show, not a 500, and nothing of it is kept.
+    /// </summary>
+    private async Task<Result<T>> WriteAsync<T>(Func<Task<Result<T>>> work, CancellationToken ct, Error? conflict = null)
+    {
+        try
+        {
+            return await _docs.InTransactionAsync(work, ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return conflict ?? DomainErrors.Club.Changed;
+        }
+    }
+
     private static int CadenceDays(string cadence) => cadence switch
     {
         "Quarterly" => 91,
@@ -564,13 +722,52 @@ public sealed class ClubDocumentService : IClubDocumentService
             obj[key] = value;
     }
 
+    /// <summary>Removes fields only the server sets, so a request cannot arrive with them.</summary>
+    private static void Drop(JsonObject obj, params string[] keys)
+    {
+        foreach (var key in keys) obj.Remove(key);
+    }
+
+    /// <summary>
+    /// An optional date: absent or empty is fine, otherwise it must read as a date and is
+    /// stored as UTC. False when it does not read as one.
+    /// </summary>
+    private static bool StampDate(JsonObject obj, string key)
+    {
+        var text = Text(obj, key).Trim();
+        if (text.Length == 0)
+        {
+            obj.Remove(key);
+            return true;
+        }
+        if (!DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var date))
+            return false;
+        obj[key] = date.ToString("o");
+        return true;
+    }
+
+    private static DateTime? ReadDate(JsonObject obj, string key) =>
+        DateTime.TryParse(Text(obj, key), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var date)
+            ? date
+            : null;
+
     private static string Text(JsonObject obj, string key) => obj[key]?.ToString() ?? "";
 
     private static int Int(JsonObject obj, string key) =>
         obj[key] is JsonValue value && value.TryGetValue<int>(out var n) ? n : int.TryParse(Text(obj, key), out var p) ? p : 0;
 
     private static decimal Dec(JsonObject obj, string key) =>
-        obj[key] is JsonValue value && value.TryGetValue<decimal>(out var n) ? n : decimal.TryParse(Text(obj, key), out var p) ? p : 0;
+        obj[key] is JsonValue value && value.TryGetValue<decimal>(out var n) ? n
+        : decimal.TryParse(Text(obj, key), NumberStyles.Number, CultureInfo.InvariantCulture, out var p) ? p : 0;
+
+    /// <summary>A positive amount of money, to the cent; null when the value is not one.</summary>
+    private static decimal? Amount(JsonObject obj, string key)
+    {
+        var value = Dec(obj, key);
+        if (value <= 0 || value >= MaxMoney) return null;
+        var cents = Math.Round(value, 2, MidpointRounding.AwayFromZero);
+        return cents > 0 ? cents : null;
+    }
 
     private static JsonArray CopyArray(JsonArray? source)
     {
