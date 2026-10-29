@@ -478,10 +478,9 @@ public sealed class ClubDocumentService : IClubDocumentService
         if (sub == null) return DomainErrors.Club.SubscriptionNotFound;
         var status = Text(sub, "status");
         if (status is "Cancelled" or "Paused") return sub;
-        var charge = await CreateAsync(organizationId, "charges", new JsonObject
+        var charge = await PrepareAsync(organizationId, "charges", new JsonObject
         {
             ["memberId"] = sub["memberId"]?.DeepClone(),
-            ["memberName"] = sub["memberName"]?.DeepClone(),
             ["kind"] = "Dues",
             ["description"] = Text(sub, "name"),
             ["amount"] = Dec(sub, "amount"),
@@ -489,13 +488,18 @@ public sealed class ClubDocumentService : IClubDocumentService
         }, ct);
         if (!charge.IsSuccess) return charge;
         var days = CadenceDays(Text(sub, "cadence"));
-        var next = DateTime.UtcNow;
-        if (DateTime.TryParse(Text(sub, "nextChargeAtUtc"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var parsed)) next = parsed;
+        var next = ReadDate(sub, "nextChargeAtUtc") ?? DateTime.UtcNow;
         sub["lastChargedAtUtc"] = DateTime.UtcNow.ToString("o");
         sub["nextChargeAtUtc"] = next.AddDays(days).ToString("o");
         sub["status"] = "Active";
-        await Save(organizationId, "subscriptions", id, sub, ct);
-        return sub;
+        // As with a tab: the subscription is saved first, against the copy this request
+        // read, so two presses of Bill at once post one dues charge, not two.
+        return await WriteAsync(async () =>
+        {
+            await Save(organizationId, "subscriptions", id, sub, ct);
+            await InsertAsync(organizationId, "charges", charge.Value, ct);
+            return Result.Success(sub);
+        }, ct);
     }
 
     public async Task<JsonObject?> SendCampaignAsync(Guid? organizationId, Guid id, CancellationToken ct = default)

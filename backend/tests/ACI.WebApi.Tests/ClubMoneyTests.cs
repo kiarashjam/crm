@@ -184,6 +184,25 @@ public class ClubMoneyTests
         edited.TryGetProperty("lastChargedAtUtc", out _).Should().BeFalse();
     }
 
+    [Fact]
+    public async Task TwoPressesOfBillAtOncePostOneDuesCharge()
+    {
+        using var factory = new RaceFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var sub = (await Json(await client.PostAsync("/api/subscriptions", Body(new { memberId, name = "Locker", amount = 25, cadence = "Monthly" })), "add subscription"))
+            .GetProperty("id").GetString();
+        factory.Gate.Arm("subscriptions");
+
+        var answers = await Task.WhenAll(
+            client.PostAsync($"/api/subscriptions/{sub}/bill", null),
+            client.PostAsync($"/api/subscriptions/{sub}/bill", null));
+
+        answers.Select(a => a.StatusCode).Should().BeEquivalentTo(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict });
+        (await Json(await client.GetAsync("/api/charges"), "charges")).GetArrayLength().Should().Be(1);
+        (await BalanceAsync(client, memberId)).Should().Be(-25);
+    }
+
     // ── payments ─────────────────────────────────────────────────────────────
 
     private static async Task<string> ChargeAsync(HttpClient client, Guid memberId, decimal amount, DateTime? dueAtUtc = null) =>
