@@ -303,6 +303,34 @@ public static class DomainErrors
     }
 
     /// <summary>
+    /// Errors for the records a write links to and the person it assigns. None ends in
+    /// ".NotFound": the request is at fault, so they are 400s, and an id from another
+    /// workspace reads exactly like one that does not exist.
+    /// </summary>
+    public static class Link
+    {
+        public static readonly Error LeadNotFound = new(
+            "Link.LeadNotFound", "The lead was not found in this workspace");
+
+        public static readonly Error DealNotFound = new(
+            "Link.DealNotFound", "The deal was not found in this workspace");
+
+        public static readonly Error ContactNotFound = new(
+            "Link.ContactNotFound", "The contact was not found in this workspace");
+
+        public static readonly Error CompanyNotFound = new(
+            "Link.CompanyNotFound", "The company was not found in this workspace");
+
+        // "NotMember" in the code is what maps this to 403 Forbidden, as Lead.OwnerNotMember.
+        public static readonly Error AssigneeNotMember = new(
+            "Link.AssigneeNotMember", "The person you picked is not a member of this workspace");
+
+        public static readonly Error AssigneeCannotSeeDeal = new(
+            "Link.AssigneeCannotSeeDeal",
+            "The person you picked cannot see this private deal, so they could not open the task. Pick someone who can, or share the deal first.");
+    }
+
+    /// <summary>
     /// Deal-related errors.
     /// </summary>
     public static class Deal
@@ -327,10 +355,10 @@ public static class DomainErrors
             "Deal.ValueInvalid", "The deal value must be a valid number");
         
         public static readonly Error InvalidStage = new(
-            "Deal.InvalidStage", "The deal stage is invalid");
+            "Deal.InvalidStage", "That stage is not one of this workspace's pipeline stages, or not in the pipeline chosen");
         
         public static readonly Error PipelineNotFound = new(
-            "Deal.PipelineNotFound", "The specified pipeline was not found");
+            "Deal.PipelineNotFound", "The pipeline was not found in this workspace");
     }
 
     /// <summary>

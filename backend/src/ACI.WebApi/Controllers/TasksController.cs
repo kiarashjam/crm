@@ -269,12 +269,14 @@ public class TasksController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The created task.</returns>
     /// <response code="200">Task created successfully.</response>
-    /// <response code="400">Invalid request data.</response>
+    /// <response code="400">Invalid request data, or a linked record that is not in this workspace.</response>
     /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">The assignee is not a member of this workspace.</response>
     [HttpPost]
     [ProducesResponseType(typeof(TaskDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<TaskDto>> Create(
         [FromBody] CreateTaskRequest request, 
         CancellationToken ct)
@@ -299,13 +301,15 @@ public class TasksController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The updated task.</returns>
     /// <response code="200">Task updated successfully.</response>
-    /// <response code="400">Invalid request data.</response>
+    /// <response code="400">Invalid request data, or a linked record that is not in this workspace.</response>
     /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">The assignee is not a member of this workspace.</response>
     /// <response code="404">Task not found.</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(TaskDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TaskDto>> Update(
         Guid id, 
@@ -367,11 +371,15 @@ public class TasksController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The updated task.</returns>
     /// <response code="200">Task assigned successfully.</response>
+    /// <response code="400">The assignee cannot see the task's private deal.</response>
     /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">The assignee is not a member of this workspace.</response>
     /// <response code="404">Task not found.</response>
     [HttpPatch("{id:guid}/assign")]
     [ProducesResponseType(typeof(TaskDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TaskDto>> Assign(
         Guid id, 
@@ -399,10 +407,12 @@ public class TasksController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The updated task.</returns>
     /// <response code="200">Task linked to lead successfully.</response>
+    /// <response code="400">The lead is not in this workspace.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Task not found.</response>
     [HttpPatch("{id:guid}/link-lead")]
     [ProducesResponseType(typeof(TaskDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TaskDto>> LinkToLead(
@@ -431,10 +441,12 @@ public class TasksController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The updated task.</returns>
     /// <response code="200">Task linked to deal successfully.</response>
+    /// <response code="400">The deal is not in this workspace, or the assignee cannot see it.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Task not found.</response>
     [HttpPatch("{id:guid}/link-deal")]
     [ProducesResponseType(typeof(TaskDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<TaskDto>> LinkToDeal(
@@ -490,9 +502,11 @@ public class TasksController : ControllerBase
     /// <returns>Summary of the bulk operation.</returns>
     /// <response code="200">Bulk operation completed.</response>
     /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">The new assignee is not a member of this workspace.</response>
     [HttpPost("bulk")]
     [ProducesResponseType(typeof(BulkTaskResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<BulkTaskResult>> BulkUpdate(
         [FromBody] BulkTaskRequest request,
         CancellationToken ct)
