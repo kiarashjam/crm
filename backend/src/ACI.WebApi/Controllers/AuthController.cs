@@ -208,7 +208,7 @@ public class AuthController : ControllerBase
     /// </remarks>
     /// <param name="request">Request containing the verification code.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>No content on success.</returns>
+    /// <returns>A new session token, since enabling 2FA signs out every earlier session.</returns>
     /// <response code="200">Two-factor authentication enabled successfully.</response>
     /// <response code="400">Invalid verification code.</response>
     /// <response code="401">User is not authenticated.</response>
@@ -223,11 +223,11 @@ public class AuthController : ControllerBase
             return Unauthorized();
         
         var result = await _authService.EnableTwoFactorAsync(_currentUser.UserId.Value, request, ct);
-        
-        if (result.IsSuccess)
-            return Ok();
-        
-        return result.ToNoContentResult();
+        if (result.IsFailure)
+            return result.Error.ToProblemResult();
+
+        // Turning 2FA on ends every earlier session, this one too; carry on with this token.
+        return Ok(new { token = result.Value });
     }
 
     /// <summary>
@@ -238,7 +238,7 @@ public class AuthController : ControllerBase
     /// </remarks>
     /// <param name="request">Request containing password and verification code.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>No content on success.</returns>
+    /// <returns>A new session token, since disabling 2FA signs out every earlier session.</returns>
     /// <response code="200">Two-factor authentication disabled successfully.</response>
     /// <response code="400">Invalid password or verification code.</response>
     /// <response code="401">User is not authenticated.</response>
@@ -253,11 +253,11 @@ public class AuthController : ControllerBase
             return Unauthorized();
         
         var result = await _authService.DisableTwoFactorAsync(_currentUser.UserId.Value, request, ct);
-        
-        if (result.IsSuccess)
-            return Ok();
-        
-        return result.ToNoContentResult();
+        if (result.IsFailure)
+            return result.Error.ToProblemResult();
+
+        // Turning 2FA off ends every earlier session, this one too; carry on with this token.
+        return Ok(new { token = result.Value });
     }
 
     /// <summary>

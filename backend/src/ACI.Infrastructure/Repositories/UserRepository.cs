@@ -26,6 +26,12 @@ public sealed class UserRepository : IUserRepository
     public async Task<User?> GetByEmailVerificationTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
         await _db.Users.FirstOrDefaultAsync(u => u.EmailVerificationTokenHash == tokenHash, ct);
 
+    public async Task<string?> GetSecurityStampAsync(Guid userId, CancellationToken ct = default) =>
+        await _db.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.SecurityStamp ?? string.Empty)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<User> AddAsync(User user, CancellationToken ct = default)
     {
         _db.Users.Add(user);

@@ -40,6 +40,13 @@ public class User : Common.BaseEntity
 
     public DateTime? EmailVerificationTokenExpiresAtUtc { get; set; }
 
+    /// <summary>
+    /// Copied into every session token. Changing it (a password reset, turning 2FA on
+    /// or off) makes every token issued before the change stop working. Null until the
+    /// first change, which tokens carry as an empty stamp.
+    /// </summary>
+    public string? SecurityStamp { get; set; }
+
     public UserSettings? Settings { get; set; }
     public ICollection<OrganizationMember> OrganizationMemberships { get; set; } = new List<OrganizationMember>();
     public ICollection<Company> Companies { get; set; } = new List<Company>();

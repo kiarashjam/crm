@@ -9,6 +9,12 @@ public interface IUserRepository
 
     Task<User?> GetByPasswordResetTokenHashAsync(string tokenHash, CancellationToken ct = default);
     Task<User?> GetByEmailVerificationTokenHashAsync(string tokenHash, CancellationToken ct = default);
+
+    /// <summary>
+    /// The user's security stamp, "" before it was first set, or null when there is no
+    /// such user. Read without tracking: it runs on every request's token check.
+    /// </summary>
+    Task<string?> GetSecurityStampAsync(Guid userId, CancellationToken ct = default);
     Task<User> AddAsync(User user, CancellationToken ct = default);
     Task UpdateAsync(User user, CancellationToken ct = default);
     Task<UserSettings?> GetSettingsAsync(Guid userId, CancellationToken ct = default);

@@ -50,8 +50,8 @@ public interface IAuthService
     /// <param name="userId">The user's ID.</param>
     /// <param name="request">Request containing the verification code.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Success or failure result.</returns>
-    Task<Result> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default);
+    /// <returns>A new session token: turning 2FA on ends every other session, this one included.</returns>
+    Task<Result<string>> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default);
     
     /// <summary>
     /// Disables two-factor authentication for a user.
@@ -59,8 +59,8 @@ public interface IAuthService
     /// <param name="userId">The user's ID.</param>
     /// <param name="request">Request containing password and verification code.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Success or failure result.</returns>
-    Task<Result> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default);
+    /// <returns>A new session token: turning 2FA off ends every other session, this one included.</returns>
+    Task<Result<string>> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default);
 
     /// <summary>
     /// Sends a password reset email when the account exists (always succeeds from a caller perspective).

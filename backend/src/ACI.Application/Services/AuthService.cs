@@ -21,6 +21,7 @@ public class AuthService : IAuthService
     private readonly EmailSettings _emailSettings;
     private readonly ILogger<AuthService> _logger;
     private readonly AuthAttemptLimiter _attempts;
+    private readonly ISecurityStampCache? _stamps;
 
     // Checked against when the email has no account, so a wrong email takes as long
     // as a wrong password and the response time does not reveal who has an account.
@@ -34,7 +35,8 @@ public class AuthService : IAuthService
         IEmailSender emailSender,
         IOptions<EmailSettings> emailSettings,
         ILogger<AuthService> logger,
-        AuthAttemptLimiter? attempts = null)
+        AuthAttemptLimiter? attempts = null,
+        ISecurityStampCache? stamps = null)
     {
         _userRepository = userRepository;
         _tokenService = tokenService;
@@ -44,6 +46,7 @@ public class AuthService : IAuthService
         _emailSettings = emailSettings.Value;
         _logger = logger;
         _attempts = attempts ?? new AuthAttemptLimiter();
+        _stamps = stamps;
     }
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request, CancellationToken ct = default)
@@ -293,7 +296,7 @@ public class AuthService : IAuthService
         return new TwoFactorStatusResponse(user.TwoFactorEnabled);
     }
 
-    public async Task<Result> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default)
+    public async Task<Result<string>> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default)
     {
         _logger.LogInformation("Enabling 2FA for user {UserId}", userId);
         
@@ -307,7 +310,7 @@ public class AuthService : IAuthService
         if (string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected))
         {
             _logger.LogWarning("Enable 2FA failed: no 2FA secret for user {UserId}", userId);
-            return Result.Failure(new Error("Auth.NoTwoFactorSecret", "Two-factor authentication has not been set up"));
+            return new Error("Auth.NoTwoFactorSecret", "Two-factor authentication has not been set up");
         }
 
         var secret = _secretProtector.Unprotect(user.TwoFactorSecretProtected);
@@ -319,13 +322,16 @@ public class AuthService : IAuthService
 
         user.TwoFactorEnabled = true;
         user.TwoFactorEnabledAtUtc = DateTime.UtcNow;
+        // Sessions signed in with the password alone end here; this one gets a new token.
+        RotateSecurityStamp(user);
         await _userRepository.UpdateAsync(user, ct);
-        
+        _stamps?.Forget(user.Id);
+
         _logger.LogInformation("2FA enabled successfully for user {UserId}", userId);
-        return Result.Success();
+        return _tokenService.GenerateToken(user);
     }
 
-    public async Task<Result> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default)
+    public async Task<Result<string>> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default)
     {
         _logger.LogInformation("Disabling 2FA for user {UserId}", userId);
         
@@ -345,7 +351,7 @@ public class AuthService : IAuthService
         if (!user.TwoFactorEnabled || string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected))
         {
             _logger.LogWarning("Disable 2FA failed: 2FA not enabled for user {UserId}", userId);
-            return Result.Failure(new Error("Auth.TwoFactorNotEnabled", "Two-factor authentication is not enabled"));
+            return new Error("Auth.TwoFactorNotEnabled", "Two-factor authentication is not enabled");
         }
 
         var secret = _secretProtector.Unprotect(user.TwoFactorSecretProtected);
@@ -358,10 +364,12 @@ public class AuthService : IAuthService
         user.TwoFactorEnabled = false;
         user.TwoFactorEnabledAtUtc = null;
         user.TwoFactorSecretProtected = null;
+        RotateSecurityStamp(user);
         await _userRepository.UpdateAsync(user, ct);
-        
+        _stamps?.Forget(user.Id);
+
         _logger.LogInformation("2FA disabled successfully for user {UserId}", userId);
-        return Result.Success();
+        return _tokenService.GenerateToken(user);
     }
 
     public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request, CancellationToken ct = default)
@@ -442,7 +450,11 @@ public class AuthService : IAuthService
         // well as a confirmation link would. It is also how the real owner takes back
         // an address someone else registered first.
         user.EmailVerifiedAtUtc ??= DateTime.UtcNow;
+        // A reset is what someone does when they think another person has their
+        // password: every session signed in before it ends now.
+        RotateSecurityStamp(user);
         await _userRepository.UpdateAsync(user, ct);
+        _stamps?.Forget(user.Id);
 
         _logger.LogInformation("Password reset completed for user {UserId}", user.Id);
         return Result.Success();
@@ -458,6 +470,9 @@ public class AuthService : IAuthService
         if (!password.Any(char.IsLetter)) return false;
         return password.Any(char.IsDigit) || password.Length >= 15;
     }
+
+    /// <summary>Ends every session issued before now (see <see cref="User.SecurityStamp"/>).</summary>
+    private static void RotateSecurityStamp(User user) => user.SecurityStamp = Guid.NewGuid().ToString("N");
 
     private static UserInfoDto ToInfo(User user) =>
         new(user.Id, user.Name, user.Email, EmailVerified: user.EmailVerifiedAtUtc != null);

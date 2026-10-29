@@ -31,6 +31,19 @@ export function setSession(token: string, user: AuthUser): void {
   }
 }
 
+/**
+ * Swap in a new token for the same signed-in user, keeping the chosen workspace.
+ * Turning 2FA on or off ends every earlier session on the server, this one included,
+ * and answers with the token this browser carries on with.
+ */
+export function replaceToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // ignore
+  }
+}
+
 export function getCurrentOrganizationId(): string | null {
   try {
     return localStorage.getItem(ORG_ID_KEY);

@@ -243,6 +243,9 @@ try
 
     // Application services
     builder.Services.AddSingleton<AuthAttemptLimiter>();
+    builder.Services.AddMemoryCache();
+    builder.Services.AddSingleton<ACI.WebApi.Services.SecurityStampCache>();
+    builder.Services.AddSingleton<ISecurityStampCache>(sp => sp.GetRequiredService<ACI.WebApi.Services.SecurityStampCache>());
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IContactService, ContactService>();
     builder.Services.AddScoped<IContactRelationshipService, ContactRelationshipService>();
@@ -337,11 +340,32 @@ try
                 // session token. It proves only the password: accepting it here would let
                 // anyone who knows the password skip the code entirely. Its one use is the
                 // body of POST /api/auth/login/2fa, which reads it itself.
-                OnTokenValidated = context =>
+                //
+                // A token lives a day, and a stolen one used to keep working through a
+                // password reset. Each token carries the user's security stamp from when
+                // it was issued; a reset or a 2FA change replaces the stamp, so older
+                // tokens are refused here (401). A deleted user's tokens are refused too.
+                OnTokenValidated = async context =>
                 {
                     if (context.Principal?.FindFirst("typ")?.Value == "2fa")
+                    {
                         context.Fail("A two-factor step token is not a session token.");
-                    return Task.CompletedTask;
+                        return;
+                    }
+
+                    var userIdClaim = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                    if (!Guid.TryParse(userIdClaim, out var userId))
+                    {
+                        context.Fail("The token names no user.");
+                        return;
+                    }
+
+                    var services = context.HttpContext.RequestServices;
+                    var current = await services.GetRequiredService<ACI.WebApi.Services.SecurityStampCache>()
+                        .CurrentAsync(userId, services.GetRequiredService<IUserRepository>(), context.HttpContext.RequestAborted);
+                    var carried = context.Principal?.FindFirst(ACI.Infrastructure.Services.JwtTokenService.SecurityStampClaim)?.Value ?? "";
+                    if (current == null || !string.Equals(current, carried, StringComparison.Ordinal))
+                        context.Fail("This session was signed out.");
                 },
             };
         });
@@ -707,6 +731,14 @@ try
                     ALTER TABLE [Users] ADD [EmailVerificationTokenHash] nvarchar(64) NULL;
                 IF COL_LENGTH(N'dbo.Users', N'EmailVerificationTokenExpiresAtUtc') IS NULL
                     ALTER TABLE [Users] ADD [EmailVerificationTokenExpiresAtUtc] datetime2 NULL;
+            ");
+
+            // Session revocation. Null for everyone at first, which matches the empty
+            // stamp that tokens issued before this column existed are read as, so the
+            // deploy itself signs nobody out.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Users', N'SecurityStamp') IS NULL
+                    ALTER TABLE [Users] ADD [SecurityStamp] nvarchar(64) NULL;
             ");
             
             // Fix Leads table columns

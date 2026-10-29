@@ -1,4 +1,5 @@
 import { authFetchJson, servesDemoData } from './apiClient';
+import { replaceToken } from '@/app/lib/auth';
 
 export type AuthUser = { id: string; name: string; email: string; emailVerified?: boolean };
 
@@ -68,18 +69,24 @@ export async function twoFactorStatus(): Promise<{ enabled: boolean }> {
   return authFetchJson<{ enabled: boolean }>('/api/auth/2fa/status');
 }
 
-export function twoFactorEnable(code: string) {
-  return authFetchJson<void>('/api/auth/2fa/enable', {
+/**
+ * Turning 2FA on or off signs out every earlier session, this one included. The server
+ * answers with a new token, which is stored here so this browser stays signed in.
+ */
+async function changeTwoFactor(path: string, body: unknown): Promise<void> {
+  const res = await authFetchJson<{ token?: string } | undefined>(path, {
     method: 'POST',
-    body: JSON.stringify({ code }),
+    body: JSON.stringify(body),
   });
+  if (res?.token) replaceToken(res.token);
+}
+
+export function twoFactorEnable(code: string) {
+  return changeTwoFactor('/api/auth/2fa/enable', { code });
 }
 
 export function twoFactorDisable(password: string, code: string) {
-  return authFetchJson<void>('/api/auth/2fa/disable', {
-    method: 'POST',
-    body: JSON.stringify({ password, code }),
-  });
+  return changeTwoFactor('/api/auth/2fa/disable', { password, code });
 }
 
 export type ForgotPasswordResponse = { message: string };
