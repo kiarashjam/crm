@@ -81,8 +81,8 @@ async function changeTwoFactor(path: string, body: unknown): Promise<void> {
   if (res?.token) replaceToken(res.token);
 }
 
-export function twoFactorEnable(code: string) {
-  return changeTwoFactor('/api/auth/2fa/enable', { code });
+export function twoFactorEnable(password: string, code: string) {
+  return changeTwoFactor('/api/auth/2fa/enable', { password, code });
 }
 
 export function twoFactorDisable(password: string, code: string) {

@@ -24,7 +24,7 @@ beforeEach(() => {
 describe('changing 2FA', () => {
   it('keeps this browser signed in with the token the server hands back', async () => {
     authFetchJson.mockResolvedValueOnce({ token: 'after-enable' });
-    await twoFactorEnable('123456');
+    await twoFactorEnable('pw', '123456');
     expect(authFetchJson).toHaveBeenCalledWith('/api/auth/2fa/enable', expect.objectContaining({ method: 'POST' }));
     expect(getAuthToken()).toBe('after-enable');
 
@@ -39,7 +39,7 @@ describe('changing 2FA', () => {
 
   it('leaves the token alone when the change is refused', async () => {
     authFetchJson.mockRejectedValueOnce(new Error('The two-factor authentication code is invalid'));
-    await expect(twoFactorEnable('000000')).rejects.toThrow('invalid');
+    await expect(twoFactorEnable('pw', '000000')).rejects.toThrow('invalid');
     expect(getAuthToken()).toBe('old-token');
   });
 });

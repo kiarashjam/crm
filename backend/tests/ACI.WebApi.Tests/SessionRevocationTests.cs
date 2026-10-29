@@ -109,7 +109,7 @@ public class SessionRevocationTests
             await db.SaveChangesAsync();
         }
 
-        var afterEnable = await TokenFrom(await here.PostAsync("/api/auth/2fa/enable", Body(new { code = CodeNow() })));
+        var afterEnable = await TokenFrom(await here.PostAsync("/api/auth/2fa/enable", Body(new { password = "correct horse battery staple", code = CodeNow() })));
 
         (await elsewhere.GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         var current = As(factory, afterEnable);

@@ -8,6 +8,8 @@ export interface SecuritySectionProps {
   twoFaUri: string | null;
   twoFaCode: string;
   setTwoFaCode: (val: string) => void;
+  twoFaEnablePassword: string;
+  setTwoFaEnablePassword: (val: string) => void;
   twoFaDisablePassword: string;
   setTwoFaDisablePassword: (val: string) => void;
   twoFaDisableCode: string;
@@ -24,6 +26,8 @@ export function SecuritySection({
   twoFaUri,
   twoFaCode,
   setTwoFaCode,
+  twoFaEnablePassword,
+  setTwoFaEnablePassword,
   twoFaDisablePassword,
   setTwoFaDisablePassword,
   twoFaDisableCode,
@@ -88,6 +92,19 @@ export function SecuritySection({
             </div>
 
             <div>
+              <label htmlFor="twofa-enable-password" className="block text-sm font-medium text-slate-700 mb-2">Your password</label>
+              <input
+                id="twofa-enable-password"
+                type="password"
+                value={twoFaEnablePassword}
+                onChange={(e) => setTwoFaEnablePassword(e.target.value)}
+                placeholder="Current password"
+                className="w-full h-11 px-4 border border-slate-300 rounded-xl bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
+                autoComplete="current-password"
+              />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Enter verification code</label>
               <InputOTP maxLength={6} value={twoFaCode} onChange={setTwoFaCode}>
                 <InputOTPGroup>
@@ -100,7 +117,7 @@ export function SecuritySection({
 
             <button
               type="button"
-              disabled={twoFaLoading || twoFaCode.replace(/\D/g, '').length !== 6}
+              disabled={twoFaLoading || !twoFaEnablePassword || twoFaCode.replace(/\D/g, '').length !== 6}
               onClick={handleEnable2fa}
               className="w-full h-11 bg-orange-600 hover:bg-orange-500 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors"
             >

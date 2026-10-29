@@ -110,6 +110,7 @@ export default function Settings() {
   const [twoFaSecret, setTwoFaSecret] = useState<string | null>(null);
   const [twoFaUri, setTwoFaUri] = useState<string | null>(null);
   const [twoFaCode, setTwoFaCode] = useState('');
+  const [twoFaEnablePassword, setTwoFaEnablePassword] = useState('');
   const [twoFaDisablePassword, setTwoFaDisablePassword] = useState('');
   const [twoFaDisableCode, setTwoFaDisableCode] = useState('');
 
@@ -489,12 +490,13 @@ export default function Settings() {
   };
 
   const handleEnable2fa = async () => {
-    if (twoFaCode.replace(/\D/g, '').length !== 6) return;
+    if (!twoFaEnablePassword || twoFaCode.replace(/\D/g, '').length !== 6) return;
     setTwoFaLoading(true);
     try {
-      await twoFactorEnable(twoFaCode);
+      await twoFactorEnable(twoFaEnablePassword, twoFaCode);
       setTwoFaEnabled(true);
       setTwoFaCode('');
+      setTwoFaEnablePassword('');
       toast.success(messages.twoFa.enabled);
     } catch (e) {
       const msg = e instanceof Error ? e.message : messages.errors.generic;
@@ -619,6 +621,8 @@ export default function Settings() {
             twoFaUri={twoFaUri}
             twoFaCode={twoFaCode}
             setTwoFaCode={setTwoFaCode}
+            twoFaEnablePassword={twoFaEnablePassword}
+            setTwoFaEnablePassword={setTwoFaEnablePassword}
             twoFaDisablePassword={twoFaDisablePassword}
             setTwoFaDisablePassword={setTwoFaDisablePassword}
             twoFaDisableCode={twoFaDisableCode}

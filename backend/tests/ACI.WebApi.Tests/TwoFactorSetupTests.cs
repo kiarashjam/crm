@@ -56,7 +56,7 @@ public class TwoFactorSetupTests
             await db.SaveChangesAsync();
         }
 
-        var enable = await client.PostAsync("/api/auth/2fa/enable", Body(new { code = "000000" }));
+        var enable = await client.PostAsync("/api/auth/2fa/enable", Body(new { password = "correct horse battery staple", code = "000000" }));
         enable.StatusCode.Should().Be(HttpStatusCode.BadRequest, await enable.Content.ReadAsStringAsync());
 
         using (var scope = factory.Services.CreateScope())
@@ -72,5 +72,44 @@ public class TwoFactorSetupTests
         wrongCode.StatusCode.Should().Be(HttpStatusCode.BadRequest, await wrongCode.Content.ReadAsStringAsync());
 
         (await client.GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task TurningTwoFactorOnNeedsThePassword()
+    {
+        // It signs out every other session, so with a code alone someone holding a stolen
+        // session could turn it on with their own authenticator and lock the owner out.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, userId) = await SignInAsync(factory, "owner@club.ch");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            var user = await db.Users.FindAsync(userId);
+            user!.TwoFactorSecretProtected = scope.ServiceProvider.GetRequiredService<ISecretProtector>().Protect("JBSWY3DPEHPK3PXP");
+            await db.SaveChangesAsync();
+        }
+        // JBSWY3DPEHPK3PXP, decoded.
+        var code = CodeNow([0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x21, 0xDE, 0xAD, 0xBE, 0xEF]);
+
+        (await client.PostAsync("/api/auth/2fa/enable", Body(new { code })))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest, "the password is required");
+        (await client.PostAsync("/api/auth/2fa/enable", Body(new { password = "a guess", code })))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest, "a wrong password is refused");
+        (await factory.Services.Read(db => db.Users.Single(u => u.Id == userId).TwoFactorEnabled)).Should().BeFalse();
+
+        var right = await client.PostAsync("/api/auth/2fa/enable", Body(new { password = "correct horse battery staple", code }));
+        right.IsSuccessStatusCode.Should().BeTrue(await right.Content.ReadAsStringAsync());
+        (await factory.Services.Read(db => db.Users.Single(u => u.Id == userId).TwoFactorEnabled)).Should().BeTrue();
+    }
+
+    private static string CodeNow(byte[] secret)
+    {
+        var counter = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
+        var message = BitConverter.GetBytes(counter);
+        if (BitConverter.IsLittleEndian) Array.Reverse(message);
+        var hash = System.Security.Cryptography.HMACSHA1.HashData(secret, message);
+        var offset = hash[^1] & 0x0F;
+        var binary = ((hash[offset] & 0x7f) << 24) | (hash[offset + 1] << 16) | (hash[offset + 2] << 8) | hash[offset + 3];
+        return (binary % 1_000_000).ToString("000000");
     }
 }

@@ -301,11 +301,32 @@ public class AuthService : IAuthService
         _logger.LogInformation("Enabling 2FA for user {UserId}", userId);
         
         var user = await _userRepository.GetByIdAsync(userId, ct);
-        if (user == null)
+        if (user == null || user.PasswordHash == null)
         {
             _logger.LogWarning("Enable 2FA failed: user {UserId} not found", userId);
             return DomainErrors.Auth.EmailNotFound;
         }
+
+        // The password as well as a code. Turning 2FA on signs out every other session,
+        // so with a code alone, someone holding a stolen session could turn it on with
+        // their own authenticator and lock the owner out. Guesses count against the same
+        // allowances as sign-in, as they do when turning it off.
+        var passwordKey = AuthAttemptLimiter.Login(user.Email);
+        var codeKey = AuthAttemptLimiter.TwoFactor(user.Id);
+        if (_attempts.IsBlocked(passwordKey) || _attempts.IsBlocked(codeKey))
+        {
+            _logger.LogWarning("Enable 2FA refused: too many failed attempts for user {UserId}", userId);
+            return DomainErrors.Auth.AccountLocked;
+        }
+
+        if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
+        {
+            _attempts.Record(passwordKey);
+            _logger.LogWarning("Enable 2FA failed: invalid password for user {UserId}", userId);
+            return DomainErrors.Auth.WrongPassword;
+        }
+
+        _attempts.Reset(passwordKey);
 
         if (string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected))
         {
@@ -316,9 +337,12 @@ public class AuthService : IAuthService
         var secret = _secretProtector.Unprotect(user.TwoFactorSecretProtected);
         if (!Totp.VerifyCode(secret, request.Code, DateTime.UtcNow))
         {
+            _attempts.Record(codeKey);
             _logger.LogWarning("Enable 2FA failed: invalid code for user {UserId}", userId);
             return DomainErrors.Auth.WrongTwoFactorCode;
         }
+
+        _attempts.Reset(codeKey);
 
         user.TwoFactorEnabled = true;
         user.TwoFactorEnabledAtUtc = DateTime.UtcNow;

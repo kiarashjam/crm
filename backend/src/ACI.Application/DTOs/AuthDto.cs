@@ -74,6 +74,14 @@ public record TwoFactorStatusResponse(bool Enabled);
 public record TwoFactorEnableRequest
 {
     /// <summary>
+    /// Current password. Turning 2FA on also signs out every other session, so a stolen
+    /// session must not be able to do it with an authenticator of its own.
+    /// </summary>
+    [Required(ErrorMessage = "Password is required")]
+    [StringLength(100, MinimumLength = 1, ErrorMessage = "Password is required")]
+    public required string Password { get; init; }
+
+    /// <summary>
     /// Two-factor authentication code.
     /// </summary>
     [Required(ErrorMessage = "Code is required")]
