@@ -164,7 +164,7 @@ public class ActivitiesController : ControllerBase
             .Take(100)
             .ToArray();
 
-        var list = await _activityService.GetByLeadIdsAsync(leadIds, _currentUser.CurrentOrganizationId, ct);
+        var list = await _activityService.GetByLeadIdsAsync(leadIds, userId.Value, _currentUser.CurrentOrganizationId, ct);
         return Ok(list);
     }
 
@@ -212,6 +212,7 @@ public class ActivitiesController : ControllerBase
         if (userId == null) return Unauthorized();
 
         var counts = await _activityService.GetOrgMemberActivityCountsAsync(
+            userId.Value,
             _currentUser.CurrentOrganizationId,
             ct);
 

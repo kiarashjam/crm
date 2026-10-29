@@ -16,7 +16,7 @@ public interface IActivityRepository
     Task<IReadOnlyList<Activity>> GetByContactIdAsync(Guid contactId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<Activity>> GetByDealIdAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<Activity>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
-    Task<IReadOnlyList<Activity>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid? organizationId, CancellationToken ct = default);
+    Task<IReadOnlyList<Activity>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Activity?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Activity> AddAsync(Activity activity, CancellationToken ct = default);
     Task<Activity?> UpdateAsync(Activity activity, Guid userId, Guid? organizationId, CancellationToken ct = default);
@@ -27,6 +27,7 @@ public interface IActivityRepository
     /// <summary>
     /// Returns activity counts grouped by UserId for all members in the given organization.
     /// Used by team management to show real activity stats per member (HP-3).
+    /// With no organization, only the caller's own.
     /// </summary>
-    Task<IReadOnlyDictionary<Guid, int>> GetActivityCountsByOrgAsync(Guid? organizationId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, int>> GetActivityCountsByOrgAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

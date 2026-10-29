@@ -162,7 +162,7 @@ public class ContactServiceTests
         };
 
         _contactRepositoryMock
-            .Setup(r => r.EmailExistsAsync(request.Email, orgId, null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.EmailExistsAsync(request.Email, userId, orgId, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         _contactRepositoryMock
@@ -241,7 +241,7 @@ public class ContactServiceTests
         };
 
         _contactRepositoryMock
-            .Setup(r => r.EmailExistsAsync(request.Email, orgId, null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.EmailExistsAsync(request.Email, userId, orgId, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         // Act
@@ -358,7 +358,7 @@ public class ContactServiceTests
             .ReturnsAsync(existingContact);
 
         _contactRepositoryMock
-            .Setup(r => r.EmailExistsAsync("taken@example.com", orgId, contactId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.EmailExistsAsync("taken@example.com", userId, orgId, contactId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         // Act

@@ -173,7 +173,7 @@ public class ContactService : IContactService
         if (links.IsFailure) return links.Error;
 
         // Check for duplicate email
-        var emailExists = await _repository.EmailExistsAsync(request.Email.Trim(), organizationId, null, ct);
+        var emailExists = await _repository.EmailExistsAsync(request.Email.Trim(), userId, organizationId, null, ct);
         if (emailExists)
         {
             _logger.LogWarning(
@@ -243,7 +243,7 @@ public class ContactService : IContactService
         // Check for duplicate email if email is being changed
         if (request.Email != null && !string.Equals(existing.Email, request.Email.Trim(), StringComparison.OrdinalIgnoreCase))
         {
-            var emailExists = await _repository.EmailExistsAsync(request.Email.Trim(), organizationId, id, ct);
+            var emailExists = await _repository.EmailExistsAsync(request.Email.Trim(), userId, organizationId, id, ct);
             if (emailExists)
             {
                 _logger.LogWarning(
@@ -369,12 +369,13 @@ public class ContactService : IContactService
 
     /// <inheritdoc />
     public async Task<bool> EmailExistsAsync(
-        string email, 
-        Guid? organizationId, 
-        Guid? excludeContactId = null, 
+        string email,
+        Guid userId,
+        Guid? organizationId,
+        Guid? excludeContactId = null,
         CancellationToken ct = default)
     {
-        return await _repository.EmailExistsAsync(email, organizationId, excludeContactId, ct);
+        return await _repository.EmailExistsAsync(email, userId, organizationId, excludeContactId, ct);
     }
 
     public async Task<IReadOnlyList<ContactLookalikeDto>> FindLookalikesAsync(

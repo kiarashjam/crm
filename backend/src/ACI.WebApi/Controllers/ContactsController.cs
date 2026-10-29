@@ -370,8 +370,9 @@ public class ContactsController : ControllerBase
         }
         
         var exists = await _contactService.EmailExistsAsync(
-            email.Trim(), 
-            _currentUser.CurrentOrganizationId, 
+            email.Trim(),
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
             excludeId, 
             ct);
         

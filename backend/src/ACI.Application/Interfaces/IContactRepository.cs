@@ -24,7 +24,8 @@ public interface IContactRepository
     // Single item methods
     Task<Contact?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<Contact?> GetByEmailAsync(string email, Guid userId, Guid? organizationId, CancellationToken ct = default);
-    Task<bool> EmailExistsAsync(string email, Guid? organizationId, Guid? excludeContactId = null, CancellationToken ct = default);
+    /// <summary>Whether an active contact in the workspace (the organization's, or with none, the user's own) has this email.</summary>
+    Task<bool> EmailExistsAsync(string email, Guid userId, Guid? organizationId, Guid? excludeContactId = null, CancellationToken ct = default);
     
     // CRUD methods
     Task<Contact> AddAsync(Contact contact, CancellationToken ct = default);

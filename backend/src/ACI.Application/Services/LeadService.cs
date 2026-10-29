@@ -64,7 +64,7 @@ public class LeadService : ILeadService
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, options, ct);
 
-        var dtos = await MapWithRelationshipsAsync(items, ct);
+        var dtos = await MapWithRelationshipsAsync(items, userId, organizationId, ct);
 
         _logger.LogInformation(
             "Retrieved {Count} of {Total} leads for user {UserId} (page {Page})",
@@ -95,7 +95,7 @@ public class LeadService : ILeadService
             "Retrieved {Count} leads for user {UserId}",
             list.Count, userId);
 
-        return await MapWithRelationshipsAsync(list, ct);
+        return await MapWithRelationshipsAsync(list, userId, organizationId, ct);
     }
 
     /// <inheritdoc />
@@ -119,7 +119,7 @@ public class LeadService : ILeadService
             "Search returned {Count} leads for query '{Query}'",
             list.Count, query);
 
-        return await MapWithRelationshipsAsync(list, ct);
+        return await MapWithRelationshipsAsync(list, userId, organizationId, ct);
     }
 
     /// <inheritdoc />
@@ -182,7 +182,7 @@ public class LeadService : ILeadService
 
         if (!request.AllowDuplicate)
         {
-            var duplicate = await _automation.FindOpenDuplicateAsync(organizationId, request.Email, null, ct);
+            var duplicate = await _automation.FindOpenDuplicateAsync(userId, organizationId, request.Email, null, ct);
             if (duplicate != null)
             {
                 return new Error(
@@ -288,7 +288,7 @@ public class LeadService : ILeadService
 
         if (request.Email != null && !request.Email.Trim().Equals(existing.Email, StringComparison.OrdinalIgnoreCase))
         {
-            var duplicate = await _automation.FindOpenDuplicateAsync(organizationId, request.Email, existing.Id, ct);
+            var duplicate = await _automation.FindOpenDuplicateAsync(userId, organizationId, request.Email, existing.Id, ct);
             if (duplicate != null)
                 return new Error("Lead.Duplicate", $"An open lead with this email already exists ({duplicate.Name}).");
         }
@@ -705,13 +705,13 @@ public class LeadService : ILeadService
     /// Leads for a list, each with the relationships of its person contact (spouse or
     /// partner first), read in one query for the whole page.
     /// </summary>
-    private async Task<List<LeadDto>> MapWithRelationshipsAsync(IReadOnlyList<Lead> leads, CancellationToken ct)
+    private async Task<List<LeadDto>> MapWithRelationshipsAsync(IReadOnlyList<Lead> leads, Guid userId, Guid? organizationId, CancellationToken ct)
     {
         var dtos = leads.Select(Map).ToList();
         if (_relationships == null) return dtos;
         var contactIds = leads.Where(l => l.ConvertedToContactId != null).Select(l => l.ConvertedToContactId!.Value).Distinct().ToList();
         if (contactIds.Count == 0) return dtos;
-        var rows = await _relationships.ForContactsAsync(contactIds, ct);
+        var rows = await _relationships.ForContactsAsync(contactIds, userId, organizationId, ct);
         if (rows.Count == 0) return dtos;
         for (var i = 0; i < leads.Count; i++)
         {

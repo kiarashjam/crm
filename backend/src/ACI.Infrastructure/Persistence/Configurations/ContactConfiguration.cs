@@ -28,7 +28,15 @@ internal sealed class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.HasIndex(e => e.OrganizationId);
         builder.HasIndex(e => e.IsArchived);
         builder.HasIndex(e => e.DoNotContact);
-        // Unique email per organization (allows duplicates across different orgs)
-        builder.HasIndex(e => new { e.Email, e.OrganizationId }).IsUnique().HasFilter("[IsArchived] = 0");
+        // Unique email per workspace: per organization, and with none, per user. One
+        // index over (Email, OrganizationId) counted every personal user's NULL as the
+        // same workspace, so a second user could not have a contact the first one had.
+        // Program.cs replaces the old index with these on existing databases.
+        builder.HasIndex(e => new { e.Email, e.OrganizationId }).IsUnique()
+            .HasFilter("[OrganizationId] IS NOT NULL AND [IsArchived] = 0")
+            .HasDatabaseName("IX_Contacts_Email_Organization");
+        builder.HasIndex(e => new { e.Email, e.UserId }).IsUnique()
+            .HasFilter("[OrganizationId] IS NULL AND [IsArchived] = 0")
+            .HasDatabaseName("IX_Contacts_Email_PersonalUser");
     }
 }

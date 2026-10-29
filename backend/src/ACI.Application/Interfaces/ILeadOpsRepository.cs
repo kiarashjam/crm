@@ -4,8 +4,10 @@ namespace ACI.Application.Interfaces;
 
 public interface ILeadOpsRepository
 {
-    Task<Lead?> FindOpenByEmailAsync(Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default);
-    Task<Company?> FindCompanyByDomainAsync(Guid? organizationId, string domain, CancellationToken ct = default);
+    /// <summary>An open lead with this email in the workspace: the organization's, or with none, the user's own.</summary>
+    Task<Lead?> FindOpenByEmailAsync(Guid userId, Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default);
+    /// <summary>A company with this domain in the workspace: the organization's, or with none, the user's own.</summary>
+    Task<Company?> FindCompanyByDomainAsync(Guid userId, Guid? organizationId, string domain, CancellationToken ct = default);
     Task<IReadOnlyList<LeadScoringRule>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default);
     Task ReplaceScoringRulesAsync(Guid? organizationId, IReadOnlyList<LeadScoringRule> rules, CancellationToken ct = default);
     Task<IReadOnlyList<LeadAssignmentRule>> GetAssignmentRulesAsync(Guid? organizationId, CancellationToken ct = default);

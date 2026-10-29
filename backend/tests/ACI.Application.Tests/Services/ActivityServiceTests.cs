@@ -702,11 +702,11 @@ public class ActivityServiceTests
         };
 
         _activityRepositoryMock
-            .Setup(r => r.GetActivityCountsByOrgAsync(orgId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetActivityCountsByOrgAsync(It.IsAny<Guid>(), orgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(expected);
 
         // Act
-        var result = await _sut.GetOrgMemberActivityCountsAsync(orgId);
+        var result = await _sut.GetOrgMemberActivityCountsAsync(Guid.NewGuid(), orgId);
 
         // Assert
         result.Should().HaveCount(2);
@@ -721,11 +721,11 @@ public class ActivityServiceTests
         var orgId = Guid.NewGuid();
 
         _activityRepositoryMock
-            .Setup(r => r.GetActivityCountsByOrgAsync(orgId, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetActivityCountsByOrgAsync(It.IsAny<Guid>(), orgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, int>());
 
         // Act
-        var result = await _sut.GetOrgMemberActivityCountsAsync(orgId);
+        var result = await _sut.GetOrgMemberActivityCountsAsync(Guid.NewGuid(), orgId);
 
         // Assert
         result.Should().BeEmpty();

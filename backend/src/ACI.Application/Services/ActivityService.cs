@@ -130,11 +130,12 @@ public class ActivityService : IActivityService
     /// <inheritdoc />
     public async Task<IReadOnlyList<ActivityDto>> GetByLeadIdsAsync(
         IReadOnlyCollection<Guid> leadIds,
+        Guid userId,
         Guid? organizationId,
         CancellationToken ct = default)
     {
         if (leadIds.Count == 0) return Array.Empty<ActivityDto>();
-        var list = await _repository.GetByLeadIdsAsync(leadIds, organizationId, ct);
+        var list = await _repository.GetByLeadIdsAsync(leadIds, userId, organizationId, ct);
         return list.Select(Map).ToList();
     }
 
@@ -314,11 +315,12 @@ public class ActivityService : IActivityService
 
     /// <inheritdoc />
     public async Task<IReadOnlyDictionary<Guid, int>> GetOrgMemberActivityCountsAsync(
+        Guid userId,
         Guid? organizationId,
         CancellationToken ct = default)
     {
         _logger.LogDebug("Getting activity counts per org member for organization {OrganizationId}", organizationId);
-        return await _repository.GetActivityCountsByOrgAsync(organizationId, ct);
+        return await _repository.GetActivityCountsByOrgAsync(userId, organizationId, ct);
     }
 
     /// <summary>
