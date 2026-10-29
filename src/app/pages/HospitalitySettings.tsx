@@ -10,6 +10,7 @@ import {
   ScanLine,
   Loader2,
   Coins,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -157,7 +158,7 @@ export default function HospitalitySettings() {
             icon={Settings}
             tone="indigo"
             title="Hospitality Settings"
-            subtitle="Configure tiers, dues, loyalty multipliers, and venue point values."
+            subtitle="The club currency, plus tiers, dues, loyalty rates and venue points saved for later."
             actions={
               <>
                 <Button variant="outline" onClick={reset} disabled={resetting} className={heroSecondary}>
@@ -210,6 +211,20 @@ export default function HospitalitySettings() {
             </Select>
           </div>
 
+          <div
+            role="note"
+            className="mb-4 max-w-4xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          >
+            <p className="inline-flex items-center gap-2 font-medium">
+              <Info className="h-4 w-4 shrink-0 text-amber-700" aria-hidden /> Only the club currency is applied today.
+            </p>
+            <p className="mt-1">
+              The tiers, dues, loyalty rates and venue points below are saved, but nothing in Cadence reads them yet.
+              Closing a tab, checking a member in and an event check-in still award the built-in points, and each
+              member&apos;s dues are the ones set on that member.
+            </p>
+          </div>
+
           <Tabs defaultValue="tiers">
             <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
               <TabsTrigger value="tiers">Membership tiers</TabsTrigger>
@@ -218,6 +233,10 @@ export default function HospitalitySettings() {
             </TabsList>
 
             <TabsContent value="tiers">
+              <p className="mb-3 text-sm text-slate-500">
+                <NotApplied /> Dues and initiation fees are not charged from here, multipliers do not change the points
+                anyone earns, and benefits are not shown to members.
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {MEMBER_TIERS.map((tier, index) => {
                   const cfg = settings.tiers.find((t) => t.tier === tier);
@@ -319,9 +338,14 @@ export default function HospitalitySettings() {
 
             <TabsContent value="loyalty">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 max-w-2xl">
-                <h3 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-4">
+                <h3 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-1">
                   <Sparkles className="w-4 h-4 text-amber-500" /> Earning & redemption rates
                 </h3>
+                <p className="mb-4 text-sm text-slate-500">
+                  <NotApplied /> A tab still earns 10 points per 1 {currency} and an event check-in 50 points, both
+                  times the built-in tier multipliers; 100 points are still worth 1 {currency}; and no referral or
+                  anniversary bonus is awarded automatically.
+                </p>
                 <div className="space-y-4">
                   <div>
                     <Label>Base points per 1 {currency} spent</Label>
@@ -407,12 +431,12 @@ export default function HospitalitySettings() {
 
             <TabsContent value="venues">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 max-w-2xl">
-                <h3 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-4">
+                <h3 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-1">
                   <ScanLine className="w-4 h-4 text-cyan-500" /> Points awarded per check-in
                 </h3>
                 <p className="text-sm text-slate-500 mb-4">
-                  These are base points — actual points earned are multiplied by the visiting
-                  member's tier multiplier.
+                  <NotApplied /> Check-ins still award the built-in points for each venue, multiplied by the
+                  member&apos;s tier.
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   {VISIT_VENUES.map((v) => (
@@ -434,11 +458,19 @@ export default function HospitalitySettings() {
           </Tabs>
 
           <p className="text-xs text-slate-500 mt-8">
-            Changes apply to all new transactions once saved. Existing ledger entries and charges are
-            not retroactively recalculated.
+            Saving keeps every value here. Of them, only the club currency changes anything today.
           </p>
         </main>
       </PageTransition>
     </div>
+  );
+}
+
+/** Said next to every setting that is saved but not yet read by anything. */
+function NotApplied() {
+  return (
+    <span className="mr-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
+      Not applied yet
+    </span>
   );
 }
