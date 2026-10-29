@@ -52,6 +52,38 @@ public static class DomainErrors
     }
 
     /// <summary>
+    /// Club event attendee errors.
+    /// </summary>
+    public static class EventAttendee
+    {
+        // Codes ending ".NotFound" map to 404.
+        public static readonly Error EventNotFound = new(
+            "ClubEvent.NotFound", "The event was not found");
+
+        public static readonly Error NotFound = new(
+            "EventAttendee.NotFound", "That person is not on this event's list");
+
+        public static readonly Error MemberNotFound = new(
+            "EventAttendeeMember.NotFound", "That member is not in this workspace");
+
+        public static readonly Error NameRequired = new(
+            "EventAttendee.NameRequired", "A guest needs a name");
+
+        public static readonly Error TooLong = new(
+            "EventAttendee.TooLong", "A name can be up to 200 characters and an email up to 320");
+
+        public static readonly Error TicketInvalid = new(
+            "EventAttendee.TicketInvalid", "A ticket is a Member or a Guest ticket");
+
+        public static readonly Error StatusInvalid = new(
+            "EventAttendee.StatusInvalid", "An attendee is Reserved, CheckedIn, Waitlisted or Cancelled");
+
+        // Mapped to 409 in ResultExtensions: the event's state, not the request, is the problem.
+        public static readonly Error EventFull = new(
+            "EventAttendee.EventFull", "The event is full: cancel a reservation first");
+    }
+
+    /// <summary>
     /// Custom field errors.
     /// </summary>
     public static class CustomField
