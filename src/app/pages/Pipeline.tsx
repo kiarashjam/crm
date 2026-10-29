@@ -166,7 +166,7 @@ export default function Pipeline() {
   // Deal activities state
   const [dealActivities, setDealActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'Note', subject: '', body: '' });
+  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
   
   // Search and Filter state
@@ -544,7 +544,7 @@ export default function Pipeline() {
       });
       if (activity) {
         setDealActivities((prev) => [activity, ...prev]);
-        setActivityForm({ type: 'Note', subject: '', body: '' });
+        setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
         // Update the deal's lastActivityAtUtc in local state
         setDeals((prev) =>
@@ -1432,11 +1432,11 @@ export default function Pipeline() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Note">Note</SelectItem>
-                          <SelectItem value="Call">Call</SelectItem>
-                          <SelectItem value="Email">Email</SelectItem>
-                          <SelectItem value="Meeting">Meeting</SelectItem>
-                          <SelectItem value="Task">Task</SelectItem>
+                          <SelectItem value="note">Note</SelectItem>
+                          <SelectItem value="call">Call</SelectItem>
+                          <SelectItem value="email">Email</SelectItem>
+                          <SelectItem value="meeting">Meeting</SelectItem>
+                          <SelectItem value="task">Task</SelectItem>
                         </SelectContent>
                       </Select>
                       <Input

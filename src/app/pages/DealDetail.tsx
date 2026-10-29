@@ -60,7 +60,7 @@ export default function DealDetail() {
   // Activities
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'Note', subject: '', body: '' });
+  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
 
   // Linked Tasks
@@ -121,7 +121,7 @@ export default function DealDetail() {
       });
       if (activity) {
         setActivities((prev) => [activity, ...prev]);
-        setActivityForm({ type: 'Note', subject: '', body: '' });
+        setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
       }
     } catch {

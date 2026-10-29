@@ -12,7 +12,7 @@ public record CreateActivityRequest
     /// </summary>
     [Required(ErrorMessage = "Type is required")]
     [StringLength(20, ErrorMessage = "Type cannot exceed 20 characters")]
-    [RegularExpression(@"^(call|meeting|email|note|task|follow_up|deadline|video|demo)$", 
+    [RegularExpression(@"(?i)^(call|meeting|email|note|task|follow_up|deadline|video|demo)$", 
         ErrorMessage = "Type must be one of: call, meeting, email, note, task, follow_up, deadline, video, demo")]
     public required string Type { get; init; }
 
