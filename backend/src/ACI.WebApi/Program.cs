@@ -82,6 +82,25 @@ try
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        // A bare 429 reaches people as "HTTP 429" in a toast. Say what happened, in the
+        // same problem shape as every other refusal, and when to try again.
+        options.OnRejected = async (context, ct) =>
+        {
+            var wait = context.Lease.TryGetMetadata(System.Threading.RateLimiting.MetadataName.RetryAfter, out var retryAfter)
+                ? retryAfter
+                : (TimeSpan?)null;
+            if (wait is { } w)
+                context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(w.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var minutes = wait is { } m ? Math.Max(1, (int)Math.Ceiling(m.TotalMinutes)) : (int?)null;
+            await context.HttpContext.Response.WriteAsJsonAsync(new Microsoft.AspNetCore.Mvc.ProblemDetails
+            {
+                Status = StatusCodes.Status429TooManyRequests,
+                Title = "Too Many Requests",
+                Detail = minutes is { } n
+                    ? $"Too many requests. Try again in {n} minute{(n == 1 ? "" : "s")}."
+                    : "Too many requests. Wait a few minutes, then try again.",
+            }, options: null, contentType: "application/problem+json", cancellationToken: ct);
+        };
         options.AddPolicy("public-capture", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
             "capture:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions

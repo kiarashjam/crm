@@ -35,6 +35,22 @@ public class RateLimitTests
     }
 
     [Fact]
+    public async Task ARefusalSaysWhyAndWhenToTryAgain()
+    {
+        // A bare 429 reached people as "HTTP 429" in a toast.
+        await using var factory = new CustomWebApplicationFactory();
+        var client = factory.CreateClient();
+        HttpResponseMessage res = null!;
+        for (var i = 0; i < 11; i++)
+            res = await client.PostAsync("/api/auth/register",
+                Body(new { email = $"bulk{i}@example.ch", password = "correct horse battery staple", name = "Bulk" }));
+
+        res.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        res.Headers.RetryAfter.Should().NotBeNull();
+        (await res.Content.ReadAsStringAsync()).Should().MatchRegex("Too many requests. Try again in [0-9]+ minutes?[.]");
+    }
+
+    [Fact]
     public async Task InvitationsStopAtThirtyAnHourPerInviter()
     {
         await using var mail = new Mailbox();
