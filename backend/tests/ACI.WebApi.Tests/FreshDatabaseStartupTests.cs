@@ -11,28 +11,53 @@ namespace ACI.WebApi.Tests;
 /// The start-up schema work used to run before the migrations that create the core
 /// tables, and its first statement points a foreign key at Users. So a new database,
 /// whether missing (docker-compose's first start) or created empty (a new Azure SQL
-/// database), failed on that statement on every start and was never set up.
+/// database), failed on that statement on every start and was never set up. Outside
+/// development only the empty one is set up; a missing one is a mistyped name there.
 /// </remarks>
 public class FreshDatabaseStartupTests
 {
     [SqlServerFact]
-    public async Task AMissingDatabaseIsCreatedAndSetUp()
+    public async Task InDevelopmentAMissingDatabaseIsCreatedAndSetUp()
     {
+        // docker-compose's first start: a server with no database on it yet.
         await SqlServerApp.WaitForServerAsync();
         var database = SqlServerApp.NewDatabaseName();
         try
         {
-            using (var app = SqlServerApp.Start(database))
+            using (var app = SqlServerApp.Start(database, "Development"))
             {
                 await ShouldBeSetUpAsync(app, database);
             }
 
             // A second start finds the tables there, so it takes the usual way, and
             // every statement of it has to cope with a database the first one made.
-            using (var again = SqlServerApp.Start(database))
+            using (var again = SqlServerApp.Start(database, "Development"))
             {
                 await ShouldBeSetUpAsync(again, database);
             }
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
+    public async Task OutsideDevelopmentAMissingDatabaseIsNotCreated()
+    {
+        // Anywhere else the database is provisioned before the app, so a missing one is
+        // a mistyped name. Creating it started the app on a new, empty database (on
+        // Azure, one at the default, paid tier) that people then signed up into.
+        await SqlServerApp.WaitForServerAsync();
+        var database = SqlServerApp.NewDatabaseName();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+
+            (await SqlServerApp.ScalarAsync("master", $"SELECT DB_ID(N'{database}')")).Should().BeNull("no database is made");
+            var status = await app.CreateClient().GetStringAsync("/db-status");
+            using var doc = JsonDocument.Parse(status);
+            doc.RootElement.GetProperty("status").GetString().Should().Be("error", status);
         }
         finally
         {
@@ -66,7 +91,7 @@ public class FreshDatabaseStartupTests
         // production deployment would have come up with that sign-in, so it is only
         // added in development.
         await SqlServerApp.WaitForServerAsync();
-        var database = SqlServerApp.NewDatabaseName();
+        var database = await SqlServerApp.NewDatabaseAsync();
         try
         {
             using var app = SqlServerApp.Start(database);

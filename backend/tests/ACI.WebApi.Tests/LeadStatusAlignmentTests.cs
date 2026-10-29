@@ -27,7 +27,7 @@ public class LeadStatusAlignmentTests
     public async Task WhatAManagerDoesWithTheStatusesSurvivesARestart()
     {
         await SqlServerApp.WaitForServerAsync();
-        var database = SqlServerApp.NewDatabaseName();
+        var database = await SqlServerApp.NewDatabaseAsync();
         try
         {
             Guid org, lead;
@@ -76,7 +76,7 @@ public class LeadStatusAlignmentTests
     public async Task AnOrganisationStillOnTheOldListIsBroughtOntoTheNewOneOnce()
     {
         await SqlServerApp.WaitForServerAsync();
-        var database = SqlServerApp.NewDatabaseName();
+        var database = await SqlServerApp.NewDatabaseAsync();
         try
         {
             var org = Guid.NewGuid();

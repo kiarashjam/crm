@@ -35,19 +35,35 @@ public sealed class SqlServerApp : WebApplicationFactory<Program>
     public static string? ServerConnectionString => Environment.GetEnvironmentVariable("CADENCE_TEST_SQLSERVER");
 
     private readonly string _connectionString;
+    private readonly string _environment;
 
-    private SqlServerApp(string connectionString) => _connectionString = connectionString;
+    private SqlServerApp(string connectionString, string environment)
+    {
+        _connectionString = connectionString;
+        _environment = environment;
+    }
 
     /// <summary>A database name no other test uses, not yet created.</summary>
     public static string NewDatabaseName() => "CadenceTest_" + Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// A new, empty database no other test uses, as the provisioning scripts leave one.
+    /// Outside development the API sets up an empty database but never creates a missing one.
+    /// </summary>
+    public static async Task<string> NewDatabaseAsync()
+    {
+        var database = NewDatabaseName();
+        await ExecuteAsync("master", $"CREATE DATABASE [{database}]");
+        return database;
+    }
 
     public static string ConnectionString(string database) =>
         new SqlConnectionStringBuilder(ServerConnectionString) { InitialCatalog = database }.ConnectionString;
 
     /// <summary>Start the API against <paramref name="database"/>. Start-up, schema work included, has finished when this returns.</summary>
-    public static SqlServerApp Start(string database)
+    public static SqlServerApp Start(string database, string environment = "Testing")
     {
-        var app = new SqlServerApp(ConnectionString(database));
+        var app = new SqlServerApp(ConnectionString(database), environment);
         _ = app.Server; // builds and starts the host, which runs the database set-up
         return app;
     }
@@ -90,7 +106,7 @@ public sealed class SqlServerApp : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(_environment);
         builder.ConfigureAppConfiguration(config =>
         {
             // As in CustomWebApplicationFactory: never open a real SMTP connection.

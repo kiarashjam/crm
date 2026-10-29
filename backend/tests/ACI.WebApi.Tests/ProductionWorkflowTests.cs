@@ -134,7 +134,7 @@ public class ProductionWorkflowTests
     public async Task TheMemberTaskNeverChangesTheOwnersRole()
     {
         await SqlServerApp.WaitForServerAsync();
-        var database = SqlServerApp.NewDatabaseName();
+        var database = await SqlServerApp.NewDatabaseAsync();
         try
         {
             var owner = $"{Guid.NewGuid():N}@example.com";
@@ -157,7 +157,7 @@ public class ProductionWorkflowTests
     public async Task TheMemberTaskSetsAMembersRole_AndNamesNoOrganizationWhenTheNameIsWrong()
     {
         await SqlServerApp.WaitForServerAsync();
-        var database = SqlServerApp.NewDatabaseName();
+        var database = await SqlServerApp.NewDatabaseAsync();
         try
         {
             var owner = $"{Guid.NewGuid():N}@example.com";

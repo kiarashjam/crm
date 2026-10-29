@@ -371,8 +371,21 @@ try
             // statement on every start and was never set up. An empty one is now given the
             // migrations first. A database with any table in it, as production's has,
             // skips this and is set up in exactly the order it always was.
+            //
+            // A missing one is only created in development (docker-compose's first
+            // start). Anywhere else the database is provisioned first, so a missing one
+            // means a mistyped name in the connection string: creating it would start
+            // the app on a new, empty database (on Azure, one at the default, paid tier)
+            // while the real one sat unused, and people would sign up into it.
             var databaseCreator = db.Database.GetService<IRelationalDatabaseCreator>();
-            if (!await databaseCreator.ExistsAsync() || !await databaseCreator.HasTablesAsync())
+            var databaseExists = await databaseCreator.ExistsAsync();
+            if (!databaseExists && !app.Environment.IsDevelopment())
+            {
+                throw new InvalidOperationException(
+                    "The database named in the connection string does not exist. Outside development it is not "
+                    + "created at start-up: create it first (the scripts in scripts/ do), or correct the name.");
+            }
+            if (!databaseExists || !await databaseCreator.HasTablesAsync())
             {
                 Log.Information("Empty database: creating the core tables from the migrations first...");
                 await db.Database.MigrateAsync();

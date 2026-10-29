@@ -23,7 +23,7 @@ public class OrgCloneToolTests
     public async Task TheDryRunWritesNothing_ItRunsOnADatabaseThatCannotBeWritten()
     {
         await SqlServerApp.WaitForServerAsync();
-        var database = SqlServerApp.NewDatabaseName();
+        var database = await SqlServerApp.NewDatabaseAsync();
         try
         {
             await SeedAsync(database, attachments: 1);
@@ -52,7 +52,7 @@ public class OrgCloneToolTests
     public async Task ACopyTheDatabaseHasNoRoomForIsRefusedBeforeAnythingIsWritten()
     {
         await SqlServerApp.WaitForServerAsync();
-        var database = SqlServerApp.NewDatabaseName();
+        var database = await SqlServerApp.NewDatabaseAsync();
         try
         {
             await SeedAsync(database, attachments: 4);
