@@ -1,8 +1,9 @@
 // Households / family billing.
 //
 // A household groups a primary member with sub-members (spouse, partner,
-// dependents). All charges roll up to the primary's house account, even
-// when the sub-member is the one swiping their card at the bar.
+// dependents). Each link stores a `rollUpBilling` flag, but nothing reads it
+// yet: a sub-member's charges stay on their own house account and statement,
+// and the Households page says so instead of offering the switch.
 
 import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
