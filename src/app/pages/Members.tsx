@@ -62,6 +62,7 @@ import {
   InitialsAvatar, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -119,11 +120,8 @@ function formatDate(iso: string): string {
   }
 }
 
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-}
-
 export default function Members() {
+  const { format: formatCurrency } = useClubMoney();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);

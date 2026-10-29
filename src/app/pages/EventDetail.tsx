@@ -56,6 +56,7 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { motion } from 'motion/react';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 // Attendees live entirely in the demo store — there's no real-backend endpoint
 // for them yet, but the structure is server-friendly when one shows up.
@@ -167,11 +168,9 @@ function formatDateTime(iso: string): string {
   }
 }
 
-function formatCurrency(n: number): string {
-  return n === 0 ? 'Free' : n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
-
 export default function EventDetail() {
+  const { format: money } = useClubMoney();
+  const formatCurrency = (n: number) => (n === 0 ? 'Free' : money(n));
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const reduce = useMotionPreference();

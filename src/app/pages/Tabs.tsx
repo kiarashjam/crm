@@ -53,10 +53,7 @@ import {
   InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - Date.parse(iso);
@@ -67,6 +64,7 @@ function timeAgo(iso: string): string {
 }
 
 export default function Tabs() {
+  const { format: formatCurrency } = useClubMoney();
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);

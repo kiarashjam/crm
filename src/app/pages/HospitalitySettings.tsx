@@ -9,6 +9,7 @@ import {
   Sparkles,
   ScanLine,
   Loader2,
+  Coins,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -17,6 +18,13 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/app/components/ui/select';
 import {
   Tabs,
   TabsList,
@@ -35,6 +43,8 @@ import { VISIT_VENUES, type VisitVenue } from '@/app/api/visits';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { setClubCurrency } from '@/app/hooks/useClubMoney';
+import { CLUB_CURRENCIES, normaliseCurrency } from '@/app/lib/clubMoney';
 
 const TIER_COLOR: Record<MemberTier, string> = {
   Bronze: 'from-amber-400 to-amber-600',
@@ -79,6 +89,8 @@ export default function HospitalitySettings() {
     );
   }
 
+  const currency = normaliseCurrency(settings.currency);
+
   const updateTier = (tier: MemberTier, patch: Partial<TierConfig>) => {
     setSettings({
       ...settings,
@@ -111,7 +123,8 @@ export default function HospitalitySettings() {
   const save = async () => {
     setSaving(true);
     try {
-      await updateHospitalitySettings(settings);
+      const saved = await updateHospitalitySettings(settings);
+      setClubCurrency(saved.currency);
       toast.success('Settings saved');
     } finally {
       setSaving(false);
@@ -124,6 +137,7 @@ export default function HospitalitySettings() {
     try {
       const fresh = await resetHospitalitySettings();
       setSettings(fresh);
+      setClubCurrency(fresh.currency);
       toast.success('Settings reset');
     } finally {
       setResetting(false);
@@ -168,6 +182,34 @@ export default function HospitalitySettings() {
             }
           />
 
+          <div className="mb-6 max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="mb-1 inline-flex items-center gap-2 font-semibold text-slate-900">
+              <Coins className="h-4 w-4 text-emerald-600" /> Club currency
+            </h3>
+            <p className="mb-3 text-sm text-slate-500">
+              Every amount on the club pages and on printed statements is shown in this currency. Changing it
+              relabels amounts already entered; it does not convert them.
+            </p>
+            <Select
+              value={currency}
+              onValueChange={(v) => setSettings({ ...settings, currency: v })}
+            >
+              <SelectTrigger aria-label="Club currency" className="max-w-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CLUB_CURRENCIES.map((c) => (
+                  <SelectItem key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                  </SelectItem>
+                ))}
+                {!CLUB_CURRENCIES.some((c) => c.code === currency) && (
+                  <SelectItem value={currency}>{currency}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
           <Tabs defaultValue="tiers">
             <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
               <TabsTrigger value="tiers">Membership tiers</TabsTrigger>
@@ -196,8 +238,8 @@ export default function HospitalitySettings() {
 
                         <div className="grid grid-cols-2 gap-3 mb-4">
                           <div>
-                            <Label className="text-xs">Monthly dues ($)</Label>
-                            <Input aria-label="Monthly dues ($)"
+                            <Label className="text-xs">Monthly dues ({currency})</Label>
+                            <Input aria-label={`Monthly dues (${currency})`}
                               type="number"
                               min="0"
                               value={cfg.monthlyDues}
@@ -207,8 +249,8 @@ export default function HospitalitySettings() {
                             />
                           </div>
                           <div>
-                            <Label className="text-xs">Initiation fee ($)</Label>
-                            <Input aria-label="Initiation fee ($)"
+                            <Label className="text-xs">Initiation fee ({currency})</Label>
+                            <Input aria-label={`Initiation fee (${currency})`}
                               type="number"
                               min="0"
                               value={cfg.initiationFee}
@@ -282,8 +324,8 @@ export default function HospitalitySettings() {
                 </h3>
                 <div className="space-y-4">
                   <div>
-                    <Label>Base points per $1 spent</Label>
-                    <Input aria-label="Base points per $1 spent"
+                    <Label>Base points per 1 {currency} spent</Label>
+                    <Input aria-label={`Base points per 1 ${currency} spent`}
                       type="number"
                       min="1"
                       value={settings.basePointsPerDollar}
@@ -299,8 +341,8 @@ export default function HospitalitySettings() {
                     </p>
                   </div>
                   <div>
-                    <Label>Points required per $1 of redemption value</Label>
-                    <Input aria-label="Points required per $1 of redemption value"
+                    <Label>Points required per 1 {currency} of redemption value</Label>
+                    <Input aria-label={`Points required per 1 ${currency} of redemption value`}
                       type="number"
                       min="1"
                       value={settings.pointsPerDollarRedemption}
@@ -312,7 +354,7 @@ export default function HospitalitySettings() {
                       }
                     />
                     <p className="text-xs text-slate-500 mt-1">
-                      100 points = $1 by default — adjust the rate as needed.
+                      100 points = 1 {currency} by default — adjust the rate as needed.
                     </p>
                   </div>
                   <div>

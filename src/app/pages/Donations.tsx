@@ -53,6 +53,7 @@ import {
   InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const CAUSE_COLOR: Record<DonationCause, string> = {
   StaffSupport: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -63,10 +64,6 @@ const CAUSE_COLOR: Record<DonationCause, string> = {
   Arts: 'bg-violet-50 text-violet-700 ring-1 ring-violet-200',
   Other: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
 };
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
 
 function formatDate(iso: string): string {
   try {
@@ -81,6 +78,7 @@ function formatDate(iso: string): string {
 }
 
 export default function Donations() {
+  const { format: formatCurrency, currency } = useClubMoney();
   const [donations, setDonations] = useState<Donation[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -407,8 +405,8 @@ export default function Donations() {
                 </Select>
               </div>
               <div>
-                <Label>Amount ($)</Label>
-                <Input aria-label="Amount ($)"
+                <Label>Amount ({currency})</Label>
+                <Input aria-label={`Amount (${currency})`}
                   type="number"
                   min="0"
                   step="0.01"

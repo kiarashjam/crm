@@ -52,12 +52,10 @@ import {
   RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 export default function Households() {
+  const { format: formatCurrency } = useClubMoney();
   const [rollups, setRollups] = useState<HouseholdRollup[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);

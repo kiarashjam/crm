@@ -45,6 +45,7 @@ import { getGiftCards, type GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar } from '@/app/components/RecordCard';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -59,10 +60,6 @@ const STATUS_BADGE: Record<MemberStatus, string> = {
   Lapsed: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
   Cancelled: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
 };
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
 
 function formatDate(iso: string): string {
   try {
@@ -90,6 +87,7 @@ function formatDateTime(iso: string): string {
 }
 
 export default function MemberDetail() {
+  const { format: formatCurrency } = useClubMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [member, setMember] = useState<Member | null>(null);

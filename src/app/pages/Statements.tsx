@@ -25,10 +25,7 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { buildStatement } from '@/app/lib/statement';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 function formatDate(iso: string): string {
   try {
@@ -54,6 +51,7 @@ function endOfMonth(d: Date): number {
 }
 
 export default function Statements() {
+  const { format: formatCurrency } = useClubMoney();
   const [members, setMembers] = useState<Member[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);

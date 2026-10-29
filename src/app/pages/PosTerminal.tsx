@@ -54,10 +54,7 @@ import { getGiftCards, redeemGiftCard, type GiftCard } from '@/app/api/giftCards
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const TIER_RING: Record<MemberTier, string> = {
   Bronze: 'ring-amber-400',
@@ -67,6 +64,7 @@ const TIER_RING: Record<MemberTier, string> = {
 };
 
 export default function PosTerminal() {
+  const { format: formatCurrency, currency } = useClubMoney();
   const [members, setMembers] = useState<Member[]>([]);
   const [giftCards, setGiftCards] = useState<GiftCard[]>([]);
   const [pointsByMember, setPointsByMember] = useState<Map<string, number>>(new Map());
@@ -233,7 +231,7 @@ export default function PosTerminal() {
         kind: 'Redeemed',
         reason: 'PointsRedemption',
         points: -points,
-        note: `POS redemption — $${(points / POINTS_PER_DOLLAR).toFixed(2)} applied`,
+        note: `POS redemption — ${formatCurrency(points / POINTS_PER_DOLLAR)} applied`,
       });
       toast.success(
         `Redeemed ${points.toLocaleString()} pts (${formatCurrency(points / POINTS_PER_DOLLAR)})`,
@@ -567,8 +565,8 @@ export default function PosTerminal() {
               />
             </div>
             <div>
-              <Label>Amount ($)</Label>
-              <Input aria-label="Amount ($)"
+              <Label>Amount ({currency})</Label>
+              <Input aria-label={`Amount (${currency})`}
                 type="number"
                 min="0"
                 step="0.01"
@@ -609,8 +607,8 @@ export default function PosTerminal() {
               />
             </div>
             <div>
-              <Label>Amount to apply ($)</Label>
-              <Input aria-label="Amount to apply ($)"
+              <Label>Amount to apply ({currency})</Label>
+              <Input aria-label={`Amount to apply (${currency})`}
                 type="number"
                 min="0"
                 step="0.01"
@@ -639,7 +637,7 @@ export default function PosTerminal() {
           <DialogHeader>
             <DialogTitle>Redeem loyalty points</DialogTitle>
             <DialogDescription>
-              100 points = $1. Member has {memberPoints.toLocaleString()} pts available.
+              {POINTS_PER_DOLLAR} points = {formatCurrency(1)}. Member has {memberPoints.toLocaleString()} pts available.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">

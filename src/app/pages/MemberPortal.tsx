@@ -44,6 +44,7 @@ import { getVisits, type Visit } from '@/app/api/visits';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const TIER_BAR: Record<MemberTier, string> = {
   Bronze: 'from-amber-300 to-amber-500',
@@ -51,10 +52,6 @@ const TIER_BAR: Record<MemberTier, string> = {
   Gold: 'from-yellow-300 to-yellow-500',
   Platinum: 'from-indigo-300 to-indigo-500',
 };
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
 
 function formatDate(iso: string): string {
   try {
@@ -83,6 +80,7 @@ function formatDateTime(iso: string): string {
 }
 
 export default function MemberPortal() {
+  const { format: formatCurrency } = useClubMoney();
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [charges, setCharges] = useState<Charge[]>([]);
