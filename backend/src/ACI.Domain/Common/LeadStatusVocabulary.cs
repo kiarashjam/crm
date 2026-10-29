@@ -56,6 +56,23 @@ public static class LeadStatusVocabulary
         ("Lost", "Lost / Not Interested"),
     };
 
+    /// <summary>
+    /// What OrganizationService seeded until the August 2026 rework. Only used to tell
+    /// an organisation still on that list from one already on <see cref="Default"/>.
+    /// </summary>
+    public static readonly string[] PreviousDefault =
+    {
+        "New", "Open", "Attempted Contact", "Contacted", "Connected",
+        "In Progress", "Qualified", "Unqualified", "Open Deal", "Lost",
+    };
+
+    /// <summary>
+    /// The stages <see cref="Default"/> added. Every organisation made since the rework
+    /// is seeded with them, and every one before it was given them on a later start, so
+    /// an organisation with none of them has never been brought onto the agreed list.
+    /// </summary>
+    public static string[] AddedInRework => Default.Except(PreviousDefault).ToArray();
+
     /// <summary>The stage that means "they said no". Last in the list, but not "furthest along".</summary>
     public const string Lost = "Lost / Not Interested";
 
@@ -87,14 +104,24 @@ public static class LeadStatusVocabulary
     }
 
     /// <summary>
-    /// Idempotent T-SQL that brings every organisation in the database onto
-    /// <see cref="Default"/>. Safe to run on every boot: each statement converges,
-    /// so a second run over an already-aligned database changes nothing.
+    /// T-SQL that brings the organisations still on <see cref="PreviousDefault"/> onto
+    /// <see cref="Default"/>. Startup runs it once, through the AppliedDataFixes ledger.
     /// </summary>
+    /// <remarks>
+    /// It used to run on every start, over every organisation, and that undid managers'
+    /// work: it put back stages they had deleted and the order they had changed, and it
+    /// deleted any status they made with a retired name ("Qualified" is the example in
+    /// the API's own docs), moving its leads elsewhere with no history of why. Now it
+    /// touches only organisations with none of <see cref="AddedInRework"/>, whose
+    /// statuses are still the ones this application seeded. Their leads' moves are
+    /// written to the status history, and a retired row is deleted only when no lead
+    /// points at it or wears its name.
+    /// </remarks>
     public static string AlignmentSql()
     {
         var target = string.Join(",\n    ", Default.Select((name, i) => $"({Quote(name)}, {i})"));
         var map = string.Join(",\n    ", Retired.Select(r => $"({Quote(r.Old)}, {Quote(r.New)})"));
+        var added = string.Join(",\n    ", AddedInRework.Select(name => $"({Quote(name)})"));
 
         return $@"
 DECLARE @target TABLE (Name nvarchar(128) PRIMARY KEY, Ord int);
@@ -105,40 +132,61 @@ DECLARE @map TABLE (OldName nvarchar(128) PRIMARY KEY, NewName nvarchar(128));
 INSERT INTO @map (OldName, NewName) VALUES
     {map};
 
--- 1. Give every organisation any of the agreed stages it is missing.
+DECLARE @added TABLE (Name nvarchar(128) PRIMARY KEY);
+INSERT INTO @added (Name) VALUES
+    {added};
+
+-- 1. The organisations still on the old list: none of the stages the agreed list
+--    added. Everywhere else the statuses are the organisation's own, and are left
+--    exactly as its managers made them.
+DECLARE @orgs TABLE (Id uniqueidentifier PRIMARY KEY);
+INSERT INTO @orgs (Id)
+SELECT o.[Id] FROM [Organizations] o
+WHERE NOT EXISTS (
+    SELECT 1 FROM [LeadStatuses] s INNER JOIN @added a ON a.Name = s.[Name]
+    WHERE s.[OrganizationId] = o.[Id]);
+
+-- 2. Give them the agreed stages they are missing.
 INSERT INTO [LeadStatuses] ([Id], [OrganizationId], [Name], [DisplayOrder])
-SELECT NEWID(), o.[Id], t.Name, t.Ord
-FROM [Organizations] o
+SELECT NEWID(), o.Id, t.Name, t.Ord
+FROM @orgs o
 CROSS JOIN @target t
 WHERE NOT EXISTS (
     SELECT 1 FROM [LeadStatuses] s
-    WHERE s.[OrganizationId] = o.[Id] AND s.[Name] = t.Name);
+    WHERE s.[OrganizationId] = o.Id AND s.[Name] = t.Name);
 
--- 2. Put them in the agreed order, including any that already existed.
+-- 3. Put the agreed stages in the agreed order.
 UPDATE s SET [DisplayOrder] = t.Ord
 FROM [LeadStatuses] s
+INNER JOIN @orgs o ON o.Id = s.[OrganizationId]
 INNER JOIN @target t ON t.Name = s.[Name]
 WHERE s.[DisplayOrder] <> t.Ord;
 
--- 3. Move leads off the retired labels, repointing the FK at the new row in
---    their OWN organisation. Leads with no organisation keep a null pointer.
+-- 4. Move their leads off the retired labels, onto the new row in the same
+--    organisation, and record each move in the lead's status history.
+INSERT INTO [LeadStatusEvents] ([Id], [LeadId], [OrganizationId], [FromStatus], [ToStatus], [ChangedByUserId], [ChangedAtUtc])
+SELECT NEWID(), l.[Id], l.[OrganizationId], l.[Status], m.NewName, NULL, SYSUTCDATETIME()
+FROM [Leads] l
+INNER JOIN @orgs o ON o.Id = l.[OrganizationId]
+INNER JOIN @map m ON m.OldName = l.[Status];
+
 UPDATE l
 SET [Status] = m.NewName,
     [LeadStatusId] = (
         SELECT TOP 1 s2.[Id] FROM [LeadStatuses] s2
         WHERE s2.[OrganizationId] = l.[OrganizationId] AND s2.[Name] = m.NewName)
 FROM [Leads] l
+INNER JOIN @orgs o ON o.Id = l.[OrganizationId]
 INNER JOIN @map m ON m.OldName = l.[Status];
 
--- 4. Break any remaining pointer at a row about to be deleted; the FK would
---    otherwise block step 5.
-UPDATE l SET [LeadStatusId] = NULL
-FROM [Leads] l
-INNER JOIN [LeadStatuses] s ON s.[Id] = l.[LeadStatusId]
-INNER JOIN @map m ON m.OldName = s.[Name];
-
--- 5. Retire the old default rows.
-DELETE s FROM [LeadStatuses] s INNER JOIN @map m ON m.OldName = s.[Name];
+-- 5. Retire the old rows nothing uses any more. A row a lead still points at, or
+--    whose name a lead still wears, stays.
+DELETE s
+FROM [LeadStatuses] s
+INNER JOIN @orgs o ON o.Id = s.[OrganizationId]
+INNER JOIN @map m ON m.OldName = s.[Name]
+WHERE NOT EXISTS (SELECT 1 FROM [Leads] l WHERE l.[LeadStatusId] = s.[Id])
+  AND NOT EXISTS (SELECT 1 FROM [Leads] l WHERE l.[OrganizationId] = s.[OrganizationId] AND l.[Status] = s.[Name]);
 ";
     }
 

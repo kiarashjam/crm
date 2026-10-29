@@ -47,4 +47,31 @@ public static class DataFixes
             IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
             THROW;
         END CATCH;";
+
+    public const string AlignLeadStatusVocabularyName = "2026-10 align lead status vocabulary";
+
+    /// <summary>
+    /// Bring organisations still on the old lead status list onto the agreed one.
+    /// </summary>
+    /// <remarks>
+    /// This ran on every start, outside this ledger, so whatever a manager did to the
+    /// statuses was undone at the next deploy or restart. Every organisation was brought
+    /// onto the agreed list by those runs, so once is enough; see
+    /// <see cref="ACI.Domain.Common.LeadStatusVocabulary.AlignmentSql"/> for what it
+    /// touches and what it leaves alone.
+    /// </remarks>
+    public static readonly string AlignLeadStatusVocabularySql = @"
+        BEGIN TRY
+            BEGIN TRANSACTION;
+            IF NOT EXISTS (SELECT 1 FROM [AppliedDataFixes] WITH (UPDLOCK, HOLDLOCK) WHERE [Name] = N'" + AlignLeadStatusVocabularyName + @"')
+            BEGIN
+" + ACI.Domain.Common.LeadStatusVocabulary.AlignmentSql() + @"
+                INSERT INTO [AppliedDataFixes] ([Name], [AppliedAtUtc]) VALUES (N'" + AlignLeadStatusVocabularyName + @"', SYSUTCDATETIME());
+            END;
+            COMMIT TRANSACTION;
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+            THROW;
+        END CATCH;";
 }

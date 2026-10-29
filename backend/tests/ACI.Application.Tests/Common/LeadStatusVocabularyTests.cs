@@ -8,10 +8,10 @@ namespace ACI.Application.Tests.Common;
 /// </summary>
 /// <remarks>
 /// The alignment SQL is destructive: it rewrites <c>Leads.Status</c> and deletes
-/// rows from <c>LeadStatuses</c>. It runs on every boot, so anything wrong with the
-/// two tables it is generated from is wrong repeatedly and against production data.
-/// These are the invariants that make it safe, checked on the arrays rather than on
-/// a copy of the SQL.
+/// rows from <c>LeadStatuses</c>. It runs once, against production data, so anything
+/// wrong with the tables it is generated from is wrong for good. These are the
+/// invariants that make it safe, checked on the arrays rather than on a copy of the
+/// SQL.
 /// </remarks>
 public class LeadStatusVocabularyTests
 {
@@ -39,11 +39,22 @@ public class LeadStatusVocabularyTests
     [Fact]
     public void NoStageIsAlsoRetired()
     {
-        // Step 5 deletes every row whose name is in the retired map. A name in both
-        // tables would be inserted by step 1 and deleted by step 5 on every single
-        // boot, permanently churning the FKs of every lead sitting on it.
+        // Step 5 deletes unused rows whose name is in the retired map. A name in both
+        // tables would be inserted by step 2 and deleted by step 5, and every lead on
+        // it moved to another stage.
         var retired = LeadStatusVocabulary.Retired.Select(r => r.Old).ToArray();
         LeadStatusVocabulary.Default.Should().NotIntersectWith(retired);
+    }
+
+    [Fact]
+    public void OnlyLabelsThisAppSeededAreRetired()
+    {
+        // The alignment tells an organisation still on the old list by its having none
+        // of the stages the rework added, and only there deletes retired rows. A label
+        // that was never in the old seed would be a manager's own, and none of ours to delete.
+        LeadStatusVocabulary.PreviousDefault.Should().Contain(LeadStatusVocabulary.Retired.Select(r => r.Old));
+        LeadStatusVocabulary.AddedInRework.Should().NotBeEmpty()
+            .And.OnlyContain(name => LeadStatusVocabulary.Default.Contains(name));
     }
 
     [Fact]

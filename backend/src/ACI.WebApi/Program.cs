@@ -1635,14 +1635,15 @@ try
             // leads stayed on "New" however much work was logged. So the alignment
             // lives here, where this application's schema work actually happens.
             //
-            // Runs after seeding so an organisation the seeder has just created is
-            // aligned in the same boot rather than the next one, and in its own
-            // try/catch so a stale vocabulary degrades the pipeline without taking
-            // the whole initialisation -- or /db-status -- down with it.
+            // It runs once, as a data fix (see DataFixes): run on every start, it
+            // deleted statuses managers had made and put back ones they had removed.
+            // After seeding, and in its own try/catch so a failure degrades the
+            // pipeline without taking the whole initialisation -- or /db-status --
+            // down with it; it is retried on the next start.
             try
             {
                 Log.Information("Aligning lead status vocabulary...");
-                var aligned = await db.Database.ExecuteSqlRawAsync(LeadStatusVocabulary.AlignmentSql());
+                var aligned = await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.AlignLeadStatusVocabularySql);
                 Log.Information("Lead status vocabulary aligned ({Rows} row(s) affected)", aligned);
             }
             catch (Exception vocabEx)

@@ -184,9 +184,10 @@ public class SchemaCoverageTests
     [Fact]
     public void ProgramAppliesTheLeadStatusAlignment()
     {
-        // Not a string search for the SQL — the point is that Program.cs calls the
-        // one generator, so it cannot hold a stale copy of the vocabulary.
-        ProgramDdl().Should().Contain("LeadStatusVocabulary.AlignmentSql()",
+        // Not a string search for the SQL — the point is that Program.cs runs the one
+        // generator (once, through DataFixes), so it cannot hold a stale copy of the vocabulary.
+        ProgramDdl().Should().Contain("DataFixes.AlignLeadStatusVocabularySql",
             "the alignment is what moves established organisations onto the agreed stages");
+        DataFixes.AlignLeadStatusVocabularySql.Should().Contain(LeadStatusVocabulary.AlignmentSql());
     }
 }
