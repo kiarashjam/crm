@@ -29,12 +29,12 @@ public class EmailVerificationTests
     public async Task ANewAccountStartsUnconfirmed_AndTheEmailedLinkConfirmsItOnce()
     {
         await using var mail = new Mailbox();
-        var (client, _) = await SignInAsync(mail, "kia@club.ch");
+        var (client, _) = await SignInAsync(mail, "rep@example.ch");
 
         (await Json(await client.GetAsync("/api/auth/me"))).GetProperty("emailVerified").GetBoolean().Should().BeFalse();
-        mail.Count("verify", "kia@club.ch").Should().Be(1, "registering sends the confirmation link");
+        mail.Count("verify", "rep@example.ch").Should().Be(1, "registering sends the confirmation link");
 
-        var token = mail.Token("verify", "kia@club.ch");
+        var token = mail.Token("verify", "rep@example.ch");
         var anonymous = mail.CreateClient();
         (await anonymous.PostAsync("/api/auth/verify-email", Body(new { token }))).StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -119,7 +119,7 @@ public class EmailVerificationTests
     public async Task AnUnconfirmedAccountStillUsesItsOwnWorkspace()
     {
         await using var mail = new Mailbox();
-        var (client, userId) = await SignInAsync(mail, "kia@club.ch");
+        var (client, userId) = await SignInAsync(mail, "rep@example.ch");
         var org = await CreateAsync(mail, userId, "Mine");
 
         var res = await client.In(org).PostAsync("/api/contacts", Body(new { name = "Jean Dupont", email = "jean@example.ch" }));
@@ -131,16 +131,16 @@ public class EmailVerificationTests
     public async Task ResendingTheLinkIsCapped()
     {
         await using var mail = new Mailbox();
-        var (client, _) = await SignInAsync(mail, "kia@club.ch");
+        var (client, _) = await SignInAsync(mail, "rep@example.ch");
 
         // Registration sent the first; two more fit in the window, then 429.
         (await client.PostAsync("/api/auth/verify-email/resend", null)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await client.PostAsync("/api/auth/verify-email/resend", null)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await client.PostAsync("/api/auth/verify-email/resend", null)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
-        mail.Count("verify", "kia@club.ch").Should().Be(3);
+        mail.Count("verify", "rep@example.ch").Should().Be(3);
 
         // Only the latest link works.
-        var latest = mail.Token("verify", "kia@club.ch");
+        var latest = mail.Token("verify", "rep@example.ch");
         (await mail.CreateClient().PostAsync("/api/auth/verify-email", Body(new { token = latest }))).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 

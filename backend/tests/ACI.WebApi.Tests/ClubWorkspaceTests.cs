@@ -25,7 +25,7 @@ public class ClubWorkspaceTests
         return JsonDocument.Parse(body).RootElement.Clone();
     }
 
-    private static async Task<(HttpClient Client, Guid UserId, Guid Org)> ClubAsync(CustomWebApplicationFactory factory, string email = "kia@pavillon46.ch")
+    private static async Task<(HttpClient Client, Guid UserId, Guid Org)> ClubAsync(CustomWebApplicationFactory factory, string email = "manager@example.ch")
     {
         var (client, userId) = await SignInAsync(factory, email);
         var org = await CreateAsync(factory, userId, "Pavillon46");

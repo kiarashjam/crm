@@ -12,7 +12,7 @@ import { getCurrentUser, setSession } from '@/app/lib/auth';
 
 const verifyEmail = vi.fn(async (_token: string) => undefined);
 const resendVerificationEmail = vi.fn(async () => undefined);
-const me = vi.fn(async () => ({ id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: false }));
+const me = vi.fn(async () => ({ id: 'u1', name: 'Kia', email: 'rep@example.ch', emailVerified: false }));
 
 vi.mock('@/app/api/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/auth')>()),
@@ -39,8 +39,8 @@ beforeEach(() => {
 
 describe('the confirmation link', () => {
   it('spends the token once and remembers the address as confirmed', async () => {
-    setSession('jwt', { id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: false });
-    me.mockResolvedValueOnce({ id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: true });
+    setSession('jwt', { id: 'u1', name: 'Kia', email: 'rep@example.ch', emailVerified: false });
+    me.mockResolvedValueOnce({ id: 'u1', name: 'Kia', email: 'rep@example.ch', emailVerified: true });
 
     render(
       <MemoryRouter initialEntries={['/verify-email?token=abc123']}>
@@ -69,7 +69,7 @@ describe('the confirmation link', () => {
   });
 
   it('does not mark the signed-in account confirmed when the link was for another one', async () => {
-    setSession('jwt', { id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: false });
+    setSession('jwt', { id: 'u1', name: 'Kia', email: 'rep@example.ch', emailVerified: false });
     // me() still says unconfirmed: the token belonged to someone else's account.
 
     render(
@@ -85,7 +85,7 @@ describe('the confirmation link', () => {
 
 describe('the banner', () => {
   it('asks an unconfirmed account to confirm, and sends a new link', async () => {
-    setSession('jwt', { id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: false });
+    setSession('jwt', { id: 'u1', name: 'Kia', email: 'rep@example.ch', emailVerified: false });
     const user = userEvent.setup();
 
     render(<EmailVerificationBanner />);
@@ -96,7 +96,7 @@ describe('the banner', () => {
   });
 
   it('stays away from a confirmed account, without asking the server', () => {
-    setSession('jwt', { id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: true });
+    setSession('jwt', { id: 'u1', name: 'Kia', email: 'rep@example.ch', emailVerified: true });
 
     const { container } = render(<EmailVerificationBanner />);
 
@@ -105,8 +105,8 @@ describe('the banner', () => {
   });
 
   it('goes away when the server says the address was confirmed elsewhere', async () => {
-    setSession('jwt', { id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: false });
-    me.mockResolvedValueOnce({ id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: true });
+    setSession('jwt', { id: 'u1', name: 'Kia', email: 'rep@example.ch', emailVerified: false });
+    me.mockResolvedValueOnce({ id: 'u1', name: 'Kia', email: 'rep@example.ch', emailVerified: true });
 
     const { container } = render(<EmailVerificationBanner />);
 

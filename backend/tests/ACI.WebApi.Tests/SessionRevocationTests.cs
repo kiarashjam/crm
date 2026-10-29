@@ -52,20 +52,20 @@ public class SessionRevocationTests
     public async Task APasswordResetSignsOutEverySessionFromBeforeIt()
     {
         await using var mail = new Mailbox();
-        var (stolen, _) = await SignInAsync(mail, "kia@club.ch");
+        var (stolen, _) = await SignInAsync(mail, "rep@example.ch");
         (await stolen.GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.OK);
 
         var anonymous = mail.CreateClient();
-        await anonymous.PostAsync("/api/auth/forgot-password", Body(new { email = "kia@club.ch" }));
+        await anonymous.PostAsync("/api/auth/forgot-password", Body(new { email = "rep@example.ch" }));
         (await anonymous.PostAsync("/api/auth/reset-password",
-            Body(new { token = mail.Token("reset", "kia@club.ch"), password = "a brand new passphrase" })))
+            Body(new { token = mail.Token("reset", "rep@example.ch"), password = "a brand new passphrase" })))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
         (await stolen.GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await stolen.GetAsync("/api/contacts")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
 
         var fresh = await TokenFrom(await anonymous.PostAsync("/api/auth/login",
-            Body(new { email = "kia@club.ch", password = "a brand new passphrase" })));
+            Body(new { email = "rep@example.ch", password = "a brand new passphrase" })));
         (await As(mail, fresh).GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -76,7 +76,7 @@ public class SessionRevocationTests
         // this instance still holds the stamp from before. The person who just turned 2FA
         // on, or reset their password, was refused with 401 and signed out by the browser.
         await using var factory = new CustomWebApplicationFactory();
-        var (before, userId) = await SignInAsync(factory, "kia@club.ch");
+        var (before, userId) = await SignInAsync(factory, "rep@example.ch");
         (await before.GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.OK, "this caches the stamp");
 
         string after;
@@ -97,7 +97,7 @@ public class SessionRevocationTests
     public async Task TurningTwoFactorOnOrOffSignsOutOtherSessions_AndKeepsThisOne()
     {
         await using var factory = new CustomWebApplicationFactory();
-        var (here, userId) = await SignInAsync(factory, "kia@club.ch");
+        var (here, userId) = await SignInAsync(factory, "rep@example.ch");
         var elsewhere = As(factory, here.DefaultRequestHeaders.Authorization!.Parameter!);
         (await elsewhere.GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.OK);
         using (var scope = factory.Services.CreateScope())

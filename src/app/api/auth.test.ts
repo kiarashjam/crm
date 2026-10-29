@@ -17,7 +17,7 @@ import { twoFactorDisable, twoFactorEnable } from './auth';
 beforeEach(() => {
   localStorage.clear();
   authFetchJson.mockReset();
-  setSession('old-token', { id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: true });
+  setSession('old-token', { id: 'u1', name: 'Kia', email: 'rep@example.ch', emailVerified: true });
   setCurrentOrganizationId('org-1');
 });
 

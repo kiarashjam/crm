@@ -39,7 +39,7 @@ public class ComposedEmailTests
     private static object Email(string to = "jean@example.ch") =>
         new { to, subject = "Votre visite", body = "Bonjour Jean", leadId = Guid.NewGuid() };
 
-    private static async Task<(HttpClient Client, Guid Org)> Member(CustomWebApplicationFactory factory, string email = "kia@club.ch")
+    private static async Task<(HttpClient Client, Guid Org)> Member(CustomWebApplicationFactory factory, string email = "rep@example.ch")
     {
         var (client, user) = await SignInAsync(factory, email);
         var org = await CreateAsync(factory, user, "Pavillon 46");
@@ -60,7 +60,7 @@ public class ComposedEmailTests
         var sent = factory.Sent.Should().ContainSingle().Subject;
         sent.To.Should().Equal("jean@example.ch");
         sent.FromName.Should().Be("Pavillon 46", "sent under the workspace's name");
-        sent.ReplyTo.Should().Be("kia@club.ch", "a reply reaches the person who wrote it, not the shared sender address");
+        sent.ReplyTo.Should().Be("rep@example.ch", "a reply reaches the person who wrote it, not the shared sender address");
     }
 
     [Fact]

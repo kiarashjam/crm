@@ -392,7 +392,7 @@ public class OrganizationCloneThroughTheAppTests
     public async Task EveryMemberHasBothAndTheyStaySeparate()
     {
         using var factory = new CustomWebApplicationFactory();
-        var (owner, ownerId) = await Workspaces.SignInAsync(factory, "kia@pavillon46.ch");
+        var (owner, ownerId) = await Workspaces.SignInAsync(factory, "manager@example.ch");
         var org = await Workspaces.CreateAsync(factory, ownerId, "Pavillon46");
         var (rep, repId) = await Workspaces.SignInAsync(factory, "ana@pavillon46.ch");
         await Workspaces.AddMemberAsync(factory, org, repId, OrgMemberRole.Member);

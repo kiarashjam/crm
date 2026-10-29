@@ -35,7 +35,7 @@ public class ClubMoneyTests
         return body;
     }
 
-    private static async Task<(HttpClient Client, Guid UserId, Guid Org)> ClubAsync(CustomWebApplicationFactory factory, string email = "kia@pavillon46.ch")
+    private static async Task<(HttpClient Client, Guid UserId, Guid Org)> ClubAsync(CustomWebApplicationFactory factory, string email = "manager@example.ch")
     {
         var (client, userId) = await SignInAsync(factory, email);
         var org = await CreateAsync(factory, userId, "Pavillon46");
@@ -434,7 +434,7 @@ public class ClubMoneyTests
 
         (await BalanceAsync(client, memberId)).Should().Be(30, "the correction stands; the new charge comes off it");
         (await TrailAsync(client, "member", memberId.ToString())).Should().ContainSingle(t => t.Action == "updated")
-            .Which.Should().Be(("updated", "House balance changed by hand from -100.00 to 50.00", "kia@pavillon46.ch", "Jean Dupont"));
+            .Which.Should().Be(("updated", "House balance changed by hand from -100.00 to 50.00", "manager@example.ch", "Jean Dupont"));
     }
 
     [Fact]
@@ -481,12 +481,12 @@ public class ClubMoneyTests
         await Json(await owner.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Posted to the wrong member" })), "void the charge");
 
         (await TrailAsync(owner, "charge", charge)).Should().Equal(
-            ("voided", "Voided: Posted to the wrong member", "kia@pavillon46.ch", "Bar tab — Jean Dupont"),
-            ("status_changed", "Status changed from Partially paid to Pending; paid 0.00 of 100.00", "kia@pavillon46.ch", "Bar tab — Jean Dupont"),
+            ("voided", "Voided: Posted to the wrong member", "manager@example.ch", "Bar tab — Jean Dupont"),
+            ("status_changed", "Status changed from Partially paid to Pending; paid 0.00 of 100.00", "manager@example.ch", "Bar tab — Jean Dupont"),
             ("status_changed", "Status changed from Pending to Partially paid; paid 40.00 of 100.00", "bar@pavillon46.ch", "Bar tab — Jean Dupont"),
             ("created", "Charge of 100.00 posted", "bar@pavillon46.ch", "Bar tab — Jean Dupont"));
         (await TrailAsync(owner, "payment", payment)).Select(t => (t.Action, t.Summary, t.Actor)).Should().Equal(
-            ("voided", "Voided: Cheque bounced", "kia@pavillon46.ch"),
+            ("voided", "Voided: Cheque bounced", "manager@example.ch"),
             ("created", "Payment of 40.00 recorded", "bar@pavillon46.ch"));
     }
 
