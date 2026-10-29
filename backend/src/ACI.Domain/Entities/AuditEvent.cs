@@ -47,11 +47,15 @@ public static class AuditVocabulary
     public static readonly IReadOnlySet<string> EntityTypes = new HashSet<string>(StringComparer.Ordinal)
     {
         "lead", "contact", "company", "deal", "task", "sequence", "automation",
+        // Club money: written by the server alone, from the save that changed it.
+        "charge", "payment", "gift_card", "tab", "subscription", "donation",
     };
 
     public static readonly IReadOnlySet<string> Actions = new HashSet<string>(StringComparer.Ordinal)
     {
         "created", "updated", "deleted", "status_changed", "assigned", "email_sent", "merged", "converted",
+        // A money record taken back: it stays, marked void, instead of being deleted.
+        "voided",
     };
 
     /// <summary>The actor name for a change with no signed-in user behind it.</summary>

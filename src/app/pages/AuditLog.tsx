@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   History, Loader2, Plus, Pencil, Trash2, ArrowRightCircle, Mail, GitMerge, UserPlus, RefreshCw,
-  Clock, CalendarDays,
+  Clock, CalendarDays, Ban,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import AppHeader from '@/app/components/AppHeader';
@@ -22,6 +22,7 @@ const ACTION_META: Record<AuditAction, { icon: React.ElementType; tone: string }
   email_sent: { icon: Mail, tone: 'bg-indigo-100 text-indigo-600' },
   merged: { icon: GitMerge, tone: 'bg-teal-100 text-teal-700' },
   converted: { icon: ArrowRightCircle, tone: 'bg-cyan-100 text-cyan-600' },
+  voided: { icon: Ban, tone: 'bg-rose-100 text-rose-700' },
 };
 
 const ENTITY_ROUTE: Partial<Record<AuditEntity, string>> = {
@@ -126,7 +127,7 @@ export default function AuditLog() {
                           {e.summary} · {link ? <Link to={link} className="hover:text-indigo-700 hover:underline">{label}</Link> : label}
                         </p>
                         <p className="mt-0.5 text-xs text-slate-500">
-                          <span className="capitalize">{e.entityType}</span>
+                          <span className="capitalize">{e.entityType.replace('_', ' ')}</span>
                           {e.actorName ? <> · by {e.actorName}</> : null} · {relTime(e.createdAtUtc)}
                         </p>
                       </div>

@@ -334,6 +334,67 @@ public class ClubMoneyTests
         await Refused(await client.SendAsync(Redeem(card, 10)), HttpStatusCode.Conflict, "redeeming a voided card");
     }
 
+    // ── the audit trail ──────────────────────────────────────────────────────
+
+    private static async Task<List<(string Action, string Summary, string Actor, string? Label)>> TrailAsync(HttpClient client, string entityType, string id) =>
+        (await Json(await client.GetAsync($"/api/audit?entityType={entityType}&entityId={id}"), "read the audit trail")).EnumerateArray()
+            .Select(r => (
+                r.GetProperty("action").GetString()!,
+                r.GetProperty("summary").GetString()!,
+                r.GetProperty("actorName").GetString()!,
+                r.TryGetProperty("entityLabel", out var l) && l.ValueKind == JsonValueKind.String ? l.GetString() : null))
+            .ToList();
+
+    [Fact]
+    public async Task EveryMoneyChangeSaysWhoMadeIt()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var memberId = await MemberAsync(owner);
+        var staff = await StaffAsync(factory, org);
+        var charge = (await Json(await staff.PostAsync("/api/charges", Body(new { memberId, kind = "Bar", description = "Bar tab", amount = 100 })), "staff post a charge"))
+            .GetProperty("id").GetString()!;
+        var payment = (await Json(await staff.PostAsync("/api/payments", Payment(memberId, charge, 40)), "staff record a payment")).GetProperty("id").GetString()!;
+        await Json(await owner.PostAsync($"/api/payments/{payment}/void", Body(new { reason = "Cheque bounced" })), "void the payment");
+        await Json(await owner.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Posted to the wrong member" })), "void the charge");
+
+        (await TrailAsync(owner, "charge", charge)).Should().Equal(
+            ("voided", "Voided: Posted to the wrong member", "kia@pavillon46.ch", "Bar tab — Jean Dupont"),
+            ("status_changed", "Status changed from Partially paid to Pending; paid 0.00 of 100.00", "kia@pavillon46.ch", "Bar tab — Jean Dupont"),
+            ("status_changed", "Status changed from Pending to Partially paid; paid 40.00 of 100.00", "bar@pavillon46.ch", "Bar tab — Jean Dupont"),
+            ("created", "Charge of 100.00 posted", "bar@pavillon46.ch", "Bar tab — Jean Dupont"));
+        (await TrailAsync(owner, "payment", payment)).Select(t => (t.Action, t.Summary, t.Actor)).Should().Equal(
+            ("voided", "Voided: Cheque bounced", "kia@pavillon46.ch"),
+            ("created", "Payment of 40.00 recorded", "bar@pavillon46.ch"));
+    }
+
+    [Fact]
+    public async Task GiftCardsAndTabsSayWhatWasSpentAndServed()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var card = await CardAsync(client, 100);
+        await Json(await client.SendAsync(Redeem(card, 30)), "redeem");
+        await Json(await client.PostAsync($"/api/gift-cards/{card}/void", Body(new { reason = "Reported stolen" })), "void card");
+        var tab = await TabAsync(client, memberId);
+        var olives = (await Json(await client.PostAsync($"/api/tabs/{tab}/items", Body(new { name = "Olives", quantity = 1, unitPrice = 6 })), "add olives"))
+            .GetProperty("items")[1].GetProperty("id").GetString();
+        await Json(await client.DeleteAsync($"/api/tabs/{tab}/items/{olives}"), "take the olives off");
+        await Json(await client.PostAsync($"/api/tabs/{tab}/close", null), "close");
+
+        (await TrailAsync(client, "gift_card", card)).Select(t => (t.Action, t.Summary)).Should().Equal(
+            ("voided", "Voided: Reported stolen (70.00 written off)"),
+            ("updated", "Redeemed 30.00, 70.00 left"),
+            ("created", "Gift card issued for 100.00"));
+        (await TrailAsync(client, "tab", tab)).Select(t => (t.Action, t.Summary)).Should().Equal(
+            ("status_changed", "Closed: 30.00 posted to the house account"),
+            ("updated", "Removed Olives × 1 at 6.00"),
+            ("updated", "Added Olives × 1 at 6.00"),
+            ("updated", "Added Negroni × 2 at 15.00"),
+            ("created", "Tab opened"));
+    }
+
     // ── gift cards ───────────────────────────────────────────────────────────
 
     private static async Task<string> CardAsync(HttpClient client, decimal faceValue, DateTime? expiresAtUtc = null) =>
