@@ -262,6 +262,8 @@ export async function createContact(params: {
   jobTitle?: string;
   companyId?: string;
   description?: string;
+  /** The person asked not to be contacted. */
+  doNotContact?: boolean;
 }): Promise<{ contact: Contact | null; error: string | null }> {
   if (!servesDemoData()) {
     const res = await authFetch('/api/contacts', {
@@ -288,6 +290,7 @@ export async function createContact(params: {
     jobTitle: params.jobTitle,
     companyId: params.companyId,
     description: params.description,
+    doNotContact: params.doNotContact ?? false,
     isArchived: false,
   };
   contactStore.add(created);

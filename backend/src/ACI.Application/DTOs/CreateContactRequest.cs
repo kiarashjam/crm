@@ -45,4 +45,11 @@ public record CreateContactRequest
     /// </summary>
     [StringLength(4000, ErrorMessage = "Description cannot exceed 4000 characters")]
     public string? Description { get; init; }
+
+    /// <summary>
+    /// The person asked not to be contacted. The new-contact form has always shown
+    /// this switch, but it was not part of the request, so a contact created with it
+    /// on was saved reachable.
+    /// </summary>
+    public bool DoNotContact { get; init; }
 }

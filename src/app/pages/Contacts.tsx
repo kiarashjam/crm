@@ -339,6 +339,8 @@ export default function Contacts() {
           jobTitle: form.jobTitle.trim() || undefined,
           companyId: form.companyId || undefined,
           description: form.description?.trim() || undefined,
+          // The switch is on this form; it used to be dropped when the contact was new.
+          doNotContact: form.doNotContact,
         });
         if (created) {
           toast.success(messages.success.contactCreated);

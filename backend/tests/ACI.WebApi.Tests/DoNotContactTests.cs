@@ -63,6 +63,20 @@ public class DoNotContactTests
         return id;
     }
 
+    [Fact]
+    public async Task AContactCreatedAsDoNotContactIsSavedThatWay()
+    {
+        // The new-contact form has the switch; the request used to have no such field.
+        await using var factory = new WithMailServer();
+        var (client, _, _) = await WorkspaceAsync(factory);
+
+        var created = await Json(await client.PostAsync("/api/contacts", Body(new { name = "Eva Muster", email = "eva@example.ch", doNotContact = true })), "add contact");
+
+        created.GetProperty("doNotContact").GetBoolean().Should().BeTrue();
+        (await client.PostAsync("/api/email/send", Body(new { to = "eva@example.ch", subject = "Hello", body = "Hi" })))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     [Theory]
     [InlineData("note", "Asked to be removed from marketing, 12 Oct, by phone")]
     [InlineData("call", "She rang to complain about the newsletter")]
