@@ -1420,24 +1420,22 @@ try
             ");
 
             // Contact emails are unique per workspace: per organization, and with none,
-            // per user. InitialCreate's one index over (Email, OrganizationId) counted
-            // every personal user's NULL as the same workspace, so a second personal user
-            // could not add a contact the first one had. The new indexes go in before the
-            // old one is dropped; every existing row already meets them, since the old
-            // rule was the stricter one.
-            await db.Database.ExecuteSqlRawAsync(@"
-                IF OBJECT_ID(N'dbo.Contacts') IS NOT NULL
-                BEGIN
-                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('Contacts') AND name = 'IX_Contacts_Email_Organization')
-                        CREATE UNIQUE INDEX [IX_Contacts_Email_Organization] ON [Contacts] ([Email], [OrganizationId])
-                            WHERE [OrganizationId] IS NOT NULL AND [IsArchived] = 0;
-                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('Contacts') AND name = 'IX_Contacts_Email_PersonalUser')
-                        CREATE UNIQUE INDEX [IX_Contacts_Email_PersonalUser] ON [Contacts] ([Email], [UserId])
-                            WHERE [OrganizationId] IS NULL AND [IsArchived] = 0;
-                    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('Contacts') AND name = 'IX_Contacts_Email_OrganizationId')
-                        DROP INDEX [IX_Contacts_Email_OrganizationId] ON [Contacts];
-                END;
-            ");
+            // per user (see ContactEmailIndexes). An index the existing rows do not meet
+            // is left out rather than failing, and in its own catch, so it cannot stop
+            // the schema work after it; the warning says which data needs merging.
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(ACI.WebApi.ContactEmailIndexes.Sql);
+                var emailIndexes = await db.Database.SqlQueryRaw<int>(ACI.WebApi.ContactEmailIndexes.CountSql).SingleAsync();
+                if (emailIndexes < 2)
+                    Log.Warning("Some active contacts in one workspace share an email, so the unique index on contact "
+                        + "emails ({OrganizationIndex}, {PersonalIndex}) is not in place; merge the duplicates and restart",
+                        ACI.WebApi.ContactEmailIndexes.OrganizationIndex, ACI.WebApi.ContactEmailIndexes.PersonalIndex);
+            }
+            catch (Exception indexEx)
+            {
+                Log.Warning(indexEx, "Could not put the per-workspace contact email indexes in place; it will be retried on the next start");
+            }
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')
