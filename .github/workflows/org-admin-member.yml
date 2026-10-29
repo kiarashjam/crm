@@ -13,7 +13,16 @@
 #                                workflow afterwards to set the requested role.
 #
 # The connection string is read from the Web App's configuration at run time and
-# masked; it never appears in logs. Other members' emails are masked in output.
+# masked; it never appears in logs.
+#
+# The repository is public, and so is this run's log. So the inputs are read from the
+# event and masked rather than passed as step env (which the log prints), and the log
+# says what was done and how many members there are: no email, no member list, and on
+# a mistyped name not the names of the organizations there are.
+#
+# It never changes the owner's role (see sql/org-admin-member.sql), and it runs in the
+# "production" environment, so a required reviewer can be added to it in Settings ->
+# Environments; until then it runs without approval.
 
 name: Org admin — ensure member
 
@@ -23,11 +32,9 @@ on:
       email:
         description: 'Email of the person'
         required: true
-        default: 'm.v.a@telenet.be'
       organization:
         description: 'Organization name (space-insensitive match)'
         required: true
-        default: 'Pavillon46'
       role:
         description: 'Role to ensure'
         required: true
@@ -45,7 +52,11 @@ concurrency:
 jobs:
   ensure_member:
     runs-on: ubuntu-latest
+    environment: production
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -54,11 +65,25 @@ jobs:
       - name: Ensure membership
         env:
           APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
-          TARGET_EMAIL: ${{ inputs.email }}
-          ORG_NAME: ${{ inputs.organization }}
-          TARGET_ROLE: ${{ inputs.role }}
         run: |
           set -euo pipefail
+
+          # ---- the inputs, from the event rather than env, and masked in the log ----
+          TARGET_EMAIL=$(jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH")
+          ORG_NAME=$(jq -r '.inputs.organization // ""' "$GITHUB_EVENT_PATH")
+          TARGET_ROLE=$(jq -r '.inputs.role // ""' "$GITHUB_EVENT_PATH")
+          [ -n "$TARGET_EMAIL" ] && echo "::add-mask::$TARGET_EMAIL"
+          [ -n "$ORG_NAME" ] && echo "::add-mask::$ORG_NAME"
+          if [ -z "$TARGET_EMAIL" ] || [ -z "$ORG_NAME" ]; then
+            echo "::error::Both the email and the organization are required."; exit 1
+          fi
+          case "$TARGET_ROLE" in
+            Viewer|Member|Manager) ;;
+            *) echo "::error::The role must be Viewer, Member or Manager."; exit 1 ;;
+          esac
+          if printf '%s%s' "$TARGET_EMAIL" "$ORG_NAME" | grep -q '[[:cntrl:]]'; then
+            echo "::error::The inputs must be on one line."; exit 1
+          fi
 
           # ---- locate the app and its connection string (never printed) ----
           RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
@@ -143,76 +168,14 @@ jobs:
             SQLCMD=/opt/mssql-tools18/bin/sqlcmd
           fi
 
-          # ---- the actual task, idempotent, single quotes escaped ----
-          EMAIL_SQL=${TARGET_EMAIL//\'/\'\'}
-          ORG_SQL=${ORG_NAME//\'/\'\'}
-          ROLE_SQL=${TARGET_ROLE//\'/\'\'}
-          cat > "$RUNNER_TEMP/task.sql" <<SQL
-          SET NOCOUNT ON;
-          DECLARE @Email nvarchar(256) = N'${EMAIL_SQL}';
-          DECLARE @OrgName nvarchar(256) = N'${ORG_SQL}';
-          DECLARE @Role nvarchar(32) = N'${ROLE_SQL}';
+          # ---- the task (sql/org-admin-member.sql), after the inputs as T-SQL literals ----
+          literal() { printf "N'%s'" "${1//\'/\'\'}"; }
+          {
+            echo "DECLARE @Email nvarchar(256) = $(literal "$TARGET_EMAIL");"
+            echo "DECLARE @OrgName nvarchar(256) = $(literal "$ORG_NAME");"
+            echo "DECLARE @Role nvarchar(32) = $(literal "$TARGET_ROLE");"
+            cat .github/workflows/sql/org-admin-member.sql
+          } > "$RUNNER_TEMP/task.sql"
 
-          DECLARE @OrgCount int = (SELECT COUNT(*) FROM Organizations WHERE REPLACE(Name,' ','') = REPLACE(@OrgName,' ',''));
-          IF @OrgCount <> 1
-          BEGIN
-            PRINT 'ABORT: expected exactly one organization matching "' + @OrgName + '", found ' + CAST(@OrgCount AS varchar(10)) + '. Organizations present:';
-            SELECT Name FROM Organizations ORDER BY Name;
-            THROW 50000, 'Organization not uniquely identified', 1;
-          END
-          DECLARE @OrgId uniqueidentifier = (SELECT TOP 1 Id FROM Organizations WHERE REPLACE(Name,' ','') = REPLACE(@OrgName,' ',''));
-          PRINT 'Organization resolved: ' + CAST(@OrgId AS varchar(36));
-
-          DECLARE @UserId uniqueidentifier = (SELECT TOP 1 Id FROM Users WHERE LOWER(Email) = LOWER(@Email));
-
-          IF @UserId IS NOT NULL
-          BEGIN
-            IF EXISTS (SELECT 1 FROM OrganizationMembers WHERE OrganizationId = @OrgId AND UserId = @UserId)
-            BEGIN
-              UPDATE OrganizationMembers SET Role = @Role WHERE OrganizationId = @OrgId AND UserId = @UserId;
-              PRINT 'RESULT: already a member — role set to ' + @Role + '.';
-            END
-            ELSE
-            BEGIN
-              INSERT INTO OrganizationMembers (OrganizationId, UserId, Role, JoinedAtUtc)
-              VALUES (@OrgId, @UserId, @Role, SYSUTCDATETIME());
-              PRINT 'RESULT: added to the organization with role ' + @Role + '.';
-            END
-            DELETE FROM Invites WHERE OrganizationId = @OrgId AND LOWER(Email) = LOWER(@Email) AND AcceptedByUserId IS NULL;
-            IF @@ROWCOUNT > 0 PRINT 'Cleaned up now-moot pending invite(s).';
-          END
-          ELSE
-          BEGIN
-            IF EXISTS (SELECT 1 FROM Invites WHERE OrganizationId = @OrgId AND LOWER(Email) = LOWER(@Email) AND AcceptedByUserId IS NULL)
-            BEGIN
-              UPDATE Invites SET ExpiresAtUtc = DATEADD(day, 7, SYSUTCDATETIME())
-              WHERE OrganizationId = @OrgId AND LOWER(Email) = LOWER(@Email) AND AcceptedByUserId IS NULL;
-              PRINT 'RESULT: no account with this email yet — existing pending invite refreshed for 7 more days.';
-            END
-            ELSE
-            BEGIN
-              INSERT INTO Invites (Id, OrganizationId, Email, Token, ExpiresAtUtc, CreatedAtUtc)
-              VALUES (NEWID(), @OrgId, LOWER(@Email),
-                      LOWER(REPLACE(CAST(NEWID() AS varchar(36)),'-','') + REPLACE(CAST(NEWID() AS varchar(36)),'-','')),
-                      DATEADD(day, 7, SYSUTCDATETIME()), SYSUTCDATETIME());
-              PRINT 'RESULT: no account with this email yet — pending invite created. It appears on their Organizations page once they sign up with this email. Accepting makes them a Member; re-run this workflow afterwards to set the role.';
-            END
-          END
-
-          PRINT '--- members of this organization (other emails masked) ---';
-          SELECT CASE WHEN LOWER(u.Email) = LOWER(@Email) THEN u.Email
-                      ELSE LEFT(u.Email, 2) + '***' + SUBSTRING(u.Email, CHARINDEX('@', u.Email), 256) END AS Email,
-                 m.Role, m.JoinedAtUtc
-          FROM OrganizationMembers m JOIN Users u ON u.Id = m.UserId
-          WHERE m.OrganizationId = @OrgId
-          ORDER BY m.JoinedAtUtc;
-
-          PRINT '--- pending invites for this organization ---';
-          SELECT CASE WHEN LOWER(Email) = LOWER(@Email) THEN Email
-                      ELSE LEFT(Email, 2) + '***' + SUBSTRING(Email, CHARINDEX('@', Email), 256) END AS Email,
-                 ExpiresAtUtc, CreatedAtUtc
-          FROM Invites
-          WHERE OrganizationId = @OrgId AND AcceptedByUserId IS NULL;
-          SQL
-
-          "$SQLCMD" -S "tcp:${SQL_SERVER},1433" -d "$SQL_DB" -U "$SQL_USER" -P "$SQL_PASS" -C -b -i "$RUNNER_TEMP/task.sql"
+          # -x: the inputs are text, never sqlcmd variables.
+          "$SQLCMD" -S "tcp:${SQL_SERVER},1433" -d "$SQL_DB" -U "$SQL_USER" -P "$SQL_PASS" -C -b -x -i "$RUNNER_TEMP/task.sql"

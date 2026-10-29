@@ -57,6 +57,13 @@ az ad sp create-for-rbac --name "github-aci-crm" --role Contributor --scopes "/s
 
 Copy `appId` → `AZURE_CLIENT_ID`, `password` → `AZURE_CLIENT_SECRET`, `tenant` → `AZURE_TENANT_ID`, and use your subscription ID for `AZURE_SUBSCRIPTION_ID`.
 
+### Admin workflows (org copy, ensure member, lead status audit)
+
+These run against the production database, and this repository's Actions logs are public.
+
+- They run in a GitHub environment called **production**. GitHub creates it on the first run with no rules, so add them: **Settings → Environments → production → Required reviewers** (and, under **Deployment branches**, allow only `main`). Until then they run without approval.
+- `ADMIN_REPORT_PASSPHRASE` (secret): the lead status audit and the org copy's table-by-table report are encrypted with it before they are kept as the run's artifact, because a public repository's artifacts can be downloaded by anyone signed in to GitHub. The two workflows refuse to run without it. To read one, download the artifact, unzip it, and run `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in <file>.enc -out <file>`; it asks for the passphrase.
+
 ---
 
 ## 3. Add Variable (optional)
