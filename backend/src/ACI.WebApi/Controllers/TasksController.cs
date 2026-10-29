@@ -533,13 +533,7 @@ public class TasksController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
 
-        // Verify user has access to this task: in org → same org; personal → own task only
-        var orgId = _currentUser.CurrentOrganizationId;
-        var taskExists = await _db.TaskItems.AnyAsync(
-            t => t.Id == id && (orgId != null
-                ? t.OrganizationId == orgId
-                : t.OrganizationId == null && t.UserId == userId.Value), ct);
-        if (!taskExists) return NotFound();
+        if (!await CanOpenTaskAsync(id, userId.Value, ct)) return NotFound();
 
         var comments = await _db.TaskComments
             .Where(c => c.TaskItemId == id)
@@ -559,13 +553,7 @@ public class TasksController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
 
-        // Verify user has access to this task: in org → same org; personal → own task only
-        var orgId = _currentUser.CurrentOrganizationId;
-        var task = await _db.TaskItems.FirstOrDefaultAsync(
-            t => t.Id == id && (orgId != null
-                ? t.OrganizationId == orgId
-                : t.OrganizationId == null && t.UserId == userId.Value), ct);
-        if (task == null) return NotFound();
+        if (!await CanOpenTaskAsync(id, userId.Value, ct)) return NotFound();
 
         var comment = new TaskComment
         {
@@ -593,13 +581,7 @@ public class TasksController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
 
-        // Verify user has access to this task: in org → same org; personal → own task only
-        var orgId = _currentUser.CurrentOrganizationId;
-        var taskExists = await _db.TaskItems.AnyAsync(
-            t => t.Id == taskId && (orgId != null
-                ? t.OrganizationId == orgId
-                : t.OrganizationId == null && t.UserId == userId.Value), ct);
-        if (!taskExists) return NotFound();
+        if (!await CanOpenTaskAsync(taskId, userId.Value, ct)) return NotFound();
 
         var comment = await _db.TaskComments.FirstOrDefaultAsync(
             c => c.Id == commentId && c.TaskItemId == taskId, ct);
@@ -610,6 +592,14 @@ public class TasksController : ControllerBase
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Whether the caller can open the task, by the rule every task read uses: its
+    /// workspace (in a personal one, their own), less tasks on a private deal they
+    /// cannot see. The comments on such a task are about that deal.
+    /// </summary>
+    private async Task<bool> CanOpenTaskAsync(Guid taskId, Guid userId, CancellationToken ct) =>
+        (await _taskService.GetByIdAsync(taskId, userId, _currentUser.CurrentOrganizationId, ct)).IsSuccess;
 }
 
 /// <summary>DTO for task comments.</summary>

@@ -90,6 +90,39 @@ public class PrivateDealsTests
     }
 
     [Fact]
+    public async Task ItsTasksAndActivitiesAreAsHiddenAsTheDeal()
+    {
+        // They carry the deal's name and what was said, and the rep's Activities,
+        // Tasks, Recent Activity and Reports chart all listed them.
+        using var factory = new CustomWebApplicationFactory();
+        var team = await TeamAsync(factory);
+        var deal = await DealAsync(team, isPrivate: true, "50000");
+        var lead = (await Json(await team.Owner.PostAsync("/api/leads", Body(new { name = "Müller family", email = "mueller@example.ch", status = "New" })), "owner adds a lead"))
+            .GetProperty("id").GetGuid();
+        var activity = (await Json(await team.Owner.PostAsync("/api/activities", Body(new { type = "call", subject = "Agreed 20% discount", dealId = deal, leadId = lead })), "owner logs a call"))
+            .GetProperty("id").GetGuid();
+        var task = (await Json(await team.Owner.PostAsync("/api/tasks", Body(new { title = "Send the Müller offer", dealId = deal })), "owner adds a task"))
+            .GetProperty("id").GetGuid();
+
+        (await Json(await team.Rep.GetAsync($"/api/activities/deal/{deal}"), "rep's deal activities")).GetArrayLength().Should().Be(0);
+        (await Json(await team.Rep.GetAsync($"/api/activities/lead/{lead}"), "rep's lead activities")).GetArrayLength().Should().Be(0);
+        (await Json(await team.Rep.GetAsync($"/api/tasks/by-deal/{deal}"), "rep's deal tasks")).GetArrayLength().Should().Be(0);
+        foreach (var list in new[] { "/api/activities", "/api/activities/all", "/api/tasks", "/api/tasks/all", "/api/search?q=offer", "/api/search?q=discount" })
+        {
+            var body = await (await team.Rep.GetAsync(list)).Content.ReadAsStringAsync();
+            body.Should().NotContain("Agreed 20% discount", list).And.NotContain("Send the Müller offer", list).And.NotContain("Secret", list);
+        }
+        (await team.Rep.GetAsync($"/api/tasks/{task}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await team.Rep.GetAsync($"/api/tasks/{task}/comments")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await team.Rep.PutAsync($"/api/tasks/{task}", Body(new { title = "Mine now" }))).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await team.Rep.DeleteAsync($"/api/activities/{activity}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        (await Json(await team.Owner.GetAsync($"/api/activities/deal/{deal}"), "owner's deal activities")).GetArrayLength().Should().Be(1);
+        (await Json(await team.Owner.GetAsync($"/api/tasks/by-deal/{deal}"), "owner's deal tasks")).GetArrayLength().Should().Be(1);
+        (await Json(await team.Owner.GetAsync($"/api/tasks/{task}"), "owner's task")).GetProperty("dealName").GetString().Should().Be("Secret");
+    }
+
+    [Fact]
     public async Task OnlyTheCreatorOwnerOrAManagerMakesADealPrivate()
     {
         using var factory = new CustomWebApplicationFactory();

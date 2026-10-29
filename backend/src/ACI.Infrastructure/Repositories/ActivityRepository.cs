@@ -11,10 +11,19 @@ public sealed class ActivityRepository : IActivityRepository
 
     public ActivityRepository(AppDbContext db) => _db = db;
 
-    private static IQueryable<Activity> FilterByUserAndOrg(IQueryable<Activity> q, Guid userId, Guid? organizationId) =>
-        organizationId == null
+    /// <summary>
+    /// The workspace's activities, less those on a private deal the caller cannot see.
+    /// They carry the deal's name and what was said on the call, and Recent Activity and
+    /// the Reports chart read them from here, so they are as hidden as the deal is.
+    /// </summary>
+    private IQueryable<Activity> FilterByUserAndOrg(IQueryable<Activity> q, Guid userId, Guid? organizationId)
+    {
+        var visibleDeals = _db.Deals.VisibleTo(_db, userId, organizationId);
+        var inWorkspace = organizationId == null
             ? q.Where(a => a.UserId == userId && a.OrganizationId == null)
             : q.Where(a => a.OrganizationId == organizationId);
+        return inWorkspace.Where(a => a.DealId == null || visibleDeals.Any(d => d.Id == a.DealId));
+    }
 
     /// <summary>Include Contact, Deal, Lead, and User nav properties so the DTO mapper can read names.</summary>
     private static IQueryable<Activity> IncludeRelated(IQueryable<Activity> q) =>
