@@ -602,6 +602,11 @@ public static class DomainErrors
         public static readonly Error SubscriptionStatusInvalid = new(
             "Subscription.StatusInvalid", "A subscription can be set Active, Paused or Cancelled.");
 
+        public static Error SubscriptionNotBillable(string status) => new(
+            "Subscription.NotBillable.Conflict", status == "Paused"
+                ? "This subscription is paused, so nothing was billed. Resume it to bill it."
+                : "This subscription was cancelled, so nothing was billed.");
+
         public static readonly Error NotEditable = new(
             "ClubRecord.NotEditable", "This record can't be edited. Void it and post a new one instead.");
 

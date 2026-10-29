@@ -477,7 +477,9 @@ public sealed class ClubDocumentService : IClubDocumentService
         var sub = await Load(organizationId, "subscriptions", id, ct);
         if (sub == null) return DomainErrors.Club.SubscriptionNotFound;
         var status = Text(sub, "status");
-        if (status is "Cancelled" or "Paused") return sub;
+        // This used to answer 200 with the subscription as it was, and the screen said
+        // "Cycle charged" for a charge that was never posted.
+        if (status is "Cancelled" or "Paused") return DomainErrors.Club.SubscriptionNotBillable(status);
         var charge = await PrepareAsync(organizationId, "charges", new JsonObject
         {
             ["memberId"] = sub["memberId"]?.DeepClone(),

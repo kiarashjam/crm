@@ -206,6 +206,25 @@ public class ClubMoneyTests
         (await BalanceAsync(client, memberId)).Should().Be(-25);
     }
 
+    [Theory]
+    [InlineData("Paused", "paused")]
+    [InlineData("Cancelled", "cancelled")]
+    public async Task BillingASubscriptionThatIsNotRunningSaysNothingWasBilled(string status, string said)
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var sub = (await Json(await client.PostAsync("/api/subscriptions", Body(new { memberId, name = "Locker", amount = 25, cadence = "Monthly" })), "add subscription"))
+            .GetProperty("id").GetString();
+        await Json(await client.PutAsync($"/api/subscriptions/{sub}", Body(new { status })), $"set it {status}");
+
+        // It used to answer 200 with the subscription unchanged, and the screen said "Cycle charged".
+        (await Refused(await client.PostAsync($"/api/subscriptions/{sub}/bill", null), HttpStatusCode.Conflict, $"billing a {said} subscription"))
+            .Should().Contain($"{said}, so nothing was billed");
+        (await Json(await client.GetAsync("/api/charges"), "charges")).GetArrayLength().Should().Be(0);
+        (await BalanceAsync(client, memberId)).Should().Be(0);
+    }
+
     // ── payments ─────────────────────────────────────────────────────────────
 
     private static async Task<string> ChargeAsync(HttpClient client, Guid memberId, decimal amount, DateTime? dueAtUtc = null) =>
