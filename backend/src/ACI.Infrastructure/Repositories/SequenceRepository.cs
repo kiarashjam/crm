@@ -170,10 +170,15 @@ public sealed class SequenceRepository : ISequenceRepository
 
         var lead = await _db.Leads.AsNoTracking()
             .Where(l => l.Id == targetId && l.OrganizationId == organizationId)
-            .Select(l => new { l.Name, l.Email, Company = l.Company != null ? l.Company.Name : null, l.IsConverted, l.Status })
+            .Select(l => new { l.Name, l.Email, Company = l.Company != null ? l.Company.Name : null, l.IsConverted, l.Status, l.AssignedToUserId })
             .FirstOrDefaultAsync(ct);
-        return lead == null
-            ? SequenceTargetState.Missing
-            : new SequenceTargetState(true, lead.Name, lead.Email, lead.Company, IsConverted: lead.IsConverted, Status: lead.Status);
+        if (lead == null) return SequenceTargetState.Missing;
+        // Someone who has left the workspace no longer works its leads.
+        var owner = lead.AssignedToUserId is Guid assignee
+            && await _db.OrganizationMembers.AnyAsync(m => m.OrganizationId == organizationId && m.UserId == assignee, ct)
+                ? lead.AssignedToUserId
+                : null;
+        return new SequenceTargetState(true, lead.Name, lead.Email, lead.Company, IsConverted: lead.IsConverted, Status: lead.Status,
+            OwnerUserId: owner);
     }
 }

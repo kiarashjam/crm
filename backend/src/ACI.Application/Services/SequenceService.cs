@@ -311,6 +311,9 @@ public sealed class SequenceService : ISequenceService
 
         if (type is "task" or "call")
         {
+            // The call goes to whoever works the lead now. It used to land on the
+            // person who enrolled them, so the rep the lead was routed to never saw it.
+            // With no owner, the enroller keeps it, as before.
             var created = await _tasks.CreateAsync(enrollment.EnrolledByUserId, enrollment.OrganizationId, new CreateTaskRequest
             {
                 Title = string.IsNullOrWhiteSpace(step.TaskTitle) ? step.Type : step.TaskTitle.Trim(),
@@ -318,6 +321,7 @@ public sealed class SequenceService : ISequenceService
                 DueDateUtc = DateTime.UtcNow,
                 LeadId = enrollment.TargetType == "lead" ? enrollment.TargetId : null,
                 ContactId = enrollment.TargetType == "contact" ? enrollment.TargetId : null,
+                AssigneeId = target.OwnerUserId,
             }, ct);
             return created.IsSuccess ? StepOutcome.Done : StepOutcome.Retry;
         }

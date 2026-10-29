@@ -109,7 +109,11 @@ public sealed class AutomationEngine : IAutomationEngine
     private async Task RunAsync(AutomationRule rule, AutomationEvent evt, CancellationToken ct)
     {
         var actions = JsonSerializer.Deserialize<List<StoredAction>>(rule.ActionsJson, Json) ?? [];
-        foreach (var action in actions)
+        // Assignments first: they decide who works the record, and the task the same
+        // rule creates goes to that person. In the order saved, "create a task, then
+        // assign to Rep B" gave the task to whoever set the rule off, and Rep B never
+        // saw it. The other actions keep their order.
+        foreach (var action in actions.OrderBy(a => string.Equals((a.Type ?? "").Trim(), "assign", StringComparison.Ordinal) ? 0 : 1))
         {
             var type = (action.Type ?? "").Trim();
             var config = action.Config ?? new Dictionary<string, string>();
@@ -139,13 +143,39 @@ public sealed class AutomationEngine : IAutomationEngine
         var title = Value(config, "title");
         if (string.IsNullOrWhiteSpace(title)) title = "Follow up";
         var days = int.TryParse(Value(config, "dueInDays"), out var n) ? n : 1;
+        // Assigned to whoever works the lead or deal. It used to go to whoever set the
+        // rule off — the importer, or the workspace owner for a webhook lead — so the
+        // rep the lead was routed to never saw the task. With no owner, the person who
+        // set it off keeps it, as before.
         await _tasks.CreateAsync(evt.ActorUserId, evt.OrganizationId, new CreateTaskRequest
         {
             Title = title,
             DueDateUtc = DateTime.UtcNow.AddDays(Math.Max(0, days)),
             LeadId = evt.LeadId,
             DealId = evt.DealId,
+            AssigneeId = await OwnerAsync(evt, ct),
         }, ct);
+    }
+
+    /// <summary>
+    /// Who works the record now — read fresh, so an assign earlier in the rule counts —
+    /// or else the owner the event was raised with; only someone still in the
+    /// workspace. Null when there is nobody.
+    /// </summary>
+    private async Task<Guid?> OwnerAsync(AutomationEvent evt, CancellationToken ct)
+    {
+        if (evt.OrganizationId is not Guid organizationId) return null;
+        Guid? current = null;
+        if (evt.LeadId is Guid leadId)
+            current = (await _targets.TargetStateAsync("lead", leadId, evt.OrganizationId, ct)).OwnerUserId;
+        else if (evt.DealId is Guid dealId)
+            current = (await _deals.GetByIdAsync(dealId, evt.ActorUserId, evt.OrganizationId, ct))?.AssigneeId;
+        foreach (var candidate in new[] { current, evt.AssigneeId })
+        {
+            if (candidate is Guid userId && await _organizations.GetMemberRoleAsync(userId, organizationId, ct) != null)
+                return userId;
+        }
+        return null;
     }
 
     private async Task NotifyAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
