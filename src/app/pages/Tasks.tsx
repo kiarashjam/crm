@@ -94,6 +94,7 @@ import {
 } from '@/app/components/views';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { cn } from '@/app/components/ui/utils';
+import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -337,8 +338,8 @@ export default function Tasks() {
     setForm({
       title: task.title,
       description: task.description ?? '',
-      dueDate: task.dueDateUtc ? task.dueDateUtc.slice(0, 16) : '',
-      reminderDate: task.reminderDateUtc ? task.reminderDateUtc.slice(0, 16) : '',
+      dueDate: toLocalInputValue(task.dueDateUtc),
+      reminderDate: toLocalInputValue(task.reminderDateUtc),
       status: task.status,
       priority: task.priority,
       leadId: task.leadId ?? '',
@@ -364,8 +365,8 @@ export default function Tasks() {
     }
     setSaving(true);
     try {
-      const dueDateUtc = form.dueDate ? new Date(form.dueDate).toISOString() : undefined;
-      const reminderDateUtc = form.reminderDate ? new Date(form.reminderDate).toISOString() : undefined;
+      const dueDateUtc = fromLocalInputValue(form.dueDate);
+      const reminderDateUtc = fromLocalInputValue(form.reminderDate);
       
       if (editingTask) {
         const updated = await updateTask(editingTask.id, {

@@ -1,6 +1,7 @@
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace ACI.Infrastructure.Persistence;
 
@@ -75,6 +76,17 @@ public class AppDbContext : DbContext
     /// </summary>
     public bool RecordsAuditTrail { get; set; } = true;
 
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        // Every DateTime in this model is a UTC moment (the columns are named …Utc).
+        // SQL Server hands them back as Kind=Unspecified, which System.Text.Json writes
+        // without a "Z", and a browser reads that as local time: a task due at 14:00
+        // UTC showed as 14:00 in Zurich. Marking them UTC on the way out fixes every
+        // date the API returns at once.
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<UtcDateTimeConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -122,5 +134,16 @@ public class AppDbContext : DbContext
     private void ForgetUnsaved(IReadOnlyList<AuditEvent> events)
     {
         foreach (var e in events) Entry(e).State = EntityState.Detached;
+    }
+}
+
+/// <summary>Reads stored DateTimes as UTC; stores a local time converted to UTC.</summary>
+public sealed class UtcDateTimeConverter : ValueConverter<DateTime, DateTime>
+{
+    public UtcDateTimeConverter()
+        : base(
+            v => v.Kind == DateTimeKind.Local ? v.ToUniversalTime() : v,
+            v => DateTime.SpecifyKind(v, DateTimeKind.Utc))
+    {
     }
 }

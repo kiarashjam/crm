@@ -60,6 +60,7 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem } from '@/app/components/motion/Stagger';
+import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
 
 const STATUS_OPTIONS: { value: TaskStatusType; label: string; icon: typeof Circle; color: string }[] = [
   { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-400' },
@@ -122,7 +123,7 @@ export default function TaskDetail() {
         setEditTitle(t.title);
         setEditDescription(t.description || '');
         setEditNotes(t.notes || '');
-        setEditDueDate(t.dueDateUtc ? t.dueDateUtc.slice(0, 16) : ''); // Preserve time for datetime-local input
+        setEditDueDate(toLocalInputValue(t.dueDateUtc));
       }
     } catch {
       toast.error('Failed to load task');
@@ -175,7 +176,7 @@ export default function TaskDetail() {
         title: editTitle.trim() || task.title,
         description: editDescription.trim() || undefined,
         notes: editNotes.trim() || undefined,
-        dueDateUtc: editDueDate || undefined,
+        dueDateUtc: fromLocalInputValue(editDueDate),
       });
       if (updated) { setTask(updated); setEditing(false); toast.success('Task updated'); }
     } catch {
@@ -367,7 +368,7 @@ export default function TaskDetail() {
                     </div>
                     <div>
                       <Label className="text-xs text-slate-500 mb-1">Due Date</Label>
-                      <Input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} className="w-48" />
+                      <Input type="datetime-local" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} className="w-48" />
                     </div>
                     <div className="flex gap-2">
                       <Button onClick={handleSaveEdit} disabled={saving} size="sm" className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:opacity-95">

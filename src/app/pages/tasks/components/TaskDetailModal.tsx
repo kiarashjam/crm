@@ -42,6 +42,7 @@ import type { TaskItem, Lead, Deal, Contact, TaskStatusType, TaskPriorityType, A
 import { statusConfig, priorityConfig } from '../config';
 import { getInitials, formatDue } from '../utils';
 import { getActivitiesByLead, getActivitiesByDeal } from '@/app/api/activities';
+import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
 
 export interface TaskDetailModalProps {
   task: TaskItem | null;
@@ -99,8 +100,8 @@ export function TaskDetailModal({
       setForm({
         title: task.title,
         description: task.description ?? '',
-        dueDate: task.dueDateUtc ? task.dueDateUtc.slice(0, 16) : '',
-        reminderDate: task.reminderDateUtc ? task.reminderDateUtc.slice(0, 16) : '',
+        dueDate: toLocalInputValue(task.dueDateUtc),
+        reminderDate: toLocalInputValue(task.reminderDateUtc),
         status: task.status,
         priority: task.priority,
         leadId: task.leadId ?? '',
@@ -152,8 +153,8 @@ export function TaskDetailModal({
     }
     setSaving(true);
     try {
-      const dueDateUtc = form.dueDate ? new Date(form.dueDate).toISOString() : undefined;
-      const reminderDateUtc = form.reminderDate ? new Date(form.reminderDate).toISOString() : undefined;
+      const dueDateUtc = fromLocalInputValue(form.dueDate);
+      const reminderDateUtc = fromLocalInputValue(form.reminderDate);
 
       const updated = await onUpdate(task.id, {
         title: form.title.trim(),
@@ -348,8 +349,8 @@ export function TaskDetailModal({
                         setForm({
                           title: task.title,
                           description: task.description ?? '',
-                          dueDate: task.dueDateUtc ? task.dueDateUtc.slice(0, 16) : '',
-                          reminderDate: task.reminderDateUtc ? task.reminderDateUtc.slice(0, 16) : '',
+                          dueDate: toLocalInputValue(task.dueDateUtc),
+                          reminderDate: toLocalInputValue(task.reminderDateUtc),
                           status: task.status,
                           priority: task.priority,
                           leadId: task.leadId ?? '',
