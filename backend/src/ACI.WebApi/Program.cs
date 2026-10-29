@@ -1752,10 +1752,14 @@ try
         }
     }
     
-    // Add diagnostic endpoint that shows DB error if any
+    // Whether start-up initialisation worked. Anonymous, so outside Development it says
+    // only that: the exception text names the SQL server and login, tables and stack
+    // frames, and is in the log already (logged above).
     app.MapGet("/db-status", () => dbError == null
         ? Results.Ok(new { status = "ok", message = "Database initialized successfully" })
-        : Results.Ok(new { status = "error", message = dbError }));
+        : app.Environment.IsDevelopment()
+            ? Results.Ok(new { status = "error", message = dbError })
+            : Results.Ok(new { status = "error", message = "Database initialization failed. The details are in the server log." }));
 
     // Diagnostic endpoints below leak stack traces and schema. Restrict to Development.
     if (app.Environment.IsDevelopment())
