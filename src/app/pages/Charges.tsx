@@ -60,6 +60,7 @@ import { getMembers, type Member } from '@/app/api/members';
 import { isOrgAdmin } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { endOfLocalDay } from '@/app/lib/dateInputs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
@@ -201,7 +202,8 @@ export default function Charges() {
         kind: chargeForm.kind,
         description: chargeForm.description.trim(),
         amount,
-        dueAtUtc: chargeForm.dueAtUtc ? new Date(chargeForm.dueAtUtc).toISOString() : undefined,
+        // Due by the end of the chosen day: the server counts it overdue once that has passed.
+        dueAtUtc: endOfLocalDay(chargeForm.dueAtUtc),
       });
       toast.success('Charge posted');
       setChargeDialog(false);

@@ -57,6 +57,7 @@ import { getMembers, type Member } from '@/app/api/members';
 import { isOrgAdmin } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { endOfLocalDay } from '@/app/lib/dateInputs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
@@ -183,9 +184,8 @@ export default function GiftCards() {
         recipientName: issueForm.recipientName.trim(),
         recipientEmail: issueForm.recipientEmail.trim() || undefined,
         faceValue,
-        expiresAtUtc: issueForm.expiresAtUtc
-          ? new Date(issueForm.expiresAtUtc).toISOString()
-          : undefined,
+        // Valid through the chosen day, not only until it begins.
+        expiresAtUtc: endOfLocalDay(issueForm.expiresAtUtc),
         message: issueForm.message.trim() || undefined,
       });
       if (card) toast.success(`Gift card issued — ${card.code}`);
