@@ -340,6 +340,85 @@ public sealed class ContactRepository : IContactRepository
             return true;
         }, ct);
 
+    public async Task<string?> FindDoNotContactAddressAsync(Guid organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default)
+    {
+        var wanted = addresses.Select(DoNotContactRules.Normalize).Where(a => a.Length > 0).Distinct().ToList();
+        if (wanted.Count == 0) return null;
+        var stopped = await _db.Contacts.AsNoTracking()
+            .Where(c => c.OrganizationId == organizationId && c.DoNotContact && wanted.Contains(c.Email.Trim().ToLower()))
+            .Select(c => c.Email)
+            .ToListAsync(ct);
+        var stoppedSet = stopped.Select(DoNotContactRules.Normalize).ToHashSet();
+        // Named as it was written, so the person sending recognises it.
+        return addresses.FirstOrDefault(a => stoppedSet.Contains(DoNotContactRules.Normalize(a)));
+    }
+
+    public async Task<bool> IsDoNotContactAsync(Guid organizationId, Guid? leadId, Guid? contactId, CancellationToken ct = default)
+    {
+        if (contactId is Guid id)
+        {
+            var contact = await _db.Contacts.AsNoTracking()
+                .Where(c => c.Id == id && c.OrganizationId == organizationId)
+                .Select(c => new { c.DoNotContact, c.Email })
+                .FirstOrDefaultAsync(ct);
+            if (contact != null && (contact.DoNotContact || await DoNotContactRules.AddressAsync(_db, organizationId, contact.Email, ct)))
+                return true;
+        }
+        if (leadId is Guid lid)
+        {
+            var lead = await _db.Leads.AsNoTracking()
+                .Where(l => l.Id == lid && l.OrganizationId == organizationId)
+                .Select(l => new { l.Email, l.ConvertedToContactId })
+                .FirstOrDefaultAsync(ct);
+            if (lead != null && await DoNotContactRules.LeadAsync(_db, organizationId, lid, lead.ConvertedToContactId, lead.Email, ct))
+                return true;
+        }
+        return false;
+    }
+
+    public async Task<DoNotContactMarked> MarkDoNotContactAsync(Guid organizationId, string email, Guid ownerUserId, CancellationToken ct = default)
+    {
+        var address = DoNotContactRules.Normalize(email);
+        var leads = await _db.Leads
+            .Where(l => l.OrganizationId == organizationId && l.Email.Trim().ToLower() == address)
+            .ToListAsync(ct);
+        // A lead keeps its "stop" on its person contact, so each needs one.
+        foreach (var lead in leads)
+            await EnsurePersonContactAsync(lead, ct);
+        var leadIds = leads.Select(l => l.Id).ToList();
+        var personIds = leads.Where(l => l.ConvertedToContactId != null).Select(l => l.ConvertedToContactId!.Value).ToList();
+
+        var contacts = await _db.Contacts
+            .Where(c => c.OrganizationId == organizationId
+                && (c.Email.Trim().ToLower() == address
+                    || personIds.Contains(c.Id)
+                    || (c.ConvertedFromLeadId != null && leadIds.Contains(c.ConvertedFromLeadId.Value))))
+            .ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        if (contacts.Count == 0)
+        {
+            var contact = new Contact
+            {
+                Id = Guid.NewGuid(),
+                UserId = ownerUserId,
+                OrganizationId = organizationId,
+                Name = email.Trim(),
+                Email = email.Trim(),
+                Description = $"Unsubscribed from this workspace's email on {now:yyyy-MM-dd} (UTC).",
+                CreatedAtUtc = now,
+            };
+            _db.Contacts.Add(contact);
+            contacts.Add(contact);
+        }
+        foreach (var contact in contacts.Where(c => !c.DoNotContact))
+        {
+            contact.DoNotContact = true;
+            contact.UpdatedAtUtc = now;
+        }
+        await _db.SaveChangesAsync(ct);
+        return new DoNotContactMarked(contacts.Select(c => c.Id).ToList(), leadIds);
+    }
+
     /// <summary>
     /// The dropped record's spouse, children and so on are the kept person's. One that
     /// would relate the person to themselves, repeat a relative the kept record already

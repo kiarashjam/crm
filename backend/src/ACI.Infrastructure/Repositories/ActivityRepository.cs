@@ -163,7 +163,10 @@ public sealed class ActivityRepository : IActivityRepository
     {
         // With no organization, only the caller's own count. Every personal user's
         // activities were counted, which listed the ids of everyone who had any.
+        // The app's own timeline updates ("system": reassigned, task done) are not
+        // work a person logged, so they do not count towards anyone's activity.
         var list = await FilterByUserAndOrg(_db.Activities, userId, organizationId)
+            .Where(a => a.Type != "system")
             .GroupBy(a => a.UserId)
             .Select(g => new { UserId = g.Key, Count = g.Count() })
             .ToListAsync(ct);

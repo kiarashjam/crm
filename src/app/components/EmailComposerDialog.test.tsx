@@ -19,6 +19,7 @@ const toast = { success: vi.fn(), error: vi.fn() };
 vi.mock('sonner', () => ({ toast }));
 
 const EmailComposerDialog = (await import('./EmailComposerDialog')).default;
+const { ApiError } = await import('@/app/api/apiClient');
 
 beforeEach(() => {
   for (const fn of [...Object.values(api), ...Object.values(toast)]) fn.mockReset();
@@ -51,6 +52,22 @@ describe('EmailComposerDialog', () => {
     expect(text).toBe('Sending email is not set up on the server yet.');
     expect(options.action.label).toBe('Open in email app');
     expect(toast.success).not.toHaveBeenCalled();
+    expect(api.createActivity).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('when the person said stop: the reason, and no email-app way round it', async () => {
+    // The server refuses a do-not-contact recipient. Offering "Open in email app"
+    // then sent the same message from the rep's own mailbox and noted it on the
+    // timeline as if nothing had been refused.
+    api.sendEmail.mockRejectedValue(new ApiError(
+      'jean@example.ch is marked do not contact, so nothing was sent.', 400, '/api/email/send', true, 'Contact.DoNotContact'));
+    const onOpenChange = await send();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const [text, options] = toast.error.mock.calls[0]!;
+    expect(text).toBe('jean@example.ch is marked do not contact, so nothing was sent.');
+    expect(options?.action).toBeUndefined();
     expect(api.createActivity).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });

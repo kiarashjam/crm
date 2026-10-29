@@ -8,11 +8,11 @@ namespace ACI.Application.DTOs;
 public record UpdateActivityRequest
 {
     /// <summary>
-    /// Activity type. Valid values: call, meeting, email, note, task, follow_up, deadline, video, demo.
+    /// Activity type. Valid values: call, meeting, email, note, task, follow_up, deadline, video, demo, system.
     /// </summary>
     [StringLength(20, ErrorMessage = "Type cannot exceed 20 characters")]
-    [RegularExpression(@"(?i)^(call|meeting|email|note|task|follow_up|deadline|video|demo)$",
-        ErrorMessage = "Type must be one of: call, meeting, email, note, task, follow_up, deadline, video, demo")]
+    [RegularExpression(@"(?i)^(call|meeting|email|note|task|follow_up|deadline|video|demo|system)$",
+        ErrorMessage = "Type must be one of: call, meeting, email, note, task, follow_up, deadline, video, demo, system")]
     public string? Type { get; init; }
 
     /// <summary>

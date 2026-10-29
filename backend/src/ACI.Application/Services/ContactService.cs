@@ -193,6 +193,7 @@ public class ContactService : IContactService
             JobTitle = request.JobTitle?.Trim(),
             CompanyId = request.CompanyId,
             Description = request.Description?.Trim(),
+            DoNotContact = request.DoNotContact,
             CreatedAtUtc = DateTime.UtcNow,
         };
 

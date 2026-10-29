@@ -119,6 +119,16 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // The unsubscribe link: a person opens it once or twice. Per token, like the
+        // two above; a forged token fails its signature check before any database work.
+        options.AddPolicy("public-unsubscribe", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "unsubscribe:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
         // Email from the composer goes out under the club's own address, so one
         // account cannot turn it into a mass mailer: twenty a minute per person.
         // Per user, which is why UseRateLimiter runs after UseAuthentication.
@@ -254,6 +264,8 @@ try
     builder.Services.AddScoped<ILeadAutomation, LeadAutomation>();
     builder.Services.AddScoped<ILeadOpsService, LeadOpsService>();
     builder.Services.AddScoped<ISequenceService, SequenceService>();
+    builder.Services.AddScoped<IOutreachMail, OutreachMail>();
+    builder.Services.AddScoped<IUnsubscribeService, UnsubscribeService>();
     builder.Services.AddScoped<IComposedEmailService, ComposedEmailService>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();

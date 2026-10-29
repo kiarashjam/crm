@@ -9,6 +9,7 @@ import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Label } from '@/app/components/ui/label';
 import { sendEmail, createActivity, generateCopy, servesDemoData, mailtoHref } from '@/app/api';
+import { ApiError } from '@/app/api/apiClient';
 
 export interface EmailComposerContext {
   leadId?: string;
@@ -38,7 +39,8 @@ interface EmailComposerDialogProps {
  *
  * It says "Email sent" only when the server sent it (it used to say so with
  * nothing sent at all). When a send fails, the toast gives the server's reason
- * and offers to open the message in the person's own email app instead.
+ * and offers to open the message in the person's own email app instead — except
+ * when the recipient is marked do not contact.
  */
 export default function EmailComposerDialog({
   open, onOpenChange, to, defaultSubject = '', defaultBody = '', context, aiContext, onSent,
@@ -111,7 +113,15 @@ export default function EmailComposerDialog({
       onOpenChange(false);
       onSent?.();
     } catch (err) {
-      toast.error(err instanceof Error && err.message ? err.message : 'Failed to send email', {
+      const reason = err instanceof Error && err.message ? err.message : 'Failed to send email';
+      // A "do not contact" refusal is the answer, not a fault to work around: the
+      // email-app button sent the same message from the rep's own mailbox and
+      // noted it on the timeline.
+      if (err instanceof ApiError && err.code === 'Contact.DoNotContact') {
+        toast.error(reason, { duration: 12_000 });
+        return;
+      }
+      toast.error(reason, {
         duration: 12_000,
         action: { label: 'Open in email app', onClick: handleOpenInMailApp },
       });

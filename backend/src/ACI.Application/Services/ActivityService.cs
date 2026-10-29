@@ -24,8 +24,10 @@ public class ActivityService : IActivityService
         "call", "meeting", "email", "video", "demo",
     };
 
-    // HP-1: All 9 activity types supported (matches frontend config)
-    private static readonly string[] ValidActivityTypes = { "call", "meeting", "email", "note", "task", "follow_up", "deadline", "video", "demo" };
+    // HP-1: The 9 types a person logs (matches frontend config), plus "system": the
+    // updates the lead page records on its timeline. "system" is not a reply, so it
+    // never counts as a first response or stops a sequence.
+    private static readonly string[] ValidActivityTypes = { "call", "meeting", "email", "note", "task", "follow_up", "deadline", "video", "demo", "system" };
 
     public ActivityService(
         IActivityRepository repository,
@@ -184,12 +186,11 @@ public class ActivityService : IActivityService
                     _logger.LogWarning("Contact {ContactId} not found for activity creation", request.ContactId);
                     return DomainErrors.Activity.RelatedEntityNotFound;
                 }
-                // HP-4: Enforce DoNotContact flag — prevent activities for contacts marked as do-not-contact
-                if (contact.DoNotContact)
-                {
-                    _logger.LogWarning("Activity creation blocked — contact {ContactId} is marked DoNotContact", request.ContactId);
-                    return DomainErrors.Contact.DoNotContact;
-                }
+                // Do not contact is not checked here. An activity is a record of what
+                // happened, and nothing is sent from here: the sends themselves
+                // (sequences, automations, the composer) refuse a do-not-contact person.
+                // Refusing the record as well meant staff could not write down the
+                // note "asked to be removed", or log the call when that person rang in.
             }
 
             if (request.DealId.HasValue)

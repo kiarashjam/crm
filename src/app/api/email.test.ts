@@ -39,6 +39,20 @@ describe('sendEmail against the live API', () => {
     expect(localStorage.getItem('crm.mock.emails.v1') ?? '[]').not.toContain('Hello');
   });
 
+  it('keeps the server\'s error code, so the composer can tell a "do not contact" refusal apart', async () => {
+    const problem = {
+      title: 'Bad Request', status: 400,
+      detail: 'jean@example.ch is marked do not contact, so nothing was sent.', errorCode: 'Contact.DoNotContact',
+    };
+    const { sendEmail } = await live(new Response(JSON.stringify(problem), { status: 400 }));
+
+    await expect(sendEmail(message)).rejects.toMatchObject({
+      message: 'jean@example.ch is marked do not contact, so nothing was sent.',
+      status: 400,
+      code: 'Contact.DoNotContact',
+    });
+  });
+
   it('explains the per-minute limit, which comes without a body', async () => {
     const { sendEmail } = await live(new Response(null, { status: 429, statusText: 'Too Many Requests' }));
 

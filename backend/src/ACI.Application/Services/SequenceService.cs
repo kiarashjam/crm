@@ -60,6 +60,7 @@ public sealed class SequenceService : ISequenceService
 
     private readonly ISequenceRepository _sequences;
     private readonly IEmailSender _email;
+    private readonly IOutreachMail _outreach;
     private readonly IActivityService _activities;
     private readonly ITaskService _tasks;
     private readonly EmailSettings _emailSettings;
@@ -68,6 +69,7 @@ public sealed class SequenceService : ISequenceService
     public SequenceService(
         ISequenceRepository sequences,
         IEmailSender email,
+        IOutreachMail outreach,
         IActivityService activities,
         ITaskService tasks,
         IOptions<EmailSettings> emailSettings,
@@ -75,6 +77,7 @@ public sealed class SequenceService : ISequenceService
     {
         _sequences = sequences;
         _email = email;
+        _outreach = outreach;
         _activities = activities;
         _tasks = tasks;
         _emailSettings = emailSettings.Value;
@@ -298,9 +301,14 @@ public sealed class SequenceService : ISequenceService
             var name = target.Name ?? enrollment.TargetName;
             var subject = Fill(string.IsNullOrWhiteSpace(step.Subject) ? sequence.Name : step.Subject, name, target.CompanyName);
             var text = Fill(step.Body ?? "", name, target.CompanyName);
-            var html = HtmlFor(text, enrollment.TargetType == "lead" ? TrackingUrl(enrollment.TargetId) : null);
+            // Under the workspace's name, and a reply reaches whoever works the lead,
+            // or else whoever enrolled them. The footer says how to stop it.
+            var sender = await _outreach.SenderAsync(enrollment.OrganizationId, target.OwnerUserId ?? enrollment.EnrolledByUserId, ct);
+            var mail = _outreach.Body(enrollment.OrganizationId, sender.WorkspaceName, text, [to],
+                enrollment.TargetType == "lead" ? TrackingUrl(enrollment.TargetId) : null);
 
-            if (!await _email.SendHtmlMessageAsync(to, name, subject, text, html, ct))
+            if (!await _email.SendOutreachAsync(
+                    new OutreachEmail(to, name, subject, mail.Text, mail.Html, sender.WorkspaceName, sender.ReplyTo, mail.UnsubscribeUrl), ct))
             {
                 _logger.LogWarning("Sequence email for enrollment {EnrollmentId} was not delivered; retrying later", enrollment.Id);
                 return StepOutcome.Retry;
@@ -311,6 +319,9 @@ public sealed class SequenceService : ISequenceService
 
         if (type is "task" or "call")
         {
+            // The call goes to whoever works the lead now. It used to land on the
+            // person who enrolled them, so the rep the lead was routed to never saw it.
+            // With no owner, the enroller keeps it, as before.
             var created = await _tasks.CreateAsync(enrollment.EnrolledByUserId, enrollment.OrganizationId, new CreateTaskRequest
             {
                 Title = string.IsNullOrWhiteSpace(step.TaskTitle) ? step.Type : step.TaskTitle.Trim(),
@@ -318,6 +329,7 @@ public sealed class SequenceService : ISequenceService
                 DueDateUtc = DateTime.UtcNow,
                 LeadId = enrollment.TargetType == "lead" ? enrollment.TargetId : null,
                 ContactId = enrollment.TargetType == "contact" ? enrollment.TargetId : null,
+                AssigneeId = target.OwnerUserId,
             }, ct);
             return created.IsSuccess ? StepOutcome.Done : StepOutcome.Retry;
         }
@@ -375,14 +387,6 @@ public sealed class SequenceService : ISequenceService
         if (api.IsLoopback || api.Scheme != Uri.UriSchemeHttps) return null;
         return $"{api.GetLeftPart(UriPartial.Authority)}{api.AbsolutePath.TrimEnd('/')}/api/public/track/{leadId}";
     }
-
-    /// <summary>
-    /// The HTML part: the same words, escaped, with line breaks kept — and the
-    /// tracking image, which exists only here. It used to be appended to the text
-    /// body, and since the message was sent as plain text every recipient saw
-    /// &lt;img src="http://localhost:5160/api/public/track/…"&gt; at the bottom.
-    /// </summary>
-    internal static string HtmlFor(string text, string? trackingUrl) => PlainTextEmail.ToHtml(text, trackingUrl);
 
     private static string FirstName(string name)
     {

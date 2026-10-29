@@ -224,6 +224,19 @@ public class LeadService : ILeadService
         };
 
         await _automation.PrepareNewAsync(entity, ct);
+        // An imported row is someone the workspace already knows, not an inquiry
+        // waiting for an answer, so no first-response clock starts for it.
+        if (request.IsImport)
+            entity.FirstResponseDueAtUtc = null;
+        // Already worked when it arrives: its status is past "New", or a contact date
+        // came with it. That is a first response, as it is when an edit does the same
+        // (see UpdateAsync); without it, a lead created as "Contacted" was reported
+        // late hours after somebody had spoken to them.
+        if (!string.Equals(entity.Status.Trim(), "New", StringComparison.OrdinalIgnoreCase) || entity.LastContactedAt.HasValue)
+        {
+            entity.FirstResponseAtUtc = entity.CreatedAtUtc;
+            entity.SlaBreached = false;
+        }
         entity = await _repository.AddAsync(entity, ct);
         await _automation.RecordStatusAsync(entity, null, entity.Status, userId, ct);
         await _contactRepository.EnsurePersonContactAsync(entity, ct);
@@ -232,12 +245,15 @@ public class LeadService : ILeadService
             "Lead {LeadId} created successfully for user {UserId}",
             entity.Id, userId);
 
-        if (_automations != null)
+        // An import is not a new lead arriving: its rows do not set off the
+        // workspace's welcome emails and sequences unless the person importing asked
+        // for that, and they are not announced to integrations one webhook per row.
+        if (_automations != null && (!request.IsImport || request.RunAutomations))
         {
             await _automations.DispatchAsync("lead.created", new AutomationEvent(
                 organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId), ct);
         }
-        if (_webhooks != null)
+        if (_webhooks != null && !request.IsImport)
             await _webhooks.PublishAsync(organizationId, "lead.created", new { entity.Id, entity.Name, entity.Email }, ct);
 
         return Map(entity);

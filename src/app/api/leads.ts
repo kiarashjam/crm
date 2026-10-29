@@ -340,6 +340,14 @@ export async function createLead(params: {
   referredByContactId?: string;
   /** Create it even though an open lead already has this email. */
   allowDuplicate?: boolean;
+  /**
+   * 'import' for a row from a spreadsheet of people the workspace already knows:
+   * the server then runs no lead.created automations, sends no webhook and starts
+   * no first-response clock for it.
+   */
+  origin?: 'import';
+  /** With origin 'import': run the lead.created automations anyway. */
+  runAutomations?: boolean;
 }): Promise<Lead | null> {
   if (!servesDemoData()) {
     const lead = await authFetchJson<LeadRaw>('/api/leads', {

@@ -14,6 +14,11 @@ public sealed record EmailAttachment(string FileName, string ContentType, byte[]
 /// The name shown beside the sender address — the workspace's, so a lead sees
 /// "Pavillon 46", not the product's name. Null falls back to Email:FromName.
 /// </param>
+/// <param name="ReplyTo">
+/// Where a reply goes: the person who wrote it. Every workspace sends from the one
+/// configured address, so without this a prospect's reply landed in that shared
+/// inbox — another company's, for every workspace but the one that owns it.
+/// </param>
 public sealed record ComposedEmail(
     IReadOnlyList<string> To,
     IReadOnlyList<string> Cc,
@@ -21,7 +26,31 @@ public sealed record ComposedEmail(
     string Subject,
     string TextBody,
     string HtmlBody,
-    string? FromName = null);
+    string? FromName = null,
+    string? ReplyTo = null);
+
+/// <summary>
+/// Outreach a workspace sends to one lead or contact without a person pressing
+/// Send: a sequence step, or an automation's email.
+/// </summary>
+/// <param name="TextBody">The plain-text part, complete on its own.</param>
+/// <param name="HtmlBody">The same words as HTML, plus anything that only works there (a tracking image).</param>
+/// <param name="FromName">The workspace's name, shown beside the configured address. Null falls back to Email:FromName.</param>
+/// <param name="ReplyTo">Who a reply should reach: the person who works this lead.</param>
+/// <param name="UnsubscribeUrl">
+/// The page that stops this workspace emailing the recipient, sent as the
+/// List-Unsubscribe header so mail apps can offer it next to the sender. The same
+/// link is in the footer of both parts.
+/// </param>
+public sealed record OutreachEmail(
+    string To,
+    string RecipientName,
+    string Subject,
+    string TextBody,
+    string HtmlBody,
+    string? FromName = null,
+    string? ReplyTo = null,
+    string? UnsubscribeUrl = null);
 
 /// <summary>What happened to a composed message.</summary>
 public enum ComposedEmailOutcome
@@ -134,16 +163,17 @@ public interface IEmailSender
         EmailAttachment? attachment = null,
         CancellationToken ct = default);
 
-    /// <summary>Plain message used by outreach sequences.</summary>
+    /// <summary>A plain message under the product's name, e.g. a contract reminder.</summary>
     Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default);
 
     /// <summary>
-    /// Sends a message with both a plain-text and an HTML part. Anything that only
-    /// makes sense as HTML — a tracking image, say — belongs in <paramref name="htmlBody"/>
-    /// alone: a plain-text part shows markup literally, as raw tags in the email.
-    /// Returns false (never throws) when the message could not be delivered.
+    /// Sends outreach for a workspace: under its name, with replies going to its
+    /// person, in both a plain-text and an HTML part. Anything that only makes sense
+    /// as HTML — a tracking image, say — belongs in the HTML part alone: a plain-text
+    /// part shows markup literally, as raw tags in the email. Returns false (never
+    /// throws) when the message could not be delivered.
     /// </summary>
-    Task<bool> SendHtmlMessageAsync(string toEmail, string recipientName, string subject, string textBody, string htmlBody, CancellationToken ct = default);
+    Task<bool> SendOutreachAsync(OutreachEmail email, CancellationToken ct = default);
 
     /// <summary>
     /// Sends a message someone wrote in the CRM, from the configured sender address.

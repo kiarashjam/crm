@@ -165,8 +165,21 @@ environment variable):
 | `Email__UseSsl` | `true` (default) | no |
 | `Email__SmtpPort` | `587` (default) | no |
 
-`Email__FrontendBaseUrl` matters: it builds the links in all three emails. If it is empty
-or not an absolute http(s) URL, password reset is skipped and logged.
+`Email__FrontendBaseUrl` matters: it builds the links in all three emails, and the
+unsubscribe link at the foot of every sequence, automation and composer email. If it is
+empty or not an absolute http(s) URL, password reset is skipped and logged, and outreach
+goes out without its unsubscribe link (a warning is logged each time).
+
+Workspace email (composer, sequences, automations) is sent from `Email__FromAddress`
+under the workspace's name, with Reply-To set to the person behind it, so replies reach
+that person rather than the shared sender inbox. `Email__FromName` names the product's own
+messages (password reset, invitations, reminders, contracts), and workspace email only
+when the workspace has no name.
+
+Unsubscribe links are signed with ASP.NET Data Protection, the same key ring that keeps
+two-factor secrets. On Azure App Service that ring is kept under `%HOME%` and survives
+restarts and deploys; if the API ever runs where it is not persisted, old unsubscribe
+links stop working (their page says the link is not valid).
 
 ### Option: let the deploy configure Azure for you (one GitHub secret)
 
