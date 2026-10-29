@@ -192,6 +192,10 @@ export default function Subscriptions() {
       await runBillingCycle(s.id);
       toast.success('Cycle charged');
       await load();
+    } catch (err) {
+      // Billed from another screen at the same moment, say: the server says so, and nothing was charged twice.
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not charge this cycle');
+      await load();
     } finally {
       setRunningId(null);
     }
@@ -232,7 +236,8 @@ export default function Subscriptions() {
   /** Bill, pause or resume, cancel and delete, the same in every layout. */
   const subscriptionActions = (s: Subscription) => (
     <div className="flex items-center justify-end gap-1">
-      {s.status !== 'Cancelled' && (
+      {/* A paused or cancelled subscription bills nothing, so there is no Bill to press. */}
+      {s.status !== 'Cancelled' && s.status !== 'Paused' && (
         <Button
           size="sm"
           variant="outline"

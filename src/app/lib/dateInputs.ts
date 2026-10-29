@@ -19,3 +19,18 @@ export function fromLocalInputValue(value?: string | null): string | undefined {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
+
+/**
+ * A date input's day ("2026-12-31"), as the UTC instant that day ends where the user is.
+ *
+ * A due date or an expiry names a whole day. Sent as `new Date(day)`, it was that
+ * day's first moment in UTC, and the server now compares it with the clock: a gift
+ * card "expiring 31 Dec" was refused all through 31 Dec, and a charge due today read
+ * as overdue the moment it was posted.
+ */
+export function endOfLocalDay(value?: string | null): string | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? '');
+  if (!m) return undefined;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 59, 999);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}

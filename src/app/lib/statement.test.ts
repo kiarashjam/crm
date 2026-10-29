@@ -47,6 +47,19 @@ describe('buildStatement', () => {
     expect(s.charges).toHaveLength(1);
   });
 
+  it('leaves a voided payment off the statement: the member owes what it would have paid', () => {
+    const charges = [charge({ postedAtUtc: '2026-10-02T00:00:00Z' })];
+    const bounced = payment({ status: 'Voided', voidReason: 'Cheque bounced' });
+
+    const s = buildStatement(charges, [bounced], ...oct);
+    const november = buildStatement(charges, [bounced], Date.parse('2026-11-01T00:00:00Z'), Date.parse('2026-12-01T00:00:00Z'));
+
+    expect(s.payments).toHaveLength(0);
+    expect(s.periodPayments).toBe(0);
+    expect(s.closingBalance).toBe(299);
+    expect(november.openingBalance).toBe(299);
+  });
+
   it('adds up cents exactly', () => {
     const tenCents = Array.from({ length: 3 }, () => charge({ amount: 0.1, postedAtUtc: '2026-10-02T00:00:00Z' }));
     expect(buildStatement(tenCents, [], ...oct).periodCharges).toBe(0.3);

@@ -12,10 +12,13 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export type AuditEntity = 'lead' | 'contact' | 'company' | 'deal' | 'task' | 'sequence' | 'automation';
+export type AuditEntity =
+  | 'lead' | 'contact' | 'company' | 'deal' | 'task' | 'sequence' | 'automation'
+  // Club money, recorded by the server from the save that changed it.
+  | 'charge' | 'payment' | 'gift_card' | 'tab' | 'subscription' | 'donation' | 'member';
 export type AuditAction =
   | 'created' | 'updated' | 'deleted' | 'status_changed'
-  | 'assigned' | 'email_sent' | 'merged' | 'converted';
+  | 'assigned' | 'email_sent' | 'merged' | 'converted' | 'voided';
 
 export interface AuditEvent {
   id: string;

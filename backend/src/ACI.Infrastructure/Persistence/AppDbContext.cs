@@ -99,6 +99,7 @@ public class AppDbContext : DbContext
     /// </summary>
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
+        StampClubDocumentVersions();
         await RecordDependents.RemoveAsync(this, cancellationToken);
         var events = RecordsAuditTrail ? await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -116,6 +117,7 @@ public class AppDbContext : DbContext
     /// <inheritdoc cref="SaveChangesAsync(bool, CancellationToken)"/>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
+        StampClubDocumentVersions();
         RecordDependents.Remove(this);
         var events = RecordsAuditTrail ? AuditTrail.Capture(this, _currentUser) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -128,6 +130,15 @@ public class AppDbContext : DbContext
             ForgetUnsaved(events);
             throw;
         }
+    }
+
+    // Whoever writes a club record (a service, a member merge, the cloner), its version
+    // moves, so a save made from an older read of it is refused. See ClubDocument.Version.
+    private void StampClubDocumentVersions()
+    {
+        foreach (var entry in ChangeTracker.Entries<ClubDocument>())
+            if (entry.State is EntityState.Added or EntityState.Modified)
+                entry.Entity.Version = Guid.NewGuid();
     }
 
     // A failed save must not leave its audit lines queued, or a retry would record them twice.

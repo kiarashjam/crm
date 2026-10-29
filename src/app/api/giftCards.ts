@@ -26,6 +26,9 @@ export interface GiftCard {
   issuedAtUtc: string;
   expiresAtUtc?: string;
   message?: string;
+  /** Set when voided: what was left on the card when it was written off, and why. */
+  writtenOffValue?: number;
+  voidReason?: string;
 }
 
 export interface GiftCardRedemption {
@@ -210,25 +213,38 @@ export interface RedeemInput {
   amount: number;
   redeemedByName: string;
   appliedTo?: string;
+  /**
+   * The same for every try of one redemption, so sending it again after a timeout
+   * gets the first redemption back instead of spending the card twice.
+   */
+  idempotencyKey?: string;
+}
+
+/** True once the card's expiry has passed, whatever its stored status says. */
+export function isGiftCardExpired(card: Pick<GiftCard, 'expiresAtUtc'>, now = Date.now()): boolean {
+  return !!card.expiresAtUtc && Date.parse(card.expiresAtUtc) <= now;
 }
 
 export async function redeemGiftCard(input: RedeemInput): Promise<GiftCardRedemption | null> {
   if (!servesDemoData()) {
+    const { idempotencyKey, ...body } = input;
     try {
       return await authFetchJson<GiftCardRedemption>(`/api/gift-cards/${input.giftCardId}/redeem`, {
         method: 'POST',
-        body: JSON.stringify(input),
+        body: JSON.stringify(body),
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
       });
     } catch (err) {
-      // The server refuses a card that isn't active or has no balance left with a 404,
-      // which the screens show as "could not redeem", as they do the browser's null.
+      // A card that isn't there reads as "could not redeem", as the browser's null does.
+      // Any other refusal (expired, used up, used elsewhere at the same moment) carries
+      // the server's sentence, which the screens show.
       if (err instanceof ApiError && err.status === 404) return null;
       throw err;
     }
   }
   const card = cardStore.byId(input.giftCardId);
   if (!card) return null;
-  if (card.status !== 'Active') return null;
+  if (card.status !== 'Active' || isGiftCardExpired(card)) return null;
   const amount = Math.min(input.amount, card.remainingValue);
   if (amount <= 0) return null;
 
@@ -252,12 +268,18 @@ export async function redeemGiftCard(input: RedeemInput): Promise<GiftCardRedemp
   return redemption;
 }
 
-export async function voidGiftCard(id: string): Promise<GiftCard | null> {
+/**
+ * Void a card, with a reason: what was left on it is written off, and the card says how
+ * much. On the server only an owner or manager may.
+ */
+export async function voidGiftCard(id: string, reason: string): Promise<GiftCard | null> {
   return apiWithFallback(
-    () => authFetchJson<GiftCard>(`/api/gift-cards/${id}/void`, { method: 'POST' }),
+    () => authFetchJson<GiftCard>(`/api/gift-cards/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
     async () => {
       await delay(100);
-      return cardStore.update(id, { status: 'Voided' });
+      const card = cardStore.byId(id);
+      if (!card) return null;
+      return cardStore.update(id, { status: 'Voided', remainingValue: 0, writtenOffValue: card.remainingValue, voidReason: reason });
     },
   );
 }
@@ -278,7 +300,8 @@ export function computeGiftCardStats(
   let active = 0;
   for (const c of cards) {
     issued += c.faceValue;
-    if (c.status === 'Active') {
+    // An expired card is no longer something the club owes.
+    if (c.status === 'Active' && !isGiftCardExpired(c)) {
       outstanding += c.remainingValue;
       active++;
     }

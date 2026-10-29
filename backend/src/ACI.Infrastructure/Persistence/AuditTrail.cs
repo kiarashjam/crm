@@ -22,9 +22,10 @@ namespace ACI.Infrastructure.Persistence;
 /// every minute and bury the ones that matter.
 /// </para>
 /// </remarks>
-internal static class AuditTrail
+internal static partial class AuditTrail
 {
-    private sealed record Spec(string EntityType, string Noun, string LabelProperty, string[] Fields);
+    /// <param name="Label">For a record whose name is not one property: a member's two names, a charge's JSON.</param>
+    private sealed record Spec(string EntityType, string Noun, string LabelProperty, string[] Fields, Func<EntityEntry, string?>? Label = null);
 
     private static readonly Dictionary<Type, Spec> Specs = new()
     {
@@ -58,6 +59,14 @@ internal static class AuditTrail
             nameof(TaskItem.ReminderDateUtc), nameof(TaskItem.Priority), nameof(TaskItem.LeadId),
             nameof(TaskItem.DealId), nameof(TaskItem.ContactId), nameof(TaskItem.Notes),
         }),
+        // The house balance itself is not watched: every charge moves it. A correction by
+        // hand is, through ManualBalance, below.
+        [typeof(ClubMember)] = new("member", "Member", nameof(ClubMember.LastName), new[]
+        {
+            nameof(ClubMember.FirstName), nameof(ClubMember.LastName), nameof(ClubMember.Email), nameof(ClubMember.Phone),
+            nameof(ClubMember.Tier), nameof(ClubMember.Status), nameof(ClubMember.DuesAmount), nameof(ClubMember.DuesFrequency),
+            nameof(ClubMember.RenewsAtUtc),
+        }, e => $"{e.Property(nameof(ClubMember.FirstName)).CurrentValue} {e.Property(nameof(ClubMember.LastName)).CurrentValue}".Trim()),
     };
 
     private static readonly Dictionary<string, string> FieldNames = new(StringComparer.Ordinal)
@@ -125,6 +134,12 @@ internal static class AuditTrail
 
         foreach (var entry in db.ChangeTracker.Entries())
         {
+            // A club record's kind decides what it is; its fields live in its JSON.
+            if (entry.Entity is ClubDocument)
+            {
+                CollectClubMoney(entry, pending);
+                continue;
+            }
             if (!Specs.TryGetValue(entry.Metadata.ClrType, out var spec)) continue;
             switch (entry.State)
             {
@@ -220,6 +235,15 @@ internal static class AuditTrail
                 }
                 AddAssigned(entry, spec, changed, nameof(TaskItem.AssigneeId), pending, lookups);
                 break;
+
+            case ClubMember:
+                if (changed.Contains(nameof(ClubMember.ManualBalance)))
+                {
+                    var (from, to) = (Was(nameof(ClubMember.HouseAccountBalance)) as decimal?, Now(nameof(ClubMember.HouseAccountBalance)) as decimal?);
+                    pending.Add(new(entry, spec, "updated", _ => string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                        $"House balance changed by hand from {from:0.00} to {to:0.00}")));
+                }
+                break;
         }
 
         var edited = spec.Fields.Where(changed.Contains).Select(FieldName).Distinct().ToList();
@@ -248,10 +272,10 @@ internal static class AuditTrail
         {
             Id = Guid.NewGuid(),
             OrganizationId = p.Entry.Property("OrganizationId").CurrentValue as Guid?,
-            OwnerUserId = p.Entry.Property("UserId").CurrentValue is Guid owner ? owner : Guid.Empty,
+            OwnerUserId = Owner(p.Entry),
             EntityType = p.Spec.EntityType,
             EntityId = p.Entry.Property("Id").CurrentValue as Guid?,
-            EntityLabel = Truncate(Text(p.Entry.Property(p.Spec.LabelProperty).CurrentValue), 200),
+            EntityLabel = Truncate(p.Spec.Label != null ? p.Spec.Label(p.Entry) : Text(p.Entry.Property(p.Spec.LabelProperty).CurrentValue), 200),
             Action = p.Action,
             Summary = Truncate(p.Summary(lookups), 500) ?? string.Empty,
             ActorUserId = actorId,
@@ -259,6 +283,11 @@ internal static class AuditTrail
             CreatedAtUtc = now.AddTicks(i),
         }).ToList();
     }
+
+    // Club records belong to a workspace rather than to a user, and have no owner of their own.
+    private static Guid Owner(EntityEntry entry) =>
+        (entry.Metadata.FindProperty("UserId") ?? entry.Metadata.FindProperty("OwnerUserId")) is { } owner
+        && entry.Property(owner.Name).CurrentValue is Guid id ? id : Guid.Empty;
 
     // An empty string and null are the same to a person reading the log.
     private static bool Differs(PropertyEntry p) => !Equals(Blank(p.OriginalValue), Blank(p.CurrentValue));

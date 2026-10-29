@@ -54,6 +54,10 @@ import {
   type GiftCardRedemption,
 } from '@/app/api/giftCards';
 import { getMembers, type Member } from '@/app/api/members';
+import { isOrgAdmin } from '@/app/api/organizations';
+import { servesDemoData } from '@/app/api/apiClient';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { endOfLocalDay } from '@/app/lib/dateInputs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
@@ -88,6 +92,8 @@ export default function GiftCards() {
   const [statusFilter, setStatusFilter] = useState<'All' | GiftCardStatus>('All');
   const [issueDialog, setIssueDialog] = useState(false);
   const [redeemDialog, setRedeemDialog] = useState<GiftCard | null>(null);
+  // One key per redemption: pressing Redeem again after a timeout cannot spend the card twice.
+  const [redeemKey, setRedeemKey] = useState('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const [issueForm, setIssueForm] = useState({
@@ -106,6 +112,9 @@ export default function GiftCards() {
   });
   const [saving, setSaving] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
+  // Writing off a card is an owner's or a manager's call; the server refuses anyone else.
+  const org = useOrgOptional();
+  const canVoid = servesDemoData() || isOrgAdmin(org?.currentOrg);
 
   const load = async () => {
     try {
@@ -175,9 +184,8 @@ export default function GiftCards() {
         recipientName: issueForm.recipientName.trim(),
         recipientEmail: issueForm.recipientEmail.trim() || undefined,
         faceValue,
-        expiresAtUtc: issueForm.expiresAtUtc
-          ? new Date(issueForm.expiresAtUtc).toISOString()
-          : undefined,
+        // Valid through the chosen day, not only until it begins.
+        expiresAtUtc: endOfLocalDay(issueForm.expiresAtUtc),
         message: issueForm.message.trim() || undefined,
       });
       if (card) toast.success(`Gift card issued — ${card.code}`);
@@ -196,6 +204,7 @@ export default function GiftCards() {
       redeemedByName: c.recipientName,
       appliedTo: '',
     });
+    setRedeemKey(crypto.randomUUID());
     setRedeemDialog(c);
   };
 
@@ -213,6 +222,7 @@ export default function GiftCards() {
         amount,
         redeemedByName: redeemForm.redeemedByName.trim() || redeemDialog.recipientName,
         appliedTo: redeemForm.appliedTo.trim() || undefined,
+        idempotencyKey: redeemKey,
       });
       if (result) {
         toast.success(`Redeemed ${formatCurrency(result.amount)}`);
@@ -221,22 +231,33 @@ export default function GiftCards() {
       }
       setRedeemDialog(null);
       await load();
-    } catch {
-      toast.error('Failed to redeem');
+    } catch (err) {
+      // The server says why: expired, used up, or used elsewhere at the same moment.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to redeem');
+      await load();
     } finally {
       setSaving(false);
     }
   };
 
   const doVoid = async (c: GiftCard) => {
-    if (!confirm(`Void gift card ${c.code}? The remaining balance becomes unusable.`)) return;
+    const reason = window.prompt(
+      `Void gift card ${c.code}? Its ${formatCurrency(c.remainingValue)} is written off. Why? The reason stays on the card.`,
+    );
+    if (reason === null) return;
+    if (!reason.trim()) {
+      toast.error('A reason is needed to void a gift card');
+      return;
+    }
     setVoidingId(c.id);
     try {
-      const ok = await voidGiftCard(c.id);
+      const ok = await voidGiftCard(c.id, reason.trim());
       if (ok) {
         toast.success('Gift card voided');
         await load();
       }
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not void the gift card');
     } finally {
       setVoidingId(null);
     }
@@ -285,7 +306,7 @@ export default function GiftCards() {
         <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)}>
           <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
         </Button>
-        <Button
+        {canVoid && <Button
           size="sm"
           variant="outline"
           onClick={() => doVoid(c)}
@@ -294,7 +315,7 @@ export default function GiftCards() {
           aria-label={`Void gift card ${c.code}`}
         >
           {voidingId === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
-        </Button>
+        </Button>}
       </>
     ) : null;
 
@@ -500,7 +521,7 @@ export default function GiftCards() {
                                 <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)} className="flex-1">
                                   <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
                                 </Button>
-                                <Button
+                                {canVoid && <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => doVoid(c)}
@@ -513,7 +534,7 @@ export default function GiftCards() {
                                   ) : (
                                     <Ban className="w-3.5 h-3.5" />
                                   )}
-                                </Button>
+                                </Button>}
                               </>
                             )}
                           </div>

@@ -10,9 +10,10 @@ namespace ACI.WebApi.Tests.Helpers;
 /// </summary>
 public static class SqliteDb
 {
+    /// <remarks>Several contexts can share one connection, as concurrent requests share one database.</remarks>
     public static AppDbContext Open(SqliteConnection connection)
     {
-        connection.Open();
+        if (connection.State != System.Data.ConnectionState.Open) connection.Open();
         var db = new SqliteAppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options);
         db.Database.EnsureCreated();
         return db;
