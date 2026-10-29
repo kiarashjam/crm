@@ -192,6 +192,10 @@ export default function Subscriptions() {
       await runBillingCycle(s.id);
       toast.success('Cycle charged');
       await load();
+    } catch (err) {
+      // Billed from another screen at the same moment, say: the server says so, and nothing was charged twice.
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not charge this cycle');
+      await load();
     } finally {
       setRunningId(null);
     }
