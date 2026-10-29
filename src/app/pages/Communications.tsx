@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   MessageSquareText,
   Search,
-  Send,
+  NotebookPen,
   Mail,
   Smartphone,
   Bell,
   Eye,
   MousePointerClick,
-  AlertCircle,
   Loader2,
   Trash2,
+  CalendarDays,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -41,6 +41,7 @@ import {
   sendCommunication,
   deleteCommunication,
   computeCommStats,
+  commStatusLabel,
   CHANNELS,
   CATEGORIES,
   type Communication,
@@ -50,6 +51,7 @@ import {
 } from '@/app/api/communications';
 import { getMembers, type Member } from '@/app/api/members';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import NotDeliveredNotice from '@/app/components/NotDeliveredNotice';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -92,10 +94,6 @@ function formatDateTime(iso: string): string {
   }
 }
 
-function formatRate(r: number): string {
-  return `${Math.round(r * 1000) / 10}%`;
-}
-
 export default function Communications() {
   const [comms, setComms] = useState<Communication[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -132,6 +130,11 @@ export default function Communications() {
   }, []);
 
   const stats = useMemo(() => computeCommStats(comms), [comms]);
+  const byChannel = useMemo(() => {
+    const counts: Record<CommChannel, number> = { Email: 0, SMS: 0, Push: 0 };
+    for (const c of comms) counts[c.channel] = (counts[c.channel] ?? 0) + 1;
+    return counts;
+  }, [comms]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -176,11 +179,11 @@ export default function Communications() {
         subject: form.subject.trim(),
         preview: form.preview.trim() || form.subject.trim(),
       });
-      toast.success('Message sent');
+      toast.success('Message logged. Cadence did not deliver it.');
       setDialogOpen(false);
       await load();
     } catch {
-      toast.error('Failed to send');
+      toast.error('Failed to log the message');
     } finally {
       setSending(false);
     }
@@ -241,9 +244,9 @@ export default function Communications() {
       },
     },
     { id: 'member', label: 'To', cell: (c) => c.memberName },
-    { id: 'status', label: 'Status', cell: (c) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{c.status}</span> },
+    { id: 'status', label: 'Status', cell: (c) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{commStatusLabel(c.status)}</span> },
     { id: 'category', label: 'Category', cell: (c) => c.category },
-    { id: 'sent', label: 'Sent', cell: (c) => formatDateTime(c.sentAtUtc) },
+    { id: 'sent', label: 'Logged', cell: (c) => formatDateTime(c.sentAtUtc) },
     { id: 'opened', label: 'Opened', byDefault: false, cell: (c) => (c.openedAtUtc ? formatDateTime(c.openedAtUtc) : '—') },
     { id: 'clicked', label: 'Clicked', byDefault: false, cell: (c) => (c.clickedAtUtc ? formatDateTime(c.clickedAtUtc) : '—') },
     { id: 'campaign', label: 'Campaign', byDefault: false, cell: (c) => c.campaignName || '—' },
@@ -262,20 +265,25 @@ export default function Communications() {
             icon={MessageSquareText}
             tone="violet"
             title="Communications"
-            subtitle="Every email, SMS, and push sent to members — with open and click tracking."
+            subtitle="A log of the emails, SMS and push messages your team sent members, kept with each member."
             actions={
               <Button onClick={openSend} className={heroPrimary('violet')}>
-                <Send className="h-4 w-4" />
-                Send message
+                <NotebookPen className="h-4 w-4" />
+                Log a message
               </Button>
             }
             stats={[
-              { label: 'Sent · 7d', value: stats.sentThisWeek, icon: Send, tone: 'violet', hint: 'total in last week' },
-              { label: 'Open rate', value: stats.openRate, icon: Eye, tone: 'emerald', hint: 'all-time emails opened', format: formatRate },
-              { label: 'Click rate', value: stats.clickRate, icon: MousePointerClick, tone: 'amber', hint: 'clicks per message', format: formatRate },
-              { label: 'Bounce rate', value: stats.bounceRate, icon: AlertCircle, tone: 'rose', hint: 'bounced or failed', format: formatRate },
+              { label: 'Logged · 7d', value: stats.sentThisWeek, icon: CalendarDays, tone: 'violet', hint: 'in the last week' },
+              { label: 'Email', value: byChannel.Email, icon: Mail, tone: 'blue', hint: 'logged all-time' },
+              { label: 'SMS', value: byChannel.SMS, icon: Smartphone, tone: 'emerald', hint: 'logged all-time' },
+              { label: 'Push', value: byChannel.Push, icon: Bell, tone: 'amber', hint: 'logged all-time' },
             ]}
           />
+
+          <NotDeliveredNotice>
+            A message logged here is a record for your team, marked &ldquo;Logged, not delivered&rdquo;. Nobody
+            receives it, and opens and clicks are not tracked. Send it from your own mail or phone, then log it.
+          </NotDeliveredNotice>
 
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
@@ -331,13 +339,13 @@ export default function Communications() {
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={MessageSquareText}
-              title={comms.length === 0 ? 'No communications yet' : 'No messages match these filters'}
+              title={comms.length === 0 ? 'No messages logged yet' : 'No messages match these filters'}
               description={
                 comms.length === 0
-                  ? 'Send your first message to a member. Open, click, and bounce events show up here automatically.'
+                  ? 'Log a message you sent a member, so the team can see what went to whom.'
                   : 'Try clearing filters or adjusting your search.'
               }
-              actionLabel={comms.length === 0 ? 'Send message' : undefined}
+              actionLabel={comms.length === 0 ? 'Log a message' : undefined}
               onAction={comms.length === 0 ? openSend : undefined}
               variant="orange"
             />
@@ -370,7 +378,7 @@ export default function Communications() {
                           <p className="font-semibold text-slate-900 truncate">{c.subject}</p>
                           <p className="text-xs text-slate-500 truncate">To {c.memberName}</p>
                         </div>
-                        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{c.status}</span>
+                        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{commStatusLabel(c.status)}</span>
                       </div>
                       {view.density !== 'compact' && <p className="mt-2 text-sm text-slate-500 line-clamp-2">{c.preview}</p>}
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -408,7 +416,7 @@ export default function Communications() {
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-semibold text-slate-900 truncate">{c.subject}</p>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>
-                            {c.status}
+                            {commStatusLabel(c.status)}
                           </span>
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">
                             {c.category}
@@ -448,9 +456,10 @@ export default function Communications() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Send message</DialogTitle>
+            <DialogTitle>Log a message</DialogTitle>
             <DialogDescription>
-              Log a member-facing email, SMS, or push. Status will appear as delivery events arrive.
+              Record an email, SMS or push you sent a member. Cadence does not deliver it: send it yourself
+              first.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -527,10 +536,10 @@ export default function Communications() {
             <Button onClick={send} disabled={sending}>
               {sending ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Logging
                 </>
               ) : (
-                'Send'
+                'Log message'
               )}
             </Button>
           </DialogFooter>

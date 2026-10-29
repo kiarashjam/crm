@@ -3,7 +3,9 @@ using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
+using ACI.Infrastructure.Repositories;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
@@ -87,6 +89,75 @@ public class PrivateDealsTests
         (await team.Rep.GetAsync($"/api/deals/{deal}/line-items")).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await team.Rep.GetAsync($"/api/attachments?entityType=deal&recordId={deal}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await team.Rep.GetAsync($"/api/custom-fields/values?entityType=deal&recordId={deal}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task ItsTasksAndActivitiesAreAsHiddenAsTheDeal()
+    {
+        // They carry the deal's name and what was said, and the rep's Activities,
+        // Tasks, Recent Activity and Reports chart all listed them.
+        using var factory = new CustomWebApplicationFactory();
+        var team = await TeamAsync(factory);
+        var deal = await DealAsync(team, isPrivate: true, "50000");
+        var lead = (await Json(await team.Owner.PostAsync("/api/leads", Body(new { name = "Müller family", email = "mueller@example.ch", status = "New" })), "owner adds a lead"))
+            .GetProperty("id").GetGuid();
+        var activity = (await Json(await team.Owner.PostAsync("/api/activities", Body(new { type = "call", subject = "Agreed 20% discount", dealId = deal, leadId = lead })), "owner logs a call"))
+            .GetProperty("id").GetGuid();
+        var task = (await Json(await team.Owner.PostAsync("/api/tasks", Body(new { title = "Send the Müller offer", dealId = deal })), "owner adds a task"))
+            .GetProperty("id").GetGuid();
+
+        (await Json(await team.Rep.GetAsync($"/api/activities/deal/{deal}"), "rep's deal activities")).GetArrayLength().Should().Be(0);
+        (await Json(await team.Rep.GetAsync($"/api/activities/lead/{lead}"), "rep's lead activities")).GetArrayLength().Should().Be(0);
+        (await Json(await team.Rep.GetAsync($"/api/tasks/by-deal/{deal}"), "rep's deal tasks")).GetArrayLength().Should().Be(0);
+        foreach (var list in new[] { "/api/activities", "/api/activities/all", "/api/tasks", "/api/tasks/all", "/api/search?q=offer", "/api/search?q=discount" })
+        {
+            var body = await (await team.Rep.GetAsync(list)).Content.ReadAsStringAsync();
+            body.Should().NotContain("Agreed 20% discount", list).And.NotContain("Send the Müller offer", list).And.NotContain("Secret", list);
+        }
+        (await team.Rep.GetAsync($"/api/tasks/{task}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await team.Rep.GetAsync($"/api/tasks/{task}/comments")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await team.Rep.PutAsync($"/api/tasks/{task}", Body(new { title = "Mine now" }))).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await team.Rep.DeleteAsync($"/api/activities/{activity}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        (await Json(await team.Owner.GetAsync($"/api/activities/deal/{deal}"), "owner's deal activities")).GetArrayLength().Should().Be(1);
+        (await Json(await team.Owner.GetAsync($"/api/tasks/by-deal/{deal}"), "owner's deal tasks")).GetArrayLength().Should().Be(1);
+        (await Json(await team.Owner.GetAsync($"/api/tasks/{task}"), "owner's task")).GetProperty("dealName").GetString().Should().Be("Secret");
+    }
+
+    [Fact]
+    public async Task TheTaskAndActivityFilterRunsOnARealDatabase()
+    {
+        // The in-memory provider runs the deal-visibility filter in memory. This runs it
+        // as SQL, in the shapes the repositories use: paged, counted, grouped.
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        using var db = SqliteDb.Open(connection);
+        var now = DateTime.UtcNow;
+        var owner = new User { Id = Guid.NewGuid(), Name = "Owner", Email = "owner@example.ch", CreatedAtUtc = now };
+        var rep = new User { Id = Guid.NewGuid(), Name = "Rep", Email = "rep@example.ch", CreatedAtUtc = now };
+        var org = new Organization { Id = Guid.NewGuid(), Name = "Pavillon46", OwnerUserId = owner.Id, CreatedAtUtc = now };
+        db.AddRange(owner, rep, org);
+        db.OrganizationMembers.AddRange(
+            new OrganizationMember { OrganizationId = org.Id, UserId = owner.Id, Role = OrgMemberRole.Owner, JoinedAtUtc = now },
+            new OrganizationMember { OrganizationId = org.Id, UserId = rep.Id, Role = OrgMemberRole.Member, JoinedAtUtc = now });
+        var secret = new Deal { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Name = "Secret", Value = "1", IsPrivate = true, CreatedAtUtc = now };
+        var open = new Deal { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Name = "Open", Value = "1", CreatedAtUtc = now };
+        db.Deals.AddRange(secret, open);
+        foreach (var dealId in new Guid?[] { secret.Id, open.Id, null })
+        {
+            db.TaskItems.Add(new TaskItem { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Title = "Task", DealId = dealId, CreatedAtUtc = now });
+            db.Activities.Add(new Activity { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Type = "call", DealId = dealId, CreatedAtUtc = now });
+        }
+        await db.SaveChangesAsync();
+        var tasks = new TaskRepository(db);
+        var activities = new ActivityRepository(db);
+
+        (await tasks.GetPagedAsync(rep.Id, org.Id, 0, 50)).TotalCount.Should().Be(2);
+        (await tasks.GetPagedAsync(owner.Id, org.Id, 0, 50)).TotalCount.Should().Be(3);
+        (await tasks.GetByDealIdAsync(secret.Id, rep.Id, org.Id)).Should().BeEmpty();
+        (await tasks.GetCountByStatusAsync(rep.Id, org.Id, Domain.Enums.TaskStatus.Todo)).Should().Be(2);
+        (await activities.GetPagedAsync(rep.Id, org.Id, 0, 50)).TotalCount.Should().Be(2);
+        (await activities.GetActivityCountsByOrgAsync(rep.Id, org.Id))[owner.Id].Should().Be(2);
+        (await activities.GetLastActivityByDealIdsAsync(rep.Id, org.Id, new[] { secret.Id, open.Id })).Keys.Should().Equal(open.Id);
     }
 
     [Fact]

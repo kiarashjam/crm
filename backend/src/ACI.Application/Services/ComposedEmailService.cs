@@ -30,18 +30,21 @@ public sealed class ComposedEmailService : IComposedEmailService
     public const int MaxBodyLength = 50_000;
 
     private readonly IEmailSender _sender;
-    private readonly IOrganizationRepository _organizations;
+    private readonly IOutreachMail _outreach;
+    private readonly IContactRepository _contacts;
     private readonly ISentMessageRepository? _messages;
     private readonly ILogger<ComposedEmailService> _logger;
 
     public ComposedEmailService(
         IEmailSender sender,
-        IOrganizationRepository organizations,
+        IOutreachMail outreach,
+        IContactRepository contacts,
         ILogger<ComposedEmailService> logger,
         ISentMessageRepository? messages = null)
     {
         _sender = sender;
-        _organizations = organizations;
+        _outreach = outreach;
+        _contacts = contacts;
         _logger = logger;
         _messages = messages;
     }
@@ -72,11 +75,24 @@ public sealed class ComposedEmailService : IComposedEmailService
         if (body.Length > MaxBodyLength)
             return new Error("Email.BodyTooLong", $"The message can be at most {MaxBodyLength:N0} characters.");
 
+        // Do not contact is checked here, on the server. The composer only hid its
+        // button on a contact's page, so the lead page, a typed address or the sales
+        // assistant could still email someone who had asked to be left alone.
+        var everyone = to.Concat(cc).Concat(bcc).ToList();
+        if (await _contacts.FindDoNotContactAddressAsync(organizationId, everyone, ct) is { } stopped)
+            return new Error(DomainErrors.Contact.DoNotContact.Code, $"{stopped} is marked do not contact, so nothing was sent.");
+        if (await _contacts.IsDoNotContactAsync(organizationId, request.LeadId, request.ContactId, ct))
+            return new Error(DomainErrors.Contact.DoNotContact.Code, "This person is marked do not contact, so nothing was sent.");
+
         // Sent under the workspace's name: the configured Email:FromName is the
-        // product's ("Cadence"), which means nothing to the person reading it.
-        var workspace = await _organizations.GetByIdAsync(organizationId, ct);
+        // product's ("Cadence"), which means nothing to the person reading it. A reply
+        // goes to whoever wrote it, not to the shared sender address.
+        var sender = await _outreach.SenderAsync(organizationId, sentByUserId == default ? null : sentByUserId, ct);
+        // A link at the foot for each person it is visibly addressed to, to stop this
+        // workspace's email. Not for Bcc: naming them would show everyone who else got it.
+        var mail = _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList());
         var outcome = await _sender.SendComposedAsync(
-            new ComposedEmail(to, cc, bcc, subject, body, PlainTextEmail.ToHtml(body), workspace?.Name), ct);
+            new ComposedEmail(to, cc, bcc, subject, mail.Text, mail.Html, sender.WorkspaceName, sender.ReplyTo), ct);
 
         switch (outcome)
         {

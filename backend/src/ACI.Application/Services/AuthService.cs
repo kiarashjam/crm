@@ -20,6 +20,12 @@ public class AuthService : IAuthService
     private readonly IEmailSender _emailSender;
     private readonly EmailSettings _emailSettings;
     private readonly ILogger<AuthService> _logger;
+    private readonly AuthAttemptLimiter _attempts;
+    private readonly ISecurityStampCache? _stamps;
+
+    // Checked against when the email has no account, so a wrong email takes as long
+    // as a wrong password and the response time does not reveal who has an account.
+    private static string? _decoyHash;
 
     public AuthService(
         IUserRepository userRepository,
@@ -28,7 +34,9 @@ public class AuthService : IAuthService
         ISecretProtector secretProtector,
         IEmailSender emailSender,
         IOptions<EmailSettings> emailSettings,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        AuthAttemptLimiter? attempts = null,
+        ISecurityStampCache? stamps = null)
     {
         _userRepository = userRepository;
         _tokenService = tokenService;
@@ -37,24 +45,39 @@ public class AuthService : IAuthService
         _emailSender = emailSender;
         _emailSettings = emailSettings.Value;
         _logger = logger;
+        _attempts = attempts ?? new AuthAttemptLimiter();
+        _stamps = stamps;
     }
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         _logger.LogInformation("Login attempt for email {Email}", request.Email);
-        
+
+        var attemptKey = AuthAttemptLimiter.Login(request.Email);
+        if (_attempts.IsBlocked(attemptKey))
+        {
+            _logger.LogWarning("Login refused: too many failed attempts for email {Email}", request.Email);
+            return DomainErrors.Auth.AccountLocked;
+        }
+
         var user = await _userRepository.GetByEmailAsync(request.Email, ct);
         if (user?.PasswordHash == null)
         {
+            _decoyHash ??= _passwordHasher.Hash(Guid.NewGuid().ToString());
+            _passwordHasher.Verify(request.Password, _decoyHash);
+            _attempts.Record(attemptKey);
             _logger.LogWarning("Login failed: user not found for email {Email}", request.Email);
             return DomainErrors.Auth.InvalidCredentials;
         }
 
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
+            _attempts.Record(attemptKey);
             _logger.LogWarning("Login failed: invalid password for user {UserId}", user.Id);
             return DomainErrors.Auth.InvalidCredentials;
         }
+
+        _attempts.Reset(attemptKey);
 
         if (user.TwoFactorEnabled)
         {
@@ -75,7 +98,7 @@ public class AuthService : IAuthService
         var token = _tokenService.GenerateToken(user);
         
         _logger.LogInformation("User {UserId} logged in successfully", user.Id);
-        return new LoginResponse(token, new UserInfoDto(user.Id, user.Name, user.Email));
+        return new LoginResponse(token, ToInfo(user));
     }
 
     public async Task<Result<LoginResponse>> LoginWithTwoFactorAsync(TwoFactorLoginRequest request, CancellationToken ct = default)
@@ -96,12 +119,23 @@ public class AuthService : IAuthService
             return DomainErrors.Auth.InvalidTwoFactorCode;
         }
 
+        // Six digits are a million guesses; five per window keeps that out of reach.
+        var attemptKey = AuthAttemptLimiter.TwoFactor(user.Id);
+        if (_attempts.IsBlocked(attemptKey))
+        {
+            _logger.LogWarning("2FA login refused: too many failed codes for user {UserId}", user.Id);
+            return DomainErrors.Auth.AccountLocked;
+        }
+
         var secret = _secretProtector.Unprotect(user.TwoFactorSecretProtected);
         if (!Totp.VerifyCode(secret, request.Code, DateTime.UtcNow))
         {
+            _attempts.Record(attemptKey);
             _logger.LogWarning("2FA login failed: invalid TOTP code for user {UserId}", user.Id);
             return DomainErrors.Auth.InvalidTwoFactorCode;
         }
+
+        _attempts.Reset(attemptKey);
 
         ClearPasswordResetFieldsIfPresent(user);
         user.LastLoginAtUtc = DateTime.UtcNow;
@@ -109,7 +143,7 @@ public class AuthService : IAuthService
         var token = _tokenService.GenerateToken(user);
         
         _logger.LogInformation("User {UserId} completed 2FA login successfully", user.Id);
-        return new LoginResponse(token, new UserInfoDto(user.Id, user.Name, user.Email));
+        return new LoginResponse(token, ToInfo(user));
     }
 
     public async Task<Result<LoginResponse>> RegisterAsync(LoginRequest request, string name, CancellationToken ct = default)
@@ -133,12 +167,80 @@ public class AuthService : IAuthService
             PasswordHash = _passwordHasher.Hash(request.Password),
             CreatedAtUtc = DateTime.UtcNow,
         };
-        
+
+        // Anyone can type any address here, so the account starts unconfirmed. It can
+        // sign in and use its own workspace; invitations and add-by-email wait until the
+        // link we send proves the person reads this inbox.
+        var rawVerificationToken = IssueVerificationToken(user);
         await _userRepository.AddAsync(user, ct);
+
+        // Best-effort: the account exists either way, and the banner can send another.
+        if (await SendVerificationEmailAsync(user, rawVerificationToken, ct))
+            _attempts.Record(AuthAttemptLimiter.VerificationEmail(user.Id));
+
         var token = _tokenService.GenerateToken(user);
-        
+
         _logger.LogInformation("User {UserId} registered successfully with email {Email}", user.Id, request.Email);
-        return new LoginResponse(token, new UserInfoDto(user.Id, user.Name, user.Email));
+        return new LoginResponse(token, ToInfo(user));
+    }
+
+    public async Task<Result> VerifyEmailAsync(VerifyEmailRequest request, CancellationToken ct = default)
+    {
+        var rawToken = request.Token.Trim();
+        if (string.IsNullOrEmpty(rawToken))
+            return DomainErrors.Auth.InvalidVerificationToken;
+
+        var user = await _userRepository.GetByEmailVerificationTokenHashAsync(PasswordResetCrypto.HashRawToken(rawToken), ct);
+        if (user == null
+            || user.EmailVerificationTokenExpiresAtUtc == null
+            || user.EmailVerificationTokenExpiresAtUtc < DateTime.UtcNow)
+        {
+            _logger.LogWarning("Email confirmation failed: invalid or expired token");
+            return DomainErrors.Auth.InvalidVerificationToken;
+        }
+
+        user.EmailVerifiedAtUtc ??= DateTime.UtcNow;
+        // Single use: the link has done its job.
+        user.EmailVerificationTokenHash = null;
+        user.EmailVerificationTokenExpiresAtUtc = null;
+        await _userRepository.UpdateAsync(user, ct);
+
+        _logger.LogInformation("User {UserId} confirmed their email address", user.Id);
+        return Result.Success();
+    }
+
+    public async Task<Result> ResendVerificationEmailAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user == null)
+            return DomainErrors.Auth.EmailNotFound;
+
+        if (user.EmailVerifiedAtUtc != null)
+            return Result.Success();
+
+        // Every send mails the address from the club's sender, so a few per window.
+        var key = AuthAttemptLimiter.VerificationEmail(user.Id);
+        if (_attempts.IsBlocked(key, AuthAttemptLimiter.MaxResetEmails))
+        {
+            _logger.LogWarning("Email confirmation not resent for user {UserId}: too many requests", user.Id);
+            return DomainErrors.Auth.TooManyVerificationEmails;
+        }
+
+        var rawToken = IssueVerificationToken(user);
+        if (!await SendVerificationEmailAsync(user, rawToken, ct))
+            return DomainErrors.Auth.VerificationEmailNotSent;
+
+        _attempts.Record(key);
+        await _userRepository.UpdateAsync(user, ct);
+        return Result.Success();
+    }
+
+    public async Task<Result<UserInfoDto>> GetCurrentUserAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user == null)
+            return DomainErrors.Auth.EmailNotFound;
+        return ToInfo(user);
     }
 
     public async Task<Result<TwoFactorSetupResponse>> GetTwoFactorSetupAsync(Guid userId, CancellationToken ct = default)
@@ -150,6 +252,15 @@ public class AuthService : IAuthService
         {
             _logger.LogWarning("2FA setup failed: user {UserId} not found", userId);
             return DomainErrors.Auth.EmailNotFound;
+        }
+
+        // Once 2FA is on, the stored secret is the second factor itself. Handing it to
+        // any session that asks (a stolen token, a desk left signed in) would let that
+        // session pass 2FA, and switch it off, from then on.
+        if (user.TwoFactorEnabled)
+        {
+            _logger.LogInformation("2FA setup asked for user {UserId}, who already has it on; no secret returned", userId);
+            return new TwoFactorSetupResponse(Enabled: true, Secret: null, OtpauthUri: null);
         }
 
         // Generate (or reuse) secret until 2FA is enabled.
@@ -177,39 +288,74 @@ public class AuthService : IAuthService
             OtpauthUri: otpauthUri);
     }
 
-    public async Task<Result> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default)
+    public async Task<Result<TwoFactorStatusResponse>> GetTwoFactorStatusAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user == null)
+            return DomainErrors.Auth.EmailNotFound;
+        return new TwoFactorStatusResponse(user.TwoFactorEnabled);
+    }
+
+    public async Task<Result<string>> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default)
     {
         _logger.LogInformation("Enabling 2FA for user {UserId}", userId);
         
         var user = await _userRepository.GetByIdAsync(userId, ct);
-        if (user == null)
+        if (user == null || user.PasswordHash == null)
         {
             _logger.LogWarning("Enable 2FA failed: user {UserId} not found", userId);
             return DomainErrors.Auth.EmailNotFound;
         }
 
+        // The password as well as a code. Turning 2FA on signs out every other session,
+        // so with a code alone, someone holding a stolen session could turn it on with
+        // their own authenticator and lock the owner out. Guesses count against the same
+        // allowances as sign-in, as they do when turning it off.
+        var passwordKey = AuthAttemptLimiter.Login(user.Email);
+        var codeKey = AuthAttemptLimiter.TwoFactor(user.Id);
+        if (_attempts.IsBlocked(passwordKey) || _attempts.IsBlocked(codeKey))
+        {
+            _logger.LogWarning("Enable 2FA refused: too many failed attempts for user {UserId}", userId);
+            return DomainErrors.Auth.AccountLocked;
+        }
+
+        if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
+        {
+            _attempts.Record(passwordKey);
+            _logger.LogWarning("Enable 2FA failed: invalid password for user {UserId}", userId);
+            return DomainErrors.Auth.WrongPassword;
+        }
+
+        _attempts.Reset(passwordKey);
+
         if (string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected))
         {
             _logger.LogWarning("Enable 2FA failed: no 2FA secret for user {UserId}", userId);
-            return Result.Failure(new Error("Auth.NoTwoFactorSecret", "Two-factor authentication has not been set up"));
+            return new Error("Auth.NoTwoFactorSecret", "Two-factor authentication has not been set up");
         }
 
         var secret = _secretProtector.Unprotect(user.TwoFactorSecretProtected);
         if (!Totp.VerifyCode(secret, request.Code, DateTime.UtcNow))
         {
+            _attempts.Record(codeKey);
             _logger.LogWarning("Enable 2FA failed: invalid code for user {UserId}", userId);
-            return DomainErrors.Auth.InvalidTwoFactorCode;
+            return DomainErrors.Auth.WrongTwoFactorCode;
         }
+
+        _attempts.Reset(codeKey);
 
         user.TwoFactorEnabled = true;
         user.TwoFactorEnabledAtUtc = DateTime.UtcNow;
+        // Sessions signed in with the password alone end here; this one gets a new token.
+        RotateSecurityStamp(user);
         await _userRepository.UpdateAsync(user, ct);
-        
+        _stamps?.Forget(user.Id);
+
         _logger.LogInformation("2FA enabled successfully for user {UserId}", userId);
-        return Result.Success();
+        return _tokenService.GenerateToken(user);
     }
 
-    public async Task<Result> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default)
+    public async Task<Result<string>> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default)
     {
         _logger.LogInformation("Disabling 2FA for user {UserId}", userId);
         
@@ -220,32 +366,51 @@ public class AuthService : IAuthService
             return DomainErrors.Auth.EmailNotFound;
         }
 
+        // The same password and code that sign in, so guesses here count against the
+        // same allowances. Otherwise a stolen session could try passwords here without
+        // limit, and then codes, while sign-in stops each after five.
+        var passwordKey = AuthAttemptLimiter.Login(user.Email);
+        var codeKey = AuthAttemptLimiter.TwoFactor(user.Id);
+        if (_attempts.IsBlocked(passwordKey) || _attempts.IsBlocked(codeKey))
+        {
+            _logger.LogWarning("Disable 2FA refused: too many failed attempts for user {UserId}", userId);
+            return DomainErrors.Auth.AccountLocked;
+        }
+
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
+            _attempts.Record(passwordKey);
             _logger.LogWarning("Disable 2FA failed: invalid password for user {UserId}", userId);
-            return DomainErrors.Auth.InvalidCredentials;
+            return DomainErrors.Auth.WrongPassword;
         }
+
+        _attempts.Reset(passwordKey);
 
         if (!user.TwoFactorEnabled || string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected))
         {
             _logger.LogWarning("Disable 2FA failed: 2FA not enabled for user {UserId}", userId);
-            return Result.Failure(new Error("Auth.TwoFactorNotEnabled", "Two-factor authentication is not enabled"));
+            return new Error("Auth.TwoFactorNotEnabled", "Two-factor authentication is not enabled");
         }
 
         var secret = _secretProtector.Unprotect(user.TwoFactorSecretProtected);
         if (!Totp.VerifyCode(secret, request.Code, DateTime.UtcNow))
         {
+            _attempts.Record(codeKey);
             _logger.LogWarning("Disable 2FA failed: invalid code for user {UserId}", userId);
-            return DomainErrors.Auth.InvalidTwoFactorCode;
+            return DomainErrors.Auth.WrongTwoFactorCode;
         }
+
+        _attempts.Reset(codeKey);
 
         user.TwoFactorEnabled = false;
         user.TwoFactorEnabledAtUtc = null;
         user.TwoFactorSecretProtected = null;
+        RotateSecurityStamp(user);
         await _userRepository.UpdateAsync(user, ct);
-        
+        _stamps?.Forget(user.Id);
+
         _logger.LogInformation("2FA disabled successfully for user {UserId}", userId);
-        return Result.Success();
+        return _tokenService.GenerateToken(user);
     }
 
     public async Task<Result> RequestPasswordResetAsync(ForgotPasswordRequest request, CancellationToken ct = default)
@@ -260,11 +425,20 @@ public class AuthService : IAuthService
             return Result.Success();
         }
 
+        // Each request mails the address and replaces the previous link, so without a
+        // cap anyone can flood an inbox or keep someone's real link from working.
+        var resetKey = AuthAttemptLimiter.PasswordReset(email);
+        if (_attempts.IsBlocked(resetKey, AuthAttemptLimiter.MaxResetEmails))
+        {
+            _logger.LogWarning("Password reset email not sent for user {UserId}: too many requests", user.Id);
+            return Result.Success();
+        }
+
         var rawToken = PasswordResetCrypto.CreateRawToken();
         var tokenHash = PasswordResetCrypto.HashRawToken(rawToken);
         var expiresAt = DateTime.UtcNow.AddHours(1);
 
-        if (!TryNormalizePasswordResetBaseUrl(_emailSettings.FrontendBaseUrl, out var baseUrl))
+        if (!TryNormalizeFrontendBaseUrl(_emailSettings.FrontendBaseUrl, out var baseUrl))
         {
             _logger.LogError(
                 "Password reset skipped for user {UserId}: Email:FrontendBaseUrl must be an absolute http(s) URL (current: {FrontendBaseUrl})",
@@ -282,6 +456,7 @@ public class AuthService : IAuthService
             return Result.Success();
         }
 
+        _attempts.Record(resetKey);
         user.PasswordResetTokenHash = tokenHash;
         user.PasswordResetTokenExpiresAtUtc = expiresAt;
         await _userRepository.UpdateAsync(user, ct);
@@ -312,7 +487,15 @@ public class AuthService : IAuthService
         user.PasswordHash = _passwordHasher.Hash(request.Password);
         user.PasswordResetTokenHash = null;
         user.PasswordResetTokenExpiresAtUtc = null;
+        // The reset link went to this address, so following it proves the inbox as
+        // well as a confirmation link would. It is also how the real owner takes back
+        // an address someone else registered first.
+        user.EmailVerifiedAtUtc ??= DateTime.UtcNow;
+        // A reset is what someone does when they think another person has their
+        // password: every session signed in before it ends now.
+        RotateSecurityStamp(user);
         await _userRepository.UpdateAsync(user, ct);
+        _stamps?.Forget(user.Id);
 
         _logger.LogInformation("Password reset completed for user {UserId}", user.Id);
         return Result.Success();
@@ -329,6 +512,39 @@ public class AuthService : IAuthService
         return password.Any(char.IsDigit) || password.Length >= 15;
     }
 
+    /// <summary>Ends every session issued before now (see <see cref="User.SecurityStamp"/>).</summary>
+    private static void RotateSecurityStamp(User user) => user.SecurityStamp = Guid.NewGuid().ToString("N");
+
+    private static UserInfoDto ToInfo(User user) =>
+        new(user.Id, user.Name, user.Email, EmailVerified: user.EmailVerifiedAtUtc != null);
+
+    /// <summary>Puts a new confirmation token's hash on the user and returns the raw token for the link.</summary>
+    private static string IssueVerificationToken(User user)
+    {
+        var rawToken = PasswordResetCrypto.CreateRawToken();
+        user.EmailVerificationTokenHash = PasswordResetCrypto.HashRawToken(rawToken);
+        user.EmailVerificationTokenExpiresAtUtc = DateTime.UtcNow.AddHours(24);
+        return rawToken;
+    }
+
+    private async Task<bool> SendVerificationEmailAsync(User user, string rawToken, CancellationToken ct)
+    {
+        if (!TryNormalizeFrontendBaseUrl(_emailSettings.FrontendBaseUrl, out var baseUrl))
+        {
+            _logger.LogError(
+                "Email confirmation not sent for user {UserId}: Email:FrontendBaseUrl must be an absolute http(s) URL (current: {FrontendBaseUrl})",
+                user.Id,
+                string.IsNullOrWhiteSpace(_emailSettings.FrontendBaseUrl) ? "(empty)" : _emailSettings.FrontendBaseUrl);
+            return false;
+        }
+
+        var verifyUrl = $"{baseUrl}/verify-email?token={Uri.EscapeDataString(rawToken)}";
+        var sent = await _emailSender.SendEmailVerificationEmailAsync(user.Email, user.Name, verifyUrl, ct);
+        if (!sent)
+            _logger.LogWarning("Email confirmation for user {UserId} could not be sent", user.Id);
+        return sent;
+    }
+
     private static void ClearPasswordResetFieldsIfPresent(User user)
     {
         if (user.PasswordResetTokenHash == null && user.PasswordResetTokenExpiresAtUtc == null)
@@ -338,9 +554,10 @@ public class AuthService : IAuthService
     }
 
     /// <summary>
-    /// Reset emails must point at the SPA with an absolute URL so links are not host-relative to the API.
+    /// Links in reset and confirmation emails must point at the SPA with an absolute URL
+    /// so they are not host-relative to the API.
     /// </summary>
-    private static bool TryNormalizePasswordResetBaseUrl(string? configured, out string baseUrl)
+    private static bool TryNormalizeFrontendBaseUrl(string? configured, out string baseUrl)
     {
         baseUrl = (configured ?? string.Empty).Trim().TrimEnd('/');
         if (baseUrl.Length == 0)

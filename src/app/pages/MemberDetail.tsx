@@ -40,11 +40,12 @@ import { getCharges, getPayments, type Charge, type Payment } from '@/app/api/ch
 import { getVisits, type Visit } from '@/app/api/visits';
 import { getReservations, type Reservation } from '@/app/api/reservations';
 import { getLoyaltyLedger, type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
-import { getCommunications, type Communication } from '@/app/api/communications';
+import { commStatusLabel, getCommunications, type Communication } from '@/app/api/communications';
 import { getGiftCards, type GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar } from '@/app/components/RecordCard';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -59,10 +60,6 @@ const STATUS_BADGE: Record<MemberStatus, string> = {
   Lapsed: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
   Cancelled: 'bg-slate-100 text-slate-500 ring-1 ring-slate-200',
 };
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
 
 function formatDate(iso: string): string {
   try {
@@ -90,6 +87,7 @@ function formatDateTime(iso: string): string {
 }
 
 export default function MemberDetail() {
+  const { format: formatCurrency } = useClubMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [member, setMember] = useState<Member | null>(null);
@@ -456,7 +454,11 @@ export default function MemberDetail() {
                             <span className="text-slate-600">
                               {p.method} {p.reference && <span className="text-slate-500">· {p.reference}</span>}
                             </span>
-                            <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
+                            {p.status === 'Voided' ? (
+                              <span className="text-slate-500 line-through" title={p.voidReason}>{formatCurrency(p.amount)} voided</span>
+                            ) : (
+                              <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -543,7 +545,7 @@ export default function MemberDetail() {
               {memberComms.length === 0 ? (
                 <EmptyMini
                   icon={<MessageSquareText className="w-6 h-6" />}
-                  text="No messages sent to this member yet."
+                  text="No messages logged for this member yet."
                 />
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
@@ -552,7 +554,7 @@ export default function MemberDetail() {
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium text-slate-900">{c.subject}</p>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">
-                          {c.status}
+                          {commStatusLabel(c.status)}
                         </span>
                       </div>
                       <p className="text-sm text-slate-500 mt-1 line-clamp-2">{c.preview}</p>

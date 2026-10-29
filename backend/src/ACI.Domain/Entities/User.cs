@@ -28,6 +28,25 @@ public class User : Common.BaseEntity
 
     public DateTime? PasswordResetTokenExpiresAtUtc { get; set; }
 
+    /// <summary>
+    /// When the person proved they read mail at <see cref="Email"/>, by opening the link
+    /// sent there. Null until then. Invitations and add-by-email go by the address, so an
+    /// account that has not proved it cannot use them.
+    /// </summary>
+    public DateTime? EmailVerifiedAtUtc { get; set; }
+
+    /// <summary>SHA-256 hex hash of the raw email-verification token (never store the raw token).</summary>
+    public string? EmailVerificationTokenHash { get; set; }
+
+    public DateTime? EmailVerificationTokenExpiresAtUtc { get; set; }
+
+    /// <summary>
+    /// Copied into every session token. Changing it (a password reset, turning 2FA on
+    /// or off) makes every token issued before the change stop working. Null until the
+    /// first change, which tokens carry as an empty stamp.
+    /// </summary>
+    public string? SecurityStamp { get; set; }
+
     public UserSettings? Settings { get; set; }
     public ICollection<OrganizationMember> OrganizationMemberships { get; set; } = new List<OrganizationMember>();
     public ICollection<Company> Companies { get; set; } = new List<Company>();

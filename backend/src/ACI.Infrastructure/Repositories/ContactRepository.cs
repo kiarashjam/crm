@@ -109,12 +109,14 @@ public sealed class ContactRepository : IContactRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<bool> EmailExistsAsync(string email, Guid? organizationId, Guid? excludeContactId = null, CancellationToken ct = default)
+    public async Task<bool> EmailExistsAsync(string email, Guid userId, Guid? organizationId, Guid? excludeContactId = null, CancellationToken ct = default)
     {
         var normalizedEmail = email.Trim().ToLowerInvariant();
-        var query = _db.Contacts
-            .Where(c => !c.IsArchived && c.Email.ToLower() == normalizedEmail)
-            .Where(c => organizationId == null ? c.OrganizationId == null : c.OrganizationId == organizationId);
+        // The workspace's contacts, as everywhere else. "OrganizationId IS NULL" alone
+        // was every personal user's, so check-email answered whether some other user
+        // had that person, and adding them was refused as a duplicate nobody could see.
+        var query = FilterByUserAndOrg(_db.Contacts, userId, organizationId)
+            .Where(c => !c.IsArchived && c.Email.ToLower() == normalizedEmail);
         if (excludeContactId.HasValue)
             query = query.Where(c => c.Id != excludeContactId.Value);
         return await query.AnyAsync(ct);
@@ -187,23 +189,36 @@ public sealed class ContactRepository : IContactRepository
         if (string.IsNullOrWhiteSpace(lead.Name) || string.IsNullOrWhiteSpace(lead.Email))
             return;
 
+        // Only contacts in the lead's own workspace. Matched by organization alone,
+        // two users with no organization shared one pool: a lead took another user's
+        // contact of the same email, and showed that contact's spouse and family.
+        var workspace = FilterByUserAndOrg(_db.Contacts, lead.UserId, lead.OrganizationId);
+
         var linked = await _db.Contacts.FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct);
         if (linked != null)
         {
-            await RememberContactOnLeadAsync(lead, linked.Id, ct);
-            return;
+            var sameWorkspace = linked.OrganizationId == lead.OrganizationId
+                && (lead.OrganizationId != null || linked.UserId == lead.UserId);
+            if (sameWorkspace)
+            {
+                await RememberContactOnLeadAsync(lead, linked.Id, ct);
+                return;
+            }
+            // Another user's contact, claimed by the old match. It lets go of this lead
+            // (one contact per lead), and the lead gets a contact of its own below.
+            linked.ConvertedFromLeadId = null;
+            await _db.SaveChangesAsync(ct);
         }
 
         if (lead.ConvertedToContactId is Guid existingId)
         {
-            var existing = await _db.Contacts.FirstOrDefaultAsync(c => c.Id == existingId && !c.IsArchived, ct);
+            var existing = await workspace.FirstOrDefaultAsync(c => c.Id == existingId && !c.IsArchived, ct);
             if (existing != null)
                 return;
         }
 
         var email = lead.Email.Trim();
-        var byEmail = await _db.Contacts.FirstOrDefaultAsync(
-            c => !c.IsArchived && c.Email == email && c.OrganizationId == lead.OrganizationId, ct);
+        var byEmail = await workspace.FirstOrDefaultAsync(c => !c.IsArchived && c.Email == email, ct);
         if (byEmail != null)
         {
             if (byEmail.ConvertedFromLeadId == null)
@@ -324,6 +339,85 @@ public sealed class ContactRepository : IContactRepository
             await _db.SaveChangesAsync(ct);
             return true;
         }, ct);
+
+    public async Task<string?> FindDoNotContactAddressAsync(Guid organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default)
+    {
+        var wanted = addresses.Select(DoNotContactRules.Normalize).Where(a => a.Length > 0).Distinct().ToList();
+        if (wanted.Count == 0) return null;
+        var stopped = await _db.Contacts.AsNoTracking()
+            .Where(c => c.OrganizationId == organizationId && c.DoNotContact && wanted.Contains(c.Email.Trim().ToLower()))
+            .Select(c => c.Email)
+            .ToListAsync(ct);
+        var stoppedSet = stopped.Select(DoNotContactRules.Normalize).ToHashSet();
+        // Named as it was written, so the person sending recognises it.
+        return addresses.FirstOrDefault(a => stoppedSet.Contains(DoNotContactRules.Normalize(a)));
+    }
+
+    public async Task<bool> IsDoNotContactAsync(Guid organizationId, Guid? leadId, Guid? contactId, CancellationToken ct = default)
+    {
+        if (contactId is Guid id)
+        {
+            var contact = await _db.Contacts.AsNoTracking()
+                .Where(c => c.Id == id && c.OrganizationId == organizationId)
+                .Select(c => new { c.DoNotContact, c.Email })
+                .FirstOrDefaultAsync(ct);
+            if (contact != null && (contact.DoNotContact || await DoNotContactRules.AddressAsync(_db, organizationId, contact.Email, ct)))
+                return true;
+        }
+        if (leadId is Guid lid)
+        {
+            var lead = await _db.Leads.AsNoTracking()
+                .Where(l => l.Id == lid && l.OrganizationId == organizationId)
+                .Select(l => new { l.Email, l.ConvertedToContactId })
+                .FirstOrDefaultAsync(ct);
+            if (lead != null && await DoNotContactRules.LeadAsync(_db, organizationId, lid, lead.ConvertedToContactId, lead.Email, ct))
+                return true;
+        }
+        return false;
+    }
+
+    public async Task<DoNotContactMarked> MarkDoNotContactAsync(Guid organizationId, string email, Guid ownerUserId, CancellationToken ct = default)
+    {
+        var address = DoNotContactRules.Normalize(email);
+        var leads = await _db.Leads
+            .Where(l => l.OrganizationId == organizationId && l.Email.Trim().ToLower() == address)
+            .ToListAsync(ct);
+        // A lead keeps its "stop" on its person contact, so each needs one.
+        foreach (var lead in leads)
+            await EnsurePersonContactAsync(lead, ct);
+        var leadIds = leads.Select(l => l.Id).ToList();
+        var personIds = leads.Where(l => l.ConvertedToContactId != null).Select(l => l.ConvertedToContactId!.Value).ToList();
+
+        var contacts = await _db.Contacts
+            .Where(c => c.OrganizationId == organizationId
+                && (c.Email.Trim().ToLower() == address
+                    || personIds.Contains(c.Id)
+                    || (c.ConvertedFromLeadId != null && leadIds.Contains(c.ConvertedFromLeadId.Value))))
+            .ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        if (contacts.Count == 0)
+        {
+            var contact = new Contact
+            {
+                Id = Guid.NewGuid(),
+                UserId = ownerUserId,
+                OrganizationId = organizationId,
+                Name = email.Trim(),
+                Email = email.Trim(),
+                Description = $"Unsubscribed from this workspace's email on {now:yyyy-MM-dd} (UTC).",
+                CreatedAtUtc = now,
+            };
+            _db.Contacts.Add(contact);
+            contacts.Add(contact);
+        }
+        foreach (var contact in contacts.Where(c => !c.DoNotContact))
+        {
+            contact.DoNotContact = true;
+            contact.UpdatedAtUtc = now;
+        }
+        await _db.SaveChangesAsync(ct);
+        return new DoNotContactMarked(contacts.Select(c => c.Id).ToList(), leadIds);
+    }
 
     /// <summary>
     /// The dropped record's spouse, children and so on are the kept person's. One that

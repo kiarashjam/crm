@@ -13,25 +13,31 @@ public class DealService : IDealService
 {
     private readonly IDealRepository _repository;
     private readonly IActivityRepository _activityRepository;
+    private readonly IWorkspaceRecords _records;
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IOrganizationRepository? _organizations;
+    private readonly IDealStageRepository? _stages;
     private readonly ILogger<DealService> _logger;
 
     public DealService(
         IDealRepository repository, 
         IActivityRepository activityRepository,
+        IWorkspaceRecords records,
         ILogger<DealService> logger,
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
-        IOrganizationRepository? organizations = null)
+        IOrganizationRepository? organizations = null,
+        IDealStageRepository? stages = null)
     {
         _repository = repository;
         _activityRepository = activityRepository;
+        _records = records;
         _logger = logger;
         _automations = automations;
         _webhooks = webhooks;
         _organizations = organizations;
+        _stages = stages;
     }
 
     /// <inheritdoc />
@@ -162,6 +168,16 @@ public class DealService : IDealService
             return DomainErrors.Deal.ValueRequired;
         }
 
+        var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
+        {
+            CompanyId = request.CompanyId,
+            ContactId = request.ContactId,
+            AssigneeId = request.AssigneeId,
+            PipelineId = request.PipelineId,
+            DealStageId = request.DealStageId,
+        }, ct);
+        if (links.IsFailure) return links.Error;
+
         var entity = new Deal
         {
             Id = Guid.NewGuid(),
@@ -222,6 +238,22 @@ public class DealService : IDealService
             && !await MayChangePrivacyAsync(existing, userId, organizationId, ct))
             return DomainErrors.Deal.PrivacyNotOwner;
 
+        // Only what this edit changes is checked, so a deal whose owner has since left
+        // can still be edited. A pipeline and stage sent together have to agree, and a
+        // new pipeline sent alone has to hold the stage the deal keeps: otherwise the
+        // deal sat in a pipeline with none of its columns and dropped off the board.
+        var stageOrPipelineChanges = (request.DealStageId is Guid st && st != existing.DealStageId)
+            || (request.PipelineId is Guid p && p != existing.PipelineId);
+        var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
+        {
+            CompanyId = request.CompanyId != existing.CompanyId ? request.CompanyId : null,
+            ContactId = request.ContactId != existing.ContactId ? request.ContactId : null,
+            AssigneeId = request.AssigneeId != existing.AssigneeId ? request.AssigneeId : null,
+            PipelineId = stageOrPipelineChanges ? request.PipelineId : null,
+            DealStageId = stageOrPipelineChanges ? request.DealStageId ?? existing.DealStageId : null,
+        }, ct);
+        if (links.IsFailure) return links.Error;
+
         // Apply partial updates
         if (request.Name != null) existing.Name = request.Name.Trim();
         if (request.Value != null) existing.Value = request.Value.Trim();
@@ -241,6 +273,27 @@ public class DealService : IDealService
         {
             existing.IsWon = request.IsWon;
             existing.ClosedAtUtc = DateTime.UtcNow;
+        }
+
+        // A stage flagged won or lost closes the deal, and moving it back to an open
+        // stage reopens it. The board moves deals by stage, and every report reads
+        // IsWon, so without this a deal in a custom "Signed" stage counted as open.
+        if (request.DealStageId is Guid newStageId && newStageId != oldStageId
+            && _stages != null && organizationId is Guid stageOrg)
+        {
+            var stage = await _stages.GetByIdAsync(newStageId, stageOrg, ct);
+            if (stage == null) return DomainErrors.DealStage.NotFound;
+            existing.PipelineId = stage.PipelineId;
+            existing.Stage = stage.Name;
+            if (request.IsWon == null)
+            {
+                bool? outcome = stage.IsWon ? true : stage.IsLost ? false : null;
+                if (outcome != existing.IsWon)
+                {
+                    existing.IsWon = outcome;
+                    existing.ClosedAtUtc = outcome == null ? null : DateTime.UtcNow;
+                }
+            }
         }
         if (request.ClosedReason != null) existing.ClosedReason = request.ClosedReason.Trim();
         if (request.ClosedReasonCategory != null) existing.ClosedReasonCategory = request.ClosedReasonCategory.Trim();
@@ -287,11 +340,11 @@ public class DealService : IDealService
                 await _webhooks.PublishAsync(organizationId, "deal.stage_changed", new { id, existing.Name, stageId = existing.DealStageId }, ct);
         }
 
-        if (_automations != null && request.IsWon == true && previousWon != true)
+        if (_automations != null && existing.IsWon == true && previousWon != true)
             await _automations.DispatchAsync("deal.won", new AutomationEvent(organizationId, userId, $"{id}:won", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
-        if (_webhooks != null && request.IsWon == true && previousWon != true)
+        if (_webhooks != null && existing.IsWon == true && previousWon != true)
             await _webhooks.PublishAsync(organizationId, "deal.won", new { id, existing.Name }, ct);
-        if (_automations != null && request.IsWon == false && previousWon != false)
+        if (_automations != null && existing.IsWon == false && previousWon != false)
             await _automations.DispatchAsync("deal.lost", new AutomationEvent(organizationId, userId, $"{id}:lost", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
 
         _logger.LogInformation(

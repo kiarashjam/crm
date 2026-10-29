@@ -122,7 +122,7 @@ export default function Help() {
                 <li>Access is limited to the data required for copy and sending</li>
                 <li>Data is encrypted in transit and at rest</li>
                 <li>We don’t sell or share your data</li>
-                <li>You can delete your account and data whenever you want</li>
+                <li>You can ask for your account and data to be deleted at any time (Settings → Account says how)</li>
                 <li>We follow GDPR, CCPA, and similar privacy rules</li>
               </ul>
               <Link to="/privacy" className="text-teal-700 hover:text-teal-800 font-medium focus-visible:underline">

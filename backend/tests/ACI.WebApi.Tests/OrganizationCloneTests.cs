@@ -31,8 +31,9 @@ public class OrganizationCloneTests
         var org = new Organization
         {
             Id = Guid.NewGuid(), Name = name, OwnerUserId = owner, CreatedAtUtc = now.AddYears(-1),
-            WebhookApiKey = $"key-{name}", WebhookApiKeyCreatedAtUtc = now, WebhookPassword = "secret",
+            WebhookApiKeyHash = ACI.Application.Services.OrganizationService.HashApiKey($"key-{name}"), WebhookApiKeyCreatedAtUtc = now, WebhookPassword = "secret",
             OutboundWebhookUrl = "https://hooks.example.com/cadence", OutboundWebhookSecret = "s3cret",
+            McpApiKeyHash = ACI.Application.Services.OrganizationService.HashApiKey($"mcp-{name}"), McpApiKeyCreatedAtUtc = now,
         };
         db.Organizations.Add(org);
         db.OrganizationMembers.AddRange(
@@ -41,8 +42,8 @@ public class OrganizationCloneTests
             new OrganizationMember { OrganizationId = org.Id, UserId = rep, Role = OrgMemberRole.Viewer, JoinedAtUtc = now });
         db.OrgSettings.Add(new OrgSettings { OrganizationId = org.Id, CompanyName = name, UpdatedAtUtc = now });
         db.Invites.AddRange(
-            new Invite { Id = Guid.NewGuid(), OrganizationId = org.Id, Email = $"new@{name}.ch", Token = Guid.NewGuid().ToString("N"), ExpiresAtUtc = now.AddDays(7), CreatedAtUtc = now },
-            new Invite { Id = Guid.NewGuid(), OrganizationId = org.Id, Email = $"joined@{name}.ch", Token = Guid.NewGuid().ToString("N"), ExpiresAtUtc = now, CreatedAtUtc = now, AcceptedByUserId = rep, AcceptedAtUtc = now });
+            new Invite { Id = Guid.NewGuid(), OrganizationId = org.Id, Email = $"new@{name}.ch", TokenHash = Guid.NewGuid().ToString("N"), ExpiresAtUtc = now.AddDays(7), CreatedAtUtc = now },
+            new Invite { Id = Guid.NewGuid(), OrganizationId = org.Id, Email = $"joined@{name}.ch", TokenHash = Guid.NewGuid().ToString("N"), ExpiresAtUtc = now, CreatedAtUtc = now, AcceptedByUserId = rep, AcceptedAtUtc = now });
         db.JoinRequests.Add(new JoinRequest { Id = Guid.NewGuid(), OrganizationId = org.Id, UserId = rep, CreatedAtUtc = now });
 
         var pipeline = new Pipeline { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Memberships" };
@@ -282,7 +283,9 @@ public class OrganizationCloneTests
         var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
 
         var org = await db.Organizations.SingleAsync(o => o.Id == report.CopyId);
-        new[] { org.WebhookApiKey, org.WebhookPassword, org.OutboundWebhookUrl, org.OutboundWebhookSecret }.Should().OnlyContain(v => v == null);
+        new[] { org.WebhookApiKeyHash, org.WebhookPassword, org.OutboundWebhookUrl, org.OutboundWebhookSecret, org.McpApiKeyHash }
+            .Should().OnlyContain(v => v == null, "a copied MCP key would open both workspaces, whichever the lookup found first");
+        org.McpApiKeyCreatedAtUtc.Should().BeNull();
         (await db.OutreachEnrollments.Where(e => e.OrganizationId == report.CopyId).Select(e => e.Status).ToListAsync())
             .Should().BeEquivalentTo(["paused", "stopped"]);
         var contract = await db.Set<Contract>().SingleAsync(c => c.OrganizationId == report.CopyId);
@@ -298,6 +301,30 @@ public class OrganizationCloneTests
         after.Should().BeEquivalentTo(originalOrg);
         (await db.OutreachEnrollments.CountAsync(e => e.OrganizationId == original.Org && e.Status == "active")).Should().Be(1);
         (await db.Set<Contract>().SingleAsync(c => c.OrganizationId == original.Org)).SigningTokenHash.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ThePlanCountsWhatTheCopyHolds_WithoutWritingAnything()
+    {
+        // The dry run used to make the whole copy and roll it back, in the database every
+        // tenant shares. It now only counts, and has to count what the copy really makes.
+        var (connection, db, original, _, _) = await WorldAsync();
+        using var _c = connection;
+        await using var _d = db;
+        var organizations = await db.Organizations.CountAsync();
+        var before = await CountsAsync(db, original.Org);
+        var cloner = new OrganizationCloner(db);
+
+        var plan = await cloner.PlanAsync(original.Org);
+
+        (await db.Organizations.CountAsync()).Should().Be(organizations, "planning makes no copy");
+        (await CountsAsync(db, original.Org)).Should().Equal(before);
+        db.ChangeTracker.Entries().Should().BeEmpty();
+        plan.AttachmentBytes.Should().Be("%PDF"u8.Length);
+
+        var report = await cloner.CloneAsync(original.Org, "Pavillon 46 v2");
+        plan.RowsToCopy.Should().Equal(report.RowsCopied);
+        plan.RowsLeftOut.Should().Equal(report.RowsLeftOut);
     }
 
     [Fact]
@@ -365,7 +392,7 @@ public class OrganizationCloneThroughTheAppTests
     public async Task EveryMemberHasBothAndTheyStaySeparate()
     {
         using var factory = new CustomWebApplicationFactory();
-        var (owner, ownerId) = await Workspaces.SignInAsync(factory, "kia@pavillon46.ch");
+        var (owner, ownerId) = await Workspaces.SignInAsync(factory, "manager@example.ch");
         var org = await Workspaces.CreateAsync(factory, ownerId, "Pavillon46");
         var (rep, repId) = await Workspaces.SignInAsync(factory, "ana@pavillon46.ch");
         await Workspaces.AddMemberAsync(factory, org, repId, OrgMemberRole.Member);

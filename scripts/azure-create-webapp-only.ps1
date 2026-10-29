@@ -13,6 +13,11 @@ param(
     [string]$SqlDatabaseName = "ACI",
     [string]$SqlAdminLogin = "sqladmin",
     [string]$AppServicePlanName = "asp-aci",
+    # Basic (B1) or above. Sequence emails, task and contract reminders and SLA alerts
+    # run inside the web app, and a Free (F1) or Shared plan has no Always On: it
+    # unloads the app when nobody uses it, and the jobs stop until someone does.
+    [ValidateSet("B1", "B2", "B3", "S1", "S2", "S3", "P0v3", "P1v3", "P2v3", "P3v3")]
+    [string]$AppServicePlanSku = "B1",
     [Parameter(Mandatory = $true)]
     [string]$WebAppName
 )
@@ -25,12 +30,12 @@ $jwtSecret = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | For
 $corsOrigins = "https://$swaHost,http://localhost:5173,http://localhost:3000"
 $backendUrl = "https://$WebAppName.azurewebsites.net"
 
-Write-Host "Creating App Service Plan: $AppServicePlanName ..."
+Write-Host "Creating App Service Plan ($AppServicePlanSku): $AppServicePlanName ..."
 az appservice plan create `
     --name $AppServicePlanName `
     --resource-group $ResourceGroupName `
     --location $Location `
-    --sku F1
+    --sku $AppServicePlanSku
 
 Write-Host "Creating Web App: $WebAppName ..."
 az webapp create `
@@ -38,6 +43,14 @@ az webapp create `
     --resource-group $ResourceGroupName `
     --plan $AppServicePlanName `
     --runtime "dotnet:8"
+
+Write-Host "Turning on Always On, so the background jobs run when nobody is using the app ..."
+az webapp config set `
+    --name $WebAppName `
+    --resource-group $ResourceGroupName `
+    --always-on true `
+    --output none
+if ($LASTEXITCODE -ne 0) { throw "Could not turn on Always On for $WebAppName. Without it the reminder and sequence jobs stop whenever the app is idle." }
 
 Write-Host "Configuring Web App settings ..."
 az webapp config appsettings set `

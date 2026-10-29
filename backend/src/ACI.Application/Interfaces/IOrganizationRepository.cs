@@ -17,6 +17,7 @@ public interface IOrganizationRepository
     Task RemoveMemberAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
     /// <summary>Set OrganizationId for all user data where OrganizationId is null (legacy backfill).</summary>
     Task BackfillUserDataToOrganizationAsync(Guid userId, Guid organizationId, CancellationToken ct = default);
-    Task<Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default);
+    Task<Organization?> GetByWebhookApiKeyHashAsync(string keyHash, CancellationToken ct = default);
+    Task<Organization?> GetByMcpApiKeyHashAsync(string keyHash, CancellationToken ct = default);
     Task UpdateAsync(Organization organization, CancellationToken ct = default);
 }

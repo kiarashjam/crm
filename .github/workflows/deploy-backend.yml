@@ -1,12 +1,14 @@
-# Deploy backend (.NET Web API) to Azure Web App on every push to main (and on release / manual run)
+# Deploy backend (.NET Web API) to Azure Web App.
+#
+# Called by deploy.yml on every push to main (and on release / manual run), after the
+# checks in ci.yml have passed and before the frontend is deployed. It has no trigger
+# of its own, so it cannot deploy anything that has not been checked: to deploy by
+# hand, run "Build and deploy to Azure Static Web Apps", which checks, then deploys
+# this, then the frontend.
 name: Build and deploy backend to Azure Web App
 
 on:
-  push:
-    branches: [main]
-  release:
-    types: [published]
-  workflow_dispatch:
+  workflow_call:
 
 env:
   DOTNET_VERSION: '8.0.x'

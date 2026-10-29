@@ -9,6 +9,9 @@ namespace ACI.Infrastructure.Services;
 
 public sealed class JwtTokenService : ITokenService
 {
+    /// <summary>The claim carrying <see cref="User.SecurityStamp"/>, checked on every request.</summary>
+    public const string SecurityStampClaim = "sstamp";
+
     private readonly string _issuer;
     private readonly string _audience;
     private readonly string _secretKey;
@@ -103,6 +106,7 @@ public sealed class JwtTokenService : ITokenService
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(ClaimTypes.Name, user.Name),
+            new Claim(SecurityStampClaim, user.SecurityStamp ?? string.Empty),
         };
         if (extraClaims != null)
             claims.AddRange(extraClaims);

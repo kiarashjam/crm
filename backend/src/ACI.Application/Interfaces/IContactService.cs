@@ -107,11 +107,12 @@ public interface IContactService
     /// Checks if an email already exists for a contact.
     /// </summary>
     /// <param name="email">The email to check.</param>
+    /// <param name="userId">The caller, whose own contacts are the workspace when there is no organization.</param>
     /// <param name="organizationId">The optional organization ID.</param>
     /// <param name="excludeContactId">Contact ID to exclude from the check.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>True if the email exists, false otherwise.</returns>
-    Task<bool> EmailExistsAsync(string email, Guid? organizationId, Guid? excludeContactId = null, CancellationToken ct = default);
+    Task<bool> EmailExistsAsync(string email, Guid userId, Guid? organizationId, Guid? excludeContactId = null, CancellationToken ct = default);
 
     Task<IReadOnlyList<ContactLookalikeDto>> FindLookalikesAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 

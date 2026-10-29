@@ -1,4 +1,12 @@
-# Deploy to Azure Static Web Apps on every push to main (and on release / manual run)
+# Deploy to production on every push to main (and on release / manual run).
+#
+# In order, each step only when the one before it passed:
+#   1. checks   - ci.yml: backend build and tests, frontend typecheck, lint, tests, build
+#   2. backend  - deploy-backend.yml, to the Azure Web App
+#   3. frontend - this file's build_and_deploy, to Azure Static Web Apps
+#
+# Before, this and the backend deploy each ran on the push by themselves, with no
+# test in front of either, and the frontend could go out before the API it calls.
 name: Build and deploy to Azure Static Web Apps
 
 on:
@@ -8,11 +16,26 @@ on:
     types: [published]
   workflow_dispatch:
 
+# One deploy at a time. A deploy under way is never cancelled halfway through; a
+# newer push waits for it, and takes the place of any older one still waiting.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 env:
   NODE_VERSION: '20'
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  backend:
+    needs: checks
+    uses: ./.github/workflows/deploy-backend.yml
+    secrets: inherit
+
   build_and_deploy:
+    needs: backend
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

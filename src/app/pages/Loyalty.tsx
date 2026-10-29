@@ -63,6 +63,7 @@ import {
   InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const KIND_BADGE: Record<LoyaltyEntryKind, string> = {
   Earned: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -114,6 +115,7 @@ function formatPoints(n: number): string {
 }
 
 export default function Loyalty() {
+  const { format: formatCurrency } = useClubMoney();
   const [entries, setEntries] = useState<LoyaltyEntry[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -274,7 +276,7 @@ export default function Loyalty() {
       ),
     },
     { id: 'points', label: 'Points', numeric: true, cell: (b) => <span className={`font-semibold ${b.points < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatPoints(b.points)}</span> },
-    { id: 'value', label: 'Worth', numeric: true, cell: (b) => `$${(b.points / POINTS_PER_DOLLAR).toFixed(2)}` },
+    { id: 'value', label: 'Worth', numeric: true, cell: (b) => formatCurrency(b.points / POINTS_PER_DOLLAR) },
     { id: 'entries', label: 'Entries', numeric: true, cell: (b) => b.entries },
   ];
 
@@ -301,7 +303,7 @@ export default function Loyalty() {
             stats={[
               { label: 'Total issued', value: stats.totalIssued, icon: TrendingUp, tone: 'emerald', hint: 'all-time earned points' },
               { label: 'Total redeemed', value: stats.totalRedeemed, icon: TrendingDown, tone: 'rose', hint: 'all-time spent points' },
-              { label: 'Outstanding', value: stats.outstanding, icon: Trophy, tone: 'amber', hint: `≈ $${stats.outstandingDollarValue.toLocaleString()} in liability` },
+              { label: 'Outstanding', value: stats.outstanding, icon: Trophy, tone: 'amber', hint: `≈ ${formatCurrency(stats.outstandingDollarValue)} in liability` },
               { label: 'Active members', value: stats.activeMembers, icon: Star, tone: 'violet', hint: 'earning or redeeming' },
             ]}
           />
@@ -489,7 +491,7 @@ export default function Loyalty() {
                           {formatPoints(b.points)} pts
                         </span>
                         <span className="text-sm text-slate-500">
-                          ≈ ${(b.points / POINTS_PER_DOLLAR).toFixed(2)}
+                          ≈ {formatCurrency(b.points / POINTS_PER_DOLLAR)}
                         </span>
                       </div>
                     </StaggerItem>
@@ -506,15 +508,16 @@ export default function Loyalty() {
                 <div>
                   <h3 className="font-semibold text-slate-900 mb-1">Earning rate</h3>
                   <p className="text-sm text-slate-600">
-                    Members earn <span className="font-medium">10 base points per $1 spent</span>, multiplied by
+                    Members earn <span className="font-medium">10 base points per {formatCurrency(1)} spent</span>, multiplied by
                     their tier. Bronze 1×, Silver 1.25×, Gold 1.5×, Platinum 2×.
                   </p>
                 </div>
                 <div>
                   <h3 className="font-semibold text-slate-900 mb-1">Redemption rate</h3>
                   <p className="text-sm text-slate-600">
-                    <span className="font-medium">{POINTS_PER_DOLLAR} points = $1</span> in redemption value.
-                    Members can apply points to bar tabs, dining bills, event tickets, or convert to a gift card.
+                    <span className="font-medium">{POINTS_PER_DOLLAR} points = {formatCurrency(1)}</span> in redemption value.
+                    Paying a bill with points is not available yet: a redemption takes the points off the
+                    member&apos;s balance, but it does not settle a tab or a charge.
                   </p>
                 </div>
                 <div>

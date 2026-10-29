@@ -5,7 +5,7 @@ namespace ACI.Application.Services;
 
 public interface ILeadAutomation
 {
-    Task<Lead?> FindOpenDuplicateAsync(Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default);
+    Task<Lead?> FindOpenDuplicateAsync(Guid userId, Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default);
     Task PrepareNewAsync(Lead lead, CancellationToken ct = default);
     Task RecordStatusAsync(Lead lead, string? fromStatus, string toStatus, Guid actorId, CancellationToken ct = default);
     Task RescoreAsync(Lead lead, CancellationToken ct = default);
@@ -28,8 +28,8 @@ public sealed class LeadAutomation : ILeadAutomation
         _companies = companies;
     }
 
-    public Task<Lead?> FindOpenDuplicateAsync(Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default) =>
-        _ops.FindOpenByEmailAsync(organizationId, email, exceptId, ct);
+    public Task<Lead?> FindOpenDuplicateAsync(Guid userId, Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default) =>
+        _ops.FindOpenByEmailAsync(userId, organizationId, email, exceptId, ct);
 
     public async Task PrepareNewAsync(Lead lead, CancellationToken ct = default)
     {
@@ -88,7 +88,7 @@ public sealed class LeadAutomation : ILeadAutomation
         if (lead.CompanyId != null) return;
         if (!LeadDomainEnricher.TryCompanyFromEmail(lead.Email, out var domain, out var companyName)) return;
 
-        var company = await _ops.FindCompanyByDomainAsync(lead.OrganizationId, domain, ct);
+        var company = await _ops.FindCompanyByDomainAsync(lead.UserId, lead.OrganizationId, domain, ct);
         if (company == null)
         {
             company = await _companies.AddAsync(new Company

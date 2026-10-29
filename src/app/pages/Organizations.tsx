@@ -30,9 +30,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  acceptInviteById, acceptJoinRequest, getOrgMembers, isOrgAdmin,
+  acceptJoinRequest, getOrgMembers, isOrgAdmin,
   listPendingJoinRequestsForOrg, rejectJoinRequest,
-  type InviteDto, type JoinRequestDto, type Organization,
+  type JoinRequestDto, type Organization,
 } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { useOrg } from '@/app/contexts/OrgContext';
@@ -40,8 +40,10 @@ import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { NextActions } from '@/app/salesAgent/NextActions';
 import { getCurrentUser } from '@/app/lib/auth';
+import { useSignOut } from '@/app/lib/useSignOut';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import DemoBanner from '@/app/components/DemoBanner';
+import EmailVerificationBanner from '@/app/components/EmailVerificationBanner';
 import PageHero, { heroPrimary, type PageStat } from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 import { CadenceLoader } from '@/app/components/motion/CadenceLoader';
@@ -121,7 +123,6 @@ export default function Organizations() {
   const [highlight, setHighlight] = useState(0);
   const [launch, setLaunch] = useState<LaunchState>(IDLE);
   const [createOpen, setCreateOpen] = useState(false);
-  const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [requestBusyId, setRequestBusyId] = useState<string | null>(null);
   /** id → count, or null when the request failed. Absent means still loading. */
   const [memberCounts, setMemberCounts] = useState<Record<string, number | null>>({});
@@ -129,6 +130,7 @@ export default function Organizations() {
   const [requestsFailed, setRequestsFailed] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const signOut = useSignOut();
   const cameFromApp = !!location.state?.fromApp || !!currentOrgId;
   const destination = returnPath(location.state?.from);
   const user = getCurrentUser();
@@ -302,25 +304,6 @@ export default function Organizations() {
 
   /* --- invites and requests ----------------------------------------------- */
 
-  const handleAcceptInvite = async (invite: InviteDto) => {
-    setAcceptingId(invite.id);
-    try {
-      const accepted = await acceptInviteById(invite.id);
-      if (!accepted) {
-        toast.error('Could not accept that invitation.');
-        return;
-      }
-      await refreshOrgs();
-      setCurrentOrg(accepted.organizationId);
-      toast.success(`You have joined ${accepted.organizationName}`);
-      navigate(destination, { replace: true });
-    } catch {
-      toast.error('Could not accept that invitation.');
-    } finally {
-      setAcceptingId(null);
-    }
-  };
-
   const resolveRequest = async (request: JoinRequestDto, accept: boolean) => {
     setRequestBusyId(request.id);
     try {
@@ -421,19 +404,21 @@ export default function Organizations() {
                 Back to {destinationLabel(destination)}
               </Link>
             ) : (
-              <Link
-                to="/login"
+              <button
+                type="button"
+                onClick={signOut}
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/70 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-white hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
               >
                 <LogOut className="h-3.5 w-3.5" aria-hidden />
                 Sign in as someone else
-              </Link>
+              </button>
             )}
           </div>
         </div>
       </header>
 
       <DemoBanner />
+      <EmailVerificationBanner />
 
       <main
         id={MAIN_CONTENT_ID}
@@ -518,16 +503,17 @@ export default function Organizations() {
                         Expires {new Date(invite.expiresAtUtc).toLocaleDateString()}
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={() => void handleAcceptInvite(invite)}
-                      disabled={acceptingId === invite.id}
-                      className="h-9 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 font-semibold text-white shadow-md shadow-emerald-500/20 hover:opacity-95"
-                    >
-                      {acceptingId === invite.id
-                        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        : <><UserPlus className="mr-1.5 h-3.5 w-3.5" aria-hidden /> Accept</>}
-                    </Button>
+                    {/* Accepting takes the link from the invitation email: it is what
+                        shows the invitation reached this person's inbox. Emails sent
+                        before that link existed pointed here instead, so say what to
+                        do when the email has none, rather than send them round again. */}
+                    <p className="inline-flex max-w-sm items-start gap-1.5 text-xs text-slate-600">
+                      <UserPlus className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span>
+                        Open the link in the invitation email to join. If your email has no such link, ask
+                        whoever invited you to send the invitation again.
+                      </span>
+                    </p>
                   </div>
                 ))}
               </Panel>

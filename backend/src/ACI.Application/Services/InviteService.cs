@@ -66,31 +66,33 @@ public sealed class InviteService : IInviteService
             return Result.Failure<InviteDto>(DomainErrors.Organization.AlreadyMember);
         }
 
-        var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        // The link in the email is what proves the person accepting reads this inbox,
+        // so only its hash is kept: a copy of the table cannot accept anything.
+        var rawToken = PasswordResetCrypto.CreateRawToken();
         var invite = new Invite
         {
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
             Email = email,
-            Token = token,
+            TokenHash = PasswordResetCrypto.HashRawToken(rawToken),
             ExpiresAtUtc = DateTime.UtcNow.AddDays(7),
             CreatedAtUtc = DateTime.UtcNow,
         };
-        await _inviteRepository.AddAsync(invite, ct);
 
-        // Tell the invitee. Delivery is best-effort: the invitation already exists and
-        // is visible in the app, so a mail problem must not fail the request. The
-        // sender logs its own failures.
+        // Mailed first, kept only once it is sent. The emailed link is the only way to
+        // accept, so an invitation whose email did not go out could never be used, yet
+        // it would be listed as pending and reported as sent.
         var inviter = await _userRepository.GetByIdAsync(userId, ct);
-        var acceptUrl = BuildAcceptUrl();
+        var acceptUrl = BuildAcceptUrl(rawToken);
         var sent = await _emailSender.SendOrganizationInviteEmailAsync(
             email, org.Name, inviter?.Name ?? string.Empty, acceptUrl, ct);
         if (!sent)
         {
-            _logger.LogWarning(
-                "Invite {InviteId} was created but the notification email to {Email} could not be sent",
-                invite.Id, email);
+            _logger.LogError("Invite not created: could not send the invitation email to {Email}", email);
+            return Result.Failure<InviteDto>(EmailNotSent);
         }
+
+        await _inviteRepository.AddAsync(invite, ct);
 
         _logger.LogInformation("Invite {InviteId} created for email {Email} to organization {OrganizationId}", invite.Id, email, organizationId);
         return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
@@ -127,22 +129,27 @@ public sealed class InviteService : IInviteService
             return Result.Failure<InviteDto>(DomainErrors.Organization.NotOwnerOrManager);
         }
 
-        // Give the recipient a full window again — an invitation worth re-sending is
-        // usually one that sat unseen, and an already-expired link would be useless.
-        invite.ExpiresAtUtc = DateTime.UtcNow.AddDays(7);
-        await _inviteRepository.UpdateAsync(invite, ct);
-
+        // Only the hash of the first link was kept, so this email carries a new one.
+        var rawToken = PasswordResetCrypto.CreateRawToken();
         var inviter = await _userRepository.GetByIdAsync(userId, ct);
         var sent = await _emailSender.SendOrganizationInviteEmailAsync(
-            invite.Email, org.Name, inviter?.Name ?? string.Empty, BuildAcceptUrl(), ct);
+            invite.Email, org.Name, inviter?.Name ?? string.Empty, BuildAcceptUrl(rawToken), ct);
 
         if (!sent)
         {
             // Surfaced to the caller on purpose: "resend" that silently does nothing is
-            // indistinguishable from a mail server that is not configured at all.
+            // indistinguishable from a mail server that is not configured at all. The
+            // link sent before keeps working: nothing replaced it.
             _logger.LogError("Resend failed: could not send invitation email to {Email}", invite.Email);
             return Result.Failure<InviteDto>(EmailNotSent);
         }
+
+        // The new link replaces the old one, which stops working. Give the recipient a
+        // full window again — an invitation worth re-sending is usually one that sat
+        // unseen, and an already-expired link would be useless.
+        invite.TokenHash = PasswordResetCrypto.HashRawToken(rawToken);
+        invite.ExpiresAtUtc = DateTime.UtcNow.AddDays(7);
+        await _inviteRepository.UpdateAsync(invite, ct);
 
         _logger.LogInformation("Invite {InviteId} re-sent to {Email}", inviteId, invite.Email);
         return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
@@ -187,7 +194,7 @@ public sealed class InviteService : IInviteService
             return Result.Failure<InviteDto>(DomainErrors.Invite.InvalidToken);
         }
 
-        var invite = await _inviteRepository.GetByTokenAsync(token.Trim(), ct);
+        var invite = await _inviteRepository.GetByTokenHashAsync(PasswordResetCrypto.HashRawToken(token.Trim()), ct);
         if (invite == null)
         {
             _logger.LogWarning("Invite with provided token not found");
@@ -211,6 +218,14 @@ public sealed class InviteService : IInviteService
         {
             _logger.LogWarning("User {UserId} email does not match invite email", userId);
             return Result.Failure<InviteDto>(DomainErrors.Invite.EmailMismatch);
+        }
+
+        // Anyone can register an address before its owner does. Joining a workspace
+        // needs an account that has confirmed it, as well as the link from the email.
+        if (user.EmailVerifiedAtUtc == null)
+        {
+            _logger.LogWarning("User {UserId} tried to accept invite {InviteId} before confirming their email", userId, invite.Id);
+            return Result.Failure<InviteDto>(DomainErrors.Auth.EmailNotVerified);
         }
 
         if (await _organizationRepository.IsMemberAsync(userId, invite.OrganizationId, ct))
@@ -251,8 +266,9 @@ public sealed class InviteService : IInviteService
             return Result.Failure<IReadOnlyList<InviteDto>>(DomainErrors.Auth.EmailNotFound);
         }
 
+        // An unconfirmed account may not own the address, so it is not told who invited it.
         var email = user.Email?.Trim().ToLowerInvariant() ?? string.Empty;
-        if (string.IsNullOrEmpty(email))
+        if (string.IsNullOrEmpty(email) || user.EmailVerifiedAtUtc == null)
         {
             return Result.Success<IReadOnlyList<InviteDto>>(Array.Empty<InviteDto>());
         }
@@ -264,71 +280,13 @@ public sealed class InviteService : IInviteService
         return Result.Success<IReadOnlyList<InviteDto>>(dtos);
     }
 
-    public async Task<Result<InviteDto>> AcceptInviteByIdAsync(Guid inviteId, Guid userId, CancellationToken ct = default)
-    {
-        _logger.LogInformation("User {UserId} attempting to accept invite {InviteId}", userId, inviteId);
-
-        var invite = await _inviteRepository.GetByIdAsync(inviteId, ct);
-        if (invite == null)
-        {
-            _logger.LogWarning("Invite {InviteId} not found", inviteId);
-            return Result.Failure<InviteDto>(DomainErrors.Invite.NotFound);
-        }
-
-        if (invite.AcceptedByUserId != null)
-        {
-            _logger.LogWarning("Invite {InviteId} has already been accepted", inviteId);
-            return Result.Failure<InviteDto>(DomainErrors.Invite.AlreadyAccepted);
-        }
-
-        if (invite.ExpiresAtUtc < DateTime.UtcNow)
-        {
-            _logger.LogWarning("Invite {InviteId} has expired", inviteId);
-            return Result.Failure<InviteDto>(DomainErrors.Invite.Expired);
-        }
-
-        var user = await _userRepository.GetByIdAsync(userId, ct);
-        if (user == null || !string.Equals(user.Email?.Trim(), invite.Email.Trim(), StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.LogWarning("User {UserId} email does not match invite {InviteId} email", userId, inviteId);
-            return Result.Failure<InviteDto>(DomainErrors.Invite.EmailMismatch);
-        }
-
-        if (await _organizationRepository.IsMemberAsync(userId, invite.OrganizationId, ct))
-        {
-            _logger.LogWarning("User {UserId} is already a member of organization {OrganizationId}", userId, invite.OrganizationId);
-            return Result.Failure<InviteDto>(DomainErrors.Organization.AlreadyMember);
-        }
-
-        // Atomically claim the invite so two concurrent accepts don't both add the member.
-        var claimed = await _inviteRepository.TryClaimAsync(invite.Id, userId, ct);
-        if (!claimed)
-        {
-            // Loser of a race, OR this user already claimed it but a previous AddMemberAsync failed
-            // (leaving claimed-but-not-a-member). Recover the latter case so the user isn't stuck.
-            var current = await _inviteRepository.GetByIdAsync(invite.Id, ct);
-            if (current?.AcceptedByUserId != userId)
-            {
-                _logger.LogWarning("Invite {InviteId} was claimed by another concurrent request", invite.Id);
-                return Result.Failure<InviteDto>(DomainErrors.Invite.AlreadyAccepted);
-            }
-            _logger.LogInformation("Invite {InviteId} already claimed by user {UserId}; completing add-member step", invite.Id, userId);
-        }
-
-        await _organizationRepository.AddMemberAsync(invite.OrganizationId, userId, OrgMemberRole.Member, ct);
-
-        _logger.LogInformation("User {UserId} accepted invite {InviteId} to organization {OrganizationId}", userId, inviteId, invite.OrganizationId);
-        return Result.Success(new InviteDto(invite.Id, invite.OrganizationId, invite.Organization.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
-    }
-
     /// <summary>
-    /// Where the invitee should go to accept. Invitations are accepted in the app on the
-    /// organizations page (there is no token link), so the email points there and asks
-    /// them to sign in with the invited address.
+    /// The accept page, carrying the invitation's one-time token. Accepting needs this
+    /// token: it is the only proof that the person accepting received the email.
     /// </summary>
-    private string BuildAcceptUrl()
+    private string BuildAcceptUrl(string rawToken)
     {
         var baseUrl = (_emailSettings.FrontendBaseUrl ?? string.Empty).Trim().TrimEnd('/');
-        return baseUrl.Length == 0 ? "/organizations" : $"{baseUrl}/organizations";
+        return $"{baseUrl}/invites/accept?token={Uri.EscapeDataString(rawToken)}";
     }
 }

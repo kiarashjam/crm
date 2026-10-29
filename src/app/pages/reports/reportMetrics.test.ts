@@ -8,7 +8,7 @@ import type { Deal, Lead, Activity } from '@/app/api/types';
 import {
   parseMoney, totalsByCurrency, dominantCurrency, dealState, forecast,
   summariseDeals, leadRank, statusFunnel, summariseLeads,
-  groupSum, topNWithOther, localDayKey, activityByDay, newLeadsByWeek,
+  groupSum, topNWithOther, localDayKey, activityByDay, newLeadsByWeek, loggedActivities,
 } from './reportMetrics';
 
 const deal = (p: Partial<Deal>): Deal => ({ id: 'd', name: 'D', value: '0', ...p });
@@ -303,6 +303,19 @@ describe('activityByDay', () => {
   it('does not count activity outside the window', () => {
     const s = activityByDay([act(new Date(2026, 3, 1, 10, 0))], 7, now);
     expect(s.reduce((n, p) => n + p.value, 0)).toBe(0);
+  });
+});
+
+describe('loggedActivities', () => {
+  it('leaves out the updates the app writes on a lead\'s timeline', () => {
+    // "system" entries (reassigned, a follow-up done, a pipeline move) are saved now.
+    // They are not work anyone logged, so the activity report must not count them.
+    const list: Activity[] = [
+      { id: 'a1', type: 'call', createdAt: '2026-05-13T10:00:00Z' },
+      { id: 'a2', type: 'system', createdAt: '2026-05-13T10:05:00Z' },
+      { id: 'a3', type: 'Note', createdAt: '2026-05-13T10:10:00Z' },
+    ];
+    expect(loggedActivities(list).map((a) => a.id)).toEqual(['a1', 'a3']);
   });
 });
 

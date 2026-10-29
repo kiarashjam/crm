@@ -7,6 +7,19 @@
 # combinations; the verdict is computed afterwards by the real code.
 #
 # There is no UPDATE, INSERT or DELETE anywhere in this file.
+#
+# The repository is public, and so is this run's log. The organization's name is read
+# from the event and masked rather than passed as step env (which the log prints), and
+# what the run finds is tenant data: it never goes to the log. It is encrypted with the
+# ADMIN_REPORT_PASSPHRASE secret and kept as the run's artifact for three days (an
+# artifact of a public repository can be downloaded by anyone signed in to GitHub). To
+# read it, download the artifact, unzip it and run
+#
+#   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in <file>.enc -out <file>
+#
+# which asks for the passphrase. It runs in the "production" environment, so a required
+# reviewer can be added to it in Settings -> Environments; until then it runs without
+# approval.
 
 name: Lead status audit (read-only)
 
@@ -14,9 +27,8 @@ on:
   workflow_dispatch:
     inputs:
       organization:
-        description: 'Organization name (space-insensitive match), or blank for all'
-        required: false
-        default: 'Pavillon46'
+        description: 'Organization name (space-insensitive match)'
+        required: true
 
 permissions:
   contents: read
@@ -28,6 +40,7 @@ concurrency:
 jobs:
   audit:
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Azure Login
         uses: azure/login@v2
@@ -37,9 +50,23 @@ jobs:
       - name: Extract status vs pipeline combinations
         env:
           APP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}
-          ORG_NAME: ${{ inputs.organization || 'Pavillon46' }}
+          ADMIN_REPORT_PASSPHRASE: ${{ secrets.ADMIN_REPORT_PASSPHRASE }}
         run: |
           set -euo pipefail
+
+          if [ -z "${ADMIN_REPORT_PASSPHRASE:-}" ]; then
+            echo "::error::Set the ADMIN_REPORT_PASSPHRASE secret first: the extract is encrypted with it, as the log is public."
+            exit 1
+          fi
+          # ---- the input, from the event rather than env, and masked in the log ----
+          ORG_NAME=$(jq -r '.inputs.organization // ""' "$GITHUB_EVENT_PATH")
+          # Before the mask: a mask covers one line, so the rest of a multi-line name
+          # would be printed by its own ::add-mask:: line.
+          case "$ORG_NAME" in
+            *[[:cntrl:]]*) echo "::error::The organization must be on one line."; exit 1 ;;
+          esac
+          [ -n "$ORG_NAME" ] && echo "::add-mask::$ORG_NAME"
+          if [ -z "$ORG_NAME" ]; then echo "::error::The organization is required."; exit 1; fi
 
           RESOURCE_GROUP=$(az webapp list --query "[?name=='$APP_NAME'].resourceGroup | [0]" -o tsv)
           if [ -z "$RESOURCE_GROUP" ]; then
@@ -110,7 +137,7 @@ jobs:
           DECLARE @OrgName nvarchar(256) = N'${ORG_SQL}';
           DECLARE @OrgId uniqueidentifier =
             (SELECT TOP 1 Id FROM Organizations WHERE REPLACE(Name,' ','') = REPLACE(@OrgName,' ',''));
-          IF @OrgId IS NULL BEGIN PRINT 'ABORT: no organization matching ' + @OrgName; THROW 50000, 'no org', 1; END
+          IF @OrgId IS NULL BEGIN PRINT 'ABORT: no organization has the name given.'; THROW 50000, 'no org', 1; END
 
           PRINT 'ORG=' + CAST(@OrgId AS varchar(36));
 
@@ -165,5 +192,30 @@ jobs:
           FROM LeadStatuses WHERE OrganizationId = @OrgId ORDER BY DisplayOrder;
           SQL
 
+          # -x: the name is text, never a sqlcmd variable.
+          set +e
           "$SQLCMD" -S "tcp:${SQL_SERVER},1433" -d "$SQL_DB" -U "$SQL_USER" -P "$SQL_PASS" \
-            -C -b -h -1 -W -s '' -i "$RUNNER_TEMP/audit.sql"
+            -C -b -x -h -1 -W -s '' -i "$RUNNER_TEMP/audit.sql" > "$RUNNER_TEMP/audit.txt" 2>&1
+          STATUS=$?
+          set -e
+
+          # ---- the extract: encrypted for the artifact, never printed ----
+          mkdir -p "$RUNNER_TEMP/report"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:ADMIN_REPORT_PASSPHRASE \
+            -in "$RUNNER_TEMP/audit.txt" -out "$RUNNER_TEMP/report/lead-status-audit.txt.enc"
+          grep '^ABORT' "$RUNNER_TEMP/audit.txt" || true
+          rm -f "$RUNNER_TEMP/audit.txt"
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::The extract failed; sqlcmd's messages are in the encrypted artifact."
+            exit "$STATUS"
+          fi
+          echo "Extract written, encrypted, and kept as the lead-status-audit artifact."
+
+      - name: Keep the encrypted extract
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lead-status-audit
+          path: ${{ runner.temp }}/report/
+          retention-days: 3
+          if-no-files-found: ignore

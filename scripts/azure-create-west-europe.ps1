@@ -2,7 +2,7 @@
 # Run: ./scripts/azure-create-west-europe.ps1 -SqlAdminPassword 'YourSecurePwd1!'
 # Requires: Azure CLI installed and logged in (az login)
 #
-# Creates: Resource group, Static Web App (Free), SQL (Basic), Web App (F1)
+# Creates: Resource group, Static Web App (Free), SQL (Basic), Web App (B1, Always On)
 # Location: West Europe (westeurope)
 
 param(
@@ -15,6 +15,11 @@ param(
     [string]$SqlDatabaseName = "ACI",
     [string]$SqlAdminLogin = "sqladmin",
     [string]$AppServicePlanName = "asp-aci-we",
+    # Basic (B1) or above. Sequence emails, task and contract reminders and SLA alerts
+    # run inside the web app, and a Free (F1) or Shared plan has no Always On: it
+    # unloads the app when nobody uses it, and the jobs stop until someone does.
+    [ValidateSet("B1", "B2", "B3", "S1", "S2", "S3", "P0v3", "P1v3", "P2v3", "P3v3")]
+    [string]$AppServicePlanSku = "B1",
     [string]$WebAppName = "",         # default: aci-api-we-<random>
     [switch]$CreateServicePrincipal = $false  # set to create SP for GitHub Actions (requires Contributor)
 )
@@ -69,12 +74,12 @@ az sql db create -g $ResourceGroupName -s $SqlServerName -n $SqlDatabaseName --s
 
 $sqlConnStr = "Server=tcp:$SqlServerName.database.windows.net,1433;Initial Catalog=$SqlDatabaseName;Persist Security Info=False;User ID=$SqlAdminLogin;Password=$SqlAdminPassword;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
 
-Write-Host "Creating App Service Plan (F1 Free): $AppServicePlanName ..."
+Write-Host "Creating App Service Plan ($AppServicePlanSku): $AppServicePlanName ..."
 az appservice plan create `
     --name $AppServicePlanName `
     --resource-group $ResourceGroupName `
     --location $Location `
-    --sku F1
+    --sku $AppServicePlanSku
 
 Write-Host "Creating Web App (backend): $WebAppName ..."
 az webapp create `
@@ -82,6 +87,14 @@ az webapp create `
     --resource-group $ResourceGroupName `
     --plan $AppServicePlanName `
     --runtime "dotnet:8"
+
+Write-Host "Turning on Always On, so the background jobs run when nobody is using the app ..."
+az webapp config set `
+    --name $WebAppName `
+    --resource-group $ResourceGroupName `
+    --always-on true `
+    --output none
+if ($LASTEXITCODE -ne 0) { throw "Could not turn on Always On for $WebAppName. Without it the reminder and sequence jobs stop whenever the app is idle." }
 
 $jwtSecret = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | ForEach-Object { [char]$_ })
 $corsOrigins = "https://$swaHost,http://localhost:5173,http://localhost:3000"

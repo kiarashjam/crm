@@ -126,6 +126,8 @@ public sealed class ClubService : IClubService
             DuesAmount = request.DuesAmount ?? 0,
             DuesFrequency = string.IsNullOrWhiteSpace(request.DuesFrequency) ? "Monthly" : request.DuesFrequency.Trim(),
             HouseAccountBalance = request.HouseAccountBalance ?? 0,
+            // A new member has no charges yet, so all of an opening balance is theirs to keep.
+            ManualBalance = request.HouseAccountBalance ?? 0,
             Notes = request.Notes,
         };
         await _club.SaveMemberAsync(row, ct);
@@ -149,7 +151,13 @@ public sealed class ClubService : IClubService
         if (request.RenewsAtUtc.HasValue) row.RenewsAtUtc = request.RenewsAtUtc.Value;
         if (request.DuesAmount.HasValue) row.DuesAmount = request.DuesAmount.Value;
         if (!string.IsNullOrWhiteSpace(request.DuesFrequency)) row.DuesFrequency = request.DuesFrequency.Trim();
-        if (request.HouseAccountBalance.HasValue) row.HouseAccountBalance = request.HouseAccountBalance.Value;
+        if (request.HouseAccountBalance is { } balance && balance != row.HouseAccountBalance)
+        {
+            // A correction by hand: kept as the part of the balance no charge explains, so
+            // the next charge adds to it instead of putting the old figure back.
+            row.ManualBalance += balance - row.HouseAccountBalance;
+            row.HouseAccountBalance = balance;
+        }
         if (request.Notes != null) row.Notes = request.Notes;
         await _club.SaveMemberAsync(row, ct);
         return ToDto(row);

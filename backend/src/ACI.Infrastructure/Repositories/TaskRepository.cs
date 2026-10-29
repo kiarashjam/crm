@@ -12,13 +12,19 @@ public sealed class TaskRepository : ITaskRepository
 
     public TaskRepository(AppDbContext db) => _db = db;
 
-    private static IQueryable<TaskItem> FilterByUserAndOrg(IQueryable<TaskItem> q, Guid userId, Guid? organizationId) =>
-        organizationId == null
+    /// <summary>
+    /// The workspace's tasks, less those on a private deal the caller cannot see. Such
+    /// a task shows the deal's name, and its title and notes are about the deal, so it
+    /// is as hidden as the deal is (see DealVisibility).
+    /// </summary>
+    private IQueryable<TaskItem> FilterByUserAndOrg(IQueryable<TaskItem> q, Guid userId, Guid? organizationId)
+    {
+        var visibleDeals = _db.Deals.VisibleTo(_db, userId, organizationId);
+        var inWorkspace = organizationId == null
             ? q.Where(t => t.UserId == userId && t.OrganizationId == null)
             : q.Where(t => t.OrganizationId == organizationId);
-
-    private static IQueryable<TaskItem> FilterByOrgMember(IQueryable<TaskItem> q, Guid? organizationId) =>
-        q.Where(t => organizationId == null ? t.OrganizationId == null : t.OrganizationId == organizationId);
+        return inWorkspace.Where(t => t.DealId == null || visibleDeals.Any(d => d.Id == t.DealId));
+    }
 
     private static IQueryable<TaskItem> IncludeRelations(IQueryable<TaskItem> q) =>
         q.Include(t => t.Assignee)
@@ -124,9 +130,7 @@ public sealed class TaskRepository : ITaskRepository
     // When personal (no org), restrict to the caller's own tasks to prevent data leakage.
     public async Task<IReadOnlyList<TaskItem>> GetByAssigneeIdAsync(Guid assigneeId, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var query = organizationId != null
-            ? FilterByOrgMember(_db.TaskItems, organizationId)
-            : FilterByUserAndOrg(_db.TaskItems, userId, null);
+        var query = FilterByUserAndOrg(_db.TaskItems, userId, organizationId);
         return await OrderTasks(IncludeRelations(query.Where(t => t.AssigneeId == assigneeId))).ToListAsync(ct);
     }
 
@@ -182,6 +186,7 @@ public sealed class TaskRepository : ITaskRepository
         existing.Description = taskItem.Description;
         existing.DueDateUtc = taskItem.DueDateUtc;
         existing.ReminderDateUtc = taskItem.ReminderDateUtc;
+        existing.ReminderSentAtUtc = taskItem.ReminderSentAtUtc;
         existing.Status = taskItem.Status;
         existing.Priority = taskItem.Priority;
         existing.Completed = taskItem.Completed;

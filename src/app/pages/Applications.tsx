@@ -57,6 +57,7 @@ import {
   InitialsAvatar, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -111,6 +112,7 @@ function formatDate(iso: string): string {
 }
 
 export default function Applications() {
+  const { format: formatCurrency } = useClubMoney();
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
@@ -556,7 +558,7 @@ export default function Applications() {
                 <SelectContent>
                   {MEMBER_TIERS.map((t) => (
                     <SelectItem key={t} value={t}>
-                      {t} — ${TIER_DUES[t]}/mo
+                      {t} — {formatCurrency(TIER_DUES[t])}/mo
                     </SelectItem>
                   ))}
                 </SelectContent>

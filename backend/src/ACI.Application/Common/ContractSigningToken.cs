@@ -7,12 +7,12 @@ namespace ACI.Application.Common;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Modelled on <see cref="PasswordResetCrypto"/>, deliberately, and NOT on the
-/// invite token. Invites use <c>Guid.NewGuid()</c> stored in plaintext; a guid is
+/// Modelled on <see cref="PasswordResetCrypto"/>, deliberately, and NOT on the old
+/// invite token, which was <c>Guid.NewGuid()</c> stored in plaintext; a guid is
 /// not a CSPRNG output and a plaintext column means a database leak hands over the
 /// ability to accept invitations. For a link that can sign a contract, neither is
 /// acceptable: the raw token is generated from <see cref="RandomNumberGenerator"/>,
-/// emailed, and never stored — only its SHA-256 hash is.
+/// emailed, and never stored — only its SHA-256 hash is. Invites now do the same.
 /// </para>
 /// <para>
 /// Comparison happens by hashing the incoming token and looking that up, so no

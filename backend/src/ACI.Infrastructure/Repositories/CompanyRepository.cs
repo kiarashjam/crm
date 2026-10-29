@@ -86,9 +86,11 @@ public sealed class CompanyRepository : ICompanyRepository
             .AnyAsync(c => c.Name.ToLower() == trimmedName, ct);
     }
 
+    // Same scope as the list: in a workspace every member works the same companies.
+    // Requiring the creator here meant a teammate saw a company in the list but got
+    // "not found" opening or editing it.
     public async Task<Company?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        await _db.Companies.FirstOrDefaultAsync(c =>
-            c.Id == id && c.UserId == userId && (organizationId == null ? c.OrganizationId == null : c.OrganizationId == organizationId), ct);
+        await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == id, ct);
 
     public async Task<Company> AddAsync(Company company, CancellationToken ct = default)
     {
@@ -99,8 +101,7 @@ public sealed class CompanyRepository : ICompanyRepository
 
     public async Task<Company?> UpdateAsync(Company company, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var existing = await _db.Companies.FirstOrDefaultAsync(c =>
-            c.Id == company.Id && c.UserId == userId && (organizationId == null ? c.OrganizationId == null : c.OrganizationId == organizationId), ct);
+        var existing = await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == company.Id, ct);
         if (existing == null) return null;
         existing.Name = company.Name;
         existing.Domain = company.Domain;

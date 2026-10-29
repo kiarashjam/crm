@@ -108,8 +108,11 @@ public sealed class OrganizationRepository : IOrganizationRepository
         await _db.AutomationRules.Where(r => r.OwnerUserId == userId && r.OrganizationId == null).ExecuteUpdateAsync(s => s.SetProperty(r => r.OrganizationId, organizationId), ct);
     }
 
-    public async Task<Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default) =>
-        await _db.Organizations.FirstOrDefaultAsync(o => o.WebhookApiKey == apiKey, ct);
+    public async Task<Organization?> GetByWebhookApiKeyHashAsync(string keyHash, CancellationToken ct = default) =>
+        await _db.Organizations.FirstOrDefaultAsync(o => o.WebhookApiKeyHash == keyHash, ct);
+
+    public async Task<Organization?> GetByMcpApiKeyHashAsync(string keyHash, CancellationToken ct = default) =>
+        await _db.Organizations.FirstOrDefaultAsync(o => o.McpApiKeyHash == keyHash, ct);
 
     public async Task UpdateAsync(Organization organization, CancellationToken ct = default)
     {

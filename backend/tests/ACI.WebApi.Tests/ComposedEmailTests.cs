@@ -39,7 +39,7 @@ public class ComposedEmailTests
     private static object Email(string to = "jean@example.ch") =>
         new { to, subject = "Votre visite", body = "Bonjour Jean", leadId = Guid.NewGuid() };
 
-    private static async Task<(HttpClient Client, Guid Org)> Member(CustomWebApplicationFactory factory, string email = "kia@club.ch")
+    private static async Task<(HttpClient Client, Guid Org)> Member(CustomWebApplicationFactory factory, string email = "rep@example.ch")
     {
         var (client, user) = await SignInAsync(factory, email);
         var org = await CreateAsync(factory, user, "Pavillon 46");
@@ -60,6 +60,7 @@ public class ComposedEmailTests
         var sent = factory.Sent.Should().ContainSingle().Subject;
         sent.To.Should().Equal("jean@example.ch");
         sent.FromName.Should().Be("Pavillon 46", "sent under the workspace's name");
+        sent.ReplyTo.Should().Be("rep@example.ch", "a reply reaches the person who wrote it, not the shared sender address");
     }
 
     [Fact]
@@ -132,5 +133,33 @@ public class ComposedEmailTests
         message.Bcc.Mailboxes.Select(m => m.Address).Should().Equal("archive@club.ch");
         message.TextBody.Should().Be("Bonjour");
         message.HtmlBody.Should().Be("<p>Bonjour</p>");
+        message.ReplyTo.Mailboxes.Should().BeEmpty("no one was named to reply to");
+    }
+
+    [Fact]
+    public void AReplyGoesToThePersonNamed_FromTheVerifiedAddress()
+    {
+        var message = SmtpEmailSender.BuildComposedMessage(
+            new ComposedEmail(["jean@example.ch"], [], [], "Votre visite", "Bonjour", "<p>Bonjour</p>", "Acme Rentals", "anna@acme.example"),
+            "Acme Rentals", "info@pavillon46.ch");
+
+        message.From.Mailboxes.Single().Address.Should().Be("info@pavillon46.ch");
+        message.ReplyTo.Mailboxes.Select(m => m.Address).Should().Equal("anna@acme.example");
+    }
+
+    [Fact]
+    public void OutreachGoesOutUnderTheWorkspacesName_WithRepliesToItsPerson()
+    {
+        var message = SmtpEmailSender.BuildOutreachMessage(
+            new ACI.Application.Interfaces.OutreachEmail("jean@example.ch", "Jean Dupont", "Hello", "Hi", "<p>Hi</p>", "Acme Rentals", "anna@acme.example"),
+            "Cadence", "info@pavillon46.ch");
+
+        var from = message.From.Mailboxes.Single();
+        from.Name.Should().Be("Acme Rentals", "not the product's name");
+        from.Address.Should().Be("info@pavillon46.ch", "the relay only sends from the address it has verified");
+        message.ReplyTo.Mailboxes.Select(m => m.Address).Should().Equal("anna@acme.example");
+        message.To.Mailboxes.Single().Address.Should().Be("jean@example.ch");
+        message.TextBody.Should().Be("Hi");
+        message.HtmlBody.Should().Be("<p>Hi</p>");
     }
 }

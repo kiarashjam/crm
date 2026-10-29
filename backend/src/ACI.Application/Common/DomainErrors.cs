@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace ACI.Application.Common;
 
 /// <summary>
@@ -49,6 +51,43 @@ public static class DomainErrors
 
         public static readonly Error NotFound = new(
             "Attachment.NotFound", "The attachment was not found");
+    }
+
+    /// <summary>
+    /// Club event attendee errors.
+    /// </summary>
+    public static class EventAttendee
+    {
+        // Codes ending ".NotFound" map to 404.
+        public static readonly Error EventNotFound = new(
+            "ClubEvent.NotFound", "The event was not found");
+
+        public static readonly Error NotFound = new(
+            "EventAttendee.NotFound", "That person is not on this event's list");
+
+        public static readonly Error MemberNotFound = new(
+            "EventAttendeeMember.NotFound", "That member is not in this workspace");
+
+        public static readonly Error NameRequired = new(
+            "EventAttendee.NameRequired", "A guest needs a name");
+
+        public static readonly Error TooLong = new(
+            "EventAttendee.TooLong", "A name can be up to 200 characters and an email up to 320");
+
+        public static readonly Error TicketInvalid = new(
+            "EventAttendee.TicketInvalid", "A ticket is a Member or a Guest ticket");
+
+        public static readonly Error StatusInvalid = new(
+            "EventAttendee.StatusInvalid", "An attendee is Reserved, CheckedIn, Waitlisted or Cancelled");
+
+        // Mapped to 409 in ResultExtensions: the event's state, not the request, is the problem.
+        public static readonly Error EventFull = new(
+            "EventAttendee.EventFull", "The event is full: cancel a reservation first");
+
+        // Also 409: someone else already checked this person in, and the screen asking
+        // has not caught up yet.
+        public static readonly Error AlreadyCheckedIn = new(
+            "EventAttendee.AlreadyCheckedIn", "This person is already checked in");
     }
 
     /// <summary>
@@ -303,6 +342,34 @@ public static class DomainErrors
     }
 
     /// <summary>
+    /// Errors for the records a write links to and the person it assigns. None ends in
+    /// ".NotFound": the request is at fault, so they are 400s, and an id from another
+    /// workspace reads exactly like one that does not exist.
+    /// </summary>
+    public static class Link
+    {
+        public static readonly Error LeadNotFound = new(
+            "Link.LeadNotFound", "The lead was not found in this workspace");
+
+        public static readonly Error DealNotFound = new(
+            "Link.DealNotFound", "The deal was not found in this workspace");
+
+        public static readonly Error ContactNotFound = new(
+            "Link.ContactNotFound", "The contact was not found in this workspace");
+
+        public static readonly Error CompanyNotFound = new(
+            "Link.CompanyNotFound", "The company was not found in this workspace");
+
+        // "NotMember" in the code is what maps this to 403 Forbidden, as Lead.OwnerNotMember.
+        public static readonly Error AssigneeNotMember = new(
+            "Link.AssigneeNotMember", "The person you picked is not a member of this workspace");
+
+        public static readonly Error AssigneeCannotSeeDeal = new(
+            "Link.AssigneeCannotSeeDeal",
+            "The person you picked cannot see this private deal, so they could not open the task. Pick someone who can, or share the deal first.");
+    }
+
+    /// <summary>
     /// Deal-related errors.
     /// </summary>
     public static class Deal
@@ -327,10 +394,10 @@ public static class DomainErrors
             "Deal.ValueInvalid", "The deal value must be a valid number");
         
         public static readonly Error InvalidStage = new(
-            "Deal.InvalidStage", "The deal stage is invalid");
+            "Deal.InvalidStage", "That stage is not one of this workspace's pipeline stages, or not in the pipeline chosen");
         
         public static readonly Error PipelineNotFound = new(
-            "Deal.PipelineNotFound", "The specified pipeline was not found");
+            "Deal.PipelineNotFound", "The pipeline was not found in this workspace");
     }
 
     /// <summary>
@@ -415,7 +482,16 @@ public static class DomainErrors
         
         public static readonly Error InvalidTwoFactorCode = new(
             "Auth.InvalidTwoFactorCode", "The two-factor authentication code is invalid");
-        
+
+        // Turning 2FA on or off in Settings, where the person is already signed in: a
+        // wrong code or password there is a typo, so 400. The 401 that a failed sign-in
+        // gets makes the browser treat the session as over and sign the person out.
+        public static readonly Error WrongTwoFactorCode = new(
+            "Auth.WrongTwoFactorCode", "The two-factor authentication code is invalid");
+
+        public static readonly Error WrongPassword = new(
+            "Auth.WrongPassword", "The password is incorrect");
+
         public static readonly Error TwoFactorRequired = new(
             "Auth.TwoFactorRequired", "Two-factor authentication is required");
         
@@ -423,10 +499,23 @@ public static class DomainErrors
             "Auth.PasswordTooWeak", "The password does not meet security requirements");
         
         public static readonly Error AccountLocked = new(
-            "Auth.AccountLocked", "The account has been locked due to too many failed attempts");
+            "Auth.AccountLocked", "Too many failed attempts. Wait 15 minutes, then try again.");
 
         public static readonly Error InvalidResetToken = new(
             "Auth.InvalidResetToken", "This password reset link is invalid or has expired. Request a new one.");
+
+        public static readonly Error InvalidVerificationToken = new(
+            "Auth.InvalidVerificationToken", "This confirmation link is invalid or has expired. Sign in and send a new one.");
+
+        // Mapped to 403 in ResultExtensions: the account is real, it just has not shown it owns the address.
+        public static readonly Error EmailNotVerified = new(
+            "Auth.EmailNotVerified", "Confirm your email address first. Open the link we sent you, or send a new one from the banner at the top of the page.");
+
+        public static readonly Error TooManyVerificationEmails = new(
+            "Auth.TooManyVerificationEmails", "We have sent several confirmation emails already. Wait 15 minutes, then try again.");
+
+        public static readonly Error VerificationEmailNotSent = new(
+            "Auth.VerificationEmailNotSent", "The confirmation email could not be sent. Try again later.");
     }
 
     /// <summary>
@@ -547,6 +636,151 @@ public static class DomainErrors
 
         public static readonly Error HasDeals = new(
             "DealStage.HasDeals", "Cannot delete deal stage with existing deals");
+    }
+
+    /// <summary>
+    /// Club money records: charges, payments, gift cards, tabs, subscriptions, donations.
+    /// </summary>
+    /// <remarks>
+    /// Codes ending ".NotFound" map to 404 and codes ending ".Conflict" to 409: a record
+    /// that moved on (closed, voided, changed by someone else) rather than a bad request.
+    /// </remarks>
+    public static class Club
+    {
+        public static readonly Error MemberNotFound = new(
+            "ClubMember.NotFound", "That member was not found.");
+
+        public static readonly Error RecordNotFound = new(
+            "ClubRecord.NotFound", "That record was not found.");
+
+        public static readonly Error ChargeNotFound = new(
+            "Charge.NotFound", "That charge was not found.");
+
+        public static readonly Error GiftCardNotFound = new(
+            "GiftCard.NotFound", "That gift card was not found.");
+
+        public static readonly Error TabNotFound = new(
+            "Tab.NotFound", "That tab was not found.");
+
+        public static readonly Error SubscriptionNotFound = new(
+            "Subscription.NotFound", "That subscription was not found.");
+
+        public static readonly Error AmountInvalid = new(
+            "Club.AmountInvalid", "The amount must be a number more than 0 and under 1,000,000,000.");
+
+        public static readonly Error ChargeKindInvalid = new(
+            "Charge.KindInvalid", "A charge is one of Dues, Dining, Bar, Event, Spa, Booking, Retail or Other.");
+
+        public static readonly Error DescriptionRequired = new(
+            "Charge.DescriptionRequired", "A charge needs a description.");
+
+        public static readonly Error MethodInvalid = new(
+            "Payment.MethodInvalid", "A payment is made by CardOnFile, Cash, Check, Wire or AppliedCredit.");
+
+        public static readonly Error ExpiryInvalid = new(
+            "GiftCard.ExpiryInvalid", "A gift card's expiry must be a date in the future.");
+
+        public static readonly Error VenueInvalid = new(
+            "Tab.VenueInvalid", "A tab is opened at the Bar, Dining, Spa, Rooftop or PoolDeck.");
+
+        public static readonly Error CadenceInvalid = new(
+            "Subscription.CadenceInvalid", "A subscription is billed Monthly, Quarterly, SemiAnnual or Annual.");
+
+        public static readonly Error SubscriptionStatusInvalid = new(
+            "Subscription.StatusInvalid", "A subscription can be set Active, Paused or Cancelled.");
+
+        public static Error SubscriptionNotBillable(string status) => new(
+            "Subscription.NotBillable.Conflict", status == "Paused"
+                ? "This subscription is paused, so nothing was billed. Resume it to bill it."
+                : "This subscription was cancelled, so nothing was billed.");
+
+        public static readonly Error NotEditable = new(
+            "ClubRecord.NotEditable", "This record can't be edited. Void it and post a new one instead.");
+
+        public static readonly Error Changed = new(
+            "ClubRecord.Changed.Conflict", "Someone else changed this at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error GiftCardChanged = new(
+            "GiftCard.Changed.Conflict", "This gift card was used somewhere else at the same moment, so nothing was redeemed. Check its balance and try again.");
+
+        public static Error GiftCardExpired(DateTime expiredAtUtc) => new(
+            "GiftCard.Expired.Conflict", $"This gift card expired on {expiredAtUtc:d MMM yyyy}, so it can't be redeemed.");
+
+        public static Error GiftCardNotActive(string status) => new(
+            "GiftCard.NotActive.Conflict", status switch
+            {
+                "Redeemed" => "This gift card has nothing left on it.",
+                "Voided" => "This gift card was voided, so it can't be redeemed.",
+                _ => "This gift card can't be redeemed.",
+            });
+
+        public static readonly Error TabChanged = new(
+            "Tab.Changed.Conflict", "Someone else changed this tab at the same moment, so nothing was saved. Reload the tab and try again.");
+
+        public static readonly Error TabClosedCannotVoid = new(
+            "Tab.Closed.Conflict", "This tab is already closed and posted to the member's account, so it can't be voided. A manager can void the charge instead.");
+
+        public static readonly Error TabItemNotFound = new(
+            "TabItem.NotFound", "That item is not on this tab.");
+
+        public static readonly Error TabItemNameRequired = new(
+            "Tab.ItemNameRequired", "An item needs a name.");
+
+        public static readonly Error TabQuantityInvalid = new(
+            "Tab.QuantityInvalid", "A quantity must be more than 0 and at most 1,000, to two decimal places.");
+
+        public static readonly Error TabPriceInvalid = new(
+            "Tab.PriceInvalid", "A price must be a number from 0 to 100,000, to the cent.");
+
+        public static Error TabNotOpen(string status) => new(
+            "Tab.NotOpen.Conflict", status == "Closed"
+                ? "This tab is already closed and posted to the member's account, so it can't be changed."
+                : "This tab was voided, so it can't be changed.");
+
+        public static readonly Error PaymentNotFound = new(
+            "Payment.NotFound", "That payment was not found.");
+
+        public static readonly Error ReasonRequired = new(
+            "Club.ReasonRequired", "Say why this is being voided. The reason stays on the record.");
+
+        public static readonly Error ChargeCannotDelete = new(
+            "Charge.CannotDelete", "A charge can't be deleted. An owner or manager can void it, with a reason, and the record stays.");
+
+        public static readonly Error ChargeHasPayments = new(
+            "Charge.HasPayments.Conflict", "This charge has payments against it. Void those payments first, then the charge.");
+
+        public static readonly Error PaymentVoided = new(
+            "Payment.Voided.Conflict", "This payment is already voided.");
+
+        public static readonly Error GiftCardVoided = new(
+            "GiftCard.Voided.Conflict", "This gift card is already voided.");
+
+        public static readonly Error PaymentChargeRequired = new(
+            "Payment.ChargeRequired", "Choose the charge this payment settles. A payment against no charge would not change what the member owes.");
+
+        public static readonly Error ChargeAlreadyPaid = new(
+            "Charge.Paid.Conflict", "This charge is already paid in full.");
+
+        public static readonly Error ChargeVoided = new(
+            "Charge.Voided.Conflict", "This charge was voided, so there is nothing to pay or void on it.");
+
+        public static readonly Error ChargeChanged = new(
+            "Charge.Changed.Conflict", "This charge was paid or changed somewhere else at the same moment, so nothing was saved. Reload and try again.");
+
+        /// <remarks>
+        /// The payment record kept the whole amount while the charge took only what it was
+        /// owed, so the rest vanished: no credit, and a statement that disagreed with the
+        /// balance. There is no house-credit ledger yet, so the overpayment is refused.
+        /// </remarks>
+        public static Error Overpaid(decimal owed, decimal amount) => new(
+            "Payment.Overpaid", string.Create(CultureInfo.InvariantCulture,
+                $"That charge has {owed:0.00} left to pay, so a payment of {amount:0.00} would be more than is owed. Record {owed:0.00} or less."));
+
+        public static Error DateInvalid(string what) => new(
+            "Club.DateInvalid", $"{what} must be a date.");
+
+        public static Error TooLong(string what, int max) => new(
+            "Club.TooLong", $"{what} can be at most {max} characters.");
     }
 
     /// <summary>

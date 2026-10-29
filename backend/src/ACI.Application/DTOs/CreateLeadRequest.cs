@@ -99,4 +99,26 @@ public record CreateLeadRequest
 
     /// <summary>When true, a second open lead with the same email is allowed.</summary>
     public bool AllowDuplicate { get; init; }
+
+    /// <summary>
+    /// "import" for a row from a spreadsheet: someone the workspace already knows,
+    /// not a new inquiry. Such a lead runs no lead.created automations (unless
+    /// <see cref="RunAutomations"/> asks for them), sends no outbound webhook and
+    /// starts no first-response clock. Every imported row used to be treated as a
+    /// fresh inbound lead: a legacy list of 800 people got 800 welcome emails, the
+    /// integration got 800 webhooks, and four hours later the owners got 800
+    /// "first response is late" alerts. Null for every other way a lead arrives.
+    /// </summary>
+    [RegularExpression("(?i)^import$", ErrorMessage = "Origin can only be \"import\"")]
+    public string? Origin { get; init; }
+
+    /// <summary>
+    /// With <see cref="Origin"/> "import": run the workspace's lead.created
+    /// automations for this lead anyway, because the person importing chose to.
+    /// </summary>
+    public bool RunAutomations { get; init; }
+
+    /// <summary>True when this lead comes from an import.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsImport => string.Equals(Origin?.Trim(), "import", StringComparison.OrdinalIgnoreCase);
 }

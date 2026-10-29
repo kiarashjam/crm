@@ -17,6 +17,7 @@ import {
   AlertCircle,
   UserCheck,
   Mail,
+  UploadCloud,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -49,95 +50,22 @@ import {
   type ClubEvent,
   type EventStatus,
 } from '@/app/api/events';
-import { createMockStore, mockId } from '@/app/api/mockStore';
+import {
+  addEventAttendee,
+  getEventAttendees,
+  localAttendeesToUpload,
+  removeEventAttendee,
+  setAttendeeStatus,
+  uploadLocalAttendees,
+  type EventAttendee as Attendee,
+} from '@/app/api/eventAttendees';
 import { getMembers, type Member } from '@/app/api/members';
 import { addLoyaltyEntry, TIER_MULTIPLIERS } from '@/app/api/loyalty';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { motion } from 'motion/react';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
-
-// Attendees live entirely in the demo store — there's no real-backend endpoint
-// for them yet, but the structure is server-friendly when one shows up.
-
-interface Attendee {
-  id: string;
-  eventId: string;
-  memberId?: string;
-  memberName: string;
-  email?: string;
-  ticketTier: 'Member' | 'Guest';
-  status: 'Reserved' | 'CheckedIn' | 'Cancelled' | 'Waitlisted';
-  rsvpAtUtc: string;
-  checkedInAtUtc?: string;
-}
-
-const attendeeStore = createMockStore<Attendee>({
-  storageKey: 'crm.mock.eventAttendees.v1',
-  seed: [
-    {
-      id: 'att-seed-1',
-      eventId: 'evt-seed-1',
-      memberId: 'mem-seed-1',
-      memberName: 'Amelia Hartwell',
-      email: 'amelia.hartwell@example.com',
-      ticketTier: 'Member',
-      status: 'Reserved',
-      rsvpAtUtc: new Date(Date.now() - 4 * 86_400_000).toISOString(),
-    },
-    {
-      id: 'att-seed-2',
-      eventId: 'evt-seed-1',
-      memberId: 'mem-seed-2',
-      memberName: 'Daniel Okafor',
-      email: 'daniel.okafor@example.com',
-      ticketTier: 'Member',
-      status: 'Reserved',
-      rsvpAtUtc: new Date(Date.now() - 3 * 86_400_000).toISOString(),
-    },
-    {
-      id: 'att-seed-3',
-      eventId: 'evt-seed-1',
-      memberId: 'mem-seed-3',
-      memberName: 'Priya Raman',
-      email: 'priya.raman@example.com',
-      ticketTier: 'Member',
-      status: 'Reserved',
-      rsvpAtUtc: new Date(Date.now() - 2 * 86_400_000).toISOString(),
-    },
-    {
-      id: 'att-seed-4',
-      eventId: 'evt-seed-2',
-      memberId: 'mem-seed-1',
-      memberName: 'Amelia Hartwell',
-      email: 'amelia.hartwell@example.com',
-      ticketTier: 'Member',
-      status: 'Reserved',
-      rsvpAtUtc: new Date(Date.now() - 10 * 86_400_000).toISOString(),
-    },
-    {
-      id: 'att-seed-5',
-      eventId: 'evt-seed-2',
-      memberId: 'mem-seed-6',
-      memberName: 'Jordan Patel',
-      email: 'jordan.patel@example.com',
-      ticketTier: 'Member',
-      status: 'Waitlisted',
-      rsvpAtUtc: new Date(Date.now() - 5 * 86_400_000).toISOString(),
-    },
-    {
-      id: 'att-seed-6',
-      eventId: 'evt-seed-5',
-      memberId: 'mem-seed-1',
-      memberName: 'Amelia Hartwell',
-      ticketTier: 'Member',
-      status: 'CheckedIn',
-      rsvpAtUtc: new Date(Date.now() - 12 * 86_400_000).toISOString(),
-      checkedInAtUtc: new Date(Date.now() - 6 * 86_400_000).toISOString(),
-    },
-  ],
-  idOf: (a) => a.id,
-});
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const STATUS_BADGE: Record<EventStatus, string> = {
   Draft: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200',
@@ -167,11 +95,9 @@ function formatDateTime(iso: string): string {
   }
 }
 
-function formatCurrency(n: number): string {
-  return n === 0 ? 'Free' : n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
-
 export default function EventDetail() {
+  const { format: money } = useClubMoney();
+  const formatCurrency = (n: number) => (n === 0 ? 'Free' : money(n));
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const reduce = useMotionPreference();
@@ -189,6 +115,9 @@ export default function EventDetail() {
   });
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Attendees this browser kept before the list moved to the server.
+  const [toUpload, setToUpload] = useState<Attendee[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const load = async () => {
     try {
@@ -196,9 +125,8 @@ export default function EventDetail() {
       const found = allEvents.find((e) => e.id === id) ?? null;
       setEvent(found);
       setMembers(allMembers);
-      const list = attendeeStore.list().filter((a) => a.eventId === id);
-      list.sort((a, b) => Date.parse(a.rsvpAtUtc) - Date.parse(b.rsvpAtUtc));
-      setAttendees(list);
+      setAttendees(found ? await getEventAttendees(found.id) : []);
+      setToUpload(found ? localAttendeesToUpload(found.id) : []);
     } catch {
       toast.error('Failed to load event');
     } finally {
@@ -226,6 +154,18 @@ export default function EventDetail() {
     () => attendees.filter((a) => a.status === 'CheckedIn').length,
     [attendees],
   );
+
+  // Seats taken: the people on the list, or the event's count when that is higher,
+  // because an RSVP from the events list adds to the count without a name, and so did
+  // every name a browser kept before the list moved here, until it is uploaded.
+  const seatsTaken = event ? Math.max(reserved.length, event.registeredCount) : 0;
+  const unnamedRsvps = event ? Math.max(0, event.registeredCount - reserved.length) : 0;
+  const isFull = !!event && event.capacity > 0 && seatsTaken >= event.capacity;
+
+  /** A refusal from the server (the event filled up meanwhile, say) is said, not swallowed. */
+  const failed = (fallback: string) => (err: unknown) => {
+    toast.error(err instanceof Error && err.message ? err.message : fallback);
+  };
 
   const revenue = useMemo(() => {
     if (!event) return 0;
@@ -268,30 +208,15 @@ export default function EventDetail() {
       memberName = addForm.guestName.trim();
       email = addForm.guestEmail.trim() || undefined;
     }
-    const atCapacity = reserved.length >= event.capacity;
     setBusy(true);
     try {
-      attendeeStore.add({
-        id: mockId('att'),
-        eventId: event.id,
-        memberId,
-        memberName,
-        email,
-        ticketTier: tier,
-        status: atCapacity ? 'Waitlisted' : 'Reserved',
-        rsvpAtUtc: new Date().toISOString(),
-      });
-      if (atCapacity) {
-        await updateEvent(event.id, { waitlistCount: event.waitlistCount + 1 });
-        toast.success('Added to waitlist');
-      } else {
-        await updateEvent(event.id, { registeredCount: event.registeredCount + 1 });
-        toast.success('Attendee added');
-      }
+      // The server decides reserved or waitlisted, against the seats it knows are taken.
+      const added = await addEventAttendee(event, { memberId, memberName, email, ticketTier: tier });
+      toast.success(added.status === 'Waitlisted' ? 'Added to waitlist' : 'Attendee added');
       setAddDialog(false);
       await load();
-    } catch {
-      toast.error('Failed to add');
+    } catch (err) {
+      failed('Failed to add')(err);
     } finally {
       setBusy(false);
     }
@@ -299,10 +224,15 @@ export default function EventDetail() {
 
   const checkInAttendee = async (a: Attendee) => {
     if (!event) return;
-    attendeeStore.update(a.id, {
-      status: 'CheckedIn',
-      checkedInAtUtc: new Date().toISOString(),
-    });
+    try {
+      await setAttendeeStatus(event, a, 'CheckedIn');
+    } catch (err) {
+      // Refused, e.g. because another door host already checked them in: no points, and
+      // the list is read again so this screen stops offering the check-in.
+      failed('Failed to check in')(err);
+      await load();
+      return;
+    }
     if (a.memberId) {
       const member = members.find((m) => m.id === a.memberId);
       if (member) {
@@ -327,35 +257,27 @@ export default function EventDetail() {
 
   const promoteFromWaitlist = async (a: Attendee) => {
     if (!event) return;
-    const atCapacity = reserved.length >= event.capacity;
-    if (atCapacity) {
+    if (isFull) {
       toast.error('Event is full — cancel a reservation first');
       return;
     }
-    attendeeStore.update(a.id, { status: 'Reserved' });
-    await updateEvent(event.id, {
-      registeredCount: event.registeredCount + 1,
-      waitlistCount: Math.max(0, event.waitlistCount - 1),
-    });
-    toast.success(`${a.memberName} moved off the waitlist`);
+    try {
+      await setAttendeeStatus(event, a, 'Reserved');
+      toast.success(`${a.memberName} moved off the waitlist`);
+    } catch (err) {
+      failed('Failed to move off the waitlist')(err);
+    }
     await load();
   };
 
   const cancelAttendee = async (a: Attendee) => {
     if (!event) return;
-    const wasReserved = a.status === 'Reserved' || a.status === 'CheckedIn';
-    const wasWaitlisted = a.status === 'Waitlisted';
-    attendeeStore.update(a.id, { status: 'Cancelled' });
-    if (wasReserved) {
-      await updateEvent(event.id, {
-        registeredCount: Math.max(0, event.registeredCount - 1),
-      });
-    } else if (wasWaitlisted) {
-      await updateEvent(event.id, {
-        waitlistCount: Math.max(0, event.waitlistCount - 1),
-      });
+    try {
+      await setAttendeeStatus(event, a, 'Cancelled');
+      toast.success('Cancelled');
+    } catch (err) {
+      failed('Failed to cancel')(err);
     }
-    toast.success('Cancelled');
     await load();
   };
 
@@ -363,19 +285,26 @@ export default function EventDetail() {
     if (!event) return;
     if (!confirm(`Remove ${a.memberName} from this event entirely?`)) return;
     setDeletingId(a.id);
-    const wasReserved = a.status === 'Reserved' || a.status === 'CheckedIn';
-    const wasWaitlisted = a.status === 'Waitlisted';
-    attendeeStore.remove(a.id);
-    if (wasReserved) {
-      await updateEvent(event.id, {
-        registeredCount: Math.max(0, event.registeredCount - 1),
-      });
-    } else if (wasWaitlisted) {
-      await updateEvent(event.id, {
-        waitlistCount: Math.max(0, event.waitlistCount - 1),
-      });
+    try {
+      await removeEventAttendee(event, a);
+    } catch (err) {
+      failed('Failed to remove')(err);
+    } finally {
+      setDeletingId(null);
     }
-    setDeletingId(null);
+    await load();
+  };
+
+  const uploadFromThisBrowser = async () => {
+    if (!event) return;
+    setUploading(true);
+    try {
+      const { uploaded, failed: notUploaded } = await uploadLocalAttendees(event.id, toUpload);
+      if (notUploaded > 0) toast.error(`${notUploaded} could not be uploaded and are still in this browser`);
+      if (uploaded > 0) toast.success(`${uploaded} attendee${uploaded === 1 ? '' : 's'} uploaded for the whole team`);
+    } finally {
+      setUploading(false);
+    }
     await load();
   };
 
@@ -423,8 +352,8 @@ export default function EventDetail() {
     );
   }
 
-  const capacityPct = event.capacity > 0 ? (reserved.length / event.capacity) * 100 : 0;
-  const atCapacity = reserved.length >= event.capacity;
+  const capacityPct = event.capacity > 0 ? (seatsTaken / event.capacity) * 100 : 0;
+  const atCapacity = isFull;
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -506,8 +435,14 @@ export default function EventDetail() {
             <div>
               <div className="mb-1.5 flex items-center justify-between text-sm text-slate-600">
                 <span>
-                  <strong>{reserved.length}</strong> / {event.capacity} registered ·{' '}
+                  <strong>{seatsTaken}</strong> / {event.capacity > 0 ? event.capacity : 'no limit'} registered ·{' '}
                   <strong>{checkedInCount}</strong> checked in
+                  {unnamedRsvps > 0 && (
+                    <>
+                      {' '}· {unnamedRsvps} seat{unnamedRsvps === 1 ? '' : 's'} counted with no name on this list (an
+                      RSVP from the events list, or a name still saved in another browser)
+                    </>
+                  )}
                 </span>
                 {waitlisted.length > 0 && (
                   <span className="font-medium text-amber-700">{waitlisted.length} on waitlist</span>
@@ -523,6 +458,27 @@ export default function EventDetail() {
               </div>
             </div>
           </PageHero>
+
+          {toUpload.length > 0 && (
+            <div
+              role="status"
+              className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 md:flex-row md:items-center md:justify-between"
+            >
+              <p>
+                <strong>{toUpload.length}</strong> attendee{toUpload.length === 1 ? ' was' : 's were'} saved only in this
+                browser, before the list moved to the server. Nobody else can see {toUpload.length === 1 ? 'it' : 'them'}{' '}
+                until uploaded.
+              </p>
+              <Button size="sm" onClick={uploadFromThisBrowser} disabled={uploading} className="shrink-0">
+                {uploading ? (
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                ) : (
+                  <UploadCloud className="w-4 h-4 mr-1" />
+                )}
+                Upload to the server
+              </Button>
+            </div>
+          )}
 
           {/* Attendee tabs */}
           <div className="flex items-center justify-between mb-3">

@@ -34,7 +34,8 @@ public record LoginResponse(
     bool RequiresTwoFactor = false,
     string? TwoFactorToken = null);
 
-public record UserInfoDto(Guid Id, string Name, string Email);
+/// <param name="EmailVerified">Whether the person has confirmed they read mail at <paramref name="Email"/>.</param>
+public record UserInfoDto(Guid Id, string Name, string Email, bool EmailVerified);
 
 /// <summary>
 /// Two-factor authentication login request.
@@ -56,16 +57,30 @@ public record TwoFactorLoginRequest
     public required string Code { get; init; }
 }
 
+/// <summary>
+/// The secret to enter in an authenticator app. Once 2FA is on, Secret and OtpauthUri
+/// are null: the live secret is the second factor, and is never sent again.
+/// </summary>
 public record TwoFactorSetupResponse(
     bool Enabled,
-    string Secret, // Base32
-    string OtpauthUri);
+    string? Secret, // Base32
+    string? OtpauthUri);
+
+public record TwoFactorStatusResponse(bool Enabled);
 
 /// <summary>
 /// Request to enable two-factor authentication.
 /// </summary>
 public record TwoFactorEnableRequest
 {
+    /// <summary>
+    /// Current password. Turning 2FA on also signs out every other session, so a stolen
+    /// session must not be able to do it with an authenticator of its own.
+    /// </summary>
+    [Required(ErrorMessage = "Password is required")]
+    [StringLength(100, MinimumLength = 1, ErrorMessage = "Password is required")]
+    public required string Password { get; init; }
+
     /// <summary>
     /// Two-factor authentication code.
     /// </summary>
@@ -117,4 +132,14 @@ public record ResetPasswordRequest
     [Required(ErrorMessage = "Password is required")]
     [StringLength(100, MinimumLength = 6, ErrorMessage = "Password must be between 6 and 100 characters")]
     public required string Password { get; init; }
+}
+
+/// <summary>
+/// Confirm an email address using the token from the confirmation link.
+/// </summary>
+public record VerifyEmailRequest
+{
+    [Required(ErrorMessage = "Token is required")]
+    [StringLength(500, MinimumLength = 8, ErrorMessage = "Token is invalid")]
+    public required string Token { get; init; }
 }

@@ -9,10 +9,13 @@ export {
   register,
   me,
   twoFactorSetup,
+  twoFactorStatus,
   twoFactorEnable,
   twoFactorDisable,
   requestPasswordReset,
   resetPassword,
+  verifyEmail,
+  resendVerificationEmail,
   type TwoFactorSetupResponse,
   type ForgotPasswordResponse,
 } from './auth';

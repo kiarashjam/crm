@@ -66,7 +66,7 @@ export default function ContactDetail() {
   usePageLoading(loading);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'Note', subject: '', body: '' });
+  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
   const [contactTasks, setContactTasks] = useState<TaskItem[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -205,7 +205,7 @@ export default function ContactDetail() {
       });
       if (activity) {
         setActivities((prev) => [activity, ...prev]);
-        setActivityForm({ type: 'Note', subject: '', body: '' });
+        setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
       }
     } catch {

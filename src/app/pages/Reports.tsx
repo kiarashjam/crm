@@ -20,7 +20,7 @@ import { ConversionReportPanel } from './reports/ConversionReportPanel';
 import { SectionHead, Kpi, Panel, NoData, BarList, Funnel } from './reports/ReportUI';
 import {
   summariseDeals, summariseLeads, statusFunnel, groupSum, topNWithOther,
-  activityByDay, newLeadsByWeek, dealState, parseMoney,
+  activityByDay, newLeadsByWeek, dealState, parseMoney, loggedActivities,
 } from './reports/reportMetrics';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { servesDemoData } from '@/app/api/apiClient';
@@ -77,7 +77,7 @@ export default function Reports() {
       .then(([d, l, a]) => {
         setDeals(Array.isArray(d) ? d : []);
         setLeads(Array.isArray(l) ? l : []);
-        setActivities(Array.isArray(a) ? a : []);
+        setActivities(Array.isArray(a) ? loggedActivities(a) : []);
       })
       // Previously this swallowed the error and rendered zeros, which is
       // indistinguishable from "you have no data" — and is exactly how a page

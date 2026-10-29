@@ -1,0 +1,89 @@
+# Checks every pull request and every push: the backend builds and its tests pass,
+# and the frontend type-checks, lints, passes its tests and builds.
+#
+# The deploy (deploy.yml) runs this same workflow first and deploys only when it
+# passes. Before, a push to main went to production after `vite build` and
+# `dotnet build` alone, neither of which type-checks the frontend or runs a test.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    # A push to main is checked by deploy.yml, which calls this workflow before it
+    # deploys; checking it here as well would only run everything twice.
+    branches-ignore: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend build and tests
+    runs-on: ubuntu-latest
+    services:
+      # The start-up schema work is T-SQL, which only a real SQL Server runs. The tests
+      # marked [SqlServerFact] start the API against a database of their own on it (see
+      # backend/tests/ACI.WebApi.Tests/Helpers/SqlServerApp.cs); without it they are
+      # reported as skipped.
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_PID: Developer
+          # Not a secret: this server lives only as long as the job, holds only test
+          # databases, and only the job's own runner can reach it.
+          MSSQL_SA_PASSWORD: Ci-only_Passw0rd
+        ports:
+          - 1433:1433
+    env:
+      CADENCE_TEST_SQLSERVER: Server=localhost,1433;User ID=sa;Password=Ci-only_Passw0rd;TrustServerCertificate=True;Encrypt=False
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        working-directory: backend
+        run: dotnet restore ACI.sln
+
+      - name: Build
+        working-directory: backend
+        run: dotnet build ACI.sln --configuration Release --no-restore
+
+      - name: Test
+        working-directory: backend
+        run: dotnet test ACI.sln --configuration Release --no-build
+
+  frontend:
+    name: Frontend typecheck, lint, tests and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Build
+        run: npm run build

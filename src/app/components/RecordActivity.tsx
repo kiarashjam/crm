@@ -81,11 +81,11 @@ export function ActivityLogForm({ draft, onChange, saving, onSubmit }: {
         <Select value={draft.type} onValueChange={(v) => onChange({ ...draft, type: v })}>
           <SelectTrigger aria-label="Activity type" className="h-9 w-28 bg-white text-sm dark:bg-slate-800"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="Note">Note</SelectItem>
-            <SelectItem value="Call">Call</SelectItem>
-            <SelectItem value="Email">Email</SelectItem>
-            <SelectItem value="Meeting">Meeting</SelectItem>
-            <SelectItem value="Task">Task</SelectItem>
+            <SelectItem value="note">Note</SelectItem>
+            <SelectItem value="call">Call</SelectItem>
+            <SelectItem value="email">Email</SelectItem>
+            <SelectItem value="meeting">Meeting</SelectItem>
+            <SelectItem value="task">Task</SelectItem>
           </SelectContent>
         </Select>
         <Input

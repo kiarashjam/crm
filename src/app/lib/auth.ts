@@ -13,7 +13,11 @@ function notifySessionChanged(): void {
   }
 }
 
-export type AuthUser = { id: string; name: string; email: string };
+/**
+ * `emailVerified` is false while the account has not confirmed its address, and
+ * absent for a session saved before the server reported it.
+ */
+export type AuthUser = { id: string; name: string; email: string; emailVerified?: boolean };
 
 export function setSession(token: string, user: AuthUser): void {
   try {
@@ -24,6 +28,19 @@ export function setSession(token: string, user: AuthUser): void {
     notifySessionChanged();
   } catch {
     // ignore (e.g. private mode / quota) — do not notify; org refetch would see stale auth
+  }
+}
+
+/**
+ * Swap in a new token for the same signed-in user, keeping the chosen workspace.
+ * Turning 2FA on or off ends every earlier session on the server, this one included,
+ * and answers with the token this browser carries on with.
+ */
+export function replaceToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    // ignore
   }
 }
 
@@ -73,6 +90,20 @@ function forgetAgentConversations(storage: Storage): void {
     if (key?.startsWith(AGENT_KEY_PREFIX)) keys.push(key);
   }
   for (const key of keys) storage.removeItem(key);
+}
+
+/**
+ * Change the stored details of the signed-in user (for example once the address is
+ * confirmed) without touching the token or the chosen workspace, which setSession resets.
+ */
+export function updateCurrentUser(patch: Partial<Omit<AuthUser, 'id'>>): void {
+  const user = getCurrentUser();
+  if (!user) return;
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify({ ...user, ...patch }));
+  } catch {
+    // ignore
+  }
 }
 
 export function clearSession(): void {

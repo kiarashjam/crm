@@ -66,6 +66,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     private static (int StatusCode, string Title, string Detail) MapException(Exception exception) => exception switch
     {
         UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "Forbidden", "You are not authorized to perform this action"),
+        // A lost race is an answer, not a fault: the other change stands and this one was not saved.
+        ConcurrencyConflictException => (StatusCodes.Status409Conflict, "Conflict", "Someone else changed this at the same moment, so your change was not saved. Reload and try again."),
         InvalidOperationException => (StatusCodes.Status400BadRequest, "Bad Request", "The request was invalid"),
         ArgumentException => (StatusCodes.Status400BadRequest, "Bad Request", "Invalid argument provided"),
         KeyNotFoundException => (StatusCodes.Status404NotFound, "Not Found", "The requested resource was not found"),

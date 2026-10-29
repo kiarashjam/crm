@@ -235,6 +235,50 @@ public class AuthServiceTests
         result.Error.Code.Should().Be("Auth.EmailAlreadyExists");
     }
 
+    [Fact]
+    public async Task RegisterAsync_StartsUnconfirmed_AndMailsATokenItDoesNotStore()
+    {
+        var request = new LoginRequest { Email = "newuser@example.com", Password = "password123" };
+        User? added = null;
+        string? verifyUrl = null;
+        _userRepositoryMock
+            .Setup(r => r.AddAsync(It.IsAny<User>(), It.IsAny<CancellationToken>()))
+            .Callback((User u, CancellationToken _) => added = u)
+            .ReturnsAsync((User u, CancellationToken _) => u);
+        _emailSenderMock
+            .Setup(e => e.SendEmailVerificationEmailAsync(request.Email, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback((string _, string _, string url, CancellationToken _) => verifyUrl = url)
+            .ReturnsAsync(true);
+
+        var result = await _sut.RegisterAsync(request, "New User");
+
+        result.Value.User!.EmailVerified.Should().BeFalse();
+        added!.EmailVerifiedAtUtc.Should().BeNull();
+        verifyUrl.Should().StartWith("http://localhost:5173/verify-email?token=");
+        var rawToken = Uri.UnescapeDataString(verifyUrl!.Split("token=")[1]);
+        added.EmailVerificationTokenHash.Should().Be(PasswordResetCrypto.HashRawToken(rawToken)).And.NotBe(rawToken);
+        added.EmailVerificationTokenExpiresAtUtc.Should().BeAfter(DateTime.UtcNow.AddHours(23));
+    }
+
+    [Fact]
+    public async Task VerifyEmailAsync_RefusesAnExpiredLink()
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(), Email = "late@example.com",
+            EmailVerificationTokenHash = PasswordResetCrypto.HashRawToken("raw-token-123"),
+            EmailVerificationTokenExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        };
+        _userRepositoryMock
+            .Setup(r => r.GetByEmailVerificationTokenHashAsync(user.EmailVerificationTokenHash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+
+        var result = await _sut.VerifyEmailAsync(new VerifyEmailRequest { Token = "raw-token-123" });
+
+        result.Error.Code.Should().Be("Auth.InvalidVerificationToken");
+        user.EmailVerifiedAtUtc.Should().BeNull();
+    }
+
     #endregion
 
     #region LoginWithTwoFactorAsync Tests
@@ -354,6 +398,36 @@ public class AuthServiceTests
         // Assert
         result.IsSuccess.Should().BeFalse();
         result.Error.Code.Should().Be("Auth.EmailNotFound");
+    }
+
+    [Fact]
+    public async Task GetTwoFactorSetupAsync_NeverReturnsTheLiveSecret_OnceEnabled()
+    {
+        // The live secret is the second factor. Any session asking for "setup" used to
+        // get it back, and could pass (or switch off) 2FA from then on.
+        var userId = Guid.NewGuid();
+        var user = new User
+        {
+            Id = userId,
+            Email = "test@example.com",
+            TwoFactorEnabled = true,
+            TwoFactorSecretProtected = "protected-live-secret",
+        };
+        _userRepositoryMock
+            .Setup(r => r.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _secretProtectorMock
+            .Setup(s => s.Unprotect("protected-live-secret"))
+            .Returns("JBSWY3DPEHPK3PXP");
+
+        var result = await _sut.GetTwoFactorSetupAsync(userId);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Enabled.Should().BeTrue();
+        result.Value.Secret.Should().BeNull();
+        result.Value.OtpauthUri.Should().BeNull();
+        user.TwoFactorSecretProtected.Should().Be("protected-live-secret", "the live secret is left alone");
+        _secretProtectorMock.Verify(s => s.Unprotect(It.IsAny<string>()), Times.Never);
     }
 
     #endregion

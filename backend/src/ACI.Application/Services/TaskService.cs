@@ -13,11 +13,13 @@ namespace ACI.Application.Services;
 public class TaskService : ITaskService
 {
     private readonly ITaskRepository _repository;
+    private readonly IWorkspaceRecords _records;
     private readonly ILogger<TaskService> _logger;
 
-    public TaskService(ITaskRepository repository, ILogger<TaskService> logger)
+    public TaskService(ITaskRepository repository, IWorkspaceRecords records, ILogger<TaskService> logger)
     {
         _repository = repository;
+        _records = records;
         _logger = logger;
     }
 
@@ -183,6 +185,9 @@ public class TaskService : ITaskService
             return DomainErrors.Task.TitleRequired;
         }
 
+        var links = await CheckLinksAsync(null, request.LeadId, request.DealId, request.ContactId, request.AssigneeId, userId, organizationId, ct);
+        if (links.IsFailure) return links.Error;
+
         try
         {
             var status = TryParseStatus(request.Status, out var s) ? s : Domain.Enums.TaskStatus.Todo;
@@ -238,6 +243,16 @@ public class TaskService : ITaskService
             _logger.LogWarning("Task {TaskId} not found for update", id);
             return DomainErrors.Task.NotFound;
         }
+
+        // Checked before anything changes: completing a repeating task below saves.
+        var links = await CheckLinksAsync(
+            existing,
+            request.ClearLead == true ? null : request.LeadId ?? existing.LeadId,
+            request.ClearDeal == true ? null : request.DealId ?? existing.DealId,
+            request.ClearContact == true ? null : request.ContactId ?? existing.ContactId,
+            request.ClearAssignee == true ? null : request.AssigneeId ?? existing.AssigneeId,
+            userId, organizationId, ct);
+        if (links.IsFailure) return links.Error;
         
         try
         {
@@ -259,10 +274,15 @@ public class TaskService : ITaskService
                 existing.DueDateUtc = request.DueDateUtc;
             
             // Update reminder date
+            var previousReminder = existing.ReminderDateUtc;
             if (request.ClearReminderDate == true)
                 existing.ReminderDateUtc = null;
             else if (request.ReminderDateUtc != null)
                 existing.ReminderDateUtc = request.ReminderDateUtc;
+            // A reminder set or moved is a new one to send. ReminderSentAtUtc still said
+            // the old one had gone, so a reminder moved to tomorrow never came.
+            if (existing.ReminderDateUtc != previousReminder)
+                existing.ReminderSentAtUtc = null;
             
             // Update status
             if (request.Status != null && TryParseStatus(request.Status, out var status))
@@ -429,6 +449,9 @@ public class TaskService : ITaskService
             _logger.LogWarning("Task {TaskId} not found for assignment", id);
             return DomainErrors.Task.NotFound;
         }
+
+        var links = await CheckLinksAsync(existing, existing.LeadId, existing.DealId, existing.ContactId, assigneeId, userId, organizationId, ct);
+        if (links.IsFailure) return links.Error;
         
         try
         {
@@ -471,6 +494,9 @@ public class TaskService : ITaskService
             _logger.LogWarning("Task {TaskId} not found for lead linking", id);
             return DomainErrors.Task.NotFound;
         }
+
+        var links = await CheckLinksAsync(existing, leadId, existing.DealId, existing.ContactId, existing.AssigneeId, userId, organizationId, ct);
+        if (links.IsFailure) return links.Error;
         
         try
         {
@@ -513,6 +539,9 @@ public class TaskService : ITaskService
             _logger.LogWarning("Task {TaskId} not found for deal linking", id);
             return DomainErrors.Task.NotFound;
         }
+
+        var links = await CheckLinksAsync(existing, existing.LeadId, dealId, existing.ContactId, existing.AssigneeId, userId, organizationId, ct);
+        if (links.IsFailure) return links.Error;
         
         try
         {
@@ -689,6 +718,11 @@ public class TaskService : ITaskService
             return DomainErrors.General.ValidationError;
         if (action == "priority" && string.IsNullOrWhiteSpace(request.Priority))
             return DomainErrors.General.ValidationError;
+        // Refused once for the whole batch, as a bulk lead owner change is, rather than
+        // reported back as every task having failed.
+        if (action == "assignee" && request.AssigneeId is Guid bulkAssignee
+            && !await _records.IsAssignableAsync(bulkAssignee, userId, organizationId, ct))
+            return DomainErrors.Link.AssigneeNotMember;
 
         int succeeded = 0;
         int failed = 0;
@@ -743,6 +777,28 @@ public class TaskService : ITaskService
         return DomainErrors.General.ValidationError;
     }
 
+    /// <summary>
+    /// The links a write leaves on a task, checked against the workspace. Only what the
+    /// write changes is checked, so a task whose assignee has since left can still be
+    /// edited, or moved to another deal. A new deal or a new assignee brings the other
+    /// into the check, because whoever the task is for has to be able to open its deal.
+    /// </summary>
+    private Task<Result> CheckLinksAsync(
+        TaskItem? current, Guid? leadId, Guid? dealId, Guid? contactId, Guid? assigneeId,
+        Guid userId, Guid? organizationId, CancellationToken ct)
+    {
+        var dealChanges = dealId != current?.DealId;
+        var assigneeChanges = assigneeId != current?.AssigneeId;
+        return _records.CheckLinksAsync(userId, organizationId, new RecordLinks
+        {
+            LeadId = leadId != current?.LeadId ? leadId : null,
+            ContactId = contactId != current?.ContactId ? contactId : null,
+            DealId = dealChanges || (assigneeChanges && assigneeId != null) ? dealId : null,
+            AssigneeId = assigneeChanges ? assigneeId : null,
+            KeptAssigneeId = assigneeChanges ? null : assigneeId,
+        }, ct);
+    }
+
     private static string? NormalizeRecurrence(string? value)
     {
         var text = (value ?? "").Trim().ToLowerInvariant();
@@ -770,6 +826,11 @@ public class TaskService : ITaskService
             Title = completed.Title,
             Description = completed.Description,
             DueDateUtc = nextDue,
+            // As far ahead of the due date as this one was. Not carried over, a weekly
+            // task reminded the first week only.
+            ReminderDateUtc = completed.ReminderDateUtc is DateTime reminder
+                ? nextDue - (completed.DueDateUtc.Value - reminder)
+                : null,
             Status = Domain.Enums.TaskStatus.Todo,
             Priority = completed.Priority,
             AssigneeId = completed.AssigneeId,

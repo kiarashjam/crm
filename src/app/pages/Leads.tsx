@@ -51,6 +51,7 @@ import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
 import { relationshipLabel } from '@/app/api/relationships';
 import { bulkUpdateLeads } from '@/app/api/leadOps';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
+import { csvCell } from '@/app/lib/exportCsv';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -786,15 +787,6 @@ export default function Leads() {
     setSearchQuery('');
   };
 
-  const csvEscape = (value: string | number | boolean | null | undefined) => {
-    if (value === null || value === undefined) return '';
-    const str = String(value);
-    if (/[",\n]/.test(str)) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
-  };
-
   const formatIsoDate = (value?: string) => {
     if (!value) return '';
     const date = new Date(value);
@@ -849,9 +841,11 @@ export default function Leads() {
         lead.description ?? '',
       ]);
 
+      // The shared cell encoder: names and descriptions arrive from the public form
+      // and the webhook, and one starting with "=" must not run as a formula.
       const csvContent = [
-        headers.map(csvEscape).join(','),
-        ...rows.map((row) => row.map(csvEscape).join(',')),
+        headers.map((header) => csvCell(header)).join(','),
+        ...rows.map((row) => row.map((cell) => csvCell(cell)).join(',')),
       ].join('\n');
 
       const csvWithBom = `\uFEFF${csvContent}`;

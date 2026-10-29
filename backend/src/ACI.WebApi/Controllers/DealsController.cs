@@ -152,12 +152,14 @@ public class DealsController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The created deal.</returns>
     /// <response code="200">Deal created successfully.</response>
-    /// <response code="400">Invalid request data.</response>
+    /// <response code="400">Invalid request data, or a company, contact, pipeline or stage that is not in this workspace.</response>
     /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">The owner is not a member of this workspace.</response>
     [HttpPost]
     [ProducesResponseType(typeof(DealDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<DealDto>> Create(
         [FromBody] CreateDealRequest request, 
         CancellationToken ct)
@@ -182,13 +184,15 @@ public class DealsController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The updated deal.</returns>
     /// <response code="200">Deal updated successfully.</response>
-    /// <response code="400">Invalid request data.</response>
+    /// <response code="400">Invalid request data, or a company, contact, pipeline or stage that is not in this workspace.</response>
     /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">The owner is not a member of this workspace, or only its owner or a manager may change its privacy.</response>
     /// <response code="404">Deal not found.</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(DealDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<DealDto>> Update(
         Guid id, 

@@ -9,13 +9,28 @@ import { formatDealSum, formatMoney } from '@/app/lib/money';
 export function getStageList(
   pipelines: Pipeline[],
   selectedPipelineId: string | null
-): { id: string; name: string }[] {
+): BoardStage[] {
   const pipeline = selectedPipelineId
     ? pipelines.find((p) => p.id === selectedPipelineId)
     : pipelines[0];
   const stages = pipeline?.dealStages?.slice().sort((a, b) => a.displayOrder - b.displayOrder);
-  if (stages?.length) return stages.map((s) => ({ id: s.id, name: s.name }));
-  return FALLBACK_STAGES.map((name) => ({ id: name, name }));
+  if (stages?.length) return stages.map((s) => ({ id: s.id, name: s.name, isWon: s.isWon, isLost: s.isLost }));
+  return FALLBACK_STAGES.map((name) => ({ id: name, name, isWon: name === 'Closed Won', isLost: name === 'Closed Lost' }));
+}
+
+/** A board column. Won and lost come from the stage's settings, not its name. */
+export type BoardStage = { id: string; name: string; isWon?: boolean; isLost?: boolean };
+
+/** Whether a deal is won, lost or still open: its own outcome first, then its stage's. */
+export function dealOutcome(deal: Deal, stageList: BoardStage[]): 'won' | 'lost' | 'open' {
+  if (deal.isWon === true) return 'won';
+  if (deal.isWon === false) return 'lost';
+  const stage = deal.dealStageId
+    ? stageList.find((s) => s.id === deal.dealStageId)
+    : stageList.find((s) => s.name === deal.stage);
+  if (stage?.isWon) return 'won';
+  if (stage?.isLost) return 'lost';
+  return 'open';
 }
 
 /**

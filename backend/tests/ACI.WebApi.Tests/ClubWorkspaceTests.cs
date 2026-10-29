@@ -25,7 +25,7 @@ public class ClubWorkspaceTests
         return JsonDocument.Parse(body).RootElement.Clone();
     }
 
-    private static async Task<(HttpClient Client, Guid UserId, Guid Org)> ClubAsync(CustomWebApplicationFactory factory, string email = "kia@pavillon46.ch")
+    private static async Task<(HttpClient Client, Guid UserId, Guid Org)> ClubAsync(CustomWebApplicationFactory factory, string email = "manager@example.ch")
     {
         var (client, userId) = await SignInAsync(factory, email);
         var org = await CreateAsync(factory, userId, "Pavillon46");
@@ -128,7 +128,10 @@ public class ClubWorkspaceTests
         settled.GetProperty("status").GetString().Should().Be("PartiallyPaid");
         (await BalanceAsync(client, memberId)).Should().Be(-60);
 
-        (await client.DeleteAsync($"/api/charges/{charge.GetProperty("id").GetString()}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        // Taken back the way the books allow: the payment voided, then the charge. Both stay on record.
+        await Json(await client.PostAsync($"/api/payments/{payment.GetProperty("id").GetString()}/void", Body(new { reason = "Card declined" })), "void payment");
+        (await BalanceAsync(client, memberId)).Should().Be(-100);
+        await Json(await client.PostAsync($"/api/charges/{charge.GetProperty("id").GetString()}/void", Body(new { reason = "Posted to the wrong member" })), "void charge");
         (await BalanceAsync(client, memberId)).Should().Be(0);
     }
 

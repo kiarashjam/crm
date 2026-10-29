@@ -16,6 +16,19 @@ public class ClubMember : Common.BaseEntity
     public decimal DuesAmount { get; set; }
     public string DuesFrequency { get; set; } = "Monthly";
     public decimal HouseAccountBalance { get; set; }
+
+    /// <summary>
+    /// The part of <see cref="HouseAccountBalance"/> no charge explains: the balance the
+    /// member was brought over with, plus any correction typed in by hand.
+    /// </summary>
+    /// <remarks>
+    /// The balance is worked out again from the member's charges whenever one is posted,
+    /// paid or voided. That used to set it to what the charges alone left owing, so the
+    /// first charge after an opening balance of -500 wiped the 500, and a correction typed
+    /// into the member's record lasted until the next bar tab. Adding this back keeps both.
+    /// </remarks>
+    public decimal ManualBalance { get; set; }
+
     public string? Notes { get; set; }
 }
 

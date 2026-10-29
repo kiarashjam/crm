@@ -4,7 +4,7 @@
 // event tickets, dues, spa, etc.) and payments. The member's `houseAccountBalance`
 // stays in sync with the running ledger total.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetchJson } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { getMembers, updateMember, type Member } from './members';
 
@@ -28,6 +28,10 @@ export interface Charge {
   dueAtUtc?: string;
   paidAtUtc?: string;
   reference?: string;
+  /** Set when an owner or manager voided it: the charge stays, and why it was voided with it. */
+  voidReason?: string;
+  voidedAtUtc?: string;
+  voidedByName?: string;
 }
 
 export interface Payment {
@@ -38,7 +42,13 @@ export interface Payment {
   method: 'CardOnFile' | 'Cash' | 'Check' | 'Wire' | 'AppliedCredit';
   reference?: string;
   receivedAtUtc: string;
+  chargeId?: string;
   appliedToChargeIds: string[];
+  /** A voided payment stays listed but pays nothing: its charge owes again what it paid. */
+  status?: 'Voided';
+  voidReason?: string;
+  voidedAtUtc?: string;
+  voidedByName?: string;
 }
 
 export const CHARGE_KINDS: ChargeKind[] = [
@@ -256,19 +266,42 @@ export async function createCharge(input: ChargeInput): Promise<Charge | null> {
   );
 }
 
-export async function deleteCharge(id: string): Promise<boolean> {
+/**
+ * Void a charge, with a reason. Charges are never deleted: a voided one stays on the
+ * account, saying who voided it and why, and no longer counts towards the balance.
+ * On the server only an owner or manager may, and not while payments stand against it.
+ */
+export async function voidCharge(id: string, reason: string): Promise<Charge | null> {
   return apiWithFallback(
-    async () => {
-      const res = await authFetch(`/api/charges/${id}`, { method: 'DELETE' });
-      await ensureOk(res);
-      return true;
-    },
+    () => authFetchJson<Charge>(`/api/charges/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
     async () => {
       await delay(100);
       const existing = chargeStore.byId(id);
-      const ok = chargeStore.remove(id);
-      if (ok && existing) await recomputeMemberBalance(existing.memberId);
-      return ok;
+      if (!existing) return null;
+      const voided = chargeStore.update(id, { status: 'Voided', voidReason: reason, voidedAtUtc: new Date().toISOString() });
+      await recomputeMemberBalance(existing.memberId);
+      return voided;
+    },
+  );
+}
+
+/** Void a payment, with a reason: its charge owes again what the payment paid. */
+export async function voidPayment(id: string, reason: string): Promise<Payment | null> {
+  return apiWithFallback(
+    () => authFetchJson<Payment>(`/api/payments/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
+    async () => {
+      await delay(100);
+      const existing = paymentStore.byId(id);
+      if (!existing) return null;
+      for (const chargeId of existing.appliedToChargeIds) {
+        const charge = chargeStore.byId(chargeId);
+        if (!charge || charge.status === 'Voided') continue;
+        const paidAmount = Math.max(0, charge.paidAmount - existing.amount);
+        chargeStore.update(chargeId, { paidAmount, status: paidAmount > 0 ? 'PartiallyPaid' : 'Pending', paidAtUtc: undefined });
+      }
+      const voided = paymentStore.update(id, { status: 'Voided', voidReason: reason, voidedAtUtc: new Date().toISOString() });
+      await recomputeMemberBalance(existing.memberId);
+      return voided;
     },
   );
 }
@@ -351,7 +384,8 @@ export function computeChargeStats(charges: Charge[]): ChargeStats {
     const remaining = c.amount - c.paidAmount;
     if (remaining > 0) outstanding += remaining;
     if (c.status === 'Overdue') overdue += remaining;
-    if (c.status === 'PartiallyPaid' || c.status === 'Pending') pendingCount++;
+    // An overdue charge is still open: the server now reports late ones as Overdue.
+    if (c.status === 'PartiallyPaid' || c.status === 'Pending' || c.status === 'Overdue') pendingCount++;
     if (c.status === 'Paid' && c.paidAtUtc && Date.parse(c.paidAtUtc) >= monthAgo) {
       paidThisMonth += c.amount;
     }

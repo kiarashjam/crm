@@ -9,6 +9,8 @@ using ACI.WebApi.Middleware;
 using ACI.WebApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -75,12 +77,32 @@ try
 
     builder.Services.AddControllers();
 
-    // The two anonymous endpoints a stranger can reach. Partitioned by form token
-    // and by lead, not by IP: behind Azure's front end the connection address may
-    // be the proxy's, and X-Forwarded-For is whatever the caller says it is.
+    // The public form and tracking endpoints are partitioned by form token and by
+    // lead, not by IP: behind Azure's front end the connection address may be the
+    // proxy's, and X-Forwarded-For is whatever the caller says it is. Sign-up has
+    // nothing else to go by, so it alone uses the address (see "register").
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        // A bare 429 reaches people as "HTTP 429" in a toast. Say what happened, in the
+        // same problem shape as every other refusal, and when to try again.
+        options.OnRejected = async (context, ct) =>
+        {
+            var wait = context.Lease.TryGetMetadata(System.Threading.RateLimiting.MetadataName.RetryAfter, out var retryAfter)
+                ? retryAfter
+                : (TimeSpan?)null;
+            if (wait is { } w)
+                context.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(w.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var minutes = wait is { } m ? Math.Max(1, (int)Math.Ceiling(m.TotalMinutes)) : (int?)null;
+            await context.HttpContext.Response.WriteAsJsonAsync(new Microsoft.AspNetCore.Mvc.ProblemDetails
+            {
+                Status = StatusCodes.Status429TooManyRequests,
+                Title = "Too Many Requests",
+                Detail = minutes is { } n
+                    ? $"Too many requests. Try again in {n} minute{(n == 1 ? "" : "s")}."
+                    : "Too many requests. Wait a few minutes, then try again.",
+            }, options: null, contentType: "application/problem+json", cancellationToken: ct);
+        };
         options.AddPolicy("public-capture", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
             "capture:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
@@ -99,6 +121,16 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // The unsubscribe link: a person opens it once or twice. Per token, like the
+        // two above; a forged token fails its signature check before any database work.
+        options.AddPolicy("public-unsubscribe", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "unsubscribe:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
         // Email from the composer goes out under the club's own address, so one
         // account cannot turn it into a mass mailer: twenty a minute per person.
         // Per user, which is why UseRateLimiter runs after UseAuthentication.
@@ -108,6 +140,43 @@ try
             {
                 PermitLimit = 20,
                 Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+        // Invitations go out from the club's sender with text the inviter chose (the
+        // workspace name), so one account cannot send thousands. Per inviter, shared
+        // by sending and re-sending.
+        options.AddPolicy("invite-email", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "invite:" + (context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromHours(1),
+                QueueLimit = 0,
+            }));
+        // Every draft is a paid call on the server's OpenAI key. Per person, a bucket of
+        // twenty that refills one a minute: plenty for someone drafting and rewriting by
+        // hand, and a script tops out near 1,400 a day instead of running up the bill.
+        options.AddPolicy("ai-copy", context => System.Threading.RateLimiting.RateLimitPartition.GetTokenBucketLimiter(
+            "ai:" + (context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous"),
+            _ => new System.Threading.RateLimiting.TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 20,
+                TokensPerPeriod = 1,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                AutoReplenishment = true,
+                QueueLimit = 0,
+            }));
+        // Sign-up is anonymous, so there is no account to count against: this one goes
+        // by the connection's address. If Azure's front end hides the caller's address
+        // behind its own, the limit becomes one shared by everyone signing up, which
+        // ten every ten minutes still allows for a club; it stops a script making
+        // accounts in bulk either way.
+        options.AddPolicy("register", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "register:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0,
             }));
     });
@@ -185,6 +254,10 @@ try
     builder.Services.AddInfrastructure(builder.Configuration);
 
     // Application services
+    builder.Services.AddSingleton<AuthAttemptLimiter>();
+    builder.Services.AddMemoryCache();
+    builder.Services.AddSingleton<ACI.WebApi.Services.SecurityStampCache>();
+    builder.Services.AddSingleton<ISecurityStampCache>(sp => sp.GetRequiredService<ACI.WebApi.Services.SecurityStampCache>());
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IContactService, ContactService>();
     builder.Services.AddScoped<IContactRelationshipService, ContactRelationshipService>();
@@ -193,6 +266,8 @@ try
     builder.Services.AddScoped<ILeadAutomation, LeadAutomation>();
     builder.Services.AddScoped<ILeadOpsService, LeadOpsService>();
     builder.Services.AddScoped<ISequenceService, SequenceService>();
+    builder.Services.AddScoped<IOutreachMail, OutreachMail>();
+    builder.Services.AddScoped<IUnsubscribeService, UnsubscribeService>();
     builder.Services.AddScoped<IComposedEmailService, ComposedEmailService>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();
@@ -201,6 +276,7 @@ try
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
     builder.Services.AddScoped<IClubService, ClubService>();
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
+    builder.Services.AddScoped<IEventAttendeeService, EventAttendeeService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
@@ -238,7 +314,18 @@ try
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
     // JWT Authentication
-    var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? "ACI-SuperSecretKey-ChangeInProduction-Min32Chars";
+    // The default below is in the repository, so anyone can sign a token with it for
+    // any user id. Outside development and tests the server refuses to start on it:
+    // set Jwt__SecretKey (32+ random characters) in the host's configuration.
+    const string publicJwtSecret = "ACI-SuperSecretKey-ChangeInProduction-Min32Chars";
+    var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? publicJwtSecret;
+    if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing")
+        && (jwtSecret == publicJwtSecret || jwtSecret.Length < 32))
+    {
+        throw new InvalidOperationException(
+            "Jwt:SecretKey is missing, too short, or the public default from the repository. " +
+            "Set Jwt__SecretKey to a random value of at least 32 characters.");
+    }
     var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ACI";
     var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ACI";
 
@@ -263,7 +350,38 @@ try
                     if (context.Request.Path.StartsWithSegments("/mcp"))
                         context.NoResult();
                     return Task.CompletedTask;
-                }
+                },
+                // The 2FA step token is signed with the same key, so it validates like a
+                // session token. It proves only the password: accepting it here would let
+                // anyone who knows the password skip the code entirely. Its one use is the
+                // body of POST /api/auth/login/2fa, which reads it itself.
+                //
+                // A token lives a day, and a stolen one used to keep working through a
+                // password reset. Each token carries the user's security stamp from when
+                // it was issued; a reset or a 2FA change replaces the stamp, so older
+                // tokens are refused here (401). A deleted user's tokens are refused too.
+                OnTokenValidated = async context =>
+                {
+                    if (context.Principal?.FindFirst("typ")?.Value == "2fa")
+                    {
+                        context.Fail("A two-factor step token is not a session token.");
+                        return;
+                    }
+
+                    var userIdClaim = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                    if (!Guid.TryParse(userIdClaim, out var userId))
+                    {
+                        context.Fail("The token names no user.");
+                        return;
+                    }
+
+                    var services = context.HttpContext.RequestServices;
+                    var carried = context.Principal?.FindFirst(ACI.Infrastructure.Services.JwtTokenService.SecurityStampClaim)?.Value ?? "";
+                    var live = await services.GetRequiredService<ACI.WebApi.Services.SecurityStampCache>()
+                        .AcceptsAsync(userId, carried, services.GetRequiredService<IUserRepository>(), context.HttpContext.RequestAborted);
+                    if (!live)
+                        context.Fail("This session was signed out.");
+                },
             };
         });
     builder.Services.AddAuthorization();
@@ -341,6 +459,32 @@ try
             var maskedConnStr = connStr.Length > 30 ? connStr.Substring(0, 30) + "..." : connStr;
             Log.Information("Database connection: {ConnectionString}", maskedConnStr);
             
+            // The schema work below adds to the tables InitialCreate makes (its first
+            // statement points a foreign key at Users), but the migrations only run after
+            // it. So a new database -- missing, or created empty -- failed on its first
+            // statement on every start and was never set up. An empty one is now given the
+            // migrations first. A database with any table in it, as production's has,
+            // skips this and is set up in exactly the order it always was.
+            //
+            // A missing one is only created in development (docker-compose's first
+            // start). Anywhere else the database is provisioned first, so a missing one
+            // means a mistyped name in the connection string: creating it would start
+            // the app on a new, empty database (on Azure, one at the default, paid tier)
+            // while the real one sat unused, and people would sign up into it.
+            var databaseCreator = db.Database.GetService<IRelationalDatabaseCreator>();
+            var databaseExists = await databaseCreator.ExistsAsync();
+            if (!databaseExists && !app.Environment.IsDevelopment())
+            {
+                throw new InvalidOperationException(
+                    "The database named in the connection string does not exist. Outside development it is not "
+                    + "created at start-up: create it first (the scripts in scripts/ do), or correct the name.");
+            }
+            if (!databaseExists || !await databaseCreator.HasTablesAsync())
+            {
+                Log.Information("Empty database: creating the core tables from the migrations first...");
+                await db.Database.MigrateAsync();
+            }
+            
             // First, create missing tables and fix schema
             Log.Information("Checking and fixing database schema...");
             
@@ -369,6 +513,23 @@ try
                     ALTER TABLE [Organizations] ADD [WebhookPassword] nvarchar(256) NULL;
                 END
             ");
+
+            // The MCP key, separate from the lead webhook key (stored as a hash).
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Organizations', N'McpApiKeyHash') IS NULL
+                    ALTER TABLE [Organizations] ADD [McpApiKeyHash] nvarchar(64) NULL;
+                IF COL_LENGTH(N'dbo.Organizations', N'McpApiKeyCreatedAtUtc') IS NULL
+                    ALTER TABLE [Organizations] ADD [McpApiKeyCreatedAtUtc] datetime2 NULL;
+            ");
+
+            // The lead webhook key, stored as a hash like the MCP key. Keys saved in plain
+            // text before are hashed in place, so senders using them carry on, and the
+            // plain copy is cleared. Its own batch: it names the column added just above.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Organizations', N'WebhookApiKeyHash') IS NULL
+                    ALTER TABLE [Organizations] ADD [WebhookApiKeyHash] nvarchar(64) NULL;
+            ");
+            await db.Database.ExecuteSqlRawAsync(LegacyWebhookKeys.HashInPlaceSql);
             
             // Create OrganizationMembers table if missing
             await db.Database.ExecuteSqlRawAsync(@"
@@ -605,6 +766,30 @@ try
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'PasswordResetTokenExpiresAtUtc')
                     ALTER TABLE [Users] ADD [PasswordResetTokenExpiresAtUtc] datetime2 NULL;
             ");
+
+            // Email verification. Accounts that exist when the column arrives were made
+            // before verification existed, so they count as verified: nobody already in
+            // a workspace is locked out of invitations by this deploy. The UPDATE is in
+            // EXEC because the batch is compiled before the column exists.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Users', N'EmailVerifiedAtUtc') IS NULL
+                BEGIN
+                    ALTER TABLE [Users] ADD [EmailVerifiedAtUtc] datetime2 NULL;
+                    EXEC(N'UPDATE [Users] SET [EmailVerifiedAtUtc] = SYSUTCDATETIME()');
+                END
+                IF COL_LENGTH(N'dbo.Users', N'EmailVerificationTokenHash') IS NULL
+                    ALTER TABLE [Users] ADD [EmailVerificationTokenHash] nvarchar(64) NULL;
+                IF COL_LENGTH(N'dbo.Users', N'EmailVerificationTokenExpiresAtUtc') IS NULL
+                    ALTER TABLE [Users] ADD [EmailVerificationTokenExpiresAtUtc] datetime2 NULL;
+            ");
+
+            // Session revocation. Null for everyone at first, which matches the empty
+            // stamp that tokens issued before this column existed are read as, so the
+            // deploy itself signs nobody out.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Users', N'SecurityStamp') IS NULL
+                    ALTER TABLE [Users] ADD [SecurityStamp] nvarchar(64) NULL;
+            ");
             
             // Fix Leads table columns
             await db.Database.ExecuteSqlRawAsync(@"
@@ -823,8 +1008,14 @@ try
                     [DuesAmount] decimal(18,2) NOT NULL,
                     [DuesFrequency] nvarchar(32) NOT NULL,
                     [HouseAccountBalance] decimal(18,2) NOT NULL,
-                    [Notes] nvarchar(max) NULL
+                    [Notes] nvarchar(max) NULL,
+                    [ManualBalance] decimal(18,2) NOT NULL CONSTRAINT DF_ClubMembers_ManualBalance DEFAULT 0
                 );
+                -- Added after the table shipped: the opening or hand-corrected part of a
+                -- member's house balance, which recomputing from charges used to wipe
+                -- (see ClubMember.ManualBalance). DataFixes fills it for existing members.
+                IF COL_LENGTH(N'dbo.ClubMembers', N'ManualBalance') IS NULL
+                    ALTER TABLE [ClubMembers] ADD [ManualBalance] decimal(18,2) NOT NULL CONSTRAINT DF_ClubMembers_ManualBalance DEFAULT 0;
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ClubVisits')
                 CREATE TABLE [ClubVisits] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,
@@ -874,8 +1065,14 @@ try
                     [OrganizationId] uniqueidentifier NULL,
                     [Kind] nvarchar(40) NOT NULL,
                     [Payload] nvarchar(max) NOT NULL,
-                    [UpdatedAtUtc] datetime2 NOT NULL
+                    [UpdatedAtUtc] datetime2 NOT NULL,
+                    [Version] uniqueidentifier NOT NULL CONSTRAINT DF_ClubDocuments_Version DEFAULT NEWID()
                 );
+                -- Added after the table shipped. Without it two redeems of one gift card
+                -- both spent its balance, and two closes of one tab both posted a charge
+                -- (see ClubDocument.Version). Existing rows take a fresh value.
+                IF COL_LENGTH(N'dbo.ClubDocuments', N'Version') IS NULL
+                    ALTER TABLE [ClubDocuments] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT DF_ClubDocuments_Version DEFAULT NEWID();
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Products')
                 CREATE TABLE [Products] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,
@@ -991,6 +1188,17 @@ try
                     [NextActionAtUtc] datetime2 NULL
                 );
             ");
+
+            // Needs ClubMembers.ManualBalance, added just above (see DataFixes). Like the
+            // fixes before it, a failure is logged and retried on the next start.
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.KeepClubOpeningBalancesSql);
+            }
+            catch (Exception fixEx)
+            {
+                Log.Warning(fixEx, "A one-time data fix failed; it will be retried on the next start");
+            }
 
             // The indexes the model declares for the tables above. The DDL created the
             // tables without them, so the follow-up runner — once a minute, on every
@@ -1388,6 +1596,24 @@ try
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'Description')
                     ALTER TABLE [Contacts] ADD [Description] nvarchar(max) NULL;
             ");
+
+            // Contact emails are unique per workspace: per organization, and with none,
+            // per user (see ContactEmailIndexes). An index the existing rows do not meet
+            // is left out rather than failing, and in its own catch, so it cannot stop
+            // the schema work after it; the warning says which data needs merging.
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(ACI.WebApi.ContactEmailIndexes.Sql);
+                var emailIndexes = await db.Database.SqlQueryRaw<int>(ACI.WebApi.ContactEmailIndexes.CountSql).SingleAsync();
+                if (emailIndexes < 2)
+                    Log.Warning("Some active contacts in one workspace share an email, so the unique index on contact "
+                        + "emails ({OrganizationIndex}, {PersonalIndex}) is not in place; merge the duplicates and restart",
+                        ACI.WebApi.ContactEmailIndexes.OrganizationIndex, ACI.WebApi.ContactEmailIndexes.PersonalIndex);
+            }
+            catch (Exception indexEx)
+            {
+                Log.Warning(indexEx, "Could not put the per-workspace contact email indexes in place; it will be retried on the next start");
+            }
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')
@@ -1578,7 +1804,7 @@ try
             }
             
             Log.Information("Seeding database...");
-            await SeedData.SeedAsync(db, passwordHasher);
+            await SeedData.SeedAsync(db, passwordHasher, seedDemoUser: app.Environment.IsDevelopment());
             
             // Bring EXISTING organisations onto the agreed lead status vocabulary.
             //
@@ -1590,14 +1816,15 @@ try
             // leads stayed on "New" however much work was logged. So the alignment
             // lives here, where this application's schema work actually happens.
             //
-            // Runs after seeding so an organisation the seeder has just created is
-            // aligned in the same boot rather than the next one, and in its own
-            // try/catch so a stale vocabulary degrades the pipeline without taking
-            // the whole initialisation -- or /db-status -- down with it.
+            // It runs once, as a data fix (see DataFixes): run on every start, it
+            // deleted statuses managers had made and put back ones they had removed.
+            // After seeding, and in its own try/catch so a failure degrades the
+            // pipeline without taking the whole initialisation -- or /db-status --
+            // down with it; it is retried on the next start.
             try
             {
                 Log.Information("Aligning lead status vocabulary...");
-                var aligned = await db.Database.ExecuteSqlRawAsync(LeadStatusVocabulary.AlignmentSql());
+                var aligned = await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.AlignLeadStatusVocabularySql);
                 Log.Information("Lead status vocabulary aligned ({Rows} row(s) affected)", aligned);
             }
             catch (Exception vocabEx)
@@ -1617,10 +1844,14 @@ try
         }
     }
     
-    // Add diagnostic endpoint that shows DB error if any
+    // Whether start-up initialisation worked. Anonymous, so outside Development it says
+    // only that: the exception text names the SQL server and login, tables and stack
+    // frames, and is in the log already (logged above).
     app.MapGet("/db-status", () => dbError == null
         ? Results.Ok(new { status = "ok", message = "Database initialized successfully" })
-        : Results.Ok(new { status = "error", message = dbError }));
+        : app.Environment.IsDevelopment()
+            ? Results.Ok(new { status = "error", message = dbError })
+            : Results.Ok(new { status = "error", message = "Database initialization failed. The details are in the server log." }));
 
     // Diagnostic endpoints below leak stack traces and schema. Restrict to Development.
     if (app.Environment.IsDevelopment())

@@ -22,6 +22,7 @@ public class AutomationRulesTests
     private sealed class WithMailServer : CustomWebApplicationFactory
     {
         public readonly List<string> SentTo = new();
+        public readonly List<OutreachEmail> Sent = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -29,8 +30,8 @@ public class AutomationRulesTests
             builder.ConfigureTestServices(services =>
             {
                 var sender = new Mock<IEmailSender>();
-                sender.Setup(s => s.SendMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                    .Callback((string to, string _, string _, string _, CancellationToken _) => SentTo.Add(to))
+                sender.Setup(s => s.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
+                    .Callback((OutreachEmail email, CancellationToken _) => { Sent.Add(email); SentTo.Add(email.To); })
                     .ReturnsAsync(true);
                 services.AddSingleton(sender.Object);
             });
@@ -119,10 +120,51 @@ public class AutomationRulesTests
         var lead = await Json(await AddLeadAsync(owner), "add lead");
         var leadId = lead.GetProperty("id").GetGuid();
 
-        (await Json(await owner.GetAsync($"/api/tasks/by-lead/{leadId}"), "tasks")).EnumerateArray()
-            .Select(t => t.GetProperty("title").GetString()).Should().Equal("Call them");
+        var task = (await Json(await owner.GetAsync($"/api/tasks/by-lead/{leadId}"), "tasks")).EnumerateArray().Single();
+        task.GetProperty("title").GetString().Should().Be("Call them");
+        // The rule assigns the lead to the rep, so the rep is the one who has to call
+        // them — not the owner who happened to create the lead.
+        task.GetProperty("assigneeId").GetGuid().Should().Be(repId);
         (await factory.Services.Read(db => db.Leads.Single(l => l.Id == leadId).AssignedToUserId)).Should().Be(repId);
         factory.SentTo.Should().Equal("jean@example.ch");
+        // Under the workspace's name, not "Cadence", and a reply reaches the rep who now works the lead.
+        factory.Sent.Single().FromName.Should().Be("Pavillon46");
+        factory.Sent.Single().ReplyTo.Should().Be("rep@example.ch");
+    }
+
+    [Fact]
+    public async Task ARulesTaskGoesToWhoeverWorksTheLead_NotToWhoeverSetItOff()
+    {
+        await using var factory = new WithMailServer();
+        var (owner, ownerId) = await SignInAsync(factory, "owner@example.ch");
+        var org = await CreateAsync(factory, ownerId, "Pavillon46");
+        owner.In(org);
+        var (_, repId) = await SignInAsync(factory, "rep@example.ch");
+        await AddMemberAsync(factory, org, repId, OrgMemberRole.Member);
+        await Json(await owner.PostAsync("/api/automations", Body(Rule(
+            "create_task", new { title = "Follow up on the new status", dueInDays = "0" }, trigger: "lead.status_changed"))), "add rule");
+        var leadId = (await Json(await AddLeadAsync(owner), "add lead")).GetProperty("id").GetGuid();
+        await Json(await owner.PutAsync($"/api/leads/{leadId}/assign", Body(new { assignedToUserId = repId })), "assign to the rep");
+
+        await Json(await owner.PutAsync($"/api/leads/{leadId}", Body(new { status = "Contacted" })), "owner moves the lead on");
+
+        var task = (await Json(await owner.GetAsync($"/api/tasks/by-lead/{leadId}"), "tasks")).EnumerateArray().Single();
+        task.GetProperty("assigneeId").GetGuid().Should().Be(repId);
+    }
+
+    [Fact]
+    public async Task ARulesTaskForAnUnassignedLeadStaysWithWhoeverSetItOff()
+    {
+        await using var factory = new WithMailServer();
+        var (owner, ownerId) = await SignInAsync(factory, "owner@example.ch");
+        owner.In(await CreateAsync(factory, ownerId, "Pavillon46"));
+        await Json(await owner.PostAsync("/api/automations", Body(Rule("create_task", new { title = "Call them", dueInDays = "1" }))), "add rule");
+
+        var leadId = (await Json(await AddLeadAsync(owner), "add lead")).GetProperty("id").GetGuid();
+
+        var task = (await Json(await owner.GetAsync($"/api/tasks/by-lead/{leadId}"), "tasks")).EnumerateArray().Single();
+        task.GetProperty("assigneeId").ValueKind.Should().Be(JsonValueKind.Null);
+        (await factory.Services.Read(db => db.TaskItems.Single(t => t.LeadId == leadId).UserId)).Should().Be(ownerId);
     }
 
     [Fact]

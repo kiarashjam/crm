@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   Save, Users, Kanban, SlidersHorizontal,
   User, Palette, Bell, Shield,
@@ -15,7 +15,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getUserSettings, saveUserSettings, resetUserSettings,
   getTimezones, getCurrencies, getLanguages,
-  twoFactorSetup, twoFactorEnable, twoFactorDisable,
+  twoFactorSetup, twoFactorStatus, twoFactorEnable, twoFactorDisable,
 } from '@/app/api';
 import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption, CurrencyOption, LanguageOption } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
@@ -78,7 +78,6 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
 ];
 
 export default function Settings() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { organizations, currentOrg, setCurrentOrg, refreshOrgs: _refreshOrgs } = useOrg();
   const themeContext = useTheme();
@@ -111,14 +110,9 @@ export default function Settings() {
   const [twoFaSecret, setTwoFaSecret] = useState<string | null>(null);
   const [twoFaUri, setTwoFaUri] = useState<string | null>(null);
   const [twoFaCode, setTwoFaCode] = useState('');
+  const [twoFaEnablePassword, setTwoFaEnablePassword] = useState('');
   const [twoFaDisablePassword, setTwoFaDisablePassword] = useState('');
   const [twoFaDisableCode, setTwoFaDisableCode] = useState('');
-
-  // Account deletion state
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false);
-  const canConfirmDelete = deleteConfirmChecked && deleteConfirmText.trim().toUpperCase() === 'DELETE';
 
   // Organization state
   const [inviteEmail, setInviteEmail] = useState('');
@@ -178,12 +172,10 @@ export default function Settings() {
     getCurrencies().then(setCurrencies).catch(() => {});
     getLanguages().then(setLanguages).catch(() => {});
 
-    twoFactorSetup()
-      .then((r) => {
-        setTwoFaEnabled(r.enabled);
-        setTwoFaSecret(r.secret);
-        setTwoFaUri(r.otpauthUri);
-      })
+    // Only whether 2FA is on. Opening Settings used to ask for "setup", which sent the
+    // live secret to the browser on every visit; setup is asked for when starting it.
+    twoFactorStatus()
+      .then((r) => setTwoFaEnabled(r.enabled))
       .catch(() => setTwoFaEnabled(false));
   }, []);
 
@@ -489,7 +481,7 @@ export default function Settings() {
       setTwoFaEnabled(r.enabled);
       setTwoFaSecret(r.secret);
       setTwoFaUri(r.otpauthUri);
-      toast.message(messages.twoFa.scanSecretConfirm);
+      if (!r.enabled) toast.message(messages.twoFa.scanSecretConfirm);
     } catch {
       toast.error(messages.errors.generic);
     } finally {
@@ -498,12 +490,13 @@ export default function Settings() {
   };
 
   const handleEnable2fa = async () => {
-    if (twoFaCode.replace(/\D/g, '').length !== 6) return;
+    if (!twoFaEnablePassword || twoFaCode.replace(/\D/g, '').length !== 6) return;
     setTwoFaLoading(true);
     try {
-      await twoFactorEnable(twoFaCode);
+      await twoFactorEnable(twoFaEnablePassword, twoFaCode);
       setTwoFaEnabled(true);
       setTwoFaCode('');
+      setTwoFaEnablePassword('');
       toast.success(messages.twoFa.enabled);
     } catch (e) {
       const msg = e instanceof Error ? e.message : messages.errors.generic;
@@ -529,14 +522,6 @@ export default function Settings() {
       toast.error(msg);
     } finally {
       setTwoFaLoading(false);
-    }
-  };
-
-  const handleDeleteAccount = () => {
-    if (showDeleteConfirm) {
-      navigate('/');
-    } else {
-      setShowDeleteConfirm(true);
     }
   };
 
@@ -636,6 +621,8 @@ export default function Settings() {
             twoFaUri={twoFaUri}
             twoFaCode={twoFaCode}
             setTwoFaCode={setTwoFaCode}
+            twoFaEnablePassword={twoFaEnablePassword}
+            setTwoFaEnablePassword={setTwoFaEnablePassword}
             twoFaDisablePassword={twoFaDisablePassword}
             setTwoFaDisablePassword={setTwoFaDisablePassword}
             twoFaDisableCode={twoFaDisableCode}
@@ -651,14 +638,6 @@ export default function Settings() {
             settings={settings}
             updateSettings={updateSettings}
             currencies={currencies}
-            showDeleteConfirm={showDeleteConfirm}
-            setShowDeleteConfirm={setShowDeleteConfirm}
-            deleteConfirmText={deleteConfirmText}
-            setDeleteConfirmText={setDeleteConfirmText}
-            deleteConfirmChecked={deleteConfirmChecked}
-            setDeleteConfirmChecked={setDeleteConfirmChecked}
-            canConfirmDelete={canConfirmDelete}
-            handleDeleteAccount={handleDeleteAccount}
             handleReset={handleReset}
           />
         );

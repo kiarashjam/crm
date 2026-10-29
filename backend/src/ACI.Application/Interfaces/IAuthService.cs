@@ -38,17 +38,20 @@ public interface IAuthService
     /// </summary>
     /// <param name="userId">The user's ID.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>2FA setup info including QR code URI.</returns>
+    /// <returns>2FA setup info including QR code URI; no secret once 2FA is enabled.</returns>
     Task<Result<TwoFactorSetupResponse>> GetTwoFactorSetupAsync(Guid userId, CancellationToken ct = default);
     
+    /// <summary>Whether two-factor sign-in is on, and nothing else.</summary>
+    Task<Result<TwoFactorStatusResponse>> GetTwoFactorStatusAsync(Guid userId, CancellationToken ct = default);
+
     /// <summary>
     /// Enables two-factor authentication for a user.
     /// </summary>
     /// <param name="userId">The user's ID.</param>
     /// <param name="request">Request containing the verification code.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Success or failure result.</returns>
-    Task<Result> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default);
+    /// <returns>A new session token: turning 2FA on ends every other session, this one included.</returns>
+    Task<Result<string>> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default);
     
     /// <summary>
     /// Disables two-factor authentication for a user.
@@ -56,8 +59,8 @@ public interface IAuthService
     /// <param name="userId">The user's ID.</param>
     /// <param name="request">Request containing password and verification code.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Success or failure result.</returns>
-    Task<Result> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default);
+    /// <returns>A new session token: turning 2FA off ends every other session, this one included.</returns>
+    Task<Result<string>> DisableTwoFactorAsync(Guid userId, TwoFactorDisableRequest request, CancellationToken ct = default);
 
     /// <summary>
     /// Sends a password reset email when the account exists (always succeeds from a caller perspective).
@@ -68,4 +71,17 @@ public interface IAuthService
     /// Sets a new password using a valid reset token from email.
     /// </summary>
     Task<Result> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks the address confirmed using the one-time token from the confirmation email.
+    /// </summary>
+    Task<Result> VerifyEmailAsync(VerifyEmailRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a new confirmation link (a few per window). Does nothing for a confirmed address.
+    /// </summary>
+    Task<Result> ResendVerificationEmailAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>The signed-in user as stored now, including whether the address is confirmed.</summary>
+    Task<Result<UserInfoDto>> GetCurrentUserAsync(Guid userId, CancellationToken ct = default);
 }

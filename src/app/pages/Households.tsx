@@ -17,7 +17,6 @@ import EmptyState from '@/app/components/EmptyState';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
-import { Switch } from '@/app/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -52,12 +51,10 @@ import {
   RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 export default function Households() {
+  const { format: formatCurrency } = useClubMoney();
   const [rollups, setRollups] = useState<HouseholdRollup[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +67,6 @@ export default function Households() {
   const [addForm, setAddForm] = useState({
     memberId: '',
     role: 'Spouse' as HouseholdRole,
-    rollUp: true,
   });
   const [busy, setBusy] = useState(false);
 
@@ -141,7 +137,7 @@ export default function Households() {
   };
 
   const openAddMember = (householdId: string) => {
-    setAddForm({ memberId: '', role: 'Spouse', rollUp: true });
+    setAddForm({ memberId: '', role: 'Spouse' });
     setAddMemberOpen(householdId);
   };
 
@@ -156,7 +152,6 @@ export default function Households() {
         householdId: addMemberOpen,
         memberId: addForm.memberId,
         role: addForm.role,
-        rollUpBilling: addForm.rollUp,
       });
       toast.success('Added to household');
       setAddMemberOpen(null);
@@ -246,7 +241,7 @@ export default function Households() {
             icon={HomeIcon}
             tone="teal"
             title="Households"
-            subtitle="Family groupings with primary member, sub-members, and roll-up billing."
+            subtitle="Family groupings with a primary member and sub-members. Each member is still billed on their own account."
             actions={
               <Button onClick={openCreate} className={heroPrimary('teal')}>
                 <Plus className="h-4 w-4" />
@@ -361,9 +356,6 @@ export default function Households() {
                             </p>
                             <p className="text-xs text-slate-500">
                               {row.link.role}
-                              {row.link.rollUpBilling && row.link.role !== 'Primary' && (
-                                <span className="ml-1.5 text-teal-700">· rolls up</span>
-                              )}
                             </p>
                           </div>
                         </div>
@@ -509,19 +501,12 @@ export default function Households() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-              <div>
-                <p className="text-sm font-medium text-slate-900">Roll up billing</p>
-                <p className="text-xs text-slate-500">
-                  Charges this member incurs land on the primary member's account.
-                </p>
-              </div>
-              <Switch
-                aria-label="Roll up billing"
-                checked={addForm.rollUp}
-                onCheckedChange={(c) => setAddForm({ ...addForm, rollUp: c })}
-              />
-            </div>
+            {/* Roll-up was a switch that saved a label and nothing more: no charge, balance or
+                statement reads it. Until one does, say what really happens. */}
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              This member&apos;s charges stay on their own house account and statement. Rolling them up to the
+              primary member is not applied yet.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddMemberOpen(null)} disabled={busy}>

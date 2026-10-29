@@ -94,7 +94,7 @@ public interface IOrganizationService
     Task<Result> UpdateOutboundWebhookAsync(Guid organizationId, Guid userId, string? url, string? secret, CancellationToken ct = default);
     
     /// <summary>
-    /// Generates a new webhook API key (owner/manager only).
+    /// Generates a new webhook API key (owner/manager only). Returned once; only its hash is kept.
     /// </summary>
     /// <param name="organizationId">The organization ID.</param>
     /// <param name="userId">The requesting user's ID.</param>
@@ -109,4 +109,10 @@ public interface IOrganizationService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The organization if found.</returns>
     Task<Domain.Entities.Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default);
+
+    /// <summary>A new MCP key for the workspace (owner or manager). Returned once; only its hash is kept.</summary>
+    Task<Result<string>> GenerateMcpApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>The workspace an MCP key belongs to, if any.</summary>
+    Task<Domain.Entities.Organization?> GetByMcpApiKeyAsync(string apiKey, CancellationToken ct = default);
 }

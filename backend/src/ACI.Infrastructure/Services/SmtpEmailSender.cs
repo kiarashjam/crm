@@ -57,6 +57,35 @@ public sealed class SmtpEmailSender : IEmailSender
         return await SendAsync(toEmail, recipientName, "Reset your Cadence password", body, ct);
     }
 
+    public async Task<bool> SendEmailVerificationEmailAsync(string toEmail, string recipientName, string verifyUrl, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SmtpHost))
+        {
+            if (_options.LogResetLinksWhenSmtpNotConfigured)
+            {
+                _logger.LogWarning(
+                    "Email:SmtpHost is not set; logging email confirmation link for {Email}: {VerifyUrl}",
+                    toEmail,
+                    verifyUrl);
+                return true;
+            }
+
+            _logger.LogError("Email:SmtpHost is not configured; cannot send email confirmation to {Email}", toEmail);
+            return false;
+        }
+
+        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName;
+        var body =
+            $"Hi{greeting},\n\n" +
+            "Please confirm that this is your email address by opening the link below. " +
+            "This link expires in 24 hours.\n\n" +
+            $"{verifyUrl}\n\n" +
+            "Until you confirm it, you can use your own workspace but cannot join anyone else's.\n\n" +
+            "If you did not create a Cadence account, you can ignore this email.\n";
+
+        return await SendAsync(toEmail, recipientName, "Confirm your email address for Cadence", body, ct);
+    }
+
     public async Task<bool> SendOrganizationInviteEmailAsync(
         string toEmail,
         string organizationName,
@@ -82,10 +111,10 @@ public sealed class SmtpEmailSender : IEmailSender
         var body =
             $"Hi,\n\n" +
             $"{from} invited you to join \"{organizationName}\" on Cadence.\n\n" +
-            $"Open the link below and sign in to accept — the invitation is waiting there:\n\n" +
+            $"Open the link below to accept. It works only for you, so do not forward this email:\n\n" +
             $"{acceptUrl}\n\n" +
-            $"Important: sign in (or create your account) with this email address — {toEmail} — " +
-            "otherwise the invitation will not appear.\n\n" +
+            $"Sign in (or create your account) with this email address — {toEmail} — " +
+            "and confirm the address if Cadence asks you to.\n\n" +
             "This invitation expires in 7 days. If you were not expecting it, you can ignore this email.\n";
 
         return await SendAsync(toEmail, recipientName: "", subject: $"You have been invited to {organizationName} on Cadence", body: body, ct: ct);
@@ -131,8 +160,54 @@ public sealed class SmtpEmailSender : IEmailSender
     public Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default) =>
         SendAsync(toEmail, recipientName, subject, body, ct);
 
-    public Task<bool> SendHtmlMessageAsync(string toEmail, string recipientName, string subject, string textBody, string htmlBody, CancellationToken ct = default) =>
-        SendAsync(toEmail, recipientName, subject, textBody, htmlBody, null, ct);
+    /// <summary>
+    /// Outreach for a workspace. Sent from the configured address — the one the relay
+    /// has verified — but under the workspace's name, with Reply-To set to its
+    /// person. It used to go out as "Cadence", and every reply went to the shared
+    /// sender inbox.
+    /// </summary>
+    public async Task<bool> SendOutreachAsync(OutreachEmail email, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SmtpHost) || string.IsNullOrWhiteSpace(_options.FromAddress))
+        {
+            _logger.LogWarning("Email:SmtpHost or Email:FromAddress is not set, so outreach \"{Subject}\" was NOT sent", email.Subject);
+            return false;
+        }
+
+        try
+        {
+            await TransmitAsync(BuildOutreachMessage(email, _options.FromName, _options.FromAddress), ct);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send outreach \"{Subject}\" to {Email}", email.Subject, email.To);
+            return false;
+        }
+    }
+
+    /// <summary>The MIME message for one piece of outreach.</summary>
+    public static MimeMessage BuildOutreachMessage(OutreachEmail email, string defaultFromName, string fromAddress)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(string.IsNullOrWhiteSpace(email.FromName) ? defaultFromName : email.FromName.Trim(), fromAddress));
+        AddReplyTo(message, email.ReplyTo);
+        message.To.Add(new MailboxAddress(string.IsNullOrWhiteSpace(email.RecipientName) ? email.To : email.RecipientName, email.To));
+        message.Subject = email.Subject;
+        // The page, not a one-click POST endpoint (RFC 8058): the link opens the
+        // confirmation page, which is what a mail app's "Unsubscribe" does with it.
+        if (!string.IsNullOrWhiteSpace(email.UnsubscribeUrl))
+            message.Headers.Add("List-Unsubscribe", $"<{email.UnsubscribeUrl.Trim()}>");
+        message.Body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody }.ToMessageBody();
+        return message;
+    }
+
+    /// <summary>Replies go to this address, when it is one.</summary>
+    private static void AddReplyTo(MimeMessage message, string? replyTo)
+    {
+        if (!string.IsNullOrWhiteSpace(replyTo) && MailboxAddress.TryParse(replyTo.Trim(), out var address))
+            message.ReplyTo.Add(address);
+    }
 
     /// <summary>
     /// Builds and delivers one plain-text message. Returns false (never throws) so a
@@ -238,6 +313,7 @@ public sealed class SmtpEmailSender : IEmailSender
     {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(fromName, fromAddress));
+        AddReplyTo(message, email.ReplyTo);
         message.To.AddRange(email.To.Select(MailboxAddress.Parse));
         message.Cc.AddRange(email.Cc.Select(MailboxAddress.Parse));
         message.Bcc.AddRange(email.Bcc.Select(MailboxAddress.Parse));

@@ -9,6 +9,10 @@ namespace ACI.Application.Interfaces;
 /// </summary>
 /// <param name="Exists">False when the lead or contact is gone (deleted, or not in this workspace).</param>
 /// <param name="Email">Their address as it is NOW, not as it was when they were enrolled.</param>
+/// <param name="OwnerUserId">
+/// Who works this record: a lead's assignee, while they are still a member of the
+/// workspace. Null when nobody is, and for contacts, which have no assignee.
+/// </param>
 public sealed record SequenceTargetState(
     bool Exists,
     string? Name,
@@ -17,7 +21,8 @@ public sealed record SequenceTargetState(
     bool IsConverted = false,
     string? Status = null,
     bool DoNotContact = false,
-    bool IsArchived = false)
+    bool IsArchived = false,
+    Guid? OwnerUserId = null)
 {
     public static readonly SequenceTargetState Missing = new(false, null, null, null);
 }

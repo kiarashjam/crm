@@ -42,6 +42,7 @@ import type { TaskItem, Lead, Deal, Contact, TaskStatusType, TaskPriorityType, A
 import { statusConfig, priorityConfig } from '../config';
 import { getInitials, formatDue } from '../utils';
 import { getActivitiesByLead, getActivitiesByDeal } from '@/app/api/activities';
+import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
 
 export interface TaskDetailModalProps {
   task: TaskItem | null;
@@ -51,9 +52,10 @@ export interface TaskDetailModalProps {
   onDelete: (task: TaskItem) => void;
   onStatusChange: (task: TaskItem, status: TaskStatusType) => Promise<void>;
   onPriorityChange: (task: TaskItem, priority: TaskPriorityType) => Promise<void>;
-  onAssigneeChange: (task: TaskItem, assigneeId: string | null) => Promise<void>;
-  onLeadChange: (task: TaskItem, leadId: string | null) => Promise<void>;
-  onDealChange: (task: TaskItem, dealId: string | null) => Promise<void>;
+  /** Each resolves to whether the change was saved; the page has already said why not. */
+  onAssigneeChange: (task: TaskItem, assigneeId: string | null) => Promise<boolean>;
+  onLeadChange: (task: TaskItem, leadId: string | null) => Promise<boolean>;
+  onDealChange: (task: TaskItem, dealId: string | null) => Promise<boolean>;
   members: Array<{ userId: string; name: string; email: string }>;
   leads: Lead[];
   deals: Deal[];
@@ -99,8 +101,8 @@ export function TaskDetailModal({
       setForm({
         title: task.title,
         description: task.description ?? '',
-        dueDate: task.dueDateUtc ? task.dueDateUtc.slice(0, 16) : '',
-        reminderDate: task.reminderDateUtc ? task.reminderDateUtc.slice(0, 16) : '',
+        dueDate: toLocalInputValue(task.dueDateUtc),
+        reminderDate: toLocalInputValue(task.reminderDateUtc),
         status: task.status,
         priority: task.priority,
         leadId: task.leadId ?? '',
@@ -152,8 +154,8 @@ export function TaskDetailModal({
     }
     setSaving(true);
     try {
-      const dueDateUtc = form.dueDate ? new Date(form.dueDate).toISOString() : undefined;
-      const reminderDateUtc = form.reminderDate ? new Date(form.reminderDate).toISOString() : undefined;
+      const dueDateUtc = fromLocalInputValue(form.dueDate);
+      const reminderDateUtc = fromLocalInputValue(form.reminderDate);
 
       const updated = await onUpdate(task.id, {
         title: form.title.trim(),
@@ -200,8 +202,8 @@ export function TaskDetailModal({
 
   const handleQuickAssigneeChange = async (newAssigneeId: string) => {
     try {
-      await onAssigneeChange(task, newAssigneeId === 'none' ? null : newAssigneeId);
-      setForm(f => ({ ...f, assigneeId: newAssigneeId === 'none' ? '' : newAssigneeId }));
+      if (await onAssigneeChange(task, newAssigneeId === 'none' ? null : newAssigneeId))
+        setForm(f => ({ ...f, assigneeId: newAssigneeId === 'none' ? '' : newAssigneeId }));
     } catch {
       toast.error('Failed to update assignee');
     }
@@ -209,8 +211,8 @@ export function TaskDetailModal({
 
   const handleQuickLeadChange = async (newLeadId: string) => {
     try {
-      await onLeadChange(task, newLeadId === 'none' ? null : newLeadId);
-      setForm(f => ({ ...f, leadId: newLeadId === 'none' ? '' : newLeadId }));
+      if (await onLeadChange(task, newLeadId === 'none' ? null : newLeadId))
+        setForm(f => ({ ...f, leadId: newLeadId === 'none' ? '' : newLeadId }));
     } catch {
       toast.error('Failed to update lead');
     }
@@ -218,8 +220,8 @@ export function TaskDetailModal({
 
   const handleQuickDealChange = async (newDealId: string) => {
     try {
-      await onDealChange(task, newDealId === 'none' ? null : newDealId);
-      setForm(f => ({ ...f, dealId: newDealId === 'none' ? '' : newDealId }));
+      if (await onDealChange(task, newDealId === 'none' ? null : newDealId))
+        setForm(f => ({ ...f, dealId: newDealId === 'none' ? '' : newDealId }));
     } catch {
       toast.error('Failed to update deal');
     }
@@ -348,8 +350,8 @@ export function TaskDetailModal({
                         setForm({
                           title: task.title,
                           description: task.description ?? '',
-                          dueDate: task.dueDateUtc ? task.dueDateUtc.slice(0, 16) : '',
-                          reminderDate: task.reminderDateUtc ? task.reminderDateUtc.slice(0, 16) : '',
+                          dueDate: toLocalInputValue(task.dueDateUtc),
+                          reminderDate: toLocalInputValue(task.reminderDateUtc),
                           status: task.status,
                           priority: task.priority,
                           leadId: task.leadId ?? '',

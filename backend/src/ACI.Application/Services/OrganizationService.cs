@@ -190,6 +190,14 @@ public sealed class OrganizationService : IOrganizationService
             return Result.Failure<OrgMemberDto>(NoAccountForEmail);
         }
 
+        // Anyone can register an address before its owner does; adding that account
+        // would hand the workspace to whoever got there first.
+        if (user.EmailVerifiedAtUtc == null)
+        {
+            _logger.LogWarning("Cannot add {Email}: the account has not confirmed the address", normalized);
+            return Result.Failure<OrgMemberDto>(EmailNotConfirmed);
+        }
+
         if (await _organizationRepository.IsMemberAsync(user.Id, organizationId, ct))
         {
             _logger.LogWarning("User {UserId} is already a member of organization {OrganizationId}", user.Id, organizationId);
@@ -207,6 +215,10 @@ public sealed class OrganizationService : IOrganizationService
     private static readonly Error NoAccountForEmail = new(
         "Organization.NoAccountForEmail",
         "No account exists with that email address yet. Ask them to sign up first, then add them — or send an invitation instead.");
+
+    private static readonly Error EmailNotConfirmed = new(
+        "Organization.MemberEmailNotConfirmed",
+        "That account has not confirmed its email address yet. Ask them to open the confirmation email Cadence sent them, then add them — or send an invitation instead.");
 
     public async Task<Result> UpdateMemberRoleAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, OrgMemberRole newRole, CancellationToken ct = default)
     {
@@ -287,11 +299,7 @@ public sealed class OrganizationService : IOrganizationService
             _logger.LogWarning("User {UserId} is not a member of organization {OrganizationId}", userId, organizationId);
             return DomainErrors.Organization.NotMember;
         }
-        // The key opens the whole workspace to whoever holds it: inbound leads, and the
-        // CRM tools an assistant connects with, which read as the owner and so see private
-        // deals. Everyone may know whether there is one; only the owner or a manager sees it.
-        var mayHoldKey = role is OrgMemberRole.Owner or OrgMemberRole.Manager;
-        
+
         var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
         if (org == null)
         {
@@ -304,13 +312,16 @@ public sealed class OrganizationService : IOrganizationService
         _logger.LogDebug("Successfully retrieved webhook info for organization {OrganizationId}", organizationId);
         return new WebhookInfoDto(
             WebhookUrl: webhookUrl,
-            ApiKey: mayHoldKey ? org.WebhookApiKey : null,
+            // Only the key's hash is kept, so there is no key to send back: it is shown
+            // once, to whoever generates it.
             ApiKeyCreatedAt: org.WebhookApiKeyCreatedAtUtc,
-            HasApiKey: !string.IsNullOrEmpty(org.WebhookApiKey),
+            HasApiKey: !string.IsNullOrEmpty(org.WebhookApiKeyHash),
             UsesDefaultWebhookPassword: string.IsNullOrEmpty(org.WebhookPassword),
             PasswordWebhookUrl: string.Empty,
             OutboundWebhookUrl: org.OutboundWebhookUrl,
-            HasOutboundWebhookSecret: !string.IsNullOrEmpty(org.OutboundWebhookSecret)
+            HasOutboundWebhookSecret: !string.IsNullOrEmpty(org.OutboundWebhookSecret),
+            HasMcpApiKey: !string.IsNullOrEmpty(org.McpApiKeyHash),
+            McpApiKeyCreatedAt: org.McpApiKeyCreatedAtUtc
         );
     }
 
@@ -410,7 +421,7 @@ public sealed class OrganizationService : IOrganizationService
         RandomNumberGenerator.Fill(randomBytes);
         var apiKey = "aci_" + Convert.ToBase64String(randomBytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
 
-        org.WebhookApiKey = apiKey;
+        org.WebhookApiKeyHash = HashApiKey(apiKey);
         org.WebhookApiKeyCreatedAtUtc = DateTime.UtcNow;
 
         await _organizationRepository.UpdateAsync(org, ct);
@@ -421,6 +432,41 @@ public sealed class OrganizationService : IOrganizationService
 
     public async Task<Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default)
     {
-        return await _organizationRepository.GetByApiKeyAsync(apiKey, ct);
+        if (string.IsNullOrWhiteSpace(apiKey)) return null;
+        return await _organizationRepository.GetByWebhookApiKeyHashAsync(HashApiKey(apiKey.Trim()), ct);
     }
+
+    public async Task<Result<string>> GenerateMcpApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
+    {
+        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
+        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+            return DomainErrors.Organization.NotOwnerOrManager;
+
+        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+        if (org == null) return DomainErrors.Organization.NotFound;
+
+        var randomBytes = new byte[32];
+        RandomNumberGenerator.Fill(randomBytes);
+        var apiKey = "aci_mcp_" + Convert.ToBase64String(randomBytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
+
+        org.McpApiKeyHash = HashApiKey(apiKey);
+        org.McpApiKeyCreatedAtUtc = DateTime.UtcNow;
+        await _organizationRepository.UpdateAsync(org, ct);
+
+        _logger.LogInformation("Generated MCP API key for organization {OrganizationId} by user {UserId}", organizationId, userId);
+        return apiKey;
+    }
+
+    public async Task<Organization?> GetByMcpApiKeyAsync(string apiKey, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)) return null;
+        return await _organizationRepository.GetByMcpApiKeyHashAsync(HashApiKey(apiKey.Trim()), ct);
+    }
+
+    /// <summary>
+    /// Lower-case hex SHA-256 of the key's UTF-8 bytes: what is stored and looked up for
+    /// webhook and MCP keys, never the key itself. LegacyWebhookKeys computes the same in SQL.
+    /// </summary>
+    public static string HashApiKey(string apiKey) =>
+        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(apiKey))).ToLowerInvariant();
 }

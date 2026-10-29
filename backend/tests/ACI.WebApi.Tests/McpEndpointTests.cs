@@ -24,6 +24,33 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
     }
 
     [Fact]
+    public async Task TheLeadWebhookKeyDoesNotOpenMcp()
+    {
+        // The webhook key goes into website forms and Zapier. It used to be the MCP key
+        // too, which read every lead, contact, deal and task in the workspace.
+        var webhookKey = "aci_" + Guid.NewGuid().ToString("N");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var owner = Guid.NewGuid();
+            db.Users.Add(new User { Id = owner, Name = "Ada", Email = $"{owner:N}@example.com", CreatedAtUtc = DateTime.UtcNow });
+            db.Organizations.Add(new Organization
+            {
+                Id = Guid.NewGuid(), Name = "Forms only", OwnerUserId = owner, CreatedAtUtc = DateTime.UtcNow,
+                WebhookApiKeyHash = ACI.Application.Services.OrganizationService.HashApiKey(webhookKey),
+                WebhookApiKeyCreatedAtUtc = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", webhookKey);
+        var response = await client.PostAsync("/mcp", Json("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}"""));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task Initialize_WithOrganizationKey_ReturnsServerInfo()
     {
         var key = "aci_" + Guid.NewGuid().ToString("N");
@@ -300,8 +327,8 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
             Name = name,
             OwnerUserId = userId,
             CreatedAtUtc = DateTime.UtcNow,
-            WebhookApiKey = apiKey,
-            WebhookApiKeyCreatedAtUtc = DateTime.UtcNow,
+            McpApiKeyHash = ACI.Application.Services.OrganizationService.HashApiKey(apiKey),
+            McpApiKeyCreatedAtUtc = DateTime.UtcNow,
         });
 
         var leadId = Guid.NewGuid();

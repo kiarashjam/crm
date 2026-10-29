@@ -24,6 +24,7 @@ public class TaskServiceTests
 
         _sut = new TaskService(
             _taskRepositoryMock.Object,
+            WorkspaceRecordsMock.InWorkspace().Object,
             _loggerMock.Object);
     }
 

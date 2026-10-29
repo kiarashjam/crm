@@ -99,7 +99,9 @@ public static class ResultExtensions
         "Auth.InvalidCredentials" => StatusCodes.Status401Unauthorized,
         "Auth.EmailNotFound" => StatusCodes.Status401Unauthorized,
         "Auth.InvalidTwoFactorCode" => StatusCodes.Status401Unauthorized,
-        "Auth.AccountLocked" => StatusCodes.Status401Unauthorized,
+        "Auth.AccountLocked" => StatusCodes.Status429TooManyRequests,
+        "Auth.TooManyVerificationEmails" => StatusCodes.Status429TooManyRequests,
+        "Auth.EmailNotVerified" => StatusCodes.Status403Forbidden,
         "Auth.InvalidResetToken" => StatusCodes.Status400BadRequest,
         "General.Unauthorized" => StatusCodes.Status401Unauthorized,
         
@@ -114,6 +116,8 @@ public static class ResultExtensions
         "Template.CannotModifySystem" => StatusCodes.Status403Forbidden,
         
         // Conflict errors
+        "EventAttendee.EventFull" => StatusCodes.Status409Conflict,
+        "EventAttendee.AlreadyCheckedIn" => StatusCodes.Status409Conflict,
         var code when code.Contains("Duplicate") => StatusCodes.Status409Conflict,
         var code when code.Contains("AlreadyExists") => StatusCodes.Status409Conflict,
         var code when code.Contains("AlreadyMember") => StatusCodes.Status409Conflict,
@@ -123,6 +127,8 @@ public static class ResultExtensions
         var code when code.Contains("AlreadyPending") => StatusCodes.Status409Conflict,
         var code when code.Contains("AlreadyProcessed") => StatusCodes.Status409Conflict,
         "Error.Conflict" => StatusCodes.Status409Conflict,
+        // A record that moved on: changed by someone else meanwhile, or already closed.
+        var code when code.EndsWith(".Conflict") => StatusCodes.Status409Conflict,
         
         // A dependency that is missing or did not answer — not the caller's fault
         var code when code.EndsWith(".NotConfigured") => StatusCodes.Status503ServiceUnavailable,

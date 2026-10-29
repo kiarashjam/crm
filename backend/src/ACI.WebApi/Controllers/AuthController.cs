@@ -4,6 +4,7 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ACI.WebApi.Controllers;
 
@@ -76,8 +77,10 @@ public class AuthController : ControllerBase
     /// <returns>Login response with JWT token for the new account.</returns>
     /// <response code="200">Registration successful.</response>
     /// <response code="409">Email is already registered.</response>
+    /// <response code="429">Too many sign-ups from this address; try again in a few minutes.</response>
     [HttpPost("register")]
     [AllowAnonymous]
+    [EnableRateLimiting("register")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<LoginResponse>> Register([FromBody] RegisterRequest request, CancellationToken ct)
@@ -92,6 +95,9 @@ public class AuthController : ControllerBase
     /// <summary>
     /// Gets information about the currently authenticated user.
     /// </summary>
+    /// <remarks>
+    /// Read from the database, not the token, so a confirmation made since sign-in shows.
+    /// </remarks>
     /// <returns>Current user information.</returns>
     /// <response code="200">Returns the user information.</response>
     /// <response code="401">User is not authenticated.</response>
@@ -99,18 +105,71 @@ public class AuthController : ControllerBase
     [Authorize]
     [ProducesResponseType(typeof(UserInfoDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public ActionResult<UserInfoDto> Me()
+    public async Task<ActionResult<UserInfoDto>> Me(CancellationToken ct)
     {
         if (!_currentUser.UserId.HasValue)
             return Unauthorized();
-        
-        var id = _currentUser.UserId.Value;
-        var name = User.Identity?.Name ?? string.Empty;
-        var email = User.Claims.FirstOrDefault(c => c.Type.EndsWith("/emailaddress", StringComparison.OrdinalIgnoreCase))?.Value
-            ?? User.Claims.FirstOrDefault(c => c.Type.Contains("email", StringComparison.OrdinalIgnoreCase))?.Value
-            ?? string.Empty;
-        
-        return Ok(new UserInfoDto(id, name, email));
+
+        var result = await _authService.GetCurrentUserAsync(_currentUser.UserId.Value, ct);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Confirms the account's email address using the token from the confirmation link.
+    /// </summary>
+    /// <remarks>
+    /// Anonymous: the link is often opened on a phone, where the person is not signed in.
+    /// The token is the proof, and it works once.
+    /// </remarks>
+    /// <response code="200">Address confirmed.</response>
+    /// <response code="400">The link is invalid, used, or expired.</response>
+    [HttpPost("verify-email")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest request, CancellationToken ct)
+    {
+        var result = await _authService.VerifyEmailAsync(request, ct);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Sends the signed-in user a new confirmation link.
+    /// </summary>
+    /// <response code="200">Sent, or the address was already confirmed.</response>
+    /// <response code="429">Several were sent recently; wait and try again.</response>
+    [HttpPost("verify-email/resend")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> ResendVerificationEmail(CancellationToken ct)
+    {
+        if (!_currentUser.UserId.HasValue)
+            return Unauthorized();
+
+        var result = await _authService.ResendVerificationEmailAsync(_currentUser.UserId.Value, ct);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Says whether two-factor authentication is on for the current user.
+    /// </summary>
+    /// <remarks>
+    /// What the Settings page asks when it opens. It never carries the secret.
+    /// </remarks>
+    /// <response code="200">Returns whether 2FA is enabled.</response>
+    /// <response code="401">User is not authenticated.</response>
+    [HttpGet("2fa/status")]
+    [Authorize]
+    [ProducesResponseType(typeof(TwoFactorStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<TwoFactorStatusResponse>> TwoFactorStatus(CancellationToken ct)
+    {
+        if (!_currentUser.UserId.HasValue)
+            return Unauthorized();
+
+        var result = await _authService.GetTwoFactorStatusAsync(_currentUser.UserId.Value, ct);
+        return result.ToActionResult();
     }
 
     /// <summary>
@@ -118,7 +177,8 @@ public class AuthController : ControllerBase
     /// </summary>
     /// <remarks>
     /// Returns the TOTP secret and QR code URI for setting up an authenticator app.
-    /// The secret is generated on first call and persisted until 2FA is enabled.
+    /// The secret is generated on first call and persisted until 2FA is enabled. Once it
+    /// is enabled, the secret is not returned again (Secret and OtpauthUri are null).
     /// </remarks>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Two-factor setup information with QR code URI.</returns>
@@ -148,7 +208,7 @@ public class AuthController : ControllerBase
     /// </remarks>
     /// <param name="request">Request containing the verification code.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>No content on success.</returns>
+    /// <returns>A new session token, since enabling 2FA signs out every earlier session.</returns>
     /// <response code="200">Two-factor authentication enabled successfully.</response>
     /// <response code="400">Invalid verification code.</response>
     /// <response code="401">User is not authenticated.</response>
@@ -163,11 +223,11 @@ public class AuthController : ControllerBase
             return Unauthorized();
         
         var result = await _authService.EnableTwoFactorAsync(_currentUser.UserId.Value, request, ct);
-        
-        if (result.IsSuccess)
-            return Ok();
-        
-        return result.ToNoContentResult();
+        if (result.IsFailure)
+            return result.Error.ToProblemResult();
+
+        // Turning 2FA on ends every earlier session, this one too; carry on with this token.
+        return Ok(new { token = result.Value });
     }
 
     /// <summary>
@@ -178,7 +238,7 @@ public class AuthController : ControllerBase
     /// </remarks>
     /// <param name="request">Request containing password and verification code.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>No content on success.</returns>
+    /// <returns>A new session token, since disabling 2FA signs out every earlier session.</returns>
     /// <response code="200">Two-factor authentication disabled successfully.</response>
     /// <response code="400">Invalid password or verification code.</response>
     /// <response code="401">User is not authenticated.</response>
@@ -193,11 +253,11 @@ public class AuthController : ControllerBase
             return Unauthorized();
         
         var result = await _authService.DisableTwoFactorAsync(_currentUser.UserId.Value, request, ct);
-        
-        if (result.IsSuccess)
-            return Ok();
-        
-        return result.ToNoContentResult();
+        if (result.IsFailure)
+            return result.Error.ToProblemResult();
+
+        // Turning 2FA off ends every earlier session, this one too; carry on with this token.
+        return Ok(new { token = result.Value });
     }
 
     /// <summary>

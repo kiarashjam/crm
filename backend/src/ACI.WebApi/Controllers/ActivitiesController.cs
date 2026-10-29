@@ -164,7 +164,7 @@ public class ActivitiesController : ControllerBase
             .Take(100)
             .ToArray();
 
-        var list = await _activityService.GetByLeadIdsAsync(leadIds, _currentUser.CurrentOrganizationId, ct);
+        var list = await _activityService.GetByLeadIdsAsync(leadIds, userId.Value, _currentUser.CurrentOrganizationId, ct);
         return Ok(list);
     }
 
@@ -212,6 +212,7 @@ public class ActivitiesController : ControllerBase
         if (userId == null) return Unauthorized();
 
         var counts = await _activityService.GetOrgMemberActivityCountsAsync(
+            userId.Value,
             _currentUser.CurrentOrganizationId,
             ct);
 
@@ -225,7 +226,7 @@ public class ActivitiesController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The created activity.</returns>
     /// <remarks>
-    /// Valid activity types: call, meeting, email, note, task, follow_up, deadline, video, demo.
+    /// Valid activity types: call, meeting, email, note, task, follow_up, deadline, video, demo, system.
     /// At least one of ContactId, DealId, or LeadId must be specified.
     /// </remarks>
     /// <response code="200">Activity created successfully.</response>

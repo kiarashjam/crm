@@ -2,8 +2,8 @@ import { authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient'
 
 export interface WebhookInfo {
   webhookUrl: string;
-  apiKey: string | null;
   apiKeyCreatedAt: string | null;
+  /** Whether the workspace has a lead webhook key. The key itself is shown once, when made. */
   hasApiKey: boolean;
   usesDefaultWebhookPassword: boolean;
   passwordWebhookUrl: string;
@@ -11,6 +11,9 @@ export interface WebhookInfo {
   outboundWebhookUrl?: string | null;
   /** Whether events are signed. The secret itself is never sent back. */
   hasOutboundWebhookSecret?: boolean;
+  /** Whether the workspace has an MCP key. The key itself is shown once, when made. */
+  hasMcpApiKey?: boolean;
+  mcpApiKeyCreatedAt?: string | null;
 }
 
 /** A read-only placeholder returned in demo mode so the webhook page renders
@@ -18,7 +21,6 @@ export interface WebhookInfo {
  * and the `demo://…` URLs as "not configured". */
 const DEMO_WEBHOOK_INFO: WebhookInfo = {
   webhookUrl: 'demo://webhook/leads',
-  apiKey: null,
   apiKeyCreatedAt: null,
   hasApiKey: false,
   usesDefaultWebhookPassword: true,
@@ -30,6 +32,10 @@ export async function getWebhookInfo(orgId: string): Promise<WebhookInfo> {
   return authFetchJson<WebhookInfo>(`/api/webhook/organizations/${orgId}`);
 }
 
+/**
+ * A new lead webhook key, replacing any earlier one. Returned once: the server keeps
+ * only its hash, so this is the only time anyone can copy it.
+ */
 export async function generateWebhookApiKey(orgId: string): Promise<string> {
   if (servesDemoData()) {
     // Demo mode: return a clearly-fake key so the UI shows a value but ops know
@@ -37,6 +43,19 @@ export async function generateWebhookApiKey(orgId: string): Promise<string> {
     return 'demo-key-not-functional';
   }
   const result = await authFetchJson<{ apiKey: string }>(`/api/webhook/organizations/${orgId}/generate-key`, {
+    method: 'POST',
+  });
+  return result.apiKey;
+}
+
+/**
+ * A new key for AI assistants (MCP), replacing any earlier one. Returned once: the
+ * server keeps only its hash. It is separate from the lead webhook key, which website
+ * forms carry and which no longer opens the CRM to an assistant.
+ */
+export async function generateMcpApiKey(orgId: string): Promise<string> {
+  if (servesDemoData()) return 'demo-key-not-functional';
+  const result = await authFetchJson<{ apiKey: string }>(`/api/webhook/organizations/${orgId}/generate-mcp-key`, {
     method: 'POST',
   });
   return result.apiKey;

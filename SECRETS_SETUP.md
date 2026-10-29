@@ -26,7 +26,7 @@ Run the script to create a new resource group with all resources in **West Europ
 | Resource Group | -      | West Europe |
 | Static Web App | Free   | West Europe |
 | SQL Database   | Basic  | West Europe |
-| Web App (API)  | F1 Free| West Europe |
+| Web App (API)  | B1, Always On | West Europe |
 
 **Prerequisites:** Azure CLI installed, logged in (`az login`).
 
@@ -56,6 +56,14 @@ az ad sp create-for-rbac --name "github-aci-crm" --role Contributor --scopes "/s
 ```
 
 Copy `appId` → `AZURE_CLIENT_ID`, `password` → `AZURE_CLIENT_SECRET`, `tenant` → `AZURE_TENANT_ID`, and use your subscription ID for `AZURE_SUBSCRIPTION_ID`.
+
+### Admin workflows (org copy, ensure member, lead status audit)
+
+These run against the production database, and this repository's Actions logs are public.
+
+- They run in a GitHub environment called **production**. GitHub creates it on the first run with no rules, so add them: **Settings → Environments → production → Required reviewers** (and, under **Deployment branches**, allow only `main`). Until then they run without approval.
+- A reviewer gates the job, not the secrets. A **repository** secret can be read by any workflow file on any branch, and anyone who can push a branch can write one that leaves out `environment: production`. So the approval only holds once the credentials these workflows use are **environment** secrets of `production` and not repository secrets. The backend deploy uses the same `AZURE_*` service principal and does not run in that environment, so either give the admin workflows a service principal of their own as `production` environment secrets (and keep the deploy's elsewhere), or move the deploy into the environment too, in which case every deploy waits for a reviewer.
+- `ADMIN_REPORT_PASSPHRASE` (secret): the lead status audit and the org copy's table-by-table report are encrypted with it before they are kept as the run's artifact, because a public repository's artifacts can be downloaded by anyone signed in to GitHub. The two workflows refuse to run without it. To read one, download the artifact, unzip it, and run `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in <file>.enc -out <file>`; it asks for the passphrase.
 
 ---
 
@@ -165,8 +173,21 @@ environment variable):
 | `Email__UseSsl` | `true` (default) | no |
 | `Email__SmtpPort` | `587` (default) | no |
 
-`Email__FrontendBaseUrl` matters: it builds the links in all three emails. If it is empty
-or not an absolute http(s) URL, password reset is skipped and logged.
+`Email__FrontendBaseUrl` matters: it builds the links in all three emails, and the
+unsubscribe link at the foot of every sequence, automation and composer email. If it is
+empty or not an absolute http(s) URL, password reset is skipped and logged, and outreach
+goes out without its unsubscribe link (a warning is logged each time).
+
+Workspace email (composer, sequences, automations) is sent from `Email__FromAddress`
+under the workspace's name, with Reply-To set to the person behind it, so replies reach
+that person rather than the shared sender inbox. `Email__FromName` names the product's own
+messages (password reset, invitations, reminders, contracts), and workspace email only
+when the workspace has no name.
+
+Unsubscribe links are signed with ASP.NET Data Protection, the same key ring that keeps
+two-factor secrets. On Azure App Service that ring is kept under `%HOME%` and survives
+restarts and deploys; if the API ever runs where it is not persisted, old unsubscribe
+links stop working (their page says the link is not valid).
 
 ### Option: let the deploy configure Azure for you (one GitHub secret)
 
@@ -188,7 +209,7 @@ Azure service principal the workflow already logs in with. Notes:
   string and every other setting are left alone.
 - The SPA origin defaults to the current Static Web App URL. To point somewhere else, add a
   repository **variable** named `SPA_BASE_URL`.
-- Re-deploy (or **Actions → Build and deploy backend → Run workflow**) to apply it. Rotating
+- Re-deploy (or **Actions → Build and deploy to Azure Static Web Apps → Run workflow**) to apply it. Rotating
   the key later means updating the secret and re-running — nothing else.
 
 ### Local development
@@ -225,7 +246,7 @@ commit, treat it as compromised and rotate it in the SendGrid dashboard
 
 ## 7. Trigger deploy
 
-Push to `main` or run **Actions → Build and deploy backend to Azure Web App → Run workflow**.
+Push to `main` or run **Actions → Build and deploy to Azure Static Web Apps → Run workflow** (it runs the checks, then deploys the backend, then the frontend).
 
 ---
 

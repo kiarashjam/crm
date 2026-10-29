@@ -52,7 +52,6 @@ vi.mock('@/app/api/organizations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/organizations')>()),
   getOrgMembers: (id: string) => getOrgMembers(id),
   listPendingJoinRequestsForOrg: (id: string) => listPendingJoinRequestsForOrg(id),
-  acceptInviteById: vi.fn(),
   acceptJoinRequest: vi.fn(),
   rejectJoinRequest: vi.fn(),
 }));
@@ -335,6 +334,23 @@ describe('what it offers whom', () => {
     await renderPage();
     expect(screen.getByRole('button', { name: /Create your first workspace/i })).toBeInTheDocument();
     expect(screen.queryByLabelText('Search workspaces')).not.toBeInTheDocument();
+  });
+
+  it('tells an invitee whose email has no join link what to do', async () => {
+    // Accepting needs the link in the invitation email. Emails sent before that link
+    // existed pointed at this page, which then sent the reader back to the email.
+    ctx.pendingInvites = [{
+      id: 'i-1', organizationId: 'o-new', organizationName: 'Club Nautique', email: 'me@club.ch',
+      expiresAtUtc: '2026-11-05T00:00:00Z', createdAtUtc: '2026-10-29T00:00:00Z',
+    }] as never[];
+    try {
+      await renderPage();
+      expect(screen.getByText('Club Nautique')).toBeInTheDocument();
+      expect(screen.getByText(/ask whoever invited you to send the invitation again/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^accept/i })).not.toBeInTheDocument();
+    } finally {
+      ctx.pendingInvites = [];
+    }
   });
 
   it('hides the search box for a single workspace', async () => {

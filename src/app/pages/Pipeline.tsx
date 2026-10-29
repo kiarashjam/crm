@@ -48,7 +48,7 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDealsPaged, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
+import { getDeals, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
 import { getActivitiesByDeal, createActivity } from '@/app/api/activities';
 import type { Deal, Company, Contact, Pipeline, Activity } from '@/app/api/types';
 import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
@@ -80,7 +80,7 @@ import { cn } from '@/app/components/ui/utils';
 // Import extracted components and utilities
 import { DroppableStageColumn } from './pipeline/DroppableStageColumn';
 import { STAGE_COLORS_MAP } from './pipeline/config';
-import { getStageList, groupDealsByStage, formatDealTotal, formatAmount, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
+import { getStageList, dealOutcome, groupDealsByStage, formatDealTotal, formatAmount, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
 import { dominantCurrencyOf } from '@/app/lib/money';
 import { DealCard, getCurrencySymbol } from './pipeline/DealCard';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
@@ -166,7 +166,7 @@ export default function Pipeline() {
   // Deal activities state
   const [dealActivities, setDealActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'Note', subject: '', body: '' });
+  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
   
   // Search and Filter state
@@ -174,28 +174,26 @@ export default function Pipeline() {
   const [filterStage, setFilterStage] = useState<string>('all');
   const [_showFilters, _setShowFilters] = useState(false);
 
-  const stageList = getStageList(pipelines, selectedPipelineId);
-  
+  const stageList = useMemo(() => getStageList(pipelines, selectedPipelineId), [pipelines, selectedPipelineId]);
+
+  // The deals of the pipeline on screen. A deal saved before it had a pipeline belongs to the first one.
+  const pipelineDeals = useMemo(() => {
+    if (pipelines.length < 2 || !selectedPipelineId) return deals;
+    const fallbackPipelineId = pipelines[0]?.id;
+    return deals.filter((d) => (d.pipelineId ?? fallbackPipelineId) === selectedPipelineId);
+  }, [deals, pipelines, selectedPipelineId]);
+
   // Calculate deal statistics
   const dealStats = useMemo(() => {
-    const total = deals.length;
-    const totalValue = deals.reduce((acc, d) => {
+    const total = pipelineDeals.length;
+    const totalValue = pipelineDeals.reduce((acc, d) => {
       const num = parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0;
       return acc + num;
     }, 0);
     
-    const won = deals.filter(d => {
-      const stage = d.dealStageId ? stageList.find(s => s.id === d.dealStageId)?.name : d.stage;
-      return stage === 'Closed Won';
-    });
-    const lost = deals.filter(d => {
-      const stage = d.dealStageId ? stageList.find(s => s.id === d.dealStageId)?.name : d.stage;
-      return stage === 'Closed Lost';
-    });
-    const active = deals.filter(d => {
-      const stage = d.dealStageId ? stageList.find(s => s.id === d.dealStageId)?.name : d.stage;
-      return stage !== 'Closed Won' && stage !== 'Closed Lost';
-    });
+    const won = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'won');
+    const lost = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'lost');
+    const active = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'open');
     
     const wonValue = won.reduce((acc, d) => acc + (parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0), 0);
     const activeValue = active.reduce((acc, d) => acc + (parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0), 0);
@@ -230,12 +228,12 @@ export default function Pipeline() {
       total, totalValue, won: won.length, lost: lost.length, active: active.length,
       wonValue, activeValue, winRate, overdue, closingThisWeek, avgDealSize
     };
-  }, [deals, stageList]);
+  }, [pipelineDeals, stageList]);
 
   // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee)
   const currentUserId = useMemo(() => getCurrentUser()?.id, []);
   const filteredDeals = useMemo(() => {
-    let result = [...deals];
+    let result = [...pipelineDeals];
     
     // Search filter
     if (searchQuery.trim()) {
@@ -294,25 +292,26 @@ export default function Pipeline() {
     }
     
     return result;
-  }, [deals, searchQuery, filterStage, contacts, stageList, filterMyDeals, currentUserId, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo]);
+  }, [pipelineDeals, searchQuery, filterStage, contacts, stageList, filterMyDeals, currentUserId, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo]);
 
   const dealsByStage = groupDealsByStage(filteredDeals, stageList);
 
   /** The board again, quietly, after duplicates were merged into one deal. */
   const reloadDeals = () => {
-    getDealsPaged({ page: 1, pageSize: 500 })
-      .then((paged) => setDeals(paged.items))
+    getDeals()
+      .then(setDeals)
       .catch(() => toast.error(messages.errors.loadFailed));
   };
 
-  // HP-5: Use getDealsPaged instead of getDeals (fetch all with large pageSize for kanban)
+  // Every deal, not a page: the paged endpoint caps a page at 100, so a board read
+  // from it silently dropped the rest.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([getDealsPaged({ page: 1, pageSize: 500 }), getContacts(), getPipelines(), getTasks()])
-      .then(([pagedDeals, contactsData, pipelinesData, tasksData]) => {
+    Promise.all([getDeals(), getContacts(), getPipelines(), getTasks()])
+      .then(([dealsData, contactsData, pipelinesData, tasksData]) => {
         if (!cancelled) {
-          setDeals(pagedDeals.items);
+          setDeals(dealsData);
           setContacts(contactsData);
           setPipelines(pipelinesData ?? []);
           setAllTasks(tasksData ?? []);
@@ -379,7 +378,8 @@ export default function Pipeline() {
     const deal = deals.find((d) => d.id === dealId);
     const currentStageId = deal?.dealStageId ?? deal?.stage ?? '';
     if (deal && currentStageId === newStageId) return;
-    const isWon = newStageName === 'Closed Won' ? true : newStageName === 'Closed Lost' ? false : undefined;
+    const target = stageList.find((s) => s.id === newStageId);
+    const isWon = target?.isWon ? true : target?.isLost ? false : undefined;
     const payload: { stage: string; dealStageId?: string; isWon?: boolean } = { stage: newStageName };
     if (/^[0-9a-f-]{36}$/i.test(newStageId)) payload.dealStageId = newStageId;
     if (isWon !== undefined) payload.isWon = isWon;
@@ -507,6 +507,7 @@ export default function Pipeline() {
         expectedCloseDateUtc,
         companyId: createForm.companyId || undefined,
         contactId: createForm.contactId || undefined,
+        assigneeId: createForm.assigneeId || undefined,
         description: createForm.description.trim() || undefined,
         probability: createForm.probability ? parseInt(createForm.probability, 10) : undefined,
       });
@@ -544,7 +545,7 @@ export default function Pipeline() {
       });
       if (activity) {
         setDealActivities((prev) => [activity, ...prev]);
-        setActivityForm({ type: 'Note', subject: '', body: '' });
+        setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
         // Update the deal's lastActivityAtUtc in local state
         setDeals((prev) =>
@@ -618,26 +619,27 @@ export default function Pipeline() {
     }
     return d.stage || 'Qualification';
   };
-  const activeDeals = deals.filter((d) => dealStageName(d) !== 'Closed Lost');
+  const activeDeals = pipelineDeals.filter((d) => dealOutcome(d, stageList) !== 'lost');
   const totalPipelineValue = formatDealTotal(activeDeals);
   // Bare aggregate numbers (dealStats) carry no currency of their own, so they
   // are shown in the currency most of the pipeline is actually in rather than a
   // hardcoded USD.
-  const boardCurrency = dominantCurrencyOf(deals);
+  const boardCurrency = dominantCurrencyOf(pipelineDeals);
   const formatBoardAmount = (n: number) => formatAmount(n, boardCurrency);
   // How this person likes deals shown: the board, a table, a list or cards, saved for them.
   const view = useViewPreference('deals', { layouts: ['board', 'table', 'list', 'grid'] });
   const stagePill = (deal: Deal) => {
     const name = dealStageName(deal);
+    const outcome = dealOutcome(deal, stageList);
     return (
       <span className={cn(
         'inline-flex items-center gap-2 rounded-xl px-2.5 py-1 text-xs font-bold',
-        name === 'Closed Won' && 'bg-emerald-100 text-emerald-700',
-        name === 'Closed Lost' && 'bg-slate-100 text-slate-600',
-        name === 'Qualification' && 'bg-blue-100 text-blue-700',
-        name === 'Proposal' && 'bg-amber-100 text-amber-700',
-        name === 'Negotiation' && 'bg-violet-100 text-violet-700',
-        !['Closed Won', 'Closed Lost', 'Qualification', 'Proposal', 'Negotiation'].includes(name) && 'bg-slate-100 text-slate-600',
+        outcome === 'won' && 'bg-emerald-100 text-emerald-700',
+        outcome === 'lost' && 'bg-slate-100 text-slate-600',
+        outcome === 'open' && name === 'Qualification' && 'bg-blue-100 text-blue-700',
+        outcome === 'open' && name === 'Proposal' && 'bg-amber-100 text-amber-700',
+        outcome === 'open' && name === 'Negotiation' && 'bg-violet-100 text-violet-700',
+        outcome === 'open' && !['Qualification', 'Proposal', 'Negotiation'].includes(name) && 'bg-slate-100 text-slate-600',
       )}>
         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: STAGE_COLORS_MAP[name]?.bar ?? '#94a3b8' }} />
         {name}
@@ -730,7 +732,7 @@ export default function Pipeline() {
     {
       label: 'Deals Won', value: dealStats.won, icon: Trophy, tone: 'orange',
       hint: dealStats.wonValue > 0 ? formatBoardAmount(dealStats.wonValue) : undefined,
-      onClick: () => setFilterStage('Closed Won'),
+      onClick: () => setFilterStage(stageList.find((st) => st.isWon)?.name ?? 'Closed Won'),
       actionLabel: `Deals won, ${dealStats.won}. Activate to show the won deals.`,
     },
     dealStats.overdue > 0
@@ -848,6 +850,22 @@ export default function Pipeline() {
                     )}
                   </div>
                 </div>
+
+                {pipelines.length > 1 && (
+                  <Select
+                    value={selectedPipelineId ?? pipelines[0]?.id}
+                    onValueChange={(id) => { setSelectedPipelineId(id); setFilterStage('all'); }}
+                  >
+                    <SelectTrigger aria-label="Pipeline" className="relative h-11 w-full sm:w-[200px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
+                      <SelectValue placeholder="Pipeline" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border border-slate-200 shadow-xl">
+                      {pipelines.map((p) => (
+                        <SelectItem key={p.id} value={p.id} className="rounded-lg">{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
 
                 {/* Stage Filter - Compact Enhanced */}
                 <div className="relative group/filter">
@@ -1435,11 +1453,11 @@ export default function Pipeline() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Note">Note</SelectItem>
-                          <SelectItem value="Call">Call</SelectItem>
-                          <SelectItem value="Email">Email</SelectItem>
-                          <SelectItem value="Meeting">Meeting</SelectItem>
-                          <SelectItem value="Task">Task</SelectItem>
+                          <SelectItem value="note">Note</SelectItem>
+                          <SelectItem value="call">Call</SelectItem>
+                          <SelectItem value="email">Email</SelectItem>
+                          <SelectItem value="meeting">Meeting</SelectItem>
+                          <SelectItem value="task">Task</SelectItem>
                         </SelectContent>
                       </Select>
                       <Input

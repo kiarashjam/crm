@@ -12,23 +12,27 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
 
     public LeadOpsRepository(AppDbContext db) => _db = db;
 
-    public Task<Lead?> FindOpenByEmailAsync(Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default)
+    // With no organization the workspace is the user's own. "OrganizationId IS NULL"
+    // alone was every personal user's: the duplicate warning named another user's
+    // lead, and a new lead was linked to another user's company.
+
+    public Task<Lead?> FindOpenByEmailAsync(Guid userId, Guid? organizationId, string email, Guid? exceptId, CancellationToken ct = default)
     {
         var normalized = email.Trim().ToLowerInvariant();
         return _db.Leads.FirstOrDefaultAsync(l =>
             !l.IsConverted
             && l.Email.ToLower() == normalized
             && (exceptId == null || l.Id != exceptId)
-            && (organizationId == null ? l.OrganizationId == null : l.OrganizationId == organizationId), ct);
+            && (organizationId == null ? l.OrganizationId == null && l.UserId == userId : l.OrganizationId == organizationId), ct);
     }
 
-    public Task<Company?> FindCompanyByDomainAsync(Guid? organizationId, string domain, CancellationToken ct = default)
+    public Task<Company?> FindCompanyByDomainAsync(Guid userId, Guid? organizationId, string domain, CancellationToken ct = default)
     {
         var normalized = domain.Trim().ToLowerInvariant();
         return _db.Companies.FirstOrDefaultAsync(c =>
             c.Domain != null
             && c.Domain.ToLower() == normalized
-            && (organizationId == null ? c.OrganizationId == null : c.OrganizationId == organizationId), ct);
+            && (organizationId == null ? c.OrganizationId == null && c.UserId == userId : c.OrganizationId == organizationId), ct);
     }
 
     public async Task<IReadOnlyList<LeadScoringRule>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default) =>

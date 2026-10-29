@@ -24,6 +24,22 @@ public class WebhookController : ControllerBase
     private readonly IOrganizationService _organizationService;
     private readonly ICurrentUserService _currentUser;
     private readonly ILeadOpsService _leadOps;
+    private readonly AuthAttemptLimiter _attempts;
+
+    /// <summary>
+    /// Wrong webhook passwords allowed from one caller to one workspace in one window
+    /// before that caller is refused for a while. A sender with the right password never
+    /// gets near it, and a stranger guessing locks out only themselves.
+    /// </summary>
+    internal const int MaxWrongWebhookPasswords = 10;
+
+    /// <summary>
+    /// Wrong webhook passwords allowed for one workspace from all callers together: the
+    /// ceiling for guessing spread over many addresses. High enough that one person
+    /// cannot close the club's form by sending a few bad posts, which a per-workspace
+    /// limit of ten let anyone do with nothing but the workspace id.
+    /// </summary>
+    internal const int MaxWrongWebhookPasswordsPerWorkspace = 200;
 
     /// <summary>
     /// Initializes a new instance of the WebhookController.
@@ -33,13 +49,15 @@ public class WebhookController : ControllerBase
         ICompanyService companyService,
         IOrganizationService organizationService,
         ICurrentUserService currentUser,
-        ILeadOpsService leadOps)
+        ILeadOpsService leadOps,
+        AuthAttemptLimiter attempts)
     {
         _leadService = leadService;
         _companyService = companyService;
         _organizationService = organizationService;
         _currentUser = currentUser;
         _leadOps = leadOps;
+        _attempts = attempts;
     }
 
     /// <summary>
@@ -92,6 +110,7 @@ public class WebhookController : ControllerBase
     [ProducesResponseType(typeof(object), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(object), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<LeadDto>> CreateLeadViaWebhookWithPassword(
         Guid organizationId,
@@ -113,6 +132,19 @@ public class WebhookController : ControllerBase
         if (string.IsNullOrEmpty(organization.WebhookPassword))
             return Unauthorized(new { error = "This workspace has no webhook password. Set one in Settings before using this address." });
 
+        // The address is public and the password is the only thing guarding it, so
+        // guesses are counted per caller and, with a much higher ceiling, per workspace.
+        // While blocked even the right password is refused: answering it differently
+        // would let the guessing carry on. The caller is the connection address; see
+        // the note on IPs behind Azure in Program.cs.
+        var caller = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var callerKey = AuthAttemptLimiter.WebhookPassword(organization.Id, caller);
+        var workspaceKey = AuthAttemptLimiter.WebhookPassword(organization.Id);
+        if (_attempts.IsBlocked(callerKey, MaxWrongWebhookPasswords)
+            || _attempts.IsBlocked(workspaceKey, MaxWrongWebhookPasswordsPerWorkspace))
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                new { error = "Too many wrong webhook passwords. Wait 15 minutes, then try again." });
+
         var expected = organization.WebhookPassword;
 
         // Constant-time comparison to avoid leaking password length / prefix via timing.
@@ -120,7 +152,11 @@ public class WebhookController : ControllerBase
         var providedBytes = Encoding.UTF8.GetBytes(provided);
         if (expectedBytes.Length != providedBytes.Length ||
             !CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes))
+        {
+            _attempts.Record(callerKey);
+            _attempts.Record(workspaceKey);
             return Unauthorized(new { error = "Invalid webhook password" });
+        }
 
         return await CreateLeadForOrganizationAsync(organization, request, ct);
     }
@@ -241,8 +277,34 @@ public class WebhookController : ControllerBase
         if (userId == null) return Unauthorized();
 
         var result = await _organizationService.GenerateWebhookApiKeyAsync(organizationId, userId.Value, ct);
+        // Not result.ToActionResult(): that is an ActionResult<string>, which this
+        // ActionResult<object> action would wrap as a value and send back as 200.
         if (result.IsFailure)
-            return result.ToActionResult();
+            return result.Error.ToProblemResult();
+
+        return Ok(new { apiKey = result.Value });
+    }
+
+    /// <summary>
+    /// Generates the workspace's MCP key (owner/manager only), replacing any earlier one.
+    /// It is returned once; only its hash is stored. The lead webhook key does not open /mcp.
+    /// </summary>
+    [HttpPost("organizations/{organizationId:guid}/generate-mcp-key")]
+    [Authorize]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<object>> GenerateMcpApiKey(Guid organizationId, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var result = await _organizationService.GenerateMcpApiKeyAsync(organizationId, userId.Value, ct);
+        // Not result.ToActionResult(): that is an ActionResult<string>, which this
+        // ActionResult<object> action would wrap as a value and send back as 200.
+        if (result.IsFailure)
+            return result.Error.ToProblemResult();
 
         return Ok(new { apiKey = result.Value });
     }

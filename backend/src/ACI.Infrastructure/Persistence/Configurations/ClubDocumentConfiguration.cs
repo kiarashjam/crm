@@ -12,6 +12,8 @@ internal sealed class ClubDocumentConfiguration : IEntityTypeConfiguration<ClubD
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Kind).HasMaxLength(40).IsRequired();
         builder.Property(e => e.Payload).IsRequired();
+        // What makes a redeem or a tab close atomic rather than last-write-wins. See ClubDocument.Version.
+        builder.Property(e => e.Version).IsConcurrencyToken();
         builder.HasIndex(e => new { e.OrganizationId, e.Kind });
     }
 }

@@ -288,6 +288,16 @@ export interface SeriesPoint {
   value: number;
 }
 
+/**
+ * The activities people logged. The "system" updates the app writes on a lead's
+ * timeline (reassigned, a follow-up done, a pipeline move) are left out: they are
+ * not work anyone did, and since the server began keeping them they outnumbered
+ * real calls and notes in the activity report.
+ */
+export function loggedActivities(activities: Activity[]): Activity[] {
+  return activities.filter((a) => (a.type || '').toLowerCase() !== 'system');
+}
+
 /** Activity counts for the last `days` local days, oldest first. */
 export function activityByDay(activities: Activity[], days: number, now = new Date()): SeriesPoint[] {
   const counts = new Map<string, number>();

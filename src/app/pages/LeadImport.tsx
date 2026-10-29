@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { Button } from '@/app/components/ui/button';
+import { Checkbox } from '@/app/components/ui/checkbox';
 import { Label } from '@/app/components/ui/label';
 import {
   Select,
@@ -76,6 +77,10 @@ export default function LeadImport() {
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [defaultSource, setDefaultSource] = useState('csv_import');
   const [defaultStatus, setDefaultStatus] = useState('New');
+  // Off by default: an imported list is people the workspace already knows, and
+  // each row used to set off the welcome email, sequences and webhooks meant for
+  // a brand-new inquiry.
+  const [runAutomations, setRunAutomations] = useState(false);
 
   // Parse CSV
   const parseCSV = (text: string): { headers: string[]; rows: CSVRow[] } => {
@@ -251,6 +256,8 @@ export default function LeadImport() {
           phone: lead.phone?.trim() || undefined,
           source: lead.source || defaultSource,
           status: lead.status || defaultStatus,
+          origin: 'import',
+          runAutomations,
         });
         
         if (created) {
@@ -640,6 +647,25 @@ Bob Wilson,bob@example.com,,ads,New,`;
                   ... and {csvData.length - 10} more rows
                 </div>
               )}
+            </div>
+
+            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4">
+              <Checkbox
+                id="import-run-automations"
+                checked={runAutomations}
+                onCheckedChange={(checked) => setRunAutomations(checked === true)}
+                className="mt-0.5"
+              />
+              <div>
+                <Label htmlFor="import-run-automations" className="text-sm font-medium text-slate-800">
+                  Run automations for these leads
+                </Label>
+                <p className="mt-1 text-sm text-slate-500">
+                  {runAutomations
+                    ? 'Each imported lead runs your "new lead" automations, which can send emails and start sequences.'
+                    : 'Imported leads are added quietly: no "new lead" automations, emails, sequences or webhooks, and no first-response alerts.'}
+                </p>
+              </div>
             </div>
 
             {/* Actions */}
