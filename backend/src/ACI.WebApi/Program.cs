@@ -75,9 +75,10 @@ try
 
     builder.Services.AddControllers();
 
-    // The two anonymous endpoints a stranger can reach. Partitioned by form token
-    // and by lead, not by IP: behind Azure's front end the connection address may
-    // be the proxy's, and X-Forwarded-For is whatever the caller says it is.
+    // The public form and tracking endpoints are partitioned by form token and by
+    // lead, not by IP: behind Azure's front end the connection address may be the
+    // proxy's, and X-Forwarded-For is whatever the caller says it is. Sign-up has
+    // nothing else to go by, so it alone uses the address (see "register").
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -108,6 +109,43 @@ try
             {
                 PermitLimit = 20,
                 Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+        // Invitations go out from the club's sender with text the inviter chose (the
+        // workspace name), so one account cannot send thousands. Per inviter, shared
+        // by sending and re-sending.
+        options.AddPolicy("invite-email", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "invite:" + (context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromHours(1),
+                QueueLimit = 0,
+            }));
+        // Every draft is a paid call on the server's OpenAI key. Per person, a bucket of
+        // twenty that refills one a minute: plenty for someone drafting and rewriting by
+        // hand, and a script tops out near 1,400 a day instead of running up the bill.
+        options.AddPolicy("ai-copy", context => System.Threading.RateLimiting.RateLimitPartition.GetTokenBucketLimiter(
+            "ai:" + (context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "anonymous"),
+            _ => new System.Threading.RateLimiting.TokenBucketRateLimiterOptions
+            {
+                TokenLimit = 20,
+                TokensPerPeriod = 1,
+                ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+                AutoReplenishment = true,
+                QueueLimit = 0,
+            }));
+        // Sign-up is anonymous, so there is no account to count against: this one goes
+        // by the connection's address. If Azure's front end hides the caller's address
+        // behind its own, the limit becomes one shared by everyone signing up, which
+        // ten every ten minutes still allows for a club; it stops a script making
+        // accounts in bulk either way.
+        options.AddPolicy("register", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "register:" + (context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0,
             }));
     });

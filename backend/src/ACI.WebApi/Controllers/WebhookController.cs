@@ -24,6 +24,13 @@ public class WebhookController : ControllerBase
     private readonly IOrganizationService _organizationService;
     private readonly ICurrentUserService _currentUser;
     private readonly ILeadOpsService _leadOps;
+    private readonly AuthAttemptLimiter _attempts;
+
+    /// <summary>
+    /// Wrong webhook passwords allowed per workspace in one window before the address
+    /// stops answering for a while. A sender with the right password never gets near it.
+    /// </summary>
+    internal const int MaxWrongWebhookPasswords = 10;
 
     /// <summary>
     /// Initializes a new instance of the WebhookController.
@@ -33,13 +40,15 @@ public class WebhookController : ControllerBase
         ICompanyService companyService,
         IOrganizationService organizationService,
         ICurrentUserService currentUser,
-        ILeadOpsService leadOps)
+        ILeadOpsService leadOps,
+        AuthAttemptLimiter attempts)
     {
         _leadService = leadService;
         _companyService = companyService;
         _organizationService = organizationService;
         _currentUser = currentUser;
         _leadOps = leadOps;
+        _attempts = attempts;
     }
 
     /// <summary>
@@ -92,6 +101,7 @@ public class WebhookController : ControllerBase
     [ProducesResponseType(typeof(object), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(object), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(object), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(object), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(object), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<LeadDto>> CreateLeadViaWebhookWithPassword(
         Guid organizationId,
@@ -113,6 +123,14 @@ public class WebhookController : ControllerBase
         if (string.IsNullOrEmpty(organization.WebhookPassword))
             return Unauthorized(new { error = "This workspace has no webhook password. Set one in Settings before using this address." });
 
+        // The address is public and the password is the only thing guarding it, so
+        // guesses are counted per workspace. While blocked even the right password is
+        // refused: answering it differently would let the guessing carry on.
+        var attemptKey = AuthAttemptLimiter.WebhookPassword(organization.Id);
+        if (_attempts.IsBlocked(attemptKey, MaxWrongWebhookPasswords))
+            return StatusCode(StatusCodes.Status429TooManyRequests,
+                new { error = "Too many wrong webhook passwords for this workspace. Wait 15 minutes, then try again." });
+
         var expected = organization.WebhookPassword;
 
         // Constant-time comparison to avoid leaking password length / prefix via timing.
@@ -120,7 +138,10 @@ public class WebhookController : ControllerBase
         var providedBytes = Encoding.UTF8.GetBytes(provided);
         if (expectedBytes.Length != providedBytes.Length ||
             !CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes))
+        {
+            _attempts.Record(attemptKey);
             return Unauthorized(new { error = "Invalid webhook password" });
+        }
 
         return await CreateLeadForOrganizationAsync(organization, request, ct);
     }

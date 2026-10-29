@@ -2,6 +2,7 @@ using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ACI.WebApi.Controllers;
 
@@ -44,6 +45,7 @@ public class CopyController : ControllerBase
     /// <response code="200">Returns the generated copy.</response>
     /// <response code="401">User is not authenticated.</response>
     [HttpPost("generate")]
+    [EnableRateLimiting("ai-copy")]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<object>> Generate([FromBody] GenerateCopyRequest request, CancellationToken ct)
@@ -67,6 +69,7 @@ public class CopyController : ControllerBase
     /// <response code="200">Returns the generated copy and subject.</response>
     /// <response code="401">User is not authenticated.</response>
     [HttpPost("generate-with-recipient")]
+    [EnableRateLimiting("ai-copy")]
     [ProducesResponseType(typeof(GenerateCopyWithSubjectResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<GenerateCopyWithSubjectResponse>> GenerateWithRecipient(
@@ -96,6 +99,7 @@ public class CopyController : ControllerBase
     /// <response code="200">Returns the rewritten copy.</response>
     /// <response code="401">User is not authenticated.</response>
     [HttpPost("rewrite")]
+    [EnableRateLimiting("ai-copy")]
     [ProducesResponseType(typeof(RewriteCopyResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<RewriteCopyResponse>> Rewrite(
@@ -122,6 +126,7 @@ public class CopyController : ControllerBase
     /// <response code="200">Returns the generated copy.</response>
     /// <response code="401">User is not authenticated.</response>
     [HttpPost("generate-multilang")]
+    [EnableRateLimiting("ai-copy")]
     [ProducesResponseType(typeof(GenerateCopyWithSubjectResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<GenerateCopyWithSubjectResponse>> GenerateMultiLanguage(

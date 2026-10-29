@@ -4,6 +4,7 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ACI.WebApi.Controllers;
 
@@ -76,8 +77,10 @@ public class AuthController : ControllerBase
     /// <returns>Login response with JWT token for the new account.</returns>
     /// <response code="200">Registration successful.</response>
     /// <response code="409">Email is already registered.</response>
+    /// <response code="429">Too many sign-ups from this address; try again in a few minutes.</response>
     [HttpPost("register")]
     [AllowAnonymous]
+    [EnableRateLimiting("register")]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<LoginResponse>> Register([FromBody] RegisterRequest request, CancellationToken ct)

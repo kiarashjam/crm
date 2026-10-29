@@ -3,6 +3,7 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ACI.WebApi.Controllers;
 
@@ -105,6 +106,7 @@ public class InvitesController : ControllerBase
     /// <response code="401">User is not authenticated.</response>
     /// <response code="403">User is not the organization owner.</response>
     [HttpPost("{organizationId:guid}")]
+    [EnableRateLimiting("invite-email")]
     [ProducesResponseType(typeof(InviteDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -134,6 +136,7 @@ public class InvitesController : ControllerBase
     /// <response code="403">User is not an owner or manager.</response>
     /// <response code="404">Invite not found.</response>
     [HttpPost("{inviteId:guid}/resend")]
+    [EnableRateLimiting("invite-email")]
     [ProducesResponseType(typeof(InviteDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

@@ -36,6 +36,7 @@ public sealed class AuthAttemptLimiter
     public static string TwoFactor(Guid userId) => "2fa:" + userId;
     public static string PasswordReset(string email) => "reset:" + email.Trim();
     public static string VerificationEmail(Guid userId) => "verify:" + userId;
+    public static string WebhookPassword(Guid organizationId) => "webhook:" + organizationId;
 
     /// <summary>Whether this key has used up its attempts for the current window.</summary>
     public bool IsBlocked(string key, int limit = MaxFailures)
