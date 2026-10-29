@@ -423,7 +423,7 @@ public static class DomainErrors
             "Auth.PasswordTooWeak", "The password does not meet security requirements");
         
         public static readonly Error AccountLocked = new(
-            "Auth.AccountLocked", "The account has been locked due to too many failed attempts");
+            "Auth.AccountLocked", "Too many failed attempts. Wait 15 minutes, then try again.");
 
         public static readonly Error InvalidResetToken = new(
             "Auth.InvalidResetToken", "This password reset link is invalid or has expired. Request a new one.");

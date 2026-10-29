@@ -20,6 +20,11 @@ public class AuthService : IAuthService
     private readonly IEmailSender _emailSender;
     private readonly EmailSettings _emailSettings;
     private readonly ILogger<AuthService> _logger;
+    private readonly AuthAttemptLimiter _attempts;
+
+    // Checked against when the email has no account, so a wrong email takes as long
+    // as a wrong password and the response time does not reveal who has an account.
+    private static string? _decoyHash;
 
     public AuthService(
         IUserRepository userRepository,
@@ -28,7 +33,8 @@ public class AuthService : IAuthService
         ISecretProtector secretProtector,
         IEmailSender emailSender,
         IOptions<EmailSettings> emailSettings,
-        ILogger<AuthService> logger)
+        ILogger<AuthService> logger,
+        AuthAttemptLimiter? attempts = null)
     {
         _userRepository = userRepository;
         _tokenService = tokenService;
@@ -37,24 +43,38 @@ public class AuthService : IAuthService
         _emailSender = emailSender;
         _emailSettings = emailSettings.Value;
         _logger = logger;
+        _attempts = attempts ?? new AuthAttemptLimiter();
     }
 
     public async Task<Result<LoginResponse>> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         _logger.LogInformation("Login attempt for email {Email}", request.Email);
-        
+
+        var attemptKey = AuthAttemptLimiter.Login(request.Email);
+        if (_attempts.IsBlocked(attemptKey))
+        {
+            _logger.LogWarning("Login refused: too many failed attempts for email {Email}", request.Email);
+            return DomainErrors.Auth.AccountLocked;
+        }
+
         var user = await _userRepository.GetByEmailAsync(request.Email, ct);
         if (user?.PasswordHash == null)
         {
+            _decoyHash ??= _passwordHasher.Hash(Guid.NewGuid().ToString());
+            _passwordHasher.Verify(request.Password, _decoyHash);
+            _attempts.Record(attemptKey);
             _logger.LogWarning("Login failed: user not found for email {Email}", request.Email);
             return DomainErrors.Auth.InvalidCredentials;
         }
 
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
+            _attempts.Record(attemptKey);
             _logger.LogWarning("Login failed: invalid password for user {UserId}", user.Id);
             return DomainErrors.Auth.InvalidCredentials;
         }
+
+        _attempts.Reset(attemptKey);
 
         if (user.TwoFactorEnabled)
         {
@@ -96,12 +116,23 @@ public class AuthService : IAuthService
             return DomainErrors.Auth.InvalidTwoFactorCode;
         }
 
+        // Six digits are a million guesses; five per window keeps that out of reach.
+        var attemptKey = AuthAttemptLimiter.TwoFactor(user.Id);
+        if (_attempts.IsBlocked(attemptKey))
+        {
+            _logger.LogWarning("2FA login refused: too many failed codes for user {UserId}", user.Id);
+            return DomainErrors.Auth.AccountLocked;
+        }
+
         var secret = _secretProtector.Unprotect(user.TwoFactorSecretProtected);
         if (!Totp.VerifyCode(secret, request.Code, DateTime.UtcNow))
         {
+            _attempts.Record(attemptKey);
             _logger.LogWarning("2FA login failed: invalid TOTP code for user {UserId}", user.Id);
             return DomainErrors.Auth.InvalidTwoFactorCode;
         }
+
+        _attempts.Reset(attemptKey);
 
         ClearPasswordResetFieldsIfPresent(user);
         user.LastLoginAtUtc = DateTime.UtcNow;
@@ -260,6 +291,15 @@ public class AuthService : IAuthService
             return Result.Success();
         }
 
+        // Each request mails the address and replaces the previous link, so without a
+        // cap anyone can flood an inbox or keep someone's real link from working.
+        var resetKey = AuthAttemptLimiter.PasswordReset(email);
+        if (_attempts.IsBlocked(resetKey, AuthAttemptLimiter.MaxResetEmails))
+        {
+            _logger.LogWarning("Password reset email not sent for user {UserId}: too many requests", user.Id);
+            return Result.Success();
+        }
+
         var rawToken = PasswordResetCrypto.CreateRawToken();
         var tokenHash = PasswordResetCrypto.HashRawToken(rawToken);
         var expiresAt = DateTime.UtcNow.AddHours(1);
@@ -282,6 +322,7 @@ public class AuthService : IAuthService
             return Result.Success();
         }
 
+        _attempts.Record(resetKey);
         user.PasswordResetTokenHash = tokenHash;
         user.PasswordResetTokenExpiresAtUtc = expiresAt;
         await _userRepository.UpdateAsync(user, ct);

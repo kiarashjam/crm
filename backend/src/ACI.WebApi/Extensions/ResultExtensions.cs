@@ -99,7 +99,7 @@ public static class ResultExtensions
         "Auth.InvalidCredentials" => StatusCodes.Status401Unauthorized,
         "Auth.EmailNotFound" => StatusCodes.Status401Unauthorized,
         "Auth.InvalidTwoFactorCode" => StatusCodes.Status401Unauthorized,
-        "Auth.AccountLocked" => StatusCodes.Status401Unauthorized,
+        "Auth.AccountLocked" => StatusCodes.Status429TooManyRequests,
         "Auth.InvalidResetToken" => StatusCodes.Status400BadRequest,
         "General.Unauthorized" => StatusCodes.Status401Unauthorized,
         

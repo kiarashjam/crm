@@ -185,6 +185,7 @@ try
     builder.Services.AddInfrastructure(builder.Configuration);
 
     // Application services
+    builder.Services.AddSingleton<AuthAttemptLimiter>();
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IContactService, ContactService>();
     builder.Services.AddScoped<IContactRelationshipService, ContactRelationshipService>();
@@ -238,7 +239,18 @@ try
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
     // JWT Authentication
-    var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? "ACI-SuperSecretKey-ChangeInProduction-Min32Chars";
+    // The default below is in the repository, so anyone can sign a token with it for
+    // any user id. Outside development and tests the server refuses to start on it:
+    // set Jwt__SecretKey (32+ random characters) in the host's configuration.
+    const string publicJwtSecret = "ACI-SuperSecretKey-ChangeInProduction-Min32Chars";
+    var jwtSecret = builder.Configuration["Jwt:SecretKey"] ?? publicJwtSecret;
+    if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing")
+        && (jwtSecret == publicJwtSecret || jwtSecret.Length < 32))
+    {
+        throw new InvalidOperationException(
+            "Jwt:SecretKey is missing, too short, or the public default from the repository. " +
+            "Set Jwt__SecretKey to a random value of at least 32 characters.");
+    }
     var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "ACI";
     var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "ACI";
 
@@ -263,7 +275,17 @@ try
                     if (context.Request.Path.StartsWithSegments("/mcp"))
                         context.NoResult();
                     return Task.CompletedTask;
-                }
+                },
+                // The 2FA step token is signed with the same key, so it validates like a
+                // session token. It proves only the password: accepting it here would let
+                // anyone who knows the password skip the code entirely. Its one use is the
+                // body of POST /api/auth/login/2fa, which reads it itself.
+                OnTokenValidated = context =>
+                {
+                    if (context.Principal?.FindFirst("typ")?.Value == "2fa")
+                        context.Fail("A two-factor step token is not a session token.");
+                    return Task.CompletedTask;
+                },
             };
         });
     builder.Services.AddAuthorization();
