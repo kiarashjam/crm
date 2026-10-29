@@ -40,6 +40,7 @@ beforeEach(() => {
 describe('the confirmation link', () => {
   it('spends the token once and remembers the address as confirmed', async () => {
     setSession('jwt', { id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: false });
+    me.mockResolvedValueOnce({ id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: true });
 
     render(
       <MemoryRouter initialEntries={['/verify-email?token=abc123']}>
@@ -65,6 +66,20 @@ describe('the confirmation link', () => {
 
     expect(await screen.findByText('This link did not work')).toBeInTheDocument();
     expect(screen.getByText(/invalid or has expired/)).toBeInTheDocument();
+  });
+
+  it('does not mark the signed-in account confirmed when the link was for another one', async () => {
+    setSession('jwt', { id: 'u1', name: 'Kia', email: 'kia@club.ch', emailVerified: false });
+    // me() still says unconfirmed: the token belonged to someone else's account.
+
+    render(
+      <MemoryRouter initialEntries={['/verify-email?token=someone-elses']}>
+        <VerifyEmail />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Your email address is confirmed')).toBeInTheDocument();
+    expect(getCurrentUser()?.emailVerified).toBe(false);
   });
 });
 

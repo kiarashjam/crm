@@ -2,7 +2,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Loader2, MailWarning } from 'lucide-react';
 import { toast } from 'sonner';
-import { resendVerificationEmail, verifyEmail } from '@/app/api/auth';
+import { me, resendVerificationEmail, verifyEmail } from '@/app/api/auth';
 import { isUsingRealApi } from '@/app/api/apiClient';
 import { getCurrentUser, updateCurrentUser } from '@/app/lib/auth';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
@@ -34,8 +34,13 @@ export default function VerifyEmail() {
     if (state.kind !== 'working' || sent.current) return;
     sent.current = true;
     verifyEmail(token)
-      .then(() => {
-        if (signedIn) updateCurrentUser({ emailVerified: true });
+      .then(async () => {
+        // The link may belong to a different account from the one signed in here, so
+        // ask the server rather than assume this one was confirmed.
+        if (signedIn) {
+          const fresh = await me().catch(() => null);
+          if (typeof fresh?.emailVerified === 'boolean') updateCurrentUser({ emailVerified: fresh.emailVerified });
+        }
         setState({ kind: 'done' });
       })
       .catch((e: unknown) => {
