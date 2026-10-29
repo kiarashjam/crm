@@ -384,7 +384,8 @@ export function computeChargeStats(charges: Charge[]): ChargeStats {
     const remaining = c.amount - c.paidAmount;
     if (remaining > 0) outstanding += remaining;
     if (c.status === 'Overdue') overdue += remaining;
-    if (c.status === 'PartiallyPaid' || c.status === 'Pending') pendingCount++;
+    // An overdue charge is still open: the server now reports late ones as Overdue.
+    if (c.status === 'PartiallyPaid' || c.status === 'Pending' || c.status === 'Overdue') pendingCount++;
     if (c.status === 'Paid' && c.paidAtUtc && Date.parse(c.paidAtUtc) >= monthAgo) {
       paidThisMonth += c.amount;
     }
