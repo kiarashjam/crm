@@ -317,7 +317,7 @@ public class AuthService : IAuthService
         if (!Totp.VerifyCode(secret, request.Code, DateTime.UtcNow))
         {
             _logger.LogWarning("Enable 2FA failed: invalid code for user {UserId}", userId);
-            return DomainErrors.Auth.InvalidTwoFactorCode;
+            return DomainErrors.Auth.WrongTwoFactorCode;
         }
 
         user.TwoFactorEnabled = true;
@@ -345,7 +345,7 @@ public class AuthService : IAuthService
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
             _logger.LogWarning("Disable 2FA failed: invalid password for user {UserId}", userId);
-            return DomainErrors.Auth.InvalidCredentials;
+            return DomainErrors.Auth.WrongPassword;
         }
 
         if (!user.TwoFactorEnabled || string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected))
@@ -358,7 +358,7 @@ public class AuthService : IAuthService
         if (!Totp.VerifyCode(secret, request.Code, DateTime.UtcNow))
         {
             _logger.LogWarning("Disable 2FA failed: invalid code for user {UserId}", userId);
-            return DomainErrors.Auth.InvalidTwoFactorCode;
+            return DomainErrors.Auth.WrongTwoFactorCode;
         }
 
         user.TwoFactorEnabled = false;

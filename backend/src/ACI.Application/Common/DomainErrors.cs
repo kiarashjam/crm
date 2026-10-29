@@ -415,7 +415,16 @@ public static class DomainErrors
         
         public static readonly Error InvalidTwoFactorCode = new(
             "Auth.InvalidTwoFactorCode", "The two-factor authentication code is invalid");
-        
+
+        // Turning 2FA on or off in Settings, where the person is already signed in: a
+        // wrong code or password there is a typo, so 400. The 401 that a failed sign-in
+        // gets makes the browser treat the session as over and sign the person out.
+        public static readonly Error WrongTwoFactorCode = new(
+            "Auth.WrongTwoFactorCode", "The two-factor authentication code is invalid");
+
+        public static readonly Error WrongPassword = new(
+            "Auth.WrongPassword", "The password is incorrect");
+
         public static readonly Error TwoFactorRequired = new(
             "Auth.TwoFactorRequired", "Two-factor authentication is required");
         
