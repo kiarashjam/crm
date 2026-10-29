@@ -24,6 +24,8 @@ const cents = (n: number) => Math.round(n * 100);
  */
 export function buildStatement(charges: Charge[], payments: Payment[], start: number, end: number): Statement {
   const live = charges.filter((c) => c.status !== 'Voided');
+  // A voided payment (a bounced cheque, say) paid nothing, so it is not on the statement.
+  const received = payments.filter((p) => p.status !== 'Voided');
   const before = (iso: string) => Date.parse(iso) < start;
   const within = (iso: string) => {
     const t = Date.parse(iso);
@@ -32,9 +34,9 @@ export function buildStatement(charges: Charge[], payments: Payment[], start: nu
 
   const opening =
     live.filter((c) => before(c.postedAtUtc)).reduce((s, c) => s + cents(c.amount), 0) -
-    payments.filter((p) => before(p.receivedAtUtc)).reduce((s, p) => s + cents(p.amount), 0);
+    received.filter((p) => before(p.receivedAtUtc)).reduce((s, p) => s + cents(p.amount), 0);
   const periodChargeList = charges.filter((c) => within(c.postedAtUtc));
-  const periodPaymentList = payments.filter((p) => within(p.receivedAtUtc));
+  const periodPaymentList = received.filter((p) => within(p.receivedAtUtc));
   const charged = periodChargeList.filter((c) => c.status !== 'Voided').reduce((s, c) => s + cents(c.amount), 0);
   const paid = periodPaymentList.reduce((s, p) => s + cents(p.amount), 0);
 

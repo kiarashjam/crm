@@ -128,7 +128,10 @@ public class ClubWorkspaceTests
         settled.GetProperty("status").GetString().Should().Be("PartiallyPaid");
         (await BalanceAsync(client, memberId)).Should().Be(-60);
 
-        (await client.DeleteAsync($"/api/charges/{charge.GetProperty("id").GetString()}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        // Taken back the way the books allow: the payment voided, then the charge. Both stay on record.
+        await Json(await client.PostAsync($"/api/payments/{payment.GetProperty("id").GetString()}/void", Body(new { reason = "Card declined" })), "void payment");
+        (await BalanceAsync(client, memberId)).Should().Be(-100);
+        await Json(await client.PostAsync($"/api/charges/{charge.GetProperty("id").GetString()}/void", Body(new { reason = "Posted to the wrong member" })), "void charge");
         (await BalanceAsync(client, memberId)).Should().Be(0);
     }
 

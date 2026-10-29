@@ -109,7 +109,10 @@ public class ChargesController : ControllerBase
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "charges", ct)); }
     [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "charges", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "charges", id, ct) ? NoContent() : NotFound(); }
+    // A charge is voided, not deleted, so the record of what was charged stays. Answered
+    // with a sentence rather than a bare 405, which the app would read as a missing feature.
+    [HttpDelete("{id:guid}")] public IActionResult Delete(Guid id) => DomainErrors.Club.ChargeCannotDelete.ToProblemResult();
+    [HttpPost("{id:guid}/void")][ManagersOnly("void a charge")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidChargeAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
 }
 
 [ApiController]
@@ -124,6 +127,7 @@ public class PaymentsController : ControllerBase
 
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "payments", ct)); }
     [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "payments", await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost("{id:guid}/void")][ManagersOnly("void a payment")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidPaymentAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
 }
 
 [ApiController]
@@ -232,7 +236,7 @@ public class GiftCardsController : ControllerBase
     [HttpGet("redemptions")] public async Task<IActionResult> Redemptions(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "gift-card-redemptions", ct)); }
     [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "gift-cards", await ClubDocs.Body(Request, ct), ct)); }
     [HttpPost("{id:guid}/redeem")] public async Task<IActionResult> Redeem(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.RedeemGiftCardAsync(org, id, await ClubDocs.Body(Request, ct), Request.Headers["Idempotency-Key"].ToString(), ct)); }
-    [HttpPost("{id:guid}/void")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidGiftCardAsync(org, id, ct)); }
+    [HttpPost("{id:guid}/void")][ManagersOnly("void a gift card")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidGiftCardAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
 }
 
 [ApiController]

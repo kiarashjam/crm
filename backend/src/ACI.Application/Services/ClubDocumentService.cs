@@ -18,7 +18,10 @@ public interface IClubDocumentService
     Task<JsonObject?> AcknowledgeDonationAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     /// <param name="idempotencyKey">From the Idempotency-Key header: a retry carrying the same key gets the first redemption back instead of spending the card again.</param>
     Task<Result<JsonObject>> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, string? idempotencyKey, CancellationToken ct = default);
-    Task<Result<JsonObject>> VoidGiftCardAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
+    // Money records are voided, with a reason, and kept; only an owner or a manager may (see the controllers).
+    Task<Result<JsonObject>> VoidGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
+    Task<Result<JsonObject>> VoidChargeAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
+    Task<Result<JsonObject>> VoidPaymentAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
     Task<Result<JsonObject>> AddTabItemAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
     Task<Result<JsonObject>> RemoveTabItemAsync(Guid? organizationId, Guid tabId, Guid itemId, CancellationToken ct = default);
     Task<Result<JsonObject>> CloseTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
@@ -142,13 +145,13 @@ public sealed class ClubDocumentService : IClubDocumentService
 
     public async Task<bool> DeleteAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct = default)
     {
+        // These are voided and kept, so the books can say what happened to them.
+        if (kind is "charges" or "payments" or "gift-cards" or "gift-card-redemptions" or "tabs")
+            throw new InvalidOperationException($"Club {kind} are voided, not deleted.");
         var row = await Load(organizationId, kind, id, ct);
         if (row == null || !await _docs.DeleteAsync(id, organizationId, kind, ct)) return false;
         switch (kind)
         {
-            case "charges":
-                await RecomputeBalanceAsync(organizationId, Text(row, "memberId"), ct);
-                break;
             case "households":
                 // A household's member links go with it, as they did in the browser.
                 foreach (var link in await _docs.ListAsync(organizationId, "household-members", ct))
@@ -237,13 +240,77 @@ public sealed class ClubDocumentService : IClubDocumentService
         return null;
     }
 
-    public async Task<Result<JsonObject>> VoidGiftCardAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> VoidGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
     {
+        if (ReadReason(body, out var reason) is { } noReason) return noReason;
         var card = await Load(organizationId, "gift-cards", id, ct);
         if (card == null) return DomainErrors.Club.GiftCardNotFound;
-        card["status"] = "Voided";
-        await Save(organizationId, "gift-cards", id, card, ct);
-        return card;
+        if (Text(card, "status") == "Voided") return DomainErrors.Club.GiftCardVoided;
+        // What was left on the card is written off, and the card says how much.
+        card["writtenOffValue"] = Dec(card, "remainingValue");
+        card["remainingValue"] = 0;
+        MarkVoided(card, reason);
+        return await WriteAsync(async () =>
+        {
+            await Save(organizationId, "gift-cards", id, card, ct);
+            return Result.Success(card);
+        }, ct, DomainErrors.Club.GiftCardChanged);
+    }
+
+    /// <remarks>
+    /// Charges used to be deleted, by anyone with an account: a 500 bar charge could
+    /// disappear, the balance and the next statement changed, and nothing said who did it
+    /// or that it had ever been there. A voided charge stays, saying who voided it and why,
+    /// and no longer counts towards the balance.
+    /// </remarks>
+    public async Task<Result<JsonObject>> VoidChargeAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
+    {
+        if (ReadReason(body, out var reason) is { } noReason) return noReason;
+        var charge = await Load(organizationId, "charges", id, ct);
+        if (charge == null) return DomainErrors.Club.ChargeNotFound;
+        if (Text(charge, "status") == "Voided") return DomainErrors.Club.ChargeVoided;
+        // Money paid against it would drop out of the balance with it, so the payments go first.
+        if (Dec(charge, "paidAmount") > 0) return DomainErrors.Club.ChargeHasPayments;
+        MarkVoided(charge, reason);
+        return await WriteAsync(async () =>
+        {
+            await Save(organizationId, "charges", id, charge, ct);
+            await RecomputeBalanceAsync(organizationId, Text(charge, "memberId"), ct);
+            return Result.Success(charge);
+        }, ct, DomainErrors.Club.ChargeChanged);
+    }
+
+    /// <summary>A payment taken back: its charge owes again what it paid, and the payment stays, voided.</summary>
+    public async Task<Result<JsonObject>> VoidPaymentAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
+    {
+        if (ReadReason(body, out var reason) is { } noReason) return noReason;
+        var payment = await Load(organizationId, "payments", id, ct);
+        if (payment == null) return DomainErrors.Club.PaymentNotFound;
+        if (Text(payment, "status") == "Voided") return DomainErrors.Club.PaymentVoided;
+        var chargeIdText = Text(payment, "chargeId");
+        if (chargeIdText.Length == 0 && payment["appliedToChargeIds"] is JsonArray { Count: > 0 } applied)
+            chargeIdText = applied[0]?.ToString() ?? "";
+        JsonObject? charge = null;
+        if (Guid.TryParse(chargeIdText, out var chargeId))
+        {
+            charge = await Load(organizationId, "charges", chargeId, ct);
+            if (charge != null && Text(charge, "status") != "Voided")
+            {
+                var paid = Math.Max(0, Dec(charge, "paidAmount") - Dec(payment, "amount"));
+                charge["paidAmount"] = paid;
+                charge["status"] = paid > 0 ? "PartiallyPaid" : "Pending";
+                charge.Remove("paidAtUtc");
+            }
+            else charge = null;
+        }
+        MarkVoided(payment, reason);
+        return await WriteAsync(async () =>
+        {
+            if (charge != null) await Save(organizationId, "charges", chargeId, charge, ct);
+            await Save(organizationId, "payments", id, payment, ct);
+            await RecomputeBalanceAsync(organizationId, Text(payment, "memberId"), ct);
+            return Result.Success(payment);
+        }, ct, DomainErrors.Club.ChargeChanged);
     }
 
     public async Task<Result<JsonObject>> AddTabItemAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
@@ -883,6 +950,23 @@ public sealed class ClubDocumentService : IClubDocumentService
     private static decimal? Number(JsonObject obj, string key) =>
         obj[key] is JsonValue value && value.TryGetValue<decimal>(out var n) ? n
         : decimal.TryParse(Text(obj, key), NumberStyles.Number, CultureInfo.InvariantCulture, out var p) ? p : null;
+
+    /// <summary>The reason a void must give: not blank, and short enough to keep.</summary>
+    private static Error? ReadReason(JsonObject body, out string reason)
+    {
+        reason = Text(body, "reason").Trim();
+        if (reason.Length == 0) return DomainErrors.Club.ReasonRequired;
+        if (reason.Length > 500) return DomainErrors.Club.TooLong("A reason", 500);
+        return null;
+    }
+
+    private void MarkVoided(JsonObject obj, string reason)
+    {
+        obj["status"] = "Voided";
+        obj["voidedAtUtc"] = DateTime.UtcNow.ToString("o");
+        obj["voidReason"] = reason;
+        StampWho(obj, "voided");
+    }
 
     /// <summary>Who did this, on the record itself, so the tab or charge says it without the audit log.</summary>
     private void StampWho(JsonObject obj, string action)

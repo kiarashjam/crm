@@ -645,6 +645,24 @@ public static class DomainErrors
                 ? "This tab is already closed and posted to the member's account, so it can't be changed."
                 : "This tab was voided, so it can't be changed.");
 
+        public static readonly Error PaymentNotFound = new(
+            "Payment.NotFound", "That payment was not found.");
+
+        public static readonly Error ReasonRequired = new(
+            "Club.ReasonRequired", "Say why this is being voided. The reason stays on the record.");
+
+        public static readonly Error ChargeCannotDelete = new(
+            "Charge.CannotDelete", "A charge can't be deleted. An owner or manager can void it, with a reason, and the record stays.");
+
+        public static readonly Error ChargeHasPayments = new(
+            "Charge.HasPayments.Conflict", "This charge has payments against it. Void those payments first, then the charge.");
+
+        public static readonly Error PaymentVoided = new(
+            "Payment.Voided.Conflict", "This payment is already voided.");
+
+        public static readonly Error GiftCardVoided = new(
+            "GiftCard.Voided.Conflict", "This gift card is already voided.");
+
         public static readonly Error PaymentChargeRequired = new(
             "Payment.ChargeRequired", "Choose the charge this payment settles. A payment against no charge would not change what the member owes.");
 

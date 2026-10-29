@@ -26,6 +26,9 @@ export interface GiftCard {
   issuedAtUtc: string;
   expiresAtUtc?: string;
   message?: string;
+  /** Set when voided: what was left on the card when it was written off, and why. */
+  writtenOffValue?: number;
+  voidReason?: string;
 }
 
 export interface GiftCardRedemption {
@@ -265,12 +268,18 @@ export async function redeemGiftCard(input: RedeemInput): Promise<GiftCardRedemp
   return redemption;
 }
 
-export async function voidGiftCard(id: string): Promise<GiftCard | null> {
+/**
+ * Void a card, with a reason: what was left on it is written off, and the card says how
+ * much. On the server only an owner or manager may.
+ */
+export async function voidGiftCard(id: string, reason: string): Promise<GiftCard | null> {
   return apiWithFallback(
-    () => authFetchJson<GiftCard>(`/api/gift-cards/${id}/void`, { method: 'POST' }),
+    () => authFetchJson<GiftCard>(`/api/gift-cards/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
     async () => {
       await delay(100);
-      return cardStore.update(id, { status: 'Voided' });
+      const card = cardStore.byId(id);
+      if (!card) return null;
+      return cardStore.update(id, { status: 'Voided', remainingValue: 0, writtenOffValue: card.remainingValue, voidReason: reason });
     },
   );
 }

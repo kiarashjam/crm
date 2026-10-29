@@ -456,7 +456,11 @@ export default function MemberDetail() {
                             <span className="text-slate-600">
                               {p.method} {p.reference && <span className="text-slate-500">· {p.reference}</span>}
                             </span>
-                            <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
+                            {p.status === 'Voided' ? (
+                              <span className="text-slate-500 line-through" title={p.voidReason}>{formatCurrency(p.amount)} voided</span>
+                            ) : (
+                              <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
+                            )}
                           </li>
                         ))}
                       </ul>

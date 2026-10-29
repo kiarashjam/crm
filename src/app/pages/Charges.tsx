@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Receipt,
   Plus,
-  Trash2,
+  Ban,
   Search,
   DollarSign,
   AlertTriangle,
@@ -44,7 +44,8 @@ import {
   getPayments,
   createCharge,
   recordPayment,
-  deleteCharge,
+  voidCharge,
+  voidPayment,
   computeChargeStats,
   CHARGE_KINDS,
   CHARGE_STATUSES,
@@ -56,6 +57,9 @@ import {
   type Payment,
 } from '@/app/api/charges';
 import { getMembers, type Member } from '@/app/api/members';
+import { isOrgAdmin } from '@/app/api/organizations';
+import { servesDemoData } from '@/app/api/apiClient';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
@@ -122,7 +126,10 @@ export default function Charges() {
     reference: '',
   });
   const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [voidingId, setVoidingId] = useState<string | null>(null);
+  // Voiding money is an owner's or a manager's call; the server refuses anyone else.
+  const org = useOrgOptional();
+  const canVoid = servesDemoData() || isOrgAdmin(org?.currentOrg);
 
   const load = async () => {
     try {
@@ -249,17 +256,45 @@ export default function Charges() {
     }
   };
 
-  const remove = async (c: Charge) => {
-    if (!confirm(`Delete ${c.description}?`)) return;
-    setDeletingId(c.id);
+  /** Asks why; null when the person cancels or gives no reason. */
+  const askReason = (what: string): string | null => {
+    const reason = window.prompt(`Why is ${what} being voided? The reason stays on the record.`);
+    if (reason === null) return null;
+    if (!reason.trim()) {
+      toast.error('A reason is needed to void it');
+      return null;
+    }
+    return reason.trim();
+  };
+
+  // Charges and payments are voided, never deleted: the record stays, with who and why.
+  const voidOne = async (c: Charge) => {
+    const reason = askReason(c.description);
+    if (!reason) return;
+    setVoidingId(c.id);
     try {
-      const ok = await deleteCharge(c.id);
-      if (ok) {
-        toast.success('Charge deleted');
-        await load();
-      }
+      await voidCharge(c.id, reason);
+      toast.success('Charge voided');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not void the charge');
     } finally {
-      setDeletingId(null);
+      setVoidingId(null);
+    }
+  };
+
+  const voidOnePayment = async (p: Payment) => {
+    const reason = askReason(`this ${formatCurrency(p.amount)} payment`);
+    if (!reason) return;
+    setVoidingId(p.id);
+    try {
+      await voidPayment(p.id, reason);
+      toast.success('Payment voided');
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not void the payment');
+    } finally {
+      setVoidingId(null);
     }
   };
 
@@ -285,7 +320,7 @@ export default function Charges() {
     );
   };
 
-  /** Pay and delete, the same in every layout. */
+  /** Pay and void, the same in every layout. */
   const chargeActions = (c: Charge) => (
     <div className="flex items-center justify-end gap-1">
       {(c.status === 'Pending' || c.status === 'PartiallyPaid' || c.status === 'Overdue') && (
@@ -293,17 +328,45 @@ export default function Charges() {
           <CreditCard className="w-3.5 h-3.5 mr-1" /> Pay
         </Button>
       )}
-      <button
-        type="button"
-        onClick={() => remove(c)}
-        disabled={deletingId === c.id}
-        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-        aria-label={`Delete charge ${c.description}`}
-      >
-        {deletingId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-      </button>
+      {/* A charge with payments against it is voided after them, so no paid money drops out of the balance. */}
+      {canVoid && c.status !== 'Voided' && c.paidAmount === 0 && (
+        <button
+          type="button"
+          onClick={() => voidOne(c)}
+          disabled={voidingId === c.id}
+          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          aria-label={`Void charge ${c.description}`}
+        >
+          {voidingId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+        </button>
+      )}
     </div>
   );
+
+  const paymentActions = (p: Payment) =>
+    canVoid && p.status !== 'Voided' ? (
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => voidOnePayment(p)}
+          disabled={voidingId === p.id}
+          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+          aria-label={`Void payment of ${formatCurrency(p.amount)}`}
+        >
+          {voidingId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+        </button>
+      </div>
+    ) : null;
+
+  const paymentAmount = (p: Payment) =>
+    p.status === 'Voided' ? (
+      <span className="block text-right">
+        <span className="block text-slate-500 line-through">{formatCurrency(p.amount)}</span>
+        <span className="block text-xs text-slate-500">Voided{p.voidReason ? `: ${p.voidReason}` : ''}</span>
+      </span>
+    ) : (
+      <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
+    );
 
   const chargeColumns: RecordColumn<Charge>[] = [
     {
@@ -324,6 +387,11 @@ export default function Charges() {
         <span className="block">
           <span className="block text-slate-700">{c.description}</span>
           {c.reference && <span className="mt-0.5 block text-xs text-slate-500">{c.reference}</span>}
+          {c.status === 'Voided' && c.voidReason && (
+            <span className="mt-0.5 block text-xs text-slate-500">
+              Voided: {c.voidReason}{c.voidedByName ? ` · ${c.voidedByName}` : ''}
+            </span>
+          )}
         </span>
       ),
     },
@@ -347,7 +415,7 @@ export default function Charges() {
     },
     { id: 'method', label: 'Method', cell: (p) => PAYMENT_METHOD_LABELS[p.method] },
     { id: 'reference', label: 'Reference', cell: (p) => <span className="font-mono text-xs text-slate-500">{p.reference ?? '—'}</span> },
-    { id: 'amount', label: 'Amount', numeric: true, cell: (p) => <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span> },
+    { id: 'amount', label: 'Amount', numeric: true, cell: paymentAmount },
     { id: 'received', label: 'Received', cell: (p) => <span className="whitespace-nowrap">{formatDate(p.receivedAtUtc)}</span> },
   ];
 
@@ -529,6 +597,7 @@ export default function Charges() {
                         title={(p) => p.memberName}
                         subtitle={(p) => `+${formatCurrency(p.amount)} · ${PAYMENT_METHOD_LABELS[p.method]}`}
                         columns={paymentColumns}
+                        actions={paymentActions}
                       />
                     ) : paymentView.layout === 'grid' ? (
                       <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(paymentView, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
@@ -544,12 +613,13 @@ export default function Charges() {
                                 <p className="truncate font-semibold text-slate-900">{p.memberName}</p>
                                 <p className="text-xs text-slate-500">{PAYMENT_METHOD_LABELS[p.method]}</p>
                               </div>
-                              <p className="shrink-0 font-bold text-emerald-700">+{formatCurrency(p.amount)}</p>
+                              <div className="shrink-0 font-bold">{paymentAmount(p)}</div>
                             </div>
                             <p className="mt-3 text-xs text-slate-500">
                               {p.reference ? <span className="font-mono">{p.reference} · </span> : null}
                               {formatDate(p.receivedAtUtc)}
                             </p>
+                            <div className="mt-2">{paymentActions(p)}</div>
                           </StaggerItem>
                         ))}
                       </div>
@@ -560,6 +630,7 @@ export default function Charges() {
                         view={paymentView}
                         getKey={(p) => p.id}
                         columns={paymentColumns}
+                        actions={paymentActions}
                       />
                     )}
                   </ViewTransition>

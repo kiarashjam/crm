@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
 using ACI.WebApi.Tests.Helpers;
 using Microsoft.Extensions.DependencyInjection;
@@ -250,6 +251,87 @@ public class ClubMoneyTests
         (await Json(await client.GetAsync("/api/payments"), "payments")).GetArrayLength().Should().Be(1);
         (await ChargeOfAsync(client, charge)).GetProperty("paidAmount").GetDecimal().Should().Be(150);
         (await BalanceAsync(client, memberId)).Should().Be(0);
+    }
+
+    // ── voids ────────────────────────────────────────────────────────────────
+
+    private static async Task<HttpClient> StaffAsync(CustomWebApplicationFactory factory, Guid org)
+    {
+        var (staff, staffId) = await SignInAsync(factory, "bar@pavillon46.ch");
+        await AddMemberAsync(factory, org, staffId, OrgMemberRole.Member);
+        return staff.In(org);
+    }
+
+    [Fact]
+    public async Task AChargeIsVoidedByAManagerWithAReason_NeverDeleted()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, ownerId, org) = await ClubAsync(factory);
+        var memberId = await MemberAsync(owner);
+        var charge = await ChargeAsync(owner, memberId, 500);
+        var staff = await StaffAsync(factory, org);
+
+        (await Refused(await staff.DeleteAsync($"/api/charges/{charge}"), HttpStatusCode.BadRequest, "deleting a charge"))
+            .Should().Contain("can't be deleted");
+        (await Refused(await staff.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Comp" })), HttpStatusCode.Forbidden, "a bartender voiding a charge"))
+            .Should().Contain("Only the owner or a manager can void a charge.");
+        await Refused(await owner.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "  " })), HttpStatusCode.BadRequest, "a void with no reason");
+        (await BalanceAsync(owner, memberId)).Should().Be(-500, "nothing has been taken off yet");
+
+        var voided = await Json(await owner.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Posted to the wrong member" })), "void");
+
+        voided.GetProperty("status").GetString().Should().Be("Voided");
+        voided.GetProperty("voidReason").GetString().Should().Be("Posted to the wrong member");
+        voided.GetProperty("voidedByUserId").GetString().Should().Be(ownerId.ToString());
+        (await ChargeOfAsync(owner, charge)).GetProperty("amount").GetDecimal().Should().Be(500, "the charge stays, so the books can say what happened to it");
+        (await BalanceAsync(owner, memberId)).Should().Be(0);
+        await Refused(await owner.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Again" })), HttpStatusCode.Conflict, "voiding twice");
+    }
+
+    [Fact]
+    public async Task AChargeWithPaymentsIsVoidedAfterItsPayments()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, org) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var charge = await ChargeAsync(client, memberId, 100);
+        var payment = (await Json(await client.PostAsync("/api/payments", Payment(memberId, charge, 40)), "pay")).GetProperty("id").GetString();
+
+        await Refused(await client.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Wrong member" })), HttpStatusCode.Conflict,
+            "voiding a charge would drop the 40 paid against it from the balance");
+        await Refused(await (await StaffAsync(factory, org)).PostAsync($"/api/payments/{payment}/void", Body(new { reason = "Bounced" })),
+            HttpStatusCode.Forbidden, "a bartender voiding a payment");
+
+        var voided = await Json(await client.PostAsync($"/api/payments/{payment}/void", Body(new { reason = "Cheque bounced" })), "void payment");
+
+        voided.GetProperty("status").GetString().Should().Be("Voided");
+        var owing = await ChargeOfAsync(client, charge);
+        owing.GetProperty("paidAmount").GetDecimal().Should().Be(0);
+        owing.GetProperty("status").GetString().Should().Be("Pending");
+        (await BalanceAsync(client, memberId)).Should().Be(-100, "the member owes again what the bounced cheque paid");
+        (await Json(await client.GetAsync("/api/payments"), "payments")).GetArrayLength().Should().Be(1, "the payment stays, voided");
+        await Refused(await client.PostAsync($"/api/payments/{payment}/void", Body(new { reason = "Again" })), HttpStatusCode.Conflict, "voiding twice");
+        await Json(await client.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Wrong member" })), "now the charge");
+        (await BalanceAsync(client, memberId)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task VoidingAGiftCardWritesOffWhatWasLeft()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, org) = await ClubAsync(factory);
+        var card = await CardAsync(client, 100);
+        await Json(await client.SendAsync(Redeem(card, 30)), "redeem");
+
+        await Refused(await (await StaffAsync(factory, org)).PostAsync($"/api/gift-cards/{card}/void", Body(new { reason = "Lost" })),
+            HttpStatusCode.Forbidden, "a bartender writing off a card");
+        await Refused(await client.PostAsync($"/api/gift-cards/{card}/void", null), HttpStatusCode.BadRequest, "a void with no reason");
+        var voided = await Json(await client.PostAsync($"/api/gift-cards/{card}/void", Body(new { reason = "Reported stolen" })), "void card");
+
+        voided.GetProperty("status").GetString().Should().Be("Voided");
+        voided.GetProperty("writtenOffValue").GetDecimal().Should().Be(70);
+        voided.GetProperty("remainingValue").GetDecimal().Should().Be(0);
+        await Refused(await client.SendAsync(Redeem(card, 10)), HttpStatusCode.Conflict, "redeeming a voided card");
     }
 
     // ── gift cards ───────────────────────────────────────────────────────────
