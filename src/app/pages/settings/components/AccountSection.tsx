@@ -7,14 +7,6 @@ export interface AccountSectionProps {
   settings: UserSettings;
   updateSettings: (updates: UpdateUserSettingsRequest) => void;
   currencies: CurrencyOption[];
-  showDeleteConfirm: boolean;
-  setShowDeleteConfirm: (val: boolean) => void;
-  deleteConfirmText: string;
-  setDeleteConfirmText: (val: string) => void;
-  deleteConfirmChecked: boolean;
-  setDeleteConfirmChecked: (val: boolean) => void;
-  canConfirmDelete: boolean;
-  handleDeleteAccount: () => void;
   handleReset: () => void;
 }
 
@@ -22,14 +14,6 @@ export function AccountSection({
   settings,
   updateSettings,
   currencies,
-  showDeleteConfirm,
-  setShowDeleteConfirm,
-  deleteConfirmText,
-  setDeleteConfirmText,
-  deleteConfirmChecked,
-  setDeleteConfirmChecked,
-  canConfirmDelete,
-  handleDeleteAccount,
   handleReset,
 }: AccountSectionProps) {
   const signOut = useSignOut();
@@ -130,14 +114,13 @@ export function AccountSection({
       {/* Data Management */}
       <div className="pt-6 border-t border-slate-200">
         <h3 className="font-semibold text-slate-900 mb-4">Data Management</h3>
+        {/* There was an "Export Data" button here that did nothing. The lists can
+            export; this says where, rather than offering a button that pretends. */}
+        <p className="mb-4 flex items-start gap-2 text-sm text-slate-600">
+          <Download className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          To take a copy of your records, use Export CSV on the Leads, Contacts and other lists.
+        </p>
         <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            className="h-11 px-5 border-2 border-slate-200 rounded-xl text-slate-700 font-medium hover:bg-slate-50 flex items-center gap-2 transition-colors"
-          >
-            <Download className="w-4 h-4" />
-            Export Data
-          </button>
           <button
             type="button"
             onClick={handleReset}
@@ -162,53 +145,22 @@ export function AccountSection({
           Logout
         </button>
 
-        {showDeleteConfirm ? (
-          <div className="p-5 border-2 border-red-200 rounded-xl bg-red-50/50 space-y-4">
-            <p className="text-sm text-slate-700 font-medium">To permanently delete your account:</p>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={deleteConfirmChecked}
-                onChange={(e) => setDeleteConfirmChecked(e.target.checked)}
-                className="mt-1 rounded border-slate-300 text-red-600 focus:ring-red-500"
-              />
-              <span className="text-sm text-slate-700">I understand all my data will be permanently deleted and this cannot be undone.</span>
-            </label>
-            <input
-              type="text"
-              value={deleteConfirmText}
-              onChange={(e) => setDeleteConfirmText(e.target.value)}
-              placeholder='Type "DELETE" to confirm'
-              className="w-full h-11 px-4 border border-slate-300 rounded-xl"
-            />
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText(''); setDeleteConfirmChecked(false); }}
-                className="flex-1 h-11 border-2 border-slate-300 rounded-xl font-medium text-slate-700 hover:bg-slate-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteAccount}
-                disabled={!canConfirmDelete}
-                className="flex-1 h-11 bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl"
-              >
-                Delete Account
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="w-full flex items-center justify-center gap-2 h-11 border-2 border-red-200 text-red-600 hover:border-red-300 hover:bg-red-50 rounded-xl font-medium transition-colors"
-          >
-            <Trash2 className="w-5 h-5" />
-            Delete Account
-          </button>
-        )}
+        {/* The Delete Account button asked for "DELETE", promised permanent deletion,
+            and only went to the home page: nothing was deleted and the session stayed.
+            Deleting an account has to decide what happens to the workspaces it owns and
+            the records it made in shared ones, so until the server does that, this says
+            plainly how to ask for it instead. */}
+        <div className="rounded-xl border-2 border-slate-200 p-4">
+          <p className="flex items-center gap-2 font-medium text-slate-900">
+            <Trash2 className="h-5 w-5 text-slate-500" aria-hidden />
+            Deleting your account
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            Cadence cannot delete an account from this page yet. To have your account and personal data
+            deleted, ask the person who administers Cadence for your organization. To leave a workspace
+            instead, ask its owner to remove you on the Team page.
+          </p>
+        </div>
 
         <Link to="/help" className="block text-center text-sm text-orange-700 hover:text-orange-800 font-medium pt-2">
           Need help?

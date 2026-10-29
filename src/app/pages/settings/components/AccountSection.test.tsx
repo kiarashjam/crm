@@ -24,14 +24,6 @@ function renderSection() {
               settings={{ defaultCurrency: 'CHF', defaultFollowUpDays: 3, showActivityStatus: true, allowAnalytics: true } as UserSettings}
               updateSettings={vi.fn()}
               currencies={[]}
-              showDeleteConfirm={false}
-              setShowDeleteConfirm={vi.fn()}
-              deleteConfirmText=""
-              setDeleteConfirmText={vi.fn()}
-              deleteConfirmChecked={false}
-              setDeleteConfirmChecked={vi.fn()}
-              canConfirmDelete={false}
-              handleDeleteAccount={vi.fn()}
               handleReset={vi.fn()}
             />
           )}
@@ -58,5 +50,19 @@ describe('Settings > Account > Logout', () => {
     expect(getCurrentUser()).toBeNull();
     expect(isLoggedIn()).toBe(false);
     expect(localStorage.getItem('aci_org_id')).toBeNull();
+  });
+});
+
+describe('Settings > Account > deleting and exporting', () => {
+  // "Delete Account" asked for DELETE, promised permanent deletion, and went home with
+  // everything intact; "Export Data" did nothing. Neither may pretend.
+  it('offers no button that claims to delete or export, and says how to ask instead', () => {
+    renderSection();
+
+    expect(screen.queryByRole('button', { name: /delete/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /export/i })).toBeNull();
+    expect(screen.queryByText(/permanently deleted/i)).toBeNull();
+    expect(screen.getByText(/cannot delete an account from this page yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/Export CSV on the Leads, Contacts/)).toBeInTheDocument();
   });
 });

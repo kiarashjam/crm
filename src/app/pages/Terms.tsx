@@ -149,7 +149,7 @@ export default function Terms() {
               <section className="mb-8">
                 <h2 className="text-2xl font-bold text-slate-900 mb-4">Termination</h2>
                 <p className="text-slate-700 mb-4">
-                  We may terminate or suspend your account at any time for violations of these terms. You may cancel your account at any time from the Settings page.
+                  We may terminate or suspend your account at any time for violations of these terms. You may ask for your account to be closed at any time; Settings → Account says how.
                 </p>
                 <p className="text-slate-700 mb-4">
                   Upon termination, your right to use the service ceases immediately. Data retention is governed by our Privacy Policy.

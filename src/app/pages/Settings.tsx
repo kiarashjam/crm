@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   Save, Users, Kanban, SlidersHorizontal,
   User, Palette, Bell, Shield,
@@ -78,7 +78,6 @@ const TAB_CONFIG: { id: SettingsTab; label: string; icon: React.ElementType; des
 ];
 
 export default function Settings() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { organizations, currentOrg, setCurrentOrg, refreshOrgs: _refreshOrgs } = useOrg();
   const themeContext = useTheme();
@@ -113,12 +112,6 @@ export default function Settings() {
   const [twoFaCode, setTwoFaCode] = useState('');
   const [twoFaDisablePassword, setTwoFaDisablePassword] = useState('');
   const [twoFaDisableCode, setTwoFaDisableCode] = useState('');
-
-  // Account deletion state
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false);
-  const canConfirmDelete = deleteConfirmChecked && deleteConfirmText.trim().toUpperCase() === 'DELETE';
 
   // Organization state
   const [inviteEmail, setInviteEmail] = useState('');
@@ -530,14 +523,6 @@ export default function Settings() {
     }
   };
 
-  const handleDeleteAccount = () => {
-    if (showDeleteConfirm) {
-      navigate('/');
-    } else {
-      setShowDeleteConfirm(true);
-    }
-  };
-
   // Loading state
   if (settings === null) {
     return (
@@ -649,14 +634,6 @@ export default function Settings() {
             settings={settings}
             updateSettings={updateSettings}
             currencies={currencies}
-            showDeleteConfirm={showDeleteConfirm}
-            setShowDeleteConfirm={setShowDeleteConfirm}
-            deleteConfirmText={deleteConfirmText}
-            setDeleteConfirmText={setDeleteConfirmText}
-            deleteConfirmChecked={deleteConfirmChecked}
-            setDeleteConfirmChecked={setDeleteConfirmChecked}
-            canConfirmDelete={canConfirmDelete}
-            handleDeleteAccount={handleDeleteAccount}
             handleReset={handleReset}
           />
         );
