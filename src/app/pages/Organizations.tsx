@@ -40,6 +40,7 @@ import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { NextActions } from '@/app/salesAgent/NextActions';
 import { getCurrentUser } from '@/app/lib/auth';
+import { useSignOut } from '@/app/lib/useSignOut';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import DemoBanner from '@/app/components/DemoBanner';
 import EmailVerificationBanner from '@/app/components/EmailVerificationBanner';
@@ -129,6 +130,7 @@ export default function Organizations() {
   const [requestsFailed, setRequestsFailed] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const signOut = useSignOut();
   const cameFromApp = !!location.state?.fromApp || !!currentOrgId;
   const destination = returnPath(location.state?.from);
   const user = getCurrentUser();
@@ -402,13 +404,14 @@ export default function Organizations() {
                 Back to {destinationLabel(destination)}
               </Link>
             ) : (
-              <Link
-                to="/login"
+              <button
+                type="button"
+                onClick={signOut}
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white/70 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-white hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:outline-none"
               >
                 <LogOut className="h-3.5 w-3.5" aria-hidden />
                 Sign in as someone else
-              </Link>
+              </button>
             )}
           </div>
         </div>

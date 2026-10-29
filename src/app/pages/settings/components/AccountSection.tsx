@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Settings2, DollarSign, Clock, Download, RefreshCw, LogOut, Trash2 } from 'lucide-react';
 import type { UserSettings, UpdateUserSettingsRequest, CurrencyOption } from '@/app/api/types';
+import { useSignOut } from '@/app/lib/useSignOut';
 
 export interface AccountSectionProps {
   settings: UserSettings;
@@ -31,6 +32,7 @@ export function AccountSection({
   handleDeleteAccount,
   handleReset,
 }: AccountSectionProps) {
+  const signOut = useSignOut();
   return (
     <div className="p-6 space-y-8">
       <div>
@@ -151,13 +153,14 @@ export function AccountSection({
       <div className="pt-6 border-t border-slate-200 space-y-4">
         <h3 className="font-semibold text-slate-900">Account Actions</h3>
         
-        <Link
-          to="/login"
+        <button
+          type="button"
+          onClick={signOut}
           className="w-full flex items-center justify-center gap-2 h-11 border-2 border-slate-200 rounded-xl hover:border-slate-300 transition-colors font-medium text-slate-700"
         >
           <LogOut className="w-5 h-5" />
           Logout
-        </Link>
+        </button>
 
         {showDeleteConfirm ? (
           <div className="p-5 border-2 border-red-200 rounded-xl bg-red-50/50 space-y-4">

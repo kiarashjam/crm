@@ -14,7 +14,8 @@ import {
   CheckSquare,
   Activity,
 } from 'lucide-react';
-import { getCurrentUser, clearSession } from '@/app/lib/auth';
+import { getCurrentUser } from '@/app/lib/auth';
+import { useSignOut } from '@/app/lib/useSignOut';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { servesDemoData } from '@/app/api';
 import { authFetchJson } from '@/app/api/apiClient';
@@ -311,14 +312,10 @@ function GlobalSearchBar() {
 }
 
 export default function AppHeader() {
-  const navigate = useNavigate();
   const user = getCurrentUser();
   const org = useOrgOptional();
 
-  const handleLogout = () => {
-    clearSession();
-    navigate('/login', { replace: true });
-  };
+  const handleLogout = useSignOut();
 
   const initials = user?.name
     ? user.name
