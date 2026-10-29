@@ -32,6 +32,16 @@ public class TaskReminderBackgroundService : BackgroundService
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
     private const int BatchSize = 200;
 
+    // Tasks whose bell reminder and overdue automation are already done. Without
+    // these, an overdue task stayed a candidate for as long as it stayed open, and
+    // once 200 of them existed anywhere the oldest 200 filled every batch: newer
+    // tasks never got a reminder or their task.overdue automation again. Kept in
+    // memory, so after a restart each task is looked at once more; the notification
+    // and automation keys make that a no-op.
+    private readonly HashSet<Guid> _overdueDone = new();
+    private readonly HashSet<Guid> _dueSoonDone = new();
+    private const int MaxRemembered = 50_000;
+
     public TaskReminderBackgroundService(IServiceScopeFactory scopeFactory, ILogger<TaskReminderBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
@@ -46,7 +56,7 @@ public class TaskReminderBackgroundService : BackgroundService
         {
             try
             {
-                await ProcessReminders(stoppingToken);
+                await ProcessRemindersAsync(stoppingToken);
             }
             catch (Exception ex)
             {
@@ -57,8 +67,17 @@ public class TaskReminderBackgroundService : BackgroundService
         }
     }
 
-    private async Task ProcessReminders(CancellationToken ct)
+    /// <summary>One pass over the tasks that need a reminder. Public for tests.</summary>
+    public async Task ProcessRemindersAsync(CancellationToken ct)
     {
+        if (_overdueDone.Count + _dueSoonDone.Count > MaxRemembered)
+        {
+            _overdueDone.Clear();
+            _dueSoonDone.Clear();
+        }
+        var overdueDone = _overdueDone.ToList();
+        var dueSoonDone = _dueSoonDone.ToList();
+
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var emailSender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
@@ -80,10 +99,13 @@ public class TaskReminderBackgroundService : BackgroundService
                 && t.Status != TaskStatusEnum.Cancelled
                 && !t.Completed
                 && ((t.ReminderDateUtc != null && t.ReminderDateUtc <= now && t.ReminderSentAtUtc == null)
-                    || (t.DueDateUtc != null && t.DueDateUtc <= dueSoon)))
+                    || (t.DueDateUtc != null && t.DueDateUtc <= dueSoon
+                        && !overdueDone.Contains(t.Id)
+                        && !(dueSoonDone.Contains(t.Id) && t.DueDateUtc >= now))))
             // Deterministic order so a backlog larger than the batch drains steadily
             // instead of re-processing an arbitrary slice each pass.
             .OrderBy(t => t.ReminderDateUtc ?? t.DueDateUtc)
+            .ThenBy(t => t.Id)
             .Take(BatchSize)
             .ToListAsync(ct);
 
@@ -109,6 +131,8 @@ public class TaskReminderBackgroundService : BackgroundService
             // No settings row means defaults, which have both channels on.
             settingsByUserId.TryGetValue(recipientId, out var settings);
 
+            var handled = true;
+
             // ── In-app ──
             if (TaskReminderPolicy.NeedsInAppReminder(task, now))
             {
@@ -132,6 +156,7 @@ public class TaskReminderBackgroundService : BackgroundService
                     {
                         // One bad notification must not stop the email side or the
                         // rest of the batch.
+                        handled = false;
                         _logger.LogWarning(ex, "Failed to raise in-app reminder for task {TaskId}", task.Id);
                     }
                 }
@@ -153,8 +178,16 @@ public class TaskReminderBackgroundService : BackgroundService
                 }
                 catch (Exception ex)
                 {
+                    handled = false;
                     _logger.LogWarning(ex, "Overdue automation failed for task {TaskId}", task.Id);
                 }
+            }
+
+            // Retried next pass if something failed; otherwise this state is done.
+            if (handled && TaskReminderPolicy.NeedsInAppReminder(task, now))
+            {
+                if (TaskReminderPolicy.IsOverdue(task, now)) _overdueDone.Add(task.Id);
+                else _dueSoonDone.Add(task.Id);
             }
 
             // ── Email ──
