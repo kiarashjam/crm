@@ -342,11 +342,25 @@ public class AuthService : IAuthService
             return DomainErrors.Auth.EmailNotFound;
         }
 
+        // The same password and code that sign in, so guesses here count against the
+        // same allowances. Otherwise a stolen session could try passwords here without
+        // limit, and then codes, while sign-in stops each after five.
+        var passwordKey = AuthAttemptLimiter.Login(user.Email);
+        var codeKey = AuthAttemptLimiter.TwoFactor(user.Id);
+        if (_attempts.IsBlocked(passwordKey) || _attempts.IsBlocked(codeKey))
+        {
+            _logger.LogWarning("Disable 2FA refused: too many failed attempts for user {UserId}", userId);
+            return DomainErrors.Auth.AccountLocked;
+        }
+
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
+            _attempts.Record(passwordKey);
             _logger.LogWarning("Disable 2FA failed: invalid password for user {UserId}", userId);
             return DomainErrors.Auth.WrongPassword;
         }
+
+        _attempts.Reset(passwordKey);
 
         if (!user.TwoFactorEnabled || string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected))
         {
@@ -357,9 +371,12 @@ public class AuthService : IAuthService
         var secret = _secretProtector.Unprotect(user.TwoFactorSecretProtected);
         if (!Totp.VerifyCode(secret, request.Code, DateTime.UtcNow))
         {
+            _attempts.Record(codeKey);
             _logger.LogWarning("Disable 2FA failed: invalid code for user {UserId}", userId);
             return DomainErrors.Auth.WrongTwoFactorCode;
         }
+
+        _attempts.Reset(codeKey);
 
         user.TwoFactorEnabled = false;
         user.TwoFactorEnabledAtUtc = null;

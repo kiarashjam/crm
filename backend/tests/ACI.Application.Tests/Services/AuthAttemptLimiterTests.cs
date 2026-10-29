@@ -101,6 +101,41 @@ public class AuthAttemptLimiterTests
     }
 
     [Fact]
+    public async Task WrongPasswordsWhenTurningTwoFactorOffCountTowardTheSignInLock()
+    {
+        // Disabling 2FA checks the password, from any signed-in session. Without a count
+        // there, a stolen session could guess the password with no limit at all.
+        _user.TwoFactorEnabled = true;
+        _user.TwoFactorSecretProtected = "protected";
+        _protector.Setup(p => p.Unprotect("protected")).Returns(Totp.GenerateBase32Secret());
+
+        for (var i = 0; i < AuthAttemptLimiter.MaxFailures; i++)
+            (await _sut.DisableTwoFactorAsync(_user.Id, new TwoFactorDisableRequest { Password = "wrong", Code = "000000" }))
+                .Error.Code.Should().Be("Auth.WrongPassword");
+
+        (await _sut.DisableTwoFactorAsync(_user.Id, new TwoFactorDisableRequest { Password = "right", Code = "000000" }))
+            .Error.Code.Should().Be("Auth.AccountLocked");
+        (await Login("right")).Error.Code.Should().Be("Auth.AccountLocked", "it is the same password");
+        _user.TwoFactorEnabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task WrongCodesWhenTurningTwoFactorOffCountTowardTheCodeLock()
+    {
+        _user.TwoFactorEnabled = true;
+        _user.TwoFactorSecretProtected = "protected";
+        _protector.Setup(p => p.Unprotect("protected")).Returns(Totp.GenerateBase32Secret());
+
+        for (var i = 0; i < AuthAttemptLimiter.MaxFailures; i++)
+            (await _sut.DisableTwoFactorAsync(_user.Id, new TwoFactorDisableRequest { Password = "right", Code = "000000" }))
+                .Error.Code.Should().NotBe("Auth.AccountLocked");
+
+        (await _sut.DisableTwoFactorAsync(_user.Id, new TwoFactorDisableRequest { Password = "right", Code = "000000" }))
+            .Error.Code.Should().Be("Auth.AccountLocked");
+        _user.TwoFactorEnabled.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ResetEmailsStopAfterThreeAndTheCallerCannotTell()
     {
         for (var i = 0; i < AuthAttemptLimiter.MaxResetEmails + 2; i++)
