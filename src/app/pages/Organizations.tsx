@@ -504,10 +504,15 @@ export default function Organizations() {
                       </p>
                     </div>
                     {/* Accepting takes the link from the invitation email: it is what
-                        shows the invitation reached this person's inbox. */}
-                    <p className="inline-flex items-center gap-1.5 text-xs text-slate-600">
-                      <UserPlus className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                      Open the link in the invitation email to join.
+                        shows the invitation reached this person's inbox. Emails sent
+                        before that link existed pointed here instead, so say what to
+                        do when the email has none, rather than send them round again. */}
+                    <p className="inline-flex max-w-sm items-start gap-1.5 text-xs text-slate-600">
+                      <UserPlus className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span>
+                        Open the link in the invitation email to join. If your email has no such link, ask
+                        whoever invited you to send the invitation again.
+                      </span>
                     </p>
                   </div>
                 ))}
