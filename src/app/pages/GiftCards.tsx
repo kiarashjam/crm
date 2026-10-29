@@ -65,10 +65,7 @@ import {
   InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 function formatDate(iso: string): string {
   try {
@@ -83,6 +80,7 @@ function formatDate(iso: string): string {
 }
 
 export default function GiftCards() {
+  const { format: formatCurrency, currency } = useClubMoney();
   const [cards, setCards] = useState<GiftCard[]>([]);
   const [redemptions, setRedemptions] = useState<GiftCardRedemption[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -672,8 +670,8 @@ export default function GiftCards() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Face value ($)</Label>
-                <Input aria-label="Face value ($)"
+                <Label>Face value ({currency})</Label>
+                <Input aria-label={`Face value (${currency})`}
                   type="number"
                   min="0"
                   step="0.01"
@@ -733,8 +731,8 @@ export default function GiftCards() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label>Amount ($)</Label>
-              <Input aria-label="Amount ($)"
+              <Label>Amount ({currency})</Label>
+              <Input aria-label={`Amount (${currency})`}
                 type="number"
                 min="0"
                 step="0.01"

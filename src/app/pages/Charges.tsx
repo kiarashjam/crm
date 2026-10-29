@@ -68,6 +68,7 @@ import {
   InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const STATUS_BADGE: Record<ChargeStatus, string> = {
   Pending: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
@@ -85,10 +86,6 @@ const STATUS_LABEL: Record<ChargeStatus, string> = {
   Voided: 'Voided',
 };
 
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
-
 function formatDate(iso?: string): string {
   if (!iso) return '—';
   try {
@@ -102,6 +99,7 @@ function formatDate(iso?: string): string {
 }
 
 export default function Charges() {
+  const { format: formatCurrency, currency } = useClubMoney();
   const [charges, setCharges] = useState<Charge[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -691,8 +689,8 @@ export default function Charges() {
                 </Select>
               </div>
               <div>
-                <Label>Amount ($)</Label>
-                <Input aria-label="Amount ($)"
+                <Label>Amount ({currency})</Label>
+                <Input aria-label={`Amount (${currency})`}
                   type="number"
                   min="0"
                   step="0.01"
@@ -750,8 +748,8 @@ export default function Charges() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label>Amount ($)</Label>
-              <Input aria-label="Amount ($)"
+              <Label>Amount ({currency})</Label>
+              <Input aria-label={`Amount (${currency})`}
                 type="number"
                 min="0"
                 max={paymentDialog ? Math.round((paymentDialog.amount - paymentDialog.paidAmount) * 100) / 100 : undefined}

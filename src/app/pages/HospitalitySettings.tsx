@@ -9,6 +9,8 @@ import {
   Sparkles,
   ScanLine,
   Loader2,
+  Coins,
+  Info,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -17,6 +19,13 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/app/components/ui/select';
 import {
   Tabs,
   TabsList,
@@ -35,6 +44,8 @@ import { VISIT_VENUES, type VisitVenue } from '@/app/api/visits';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { setClubCurrency } from '@/app/hooks/useClubMoney';
+import { CLUB_CURRENCIES, normaliseCurrency } from '@/app/lib/clubMoney';
 
 const TIER_COLOR: Record<MemberTier, string> = {
   Bronze: 'from-amber-400 to-amber-600',
@@ -79,6 +90,8 @@ export default function HospitalitySettings() {
     );
   }
 
+  const currency = normaliseCurrency(settings.currency);
+
   const updateTier = (tier: MemberTier, patch: Partial<TierConfig>) => {
     setSettings({
       ...settings,
@@ -111,7 +124,8 @@ export default function HospitalitySettings() {
   const save = async () => {
     setSaving(true);
     try {
-      await updateHospitalitySettings(settings);
+      const saved = await updateHospitalitySettings(settings);
+      setClubCurrency(saved.currency);
       toast.success('Settings saved');
     } finally {
       setSaving(false);
@@ -124,6 +138,7 @@ export default function HospitalitySettings() {
     try {
       const fresh = await resetHospitalitySettings();
       setSettings(fresh);
+      setClubCurrency(fresh.currency);
       toast.success('Settings reset');
     } finally {
       setResetting(false);
@@ -143,7 +158,7 @@ export default function HospitalitySettings() {
             icon={Settings}
             tone="indigo"
             title="Hospitality Settings"
-            subtitle="Configure tiers, dues, loyalty multipliers, and venue point values."
+            subtitle="The club currency, plus tiers, dues, loyalty rates and venue points saved for later."
             actions={
               <>
                 <Button variant="outline" onClick={reset} disabled={resetting} className={heroSecondary}>
@@ -168,6 +183,48 @@ export default function HospitalitySettings() {
             }
           />
 
+          <div className="mb-6 max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h3 className="mb-1 inline-flex items-center gap-2 font-semibold text-slate-900">
+              <Coins className="h-4 w-4 text-emerald-600" /> Club currency
+            </h3>
+            <p className="mb-3 text-sm text-slate-500">
+              Every amount on the club pages and on printed statements is shown in this currency. Changing it
+              relabels amounts already entered; it does not convert them.
+            </p>
+            <Select
+              value={currency}
+              onValueChange={(v) => setSettings({ ...settings, currency: v })}
+            >
+              <SelectTrigger aria-label="Club currency" className="max-w-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CLUB_CURRENCIES.map((c) => (
+                  <SelectItem key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                  </SelectItem>
+                ))}
+                {!CLUB_CURRENCIES.some((c) => c.code === currency) && (
+                  <SelectItem value={currency}>{currency}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div
+            role="note"
+            className="mb-4 max-w-4xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          >
+            <p className="inline-flex items-center gap-2 font-medium">
+              <Info className="h-4 w-4 shrink-0 text-amber-700" aria-hidden /> Only the club currency is applied today.
+            </p>
+            <p className="mt-1">
+              The tiers, dues, loyalty rates and venue points below are saved, but nothing in Cadence reads them yet.
+              Closing a tab, checking a member in and an event check-in still award the built-in points, and each
+              member&apos;s dues are the ones set on that member.
+            </p>
+          </div>
+
           <Tabs defaultValue="tiers">
             <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
               <TabsTrigger value="tiers">Membership tiers</TabsTrigger>
@@ -176,6 +233,10 @@ export default function HospitalitySettings() {
             </TabsList>
 
             <TabsContent value="tiers">
+              <p className="mb-3 text-sm text-slate-500">
+                <NotApplied /> Dues and initiation fees are not charged from here, multipliers do not change the points
+                anyone earns, and benefits are not shown to members.
+              </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {MEMBER_TIERS.map((tier, index) => {
                   const cfg = settings.tiers.find((t) => t.tier === tier);
@@ -196,8 +257,8 @@ export default function HospitalitySettings() {
 
                         <div className="grid grid-cols-2 gap-3 mb-4">
                           <div>
-                            <Label className="text-xs">Monthly dues ($)</Label>
-                            <Input aria-label="Monthly dues ($)"
+                            <Label className="text-xs">Monthly dues ({currency})</Label>
+                            <Input aria-label={`Monthly dues (${currency})`}
                               type="number"
                               min="0"
                               value={cfg.monthlyDues}
@@ -207,8 +268,8 @@ export default function HospitalitySettings() {
                             />
                           </div>
                           <div>
-                            <Label className="text-xs">Initiation fee ($)</Label>
-                            <Input aria-label="Initiation fee ($)"
+                            <Label className="text-xs">Initiation fee ({currency})</Label>
+                            <Input aria-label={`Initiation fee (${currency})`}
                               type="number"
                               min="0"
                               value={cfg.initiationFee}
@@ -277,13 +338,18 @@ export default function HospitalitySettings() {
 
             <TabsContent value="loyalty">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 max-w-2xl">
-                <h3 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-4">
+                <h3 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-1">
                   <Sparkles className="w-4 h-4 text-amber-500" /> Earning & redemption rates
                 </h3>
+                <p className="mb-4 text-sm text-slate-500">
+                  <NotApplied /> A tab still earns 10 points per 1 {currency} and an event check-in 50 points, both
+                  times the built-in tier multipliers; 100 points are still worth 1 {currency}; and no referral or
+                  anniversary bonus is awarded automatically.
+                </p>
                 <div className="space-y-4">
                   <div>
-                    <Label>Base points per $1 spent</Label>
-                    <Input aria-label="Base points per $1 spent"
+                    <Label>Base points per 1 {currency} spent</Label>
+                    <Input aria-label={`Base points per 1 ${currency} spent`}
                       type="number"
                       min="1"
                       value={settings.basePointsPerDollar}
@@ -299,8 +365,8 @@ export default function HospitalitySettings() {
                     </p>
                   </div>
                   <div>
-                    <Label>Points required per $1 of redemption value</Label>
-                    <Input aria-label="Points required per $1 of redemption value"
+                    <Label>Points required per 1 {currency} of redemption value</Label>
+                    <Input aria-label={`Points required per 1 ${currency} of redemption value`}
                       type="number"
                       min="1"
                       value={settings.pointsPerDollarRedemption}
@@ -312,7 +378,7 @@ export default function HospitalitySettings() {
                       }
                     />
                     <p className="text-xs text-slate-500 mt-1">
-                      100 points = $1 by default — adjust the rate as needed.
+                      100 points = 1 {currency} by default — adjust the rate as needed.
                     </p>
                   </div>
                   <div>
@@ -365,12 +431,12 @@ export default function HospitalitySettings() {
 
             <TabsContent value="venues">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 max-w-2xl">
-                <h3 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-4">
+                <h3 className="font-semibold text-slate-900 inline-flex items-center gap-2 mb-1">
                   <ScanLine className="w-4 h-4 text-cyan-500" /> Points awarded per check-in
                 </h3>
                 <p className="text-sm text-slate-500 mb-4">
-                  These are base points — actual points earned are multiplied by the visiting
-                  member's tier multiplier.
+                  <NotApplied /> Check-ins still award the built-in points for each venue, multiplied by the
+                  member&apos;s tier.
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   {VISIT_VENUES.map((v) => (
@@ -392,11 +458,19 @@ export default function HospitalitySettings() {
           </Tabs>
 
           <p className="text-xs text-slate-500 mt-8">
-            Changes apply to all new transactions once saved. Existing ledger entries and charges are
-            not retroactively recalculated.
+            Saving keeps every value here. Of them, only the club currency changes anything today.
           </p>
         </main>
       </PageTransition>
     </div>
+  );
+}
+
+/** Said next to every setting that is saved but not yet read by anything. */
+function NotApplied() {
+  return (
+    <span className="mr-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
+      Not applied yet
+    </span>
   );
 }

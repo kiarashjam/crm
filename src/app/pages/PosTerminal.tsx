@@ -1,8 +1,12 @@
 // POS terminal — one-screen staff workflow for member checkout.
 //
 // Staff search for a member, see their account at a glance, and pick from
-// the common actions: log a visit, open a tab, redeem a gift card, redeem
-// loyalty points, post a charge, or issue a card.
+// the common actions: log a visit, open a tab, or post a charge.
+//
+// Gift cards and loyalty points are not ways to pay here yet. Redeeming one used
+// up the card's value or the member's points, but no payment was recorded and no
+// charge or tab was settled, so the member was billed again at statement time.
+// The tiles stay, switched off, saying so, until a redemption settles a bill.
 
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -46,20 +50,19 @@ import {
   type Member,
   type MemberTier,
 } from '@/app/api/members';
-import { getLoyaltyLedger, addLoyaltyEntry, POINTS_PER_DOLLAR } from '@/app/api/loyalty';
+import { getLoyaltyLedger } from '@/app/api/loyalty';
 import { checkIn, VISIT_VENUES, type VisitVenue } from '@/app/api/visits';
 import { openTab, TAB_VENUES, VENUE_LABELS as TAB_VENUE_LABELS, type TabVenue } from '@/app/api/tabs';
 import { createCharge, CHARGE_KINDS, type ChargeKind } from '@/app/api/charges';
-import { getGiftCards, redeemGiftCard, type GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
+/** Why the gift card and points tiles are switched off. */
+const NOT_A_PAYMENT_YET = 'Not available yet: it would use up the value without paying any bill.';
 
-// The server says why it refused (a card used up or expired, a member who has left), and
+// The server says why it refused (a member who has left, an amount it will not take), and
 // the sentence is what staff at the till need to see.
 function errorText(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
@@ -73,8 +76,8 @@ const TIER_RING: Record<MemberTier, string> = {
 };
 
 export default function PosTerminal() {
+  const { format: formatCurrency, currency } = useClubMoney();
   const [members, setMembers] = useState<Member[]>([]);
-  const [giftCards, setGiftCards] = useState<GiftCard[]>([]);
   const [pointsByMember, setPointsByMember] = useState<Map<string, number>>(new Map());
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Member | null>(null);
@@ -82,7 +85,7 @@ export default function PosTerminal() {
   usePageLoading(loading);
   const [busy, setBusy] = useState(false);
   const [actionDialog, setActionDialog] = useState<
-    null | 'visit' | 'tab' | 'charge' | 'redeemGiftCard' | 'redeemPoints'
+    null | 'visit' | 'tab' | 'charge'
   >(null);
 
   const [visitForm, setVisitForm] = useState({ venue: 'Dining' as VisitVenue, guests: '0' });
@@ -92,16 +95,11 @@ export default function PosTerminal() {
     description: '',
     amount: '',
   });
-  const [gcForm, setGcForm] = useState({ code: '', amount: '' });
-  // One key per redemption: pressing Redeem again after a timeout cannot spend the card twice.
-  const [redeemKey, setRedeemKey] = useState('');
-  const [redeemForm, setRedeemForm] = useState({ points: '' });
 
   const load = async () => {
     try {
-      const [m, l, g] = await Promise.all([getMembers(), getLoyaltyLedger(), getGiftCards()]);
+      const [m, l] = await Promise.all([getMembers(), getLoyaltyLedger()]);
       setMembers(m);
-      setGiftCards(g);
       const points = new Map<string, number>();
       for (const e of l) {
         points.set(e.memberId, (points.get(e.memberId) ?? 0) + e.points);
@@ -191,79 +189,6 @@ export default function PosTerminal() {
     }
   };
 
-  const redeemCard = async () => {
-    if (!selected) return;
-    const card = giftCards.find(
-      (g) => g.code.toUpperCase() === gcForm.code.trim().toUpperCase() && g.status === 'Active',
-    );
-    if (!card) {
-      toast.error('No active gift card with that code');
-      return;
-    }
-    const amount = Number(gcForm.amount);
-    if (!amount || amount <= 0) {
-      toast.error('Amount required');
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await redeemGiftCard({
-        giftCardId: card.id,
-        amount,
-        redeemedByName: `${selected.firstName} ${selected.lastName}`,
-        appliedTo: 'POS terminal',
-        idempotencyKey: redeemKey,
-      });
-      if (result) {
-        toast.success(`Redeemed ${formatCurrency(result.amount)} from ${card.code}`);
-        setActionDialog(null);
-        setGcForm({ code: '', amount: '' });
-        await load();
-      } else {
-        toast.error('Redemption failed');
-      }
-    } catch (err) {
-      // Used up, expired or voided since this screen loaded, or used at another till at
-      // the same moment: the refusal used to vanish, with no message and nothing redeemed.
-      toast.error(errorText(err, 'Redemption failed'));
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const redeemPoints = async () => {
-    if (!selected) return;
-    const points = Number(redeemForm.points);
-    if (!points || points <= 0) {
-      toast.error('Points required');
-      return;
-    }
-    if (points > memberPoints) {
-      toast.error(`Member only has ${memberPoints.toLocaleString()} points available`);
-      return;
-    }
-    setBusy(true);
-    try {
-      await addLoyaltyEntry({
-        memberId: selected.id,
-        memberName: `${selected.firstName} ${selected.lastName}`,
-        kind: 'Redeemed',
-        reason: 'PointsRedemption',
-        points: -points,
-        note: `POS redemption — $${(points / POINTS_PER_DOLLAR).toFixed(2)} applied`,
-      });
-      toast.success(
-        `Redeemed ${points.toLocaleString()} pts (${formatCurrency(points / POINTS_PER_DOLLAR)})`,
-      );
-      setActionDialog(null);
-      setRedeemForm({ points: '' });
-      await load();
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -278,7 +203,7 @@ export default function PosTerminal() {
             icon={Calculator}
             tone="cyan"
             title="POS Terminal"
-            subtitle="Lookup a member, check in, redeem, or open a tab — one-screen staff flow."
+            subtitle="Look up a member, check in, open a tab or post a charge — one-screen staff flow."
             noAgentSlot
           />
 
@@ -432,24 +357,18 @@ export default function PosTerminal() {
                     <ActionTile
                       icon={<Gift className="w-5 h-5" />}
                       title="Redeem gift card"
-                      desc="Apply a gift card to a purchase"
-                      onClick={() => {
-                        setGcForm({ code: '', amount: '' });
-                        setRedeemKey(crypto.randomUUID());
-                        setActionDialog('redeemGiftCard');
-                      }}
+                      desc={NOT_A_PAYMENT_YET}
+                      onClick={() => undefined}
                       color="rose"
+                      disabled
                     />
                     <ActionTile
                       icon={<Sparkles className="w-5 h-5" />}
                       title="Redeem points"
-                      desc={`Up to ${memberPoints.toLocaleString()} pts available`}
-                      onClick={() => {
-                        setRedeemForm({ points: '' });
-                        setActionDialog('redeemPoints');
-                      }}
+                      desc={NOT_A_PAYMENT_YET}
+                      onClick={() => undefined}
                       color="violet"
-                      disabled={memberPoints <= 0}
+                      disabled
                     />
                     <ActionTile
                       icon={<Crown className="w-5 h-5" />}
@@ -586,8 +505,8 @@ export default function PosTerminal() {
               />
             </div>
             <div>
-              <Label>Amount ($)</Label>
-              <Input aria-label="Amount ($)"
+              <Label>Amount ({currency})</Label>
+              <Input aria-label={`Amount (${currency})`}
                 type="number"
                 min="0"
                 step="0.01"
@@ -607,88 +526,6 @@ export default function PosTerminal() {
         </DialogContent>
       </Dialog>
 
-      {/* Redeem gift card */}
-      <Dialog
-        open={actionDialog === 'redeemGiftCard'}
-        onOpenChange={(o) => !o && setActionDialog(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Redeem gift card</DialogTitle>
-            <DialogDescription>Apply a gift card to a member's purchase.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label>Gift card code</Label>
-              <Input aria-label="Gift card code"
-                value={gcForm.code}
-                onChange={(e) => setGcForm({ ...gcForm, code: e.target.value })}
-                placeholder="GIFT-XXXX-XXXX-XXXX"
-                className="font-mono uppercase"
-              />
-            </div>
-            <div>
-              <Label>Amount to apply ($)</Label>
-              <Input aria-label="Amount to apply ($)"
-                type="number"
-                min="0"
-                step="0.01"
-                value={gcForm.amount}
-                onChange={(e) => setGcForm({ ...gcForm, amount: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setActionDialog(null)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button onClick={redeemCard} disabled={busy}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Redeem'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Redeem points */}
-      <Dialog
-        open={actionDialog === 'redeemPoints'}
-        onOpenChange={(o) => !o && setActionDialog(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Redeem loyalty points</DialogTitle>
-            <DialogDescription>
-              100 points = $1. Member has {memberPoints.toLocaleString()} pts available.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label>Points to redeem</Label>
-              <Input aria-label="Points to redeem"
-                type="number"
-                min="0"
-                max={memberPoints}
-                step="100"
-                value={redeemForm.points}
-                onChange={(e) => setRedeemForm({ points: e.target.value })}
-              />
-              {redeemForm.points && Number(redeemForm.points) > 0 && (
-                <p className="text-xs text-slate-500 mt-1">
-                  ≈ {formatCurrency(Number(redeemForm.points) / POINTS_PER_DOLLAR)} applied
-                </p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setActionDialog(null)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button onClick={redeemPoints} disabled={busy}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Redeem points'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

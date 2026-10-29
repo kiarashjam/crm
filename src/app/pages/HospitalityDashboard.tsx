@@ -36,6 +36,7 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { Button } from '@/app/components/ui/button';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const day = 86_400_000;
 
@@ -45,10 +46,6 @@ function formatTime(iso: string): string {
   } catch {
     return iso;
   }
-}
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
 
 function isToday(iso: string): boolean {
@@ -91,6 +88,7 @@ function thisYearAnniversaries(members: Member[]): AnniversaryRow[] {
 }
 
 export default function HospitalityDashboard() {
+  const { format: formatCurrency } = useClubMoney();
   const [members, setMembers] = useState<Member[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [events, setEvents] = useState<ClubEvent[]>([]);

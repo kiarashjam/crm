@@ -1,10 +1,16 @@
 // Hospitality settings — admin-configurable rules for tiers, dues, loyalty
 // multipliers, and venue point values. Stored as a single document.
+//
+// `currency` is what every club page formats amounts in (see useClubMoney). Nothing
+// reads the rest yet: closing a tab, a check-in and an event check-in use their own
+// built-in rates, and dues come from each member. The settings page says so next to
+// each section, so a saved value does not look as if it took effect.
 
 import { apiWithFallback, authFetchJson } from './apiClient';
 import { LEGACY_BACKUP_SUFFIX, scopedStorageKey } from './mockStore';
 import type { MemberTier } from './members';
 import type { VisitVenue } from './visits';
+import { DEFAULT_CLUB_CURRENCY } from '@/app/lib/clubMoney';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -19,6 +25,8 @@ export interface TierConfig {
 }
 
 export interface HospitalitySettings {
+  /** ISO code every club amount is shown in. A label only: nothing is converted. */
+  currency: string;
   tiers: TierConfig[];
   basePointsPerDollar: number;
   pointsPerDollarRedemption: number;
@@ -29,6 +37,7 @@ export interface HospitalitySettings {
 }
 
 const DEFAULT_SETTINGS: HospitalitySettings = {
+  currency: DEFAULT_CLUB_CURRENCY,
   tiers: [
     {
       tier: 'Bronze',

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Megaphone,
   Plus,
-  Send,
+  NotebookPen,
   Trash2,
   Search,
   Users,
@@ -44,6 +44,7 @@ import {
   sendCampaign,
   previewSegment,
   computeCampaignStats,
+  campaignStatusLabel,
   type Campaign,
   type SegmentFilter,
 } from '@/app/api/campaigns';
@@ -55,6 +56,7 @@ import {
 } from '@/app/api/members';
 import { CHANNELS, CATEGORIES, type CommChannel, type CommCategory } from '@/app/api/communications';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import NotDeliveredNotice from '@/app/components/NotDeliveredNotice';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -103,7 +105,6 @@ export default function Campaigns() {
     body: '',
     tiers: [] as MemberTier[],
     statuses: ['Active'] as MemberStatus[],
-    scheduledAt: '',
   });
   const [busy, setBusy] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -139,7 +140,6 @@ export default function Campaigns() {
       body: '',
       tiers: [],
       statuses: ['Active'],
-      scheduledAt: '',
     });
     setPreviewCount(null);
     setDialogOpen(true);
@@ -174,7 +174,6 @@ export default function Campaigns() {
         subject: form.subject.trim(),
         body: form.body.trim() || form.subject.trim(),
         segment: buildSegment(),
-        scheduledAtUtc: form.scheduledAt ? new Date(form.scheduledAt).toISOString() : undefined,
       });
       toast.success('Campaign created');
       setDialogOpen(false);
@@ -185,11 +184,17 @@ export default function Campaigns() {
   };
 
   const send = async (c: Campaign) => {
-    if (!confirm(`Send "${c.name}" now? This writes a communication for every matched member.`)) return;
+    if (!confirm(
+      `Log "${c.name}" as sent? Cadence does not deliver campaigns yet: this only adds the message to each ` +
+      'matching member\'s log, and nobody receives it. Send it from your own mail tool as well.',
+    )) return;
     setSendingId(c.id);
     try {
       const result = await sendCampaign(c.id);
-      if (result) toast.success(`Sent to ${result.recipientCount} member${result.recipientCount === 1 ? '' : 's'}`);
+      if (result) {
+        const n = result.recipientCount ?? 0;
+        toast.success(`Logged for ${n} member${n === 1 ? '' : 's'}. Nothing was delivered.`);
+      }
       await load();
     } finally {
       setSendingId(null);
@@ -206,7 +211,7 @@ export default function Campaigns() {
   // How this person likes campaigns shown: rows, cards or a table, saved for them.
   const view = useViewPreference('campaigns', { layouts: ['list', 'grid', 'table'] });
 
-  /** Send now and delete: the same on a row, a card and a table line. */
+  /** Log as sent and delete: the same on a row, a card and a table line. */
   const campaignActions = (c: Campaign) => (
     <div className="flex items-center gap-1.5 shrink-0">
       {c.status !== 'Sent' && c.status !== 'Sending' && (
@@ -215,7 +220,7 @@ export default function Campaigns() {
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
           ) : (
             <>
-              <Send className="w-3.5 h-3.5 mr-1" /> Send now
+              <NotebookPen className="w-3.5 h-3.5 mr-1" /> Log as sent
             </>
           )}
         </Button>
@@ -248,11 +253,11 @@ export default function Campaigns() {
         );
       },
     },
-    { id: 'status', label: 'Status', cell: (c) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{c.status}</span> },
+    { id: 'status', label: 'Status', cell: (c) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{campaignStatusLabel(c.status)}</span> },
     { id: 'channel', label: 'Channel', className: 'whitespace-nowrap', cell: (c) => `${c.channel} · ${c.category}` },
     { id: 'subject', label: 'Subject', cell: (c) => <span className="line-clamp-1">{c.subject || '—'}</span> },
-    { id: 'when', label: 'Scheduled / sent', className: 'whitespace-nowrap', cell: (c) => (c.sentAtUtc ? `Sent ${formatDateTime(c.sentAtUtc)}` : c.scheduledAtUtc ? formatDateTime(c.scheduledAtUtc) : '—') },
-    { id: 'recipients', label: 'Recipients', numeric: true, cell: (c) => c.recipientCount ?? '—' },
+    { id: 'when', label: 'Planned / logged', className: 'whitespace-nowrap', cell: (c) => (c.sentAtUtc ? `Logged ${formatDateTime(c.sentAtUtc)}` : c.scheduledAtUtc ? `Planned for ${formatDateTime(c.scheduledAtUtc)}` : '—') },
+    { id: 'recipients', label: 'Members logged', numeric: true, cell: (c) => c.recipientCount ?? '—' },
     { id: 'segment', label: 'Segment', byDefault: false, cell: (c) => [c.segment.tiers?.join(', '), c.segment.statuses?.join(', ')].filter(Boolean).join(' · ') || 'Everyone' },
   ];
 
@@ -269,7 +274,7 @@ export default function Campaigns() {
             icon={Megaphone}
             tone="fuchsia"
             title="Campaigns"
-            subtitle="Segment members and send bulk emails, SMS, or push."
+            subtitle="Write a message for a segment of members and log it against each of them."
             actions={
               <Button onClick={openCreate} className={heroPrimary('fuchsia')}>
                 <Plus className="h-4 w-4" /> New campaign
@@ -277,11 +282,16 @@ export default function Campaigns() {
             }
             stats={[
               { label: 'Drafts', value: stats.drafts, icon: Megaphone, tone: 'fuchsia' },
-              { label: 'Scheduled', value: stats.scheduled, icon: Clock, tone: 'blue' },
-              { label: 'Sent', value: stats.sent, icon: CheckCircle2, tone: 'emerald' },
-              { label: 'Recipients', value: stats.totalRecipients, icon: Users, tone: 'amber', hint: 'all campaigns' },
+              { label: 'Planned', value: stats.scheduled, icon: Clock, tone: 'blue', hint: 'will not send themselves' },
+              { label: 'Logged', value: stats.sent, icon: CheckCircle2, tone: 'emerald', hint: 'not delivered' },
+              { label: 'Members logged', value: stats.totalRecipients, icon: Users, tone: 'amber', hint: 'all campaigns' },
             ]}
           />
+
+          <NotDeliveredNotice>
+            &ldquo;Log as sent&rdquo; adds the campaign to each matching member&apos;s log; nobody receives it. A
+            campaign with a planned date is not sent at that time either. Send it from your own mail tool.
+          </NotDeliveredNotice>
 
           <div className="flex flex-wrap items-center gap-3 mb-6">
             <div className="relative flex-1 min-w-[12rem] max-w-md">
@@ -343,17 +353,17 @@ export default function Campaigns() {
                           <h3 className="font-semibold text-slate-900 truncate">{c.name}</h3>
                           <p className="text-xs text-slate-500">{c.channel} · {c.category}</p>
                         </div>
-                        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{c.status}</span>
+                        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>{campaignStatusLabel(c.status)}</span>
                       </div>
                       <p className="mt-3 text-sm font-medium text-slate-700 line-clamp-1">{c.subject}</p>
                       {view.density !== 'compact' && <p className="text-sm text-slate-500 mt-0.5 line-clamp-2">{c.body}</p>}
                       <div className="mt-auto flex items-center justify-between gap-2 pt-3 text-xs text-slate-500">
                         <span className="truncate">
                           {c.sentAtUtc
-                            ? `Sent · ${c.recipientCount ?? 0} recipients`
+                            ? `Logged for ${c.recipientCount ?? 0} members, not delivered`
                             : c.scheduledAtUtc
-                              ? `Scheduled ${formatDateTime(c.scheduledAtUtc)}`
-                              : 'Not scheduled'}
+                              ? `Planned for ${formatDateTime(c.scheduledAtUtc)}, will not send itself`
+                              : 'Not logged yet'}
                         </span>
                         {campaignActions(c)}
                       </div>
@@ -380,7 +390,7 @@ export default function Campaigns() {
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <h3 className="font-semibold text-slate-900 truncate">{c.name}</h3>
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[c.status]}`}>
-                            {c.status}
+                            {campaignStatusLabel(c.status)}
                           </span>
                           <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">
                             {c.channel} · {c.category}
@@ -395,11 +405,11 @@ export default function Campaigns() {
                           {c.segment.statuses && c.segment.statuses.length > 0 && (
                             <span>Statuses: {c.segment.statuses.join(', ')}</span>
                           )}
-                          {c.scheduledAtUtc && (
-                            <span>Scheduled {formatDateTime(c.scheduledAtUtc)}</span>
+                          {c.scheduledAtUtc && !c.sentAtUtc && (
+                            <span>Planned for {formatDateTime(c.scheduledAtUtc)}, will not send itself</span>
                           )}
                           {c.sentAtUtc && (
-                            <span>Sent {formatDateTime(c.sentAtUtc)} · {c.recipientCount} recipients</span>
+                            <span>Logged {formatDateTime(c.sentAtUtc)} for {c.recipientCount ?? 0} members, not delivered</span>
                           )}
                         </div>
                       </div>
@@ -420,7 +430,9 @@ export default function Campaigns() {
           <DialogHeader>
             <DialogTitle>New campaign</DialogTitle>
             <DialogDescription>
-              Pick a channel, write the message, define a segment, and either save as draft, schedule, or send now.
+              Pick a channel, write the message and choose a segment. It is saved as a draft; &ldquo;Log as
+              sent&rdquo; then records it for each matching member. Cadence does not deliver it or send it at a set
+              time.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
@@ -535,21 +547,12 @@ export default function Campaigns() {
                 })}
               </div>
             </div>
-            <div className="md:col-span-2">
-              <Label>Schedule for (optional)</Label>
-              <Input aria-label="Schedule for (optional)"
-                type="datetime-local"
-                value={form.scheduledAt}
-                onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
-              />
-            </div>
             <div className="md:col-span-2 bg-fuchsia-50 border border-fuchsia-200 rounded-lg px-3 py-2 text-sm text-fuchsia-900">
               {previewCount === null ? (
                 <span className="text-fuchsia-700">Calculating segment...</span>
               ) : (
                 <>
-                  This campaign will reach <strong>{previewCount}</strong> member
-                  {previewCount === 1 ? '' : 's'} based on the current filters.
+                  <strong>{previewCount}</strong> member{previewCount === 1 ? ' matches' : 's match'} these filters.
                 </>
               )}
             </div>

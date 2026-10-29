@@ -274,6 +274,7 @@ try
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
     builder.Services.AddScoped<IClubService, ClubService>();
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
+    builder.Services.AddScoped<IEventAttendeeService, EventAttendeeService>();
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();

@@ -28,10 +28,7 @@ import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { motion } from 'motion/react';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-}
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const day = 86_400_000;
 
@@ -65,6 +62,7 @@ const VENUE_COLOR: Record<VisitVenue, string> = {
 };
 
 export default function HospitalityReports() {
+  const { format: formatCurrency } = useClubMoney();
   const reduce = useMotionPreference();
   const [members, setMembers] = useState<Member[]>([]);
   const [charges, setCharges] = useState<Charge[]>([]);

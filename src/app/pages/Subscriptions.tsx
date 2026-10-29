@@ -57,6 +57,7 @@ import {
   InitialsAvatar, RecordList, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { useClubMoney } from '@/app/hooks/useClubMoney';
 
 const STATUS_BADGE: Record<SubscriptionStatus, string> = {
   Active: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -64,10 +65,6 @@ const STATUS_BADGE: Record<SubscriptionStatus, string> = {
   Cancelled: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
   PastDue: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
 };
-
-function formatCurrency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-}
 
 function formatDate(iso: string): string {
   try {
@@ -86,6 +83,7 @@ function daysUntil(iso: string): number {
 }
 
 export default function Subscriptions() {
+  const { format: formatCurrency, currency } = useClubMoney();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -501,8 +499,8 @@ export default function Subscriptions() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Amount ($)</Label>
-                <Input aria-label="Amount ($)"
+                <Label>Amount ({currency})</Label>
+                <Input aria-label={`Amount (${currency})`}
                   type="number"
                   min="0"
                   step="0.01"

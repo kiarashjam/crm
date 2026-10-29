@@ -116,6 +116,8 @@ public static class ResultExtensions
         "Template.CannotModifySystem" => StatusCodes.Status403Forbidden,
         
         // Conflict errors
+        "EventAttendee.EventFull" => StatusCodes.Status409Conflict,
+        "EventAttendee.AlreadyCheckedIn" => StatusCodes.Status409Conflict,
         var code when code.Contains("Duplicate") => StatusCodes.Status409Conflict,
         var code when code.Contains("AlreadyExists") => StatusCodes.Status409Conflict,
         var code when code.Contains("AlreadyMember") => StatusCodes.Status409Conflict,
