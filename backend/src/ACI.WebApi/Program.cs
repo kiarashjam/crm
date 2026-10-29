@@ -1623,7 +1623,7 @@ try
             }
             
             Log.Information("Seeding database...");
-            await SeedData.SeedAsync(db, passwordHasher);
+            await SeedData.SeedAsync(db, passwordHasher, seedDemoUser: app.Environment.IsDevelopment());
             
             // Bring EXISTING organisations onto the agreed lead status vocabulary.
             //

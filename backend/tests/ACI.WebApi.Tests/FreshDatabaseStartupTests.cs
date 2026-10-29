@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ACI.Infrastructure.Persistence;
 using ACI.WebApi.Tests.Helpers;
 
 namespace ACI.WebApi.Tests;
@@ -50,6 +51,29 @@ public class FreshDatabaseStartupTests
         {
             using var app = SqlServerApp.Start(database);
             await ShouldBeSetUpAsync(app, database);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
+    public async Task ANewDatabaseHasNoSignInWithAPublishedPassword()
+    {
+        // The seeder adds demo@aci.local, whose password is in the repository, to a
+        // database with no accounts. Now that a new database is set up at all, a new
+        // production deployment would have come up with that sign-in, so it is only
+        // added in development.
+        await SqlServerApp.WaitForServerAsync();
+        var database = SqlServerApp.NewDatabaseName();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [Users] WHERE [Email] = N'{SeedData.SeedUserEmail}'"))
+                .Should().Be(0);
+            (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [Templates] WHERE [IsSystemTemplate] = 1"))
+                .Should().NotBe(0, "the starter templates are still seeded");
         }
         finally
         {
