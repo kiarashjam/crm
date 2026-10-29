@@ -299,7 +299,8 @@ public sealed class OrganizationService : IOrganizationService
             _logger.LogWarning("User {UserId} is not a member of organization {OrganizationId}", userId, organizationId);
             return DomainErrors.Organization.NotMember;
         }
-var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+
+        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
         if (org == null)
         {
             _logger.LogWarning("Organization {OrganizationId} not found", organizationId);
