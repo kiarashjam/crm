@@ -516,7 +516,8 @@ export default function Loyalty() {
                   <h3 className="font-semibold text-slate-900 mb-1">Redemption rate</h3>
                   <p className="text-sm text-slate-600">
                     <span className="font-medium">{POINTS_PER_DOLLAR} points = {formatCurrency(1)}</span> in redemption value.
-                    Members can apply points to bar tabs, dining bills, event tickets, or convert to a gift card.
+                    Paying a bill with points is not available yet: a redemption takes the points off the
+                    member&apos;s balance, but it does not settle a tab or a charge.
                   </p>
                 </div>
                 <div>
