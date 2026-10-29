@@ -334,6 +334,32 @@ public class ClubMoneyTests
         await Refused(await client.SendAsync(Redeem(card, 10)), HttpStatusCode.Conflict, "redeeming a voided card");
     }
 
+    // ── overdue ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AnUnpaidChargePastItsDueDateIsOverdue()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var late = await ChargeAsync(client, memberId, 600, DateTime.UtcNow.AddDays(-45));
+        var partlyPaid = await ChargeAsync(client, memberId, 100, DateTime.UtcNow.AddDays(-3));
+        await Json(await client.PostAsync("/api/payments", Payment(memberId, partlyPaid, 40)), "pay part of it");
+        var settled = await ChargeAsync(client, memberId, 50, DateTime.UtcNow.AddDays(-3));
+        await Json(await client.PostAsync("/api/payments", Payment(memberId, settled, 50)), "pay it all");
+        var notYet = await ChargeAsync(client, memberId, 80, DateTime.UtcNow.AddDays(10));
+
+        (await ChargeOfAsync(client, late)).GetProperty("status").GetString().Should().Be("Overdue",
+            "the dashboard's Past due and the Overdue figure count this status, which nothing ever set");
+        (await ChargeOfAsync(client, partlyPaid)).GetProperty("status").GetString().Should().Be("Overdue", "60 is still owed, and late");
+        (await ChargeOfAsync(client, settled)).GetProperty("status").GetString().Should().Be("Paid");
+        (await ChargeOfAsync(client, notYet)).GetProperty("status").GetString().Should().Be("Pending");
+
+        // Paying an overdue charge works as it always did.
+        await Json(await client.PostAsync("/api/payments", Payment(memberId, late, 600)), "pay the late dues");
+        (await ChargeOfAsync(client, late)).GetProperty("status").GetString().Should().Be("Paid");
+    }
+
     // ── the house balance ────────────────────────────────────────────────────
 
     [Fact]

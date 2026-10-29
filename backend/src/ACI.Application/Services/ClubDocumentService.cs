@@ -88,16 +88,23 @@ public sealed class ClubDocumentService : IClubDocumentService
 
     /// <summary>
     /// A record as it stands now. Some states come from the clock rather than from a
-    /// write: a gift card past its expiry is expired whether or not anything saved that.
+    /// write: a gift card past its expiry is expired, and an unpaid charge past its due
+    /// date is overdue, whether or not anything saved that.
     /// </summary>
     /// <remarks>
-    /// Worked out on every read, so the screens, the reports and the assistant all see
-    /// the same thing, and no read has to write.
+    /// Nothing ever set a charge Overdue, so the dashboard's "Past due" and the Charges
+    /// page's Overdue figure read zero however late the dues were. Worked out on every
+    /// read, so the screens, the reports and the assistant all see the same thing, and no
+    /// read has to write.
     /// </remarks>
     private static JsonObject AsOf(string kind, JsonObject obj, DateTime now)
     {
-        if (kind == "gift-cards" && Text(obj, "status") == "Active" && ReadDate(obj, "expiresAtUtc") is { } expires && expires <= now)
+        var status = Text(obj, "status");
+        if (kind == "gift-cards" && status == "Active" && ReadDate(obj, "expiresAtUtc") is { } expires && expires <= now)
             obj["status"] = "Expired";
+        if (kind == "charges" && status is ("Pending" or "PartiallyPaid") && ReadDate(obj, "dueAtUtc") is { } due && due < now
+            && Dec(obj, "amount") - Dec(obj, "paidAmount") > 0)
+            obj["status"] = "Overdue";
         return obj;
     }
 
