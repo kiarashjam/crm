@@ -780,20 +780,21 @@ public class TaskService : ITaskService
     /// <summary>
     /// The links a write leaves on a task, checked against the workspace. Only what the
     /// write changes is checked, so a task whose assignee has since left can still be
-    /// edited. The deal and the assignee are checked together, because whoever the task
-    /// is for has to be able to open its deal.
+    /// edited. A new deal or a new assignee brings the other into the check, because
+    /// whoever the task is for has to be able to open its deal.
     /// </summary>
     private Task<Result> CheckLinksAsync(
         TaskItem? current, Guid? leadId, Guid? dealId, Guid? contactId, Guid? assigneeId,
         Guid userId, Guid? organizationId, CancellationToken ct)
     {
-        var dealOrAssigneeChanges = dealId != current?.DealId || assigneeId != current?.AssigneeId;
+        var dealChanges = dealId != current?.DealId;
+        var assigneeChanges = assigneeId != current?.AssigneeId;
         return _records.CheckLinksAsync(userId, organizationId, new RecordLinks
         {
             LeadId = leadId != current?.LeadId ? leadId : null,
             ContactId = contactId != current?.ContactId ? contactId : null,
-            DealId = dealOrAssigneeChanges ? dealId : null,
-            AssigneeId = dealOrAssigneeChanges ? assigneeId : null,
+            DealId = dealChanges || (assigneeChanges && assigneeId != null) ? dealId : null,
+            AssigneeId = assigneeChanges || (dealChanges && dealId != null) ? assigneeId : null,
         }, ct);
     }
 

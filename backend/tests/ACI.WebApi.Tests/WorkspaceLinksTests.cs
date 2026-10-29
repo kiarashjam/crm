@@ -148,6 +148,27 @@ public class WorkspaceLinksTests
     }
 
     [Fact]
+    public async Task ATaskWhoseAssigneeHasLeftCanStillBeEdited()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var s = await SetUpAsync(factory);
+        var deal = (await Ok(await s.Owner.PostAsync("/api/deals", Body(new { name = "Renewal", value = "900" })), "a shared deal")).GetProperty("id").GetGuid();
+        Guid id;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var task = new TaskItem { Id = Guid.NewGuid(), UserId = s.OwnerId, OrganizationId = s.Org, Title = "Call", AssigneeId = s.OtherUserId, DealId = deal, CreatedAtUtc = DateTime.UtcNow };
+            db.TaskItems.Add(task);
+            await db.SaveChangesAsync();
+            id = task.Id;
+        }
+
+        await Ok(await s.Owner.PutAsync($"/api/tasks/{id}", Body(new { title = "Call back", assigneeId = s.OtherUserId })), "an edit that keeps the assignee");
+        await Ok(await s.Owner.PutAsync($"/api/tasks/{id}", Body(new { clearDeal = true })), "unlinking the deal");
+        await Ok(await s.Owner.PatchAsync($"/api/tasks/{id}/assign", Body(new { assigneeId = s.RepId })), "handing it to someone still here");
+    }
+
+    [Fact]
     public async Task APersonalTaskIsOnlyForItsOwner()
     {
         using var factory = new CustomWebApplicationFactory();
