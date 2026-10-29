@@ -31,6 +31,7 @@ import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
 import { Button } from '@/app/components/ui/button';
 import DemoBanner from './DemoBanner';
 import ReadOnlyBanner from './ReadOnlyBanner';
+import EmailVerificationBanner from './EmailVerificationBanner';
 import LocalOnlyNotice from './LocalOnlyNotice';
 import LocalDataUploadDialog from './LocalDataUploadDialog';
 import { AppSideNav } from './AppSideNav';
@@ -432,6 +433,7 @@ export default function AppHeader() {
       </div>
     </header>
     <DemoBanner />
+    <EmailVerificationBanner />
     <ReadOnlyBanner />
     <LocalOnlyNotice />
     <LocalDataUploadDialog />

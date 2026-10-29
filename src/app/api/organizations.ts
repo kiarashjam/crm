@@ -82,17 +82,14 @@ export async function listMyPendingInvites(): Promise<InviteDto[]> {
   return Array.isArray(list) ? list : [];
 }
 
+/**
+ * Accept with the token from the invitation email's link. There is no accept by id:
+ * the token is what shows the person accepting received the email.
+ */
 export async function acceptInvite(token: string): Promise<InviteDto | null> {
   const invite = await authFetchJson<InviteDto>('/api/invites/accept', {
     method: 'POST',
     body: JSON.stringify({ token }),
-  });
-  return invite ?? null;
-}
-
-export async function acceptInviteById(inviteId: string): Promise<InviteDto | null> {
-  const invite = await authFetchJson<InviteDto>(`/api/invites/${inviteId}/accept`, {
-    method: 'POST',
   });
   return invite ?? null;
 }

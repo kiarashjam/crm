@@ -21,6 +21,8 @@ import ResetPassword from '@/app/pages/ResetPassword';
 
 // Lazy-loaded pages (code splitting)
 const Organizations = lazy(() => import('@/app/pages/Organizations'));
+const AcceptInvite = lazy(() => import('@/app/pages/AcceptInvite'));
+const VerifyEmail = lazy(() => import('@/app/pages/VerifyEmail'));
 const Dashboard = lazy(() => import('@/app/pages/Dashboard'));
 const SendToCrm = lazy(() => import('@/app/pages/SendToCrm'));
 const Templates = lazy(() => import('@/app/pages/Templates'));
@@ -116,6 +118,11 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/verify-email" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <VerifyEmail />
+                  </Suspense>
+                } />
                 
                 {/* Public routes - lazy loaded */}
                 <Route path="/help" element={
@@ -151,6 +158,8 @@ export default function App() {
                 {/* Protected routes */}
                 <Route element={<ProtectedLayout />}>
                   <Route path="/organizations" element={<Organizations />} />
+                  {/* Outside RequireOrgLayout: the invitee may have no workspace yet. */}
+                  <Route path="/invites/accept" element={<AcceptInvite />} />
                   <Route path="/onboarding" element={<Navigate to="/settings" replace />} />
                   <Route element={<RequireOrgLayout />}>
                     <Route path="/dashboard" element={<Dashboard />} />

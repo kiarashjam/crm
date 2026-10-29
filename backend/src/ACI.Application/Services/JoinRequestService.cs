@@ -11,15 +11,18 @@ public sealed class JoinRequestService : IJoinRequestService
 {
     private readonly IJoinRequestRepository _joinRequestRepository;
     private readonly IOrganizationRepository _organizationRepository;
+    private readonly IUserRepository _userRepository;
     private readonly ILogger<JoinRequestService> _logger;
 
     public JoinRequestService(
         IJoinRequestRepository joinRequestRepository,
         IOrganizationRepository organizationRepository,
+        IUserRepository userRepository,
         ILogger<JoinRequestService> logger)
     {
         _joinRequestRepository = joinRequestRepository;
         _organizationRepository = organizationRepository;
+        _userRepository = userRepository;
         _logger = logger;
     }
 
@@ -38,6 +41,15 @@ public sealed class JoinRequestService : IJoinRequestService
         {
             _logger.LogWarning("User {UserId} is already a member of organization {OrganizationId}", userId, organizationId);
             return Result.Failure<JoinRequestDto>(DomainErrors.Organization.AlreadyMember);
+        }
+
+        // The owner approves a request by the name and email it shows, so the email
+        // must really be the requester's.
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user?.EmailVerifiedAtUtc == null)
+        {
+            _logger.LogWarning("User {UserId} asked to join organization {OrganizationId} before confirming their email", userId, organizationId);
+            return Result.Failure<JoinRequestDto>(DomainErrors.Auth.EmailNotVerified);
         }
 
         var existing = await _joinRequestRepository.ListPendingByOrganizationIdAsync(organizationId, ct);

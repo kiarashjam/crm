@@ -52,7 +52,6 @@ vi.mock('@/app/api/organizations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/organizations')>()),
   getOrgMembers: (id: string) => getOrgMembers(id),
   listPendingJoinRequestsForOrg: (id: string) => listPendingJoinRequestsForOrg(id),
-  acceptInviteById: vi.fn(),
   acceptJoinRequest: vi.fn(),
   rejectJoinRequest: vi.fn(),
 }));

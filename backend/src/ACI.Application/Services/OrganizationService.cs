@@ -190,6 +190,14 @@ public sealed class OrganizationService : IOrganizationService
             return Result.Failure<OrgMemberDto>(NoAccountForEmail);
         }
 
+        // Anyone can register an address before its owner does; adding that account
+        // would hand the workspace to whoever got there first.
+        if (user.EmailVerifiedAtUtc == null)
+        {
+            _logger.LogWarning("Cannot add {Email}: the account has not confirmed the address", normalized);
+            return Result.Failure<OrgMemberDto>(EmailNotConfirmed);
+        }
+
         if (await _organizationRepository.IsMemberAsync(user.Id, organizationId, ct))
         {
             _logger.LogWarning("User {UserId} is already a member of organization {OrganizationId}", user.Id, organizationId);
@@ -207,6 +215,10 @@ public sealed class OrganizationService : IOrganizationService
     private static readonly Error NoAccountForEmail = new(
         "Organization.NoAccountForEmail",
         "No account exists with that email address yet. Ask them to sign up first, then add them — or send an invitation instead.");
+
+    private static readonly Error EmailNotConfirmed = new(
+        "Organization.MemberEmailNotConfirmed",
+        "That account has not confirmed its email address yet. Ask them to open the confirmation email Cadence sent them, then add them — or send an invitation instead.");
 
     public async Task<Result> UpdateMemberRoleAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, OrgMemberRole newRole, CancellationToken ct = default)
     {

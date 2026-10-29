@@ -15,7 +15,11 @@ public interface IInviteService
     /// </summary>
     Task<Result<InviteDto>> ResendInviteAsync(Guid inviteId, Guid userId, CancellationToken ct = default);
     Task<Result<IReadOnlyList<InviteDto>>> ListPendingInvitesAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
+    /// <summary>
+    /// Accepts with the token from the invitation email. The account must use the invited
+    /// address and have confirmed it. There is deliberately no accept-by-id: the id is
+    /// visible to anyone the invite is listed to, the token only to the inbox.
+    /// </summary>
     Task<Result<InviteDto>> AcceptInviteAsync(string token, Guid userId, CancellationToken ct = default);
-    Task<Result<InviteDto>> AcceptInviteByIdAsync(Guid inviteId, Guid userId, CancellationToken ct = default);
     Task<Result<IReadOnlyList<InviteDto>>> ListMyPendingInvitesAsync(Guid userId, CancellationToken ct = default);
 }

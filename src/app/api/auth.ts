@@ -1,6 +1,6 @@
 import { authFetchJson, servesDemoData } from './apiClient';
 
-export type AuthUser = { id: string; name: string; email: string };
+export type AuthUser = { id: string; name: string; email: string; emailVerified?: boolean };
 
 export type LoginResponse = {
   token: string | null;
@@ -35,6 +35,20 @@ export function register(name: string, email: string, password: string) {
 
 export function me() {
   return authFetchJson<AuthUser>('/api/auth/me');
+}
+
+/** Confirm the account's address with the token from the confirmation email. Works signed out. */
+export function verifyEmail(token: string) {
+  return authFetchJson<void>('/api/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+    skipAuth: true,
+  });
+}
+
+/** Email the signed-in user a new confirmation link. The server allows a few per 15 minutes. */
+export function resendVerificationEmail() {
+  return authFetchJson<void>('/api/auth/verify-email/resend', { method: 'POST' });
 }
 
 export type TwoFactorSetupResponse = { enabled: boolean; secret: string; otpauthUri: string };

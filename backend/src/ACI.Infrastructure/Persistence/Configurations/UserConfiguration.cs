@@ -18,5 +18,6 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(e => e.TwoFactorEnabled).IsRequired();
         builder.Property(e => e.TwoFactorSecretProtected).HasMaxLength(2000);
         builder.Property(e => e.PasswordResetTokenHash).HasMaxLength(64);
+        builder.Property(e => e.EmailVerificationTokenHash).HasMaxLength(64);
     }
 }

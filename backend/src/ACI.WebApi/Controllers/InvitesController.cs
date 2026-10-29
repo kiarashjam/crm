@@ -11,7 +11,8 @@ namespace ACI.WebApi.Controllers;
 /// </summary>
 /// <remarks>
 /// Invites allow organization members to invite others to join.
-/// Invited users can accept invites using the token or invite ID.
+/// Invited users accept with the token from the invitation email, from an account
+/// that uses the invited address and has confirmed it.
 /// </remarks>
 [ApiController]
 [Route("api/[controller]")]
@@ -55,6 +56,7 @@ public class InvitesController : ControllerBase
     /// <response code="200">Invite accepted successfully.</response>
     /// <response code="400">Invalid or expired token, or email mismatch.</response>
     /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">The account has not confirmed its email address yet.</response>
     [HttpPost("accept")]
     [ProducesResponseType(typeof(InviteDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
@@ -64,27 +66,6 @@ public class InvitesController : ControllerBase
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
         var result = await _inviteService.AcceptInviteAsync(request.Token, userId.Value, ct);
-        return result.ToActionResult();
-    }
-
-    /// <summary>
-    /// Accepts an invite by its ID.
-    /// </summary>
-    /// <param name="inviteId">The invite ID.</param>
-    /// <param name="ct">Cancellation token.</param>
-    /// <returns>The accepted invite details.</returns>
-    /// <response code="200">Invite accepted successfully.</response>
-    /// <response code="400">Invalid or expired invite, or email mismatch.</response>
-    /// <response code="401">User is not authenticated.</response>
-    [HttpPost("{inviteId:guid}/accept")]
-    [ProducesResponseType(typeof(InviteDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<InviteDto>> AcceptById(Guid inviteId, CancellationToken ct)
-    {
-        var userId = _currentUser.UserId;
-        if (userId == null) return Unauthorized();
-        var result = await _inviteService.AcceptInviteByIdAsync(inviteId, userId.Value, ct);
         return result.ToActionResult();
     }
 

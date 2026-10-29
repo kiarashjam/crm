@@ -34,7 +34,8 @@ public record LoginResponse(
     bool RequiresTwoFactor = false,
     string? TwoFactorToken = null);
 
-public record UserInfoDto(Guid Id, string Name, string Email);
+/// <param name="EmailVerified">Whether the person has confirmed they read mail at <paramref name="Email"/>.</param>
+public record UserInfoDto(Guid Id, string Name, string Email, bool EmailVerified);
 
 /// <summary>
 /// Two-factor authentication login request.
@@ -117,4 +118,14 @@ public record ResetPasswordRequest
     [Required(ErrorMessage = "Password is required")]
     [StringLength(100, MinimumLength = 6, ErrorMessage = "Password must be between 6 and 100 characters")]
     public required string Password { get; init; }
+}
+
+/// <summary>
+/// Confirm an email address using the token from the confirmation link.
+/// </summary>
+public record VerifyEmailRequest
+{
+    [Required(ErrorMessage = "Token is required")]
+    [StringLength(500, MinimumLength = 8, ErrorMessage = "Token is invalid")]
+    public required string Token { get; init; }
 }

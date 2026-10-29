@@ -427,6 +427,19 @@ public static class DomainErrors
 
         public static readonly Error InvalidResetToken = new(
             "Auth.InvalidResetToken", "This password reset link is invalid or has expired. Request a new one.");
+
+        public static readonly Error InvalidVerificationToken = new(
+            "Auth.InvalidVerificationToken", "This confirmation link is invalid or has expired. Sign in and send a new one.");
+
+        // Mapped to 403 in ResultExtensions: the account is real, it just has not shown it owns the address.
+        public static readonly Error EmailNotVerified = new(
+            "Auth.EmailNotVerified", "Confirm your email address first. Open the link we sent you, or send a new one from the banner at the top of the page.");
+
+        public static readonly Error TooManyVerificationEmails = new(
+            "Auth.TooManyVerificationEmails", "We have sent several confirmation emails already. Wait 15 minutes, then try again.");
+
+        public static readonly Error VerificationEmailNotSent = new(
+            "Auth.VerificationEmailNotSent", "The confirmation email could not be sent. Try again later.");
     }
 
     /// <summary>

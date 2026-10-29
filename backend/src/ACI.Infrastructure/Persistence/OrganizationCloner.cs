@@ -320,7 +320,9 @@ public sealed class OrganizationCloner
                 f.PublicToken = Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant();
                 return "Lead capture forms get their own public address";
             case Invite i:
-                i.Token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+                // A hash of a token nobody has: the copy's invitation is accepted after a resend.
+                i.TokenHash = ACI.Application.Common.PasswordResetCrypto.HashRawToken(
+                    ACI.Application.Common.PasswordResetCrypto.CreateRawToken());
                 return "Pending invitations get their own link";
             case Notification n when n.SourceKey != null && n.SourceKey == ((Notification)source).SourceKey:
                 // The key stops a person being told the same thing twice, and is unique per

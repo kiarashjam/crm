@@ -19,7 +19,7 @@ public sealed class AuthAttemptLimiter
     /// <summary>Failed attempts allowed inside one window.</summary>
     public const int MaxFailures = 5;
 
-    /// <summary>Password reset emails per address inside one window.</summary>
+    /// <summary>Password reset (or email confirmation) emails per address inside one window.</summary>
     public const int MaxResetEmails = 3;
 
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
@@ -35,6 +35,7 @@ public sealed class AuthAttemptLimiter
     public static string Login(string email) => "login:" + email.Trim();
     public static string TwoFactor(Guid userId) => "2fa:" + userId;
     public static string PasswordReset(string email) => "reset:" + email.Trim();
+    public static string VerificationEmail(Guid userId) => "verify:" + userId;
 
     /// <summary>Whether this key has used up its attempts for the current window.</summary>
     public bool IsBlocked(string key, int limit = MaxFailures)

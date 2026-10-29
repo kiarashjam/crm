@@ -23,6 +23,9 @@ public sealed class UserRepository : IUserRepository
     public async Task<User?> GetByPasswordResetTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
         await _db.Users.FirstOrDefaultAsync(u => u.PasswordResetTokenHash == tokenHash, ct);
 
+    public async Task<User?> GetByEmailVerificationTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
+        await _db.Users.FirstOrDefaultAsync(u => u.EmailVerificationTokenHash == tokenHash, ct);
+
     public async Task<User> AddAsync(User user, CancellationToken ct = default)
     {
         _db.Users.Add(user);

@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, Sparkles, Play, Mail, Lock, User as UserIcon,
@@ -15,6 +15,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { cn } from '@/app/components/ui/utils';
+import { invitationToResume } from '@/app/lib/inviteLink';
 
 const HIGHLIGHTS = [
   { icon: Bot, title: 'AI that writes with you', body: 'Draft emails, follow-ups and notes in your voice.' },
@@ -24,6 +25,9 @@ const HIGHLIGHTS = [
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // An invitation link opened while signed out: go back to it, token and all.
+  const resumeInvitation = invitationToResume(location.state);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -54,7 +58,7 @@ export default function Login() {
         if (!res.token || !res.user) throw new Error('Login failed');
         setSession(res.token, res.user);
         toast.success(messages.auth.signedIn);
-        navigate('/dashboard', { replace: true });
+        navigate(resumeInvitation ?? '/dashboard', { replace: true });
         return;
       }
 
@@ -73,7 +77,7 @@ export default function Login() {
       if (!res.token || !res.user) throw new Error('Login failed');
       setSession(res.token, res.user);
       toast.success(mode === 'register' ? messages.auth.accountCreated : messages.auth.signedIn);
-      navigate(isUsingRealApi() ? '/organizations' : '/dashboard', { replace: true });
+      navigate(resumeInvitation ?? (isUsingRealApi() ? '/organizations' : '/dashboard'), { replace: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : messages.errors.generic;
       setError(msg);

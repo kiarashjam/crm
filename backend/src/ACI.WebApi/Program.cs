@@ -635,6 +635,22 @@ try
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Users') AND name = 'PasswordResetTokenExpiresAtUtc')
                     ALTER TABLE [Users] ADD [PasswordResetTokenExpiresAtUtc] datetime2 NULL;
             ");
+
+            // Email verification. Accounts that exist when the column arrives were made
+            // before verification existed, so they count as verified: nobody already in
+            // a workspace is locked out of invitations by this deploy. The UPDATE is in
+            // EXEC because the batch is compiled before the column exists.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Users', N'EmailVerifiedAtUtc') IS NULL
+                BEGIN
+                    ALTER TABLE [Users] ADD [EmailVerifiedAtUtc] datetime2 NULL;
+                    EXEC(N'UPDATE [Users] SET [EmailVerifiedAtUtc] = SYSUTCDATETIME()');
+                END
+                IF COL_LENGTH(N'dbo.Users', N'EmailVerificationTokenHash') IS NULL
+                    ALTER TABLE [Users] ADD [EmailVerificationTokenHash] nvarchar(64) NULL;
+                IF COL_LENGTH(N'dbo.Users', N'EmailVerificationTokenExpiresAtUtc') IS NULL
+                    ALTER TABLE [Users] ADD [EmailVerificationTokenExpiresAtUtc] datetime2 NULL;
+            ");
             
             // Fix Leads table columns
             await db.Database.ExecuteSqlRawAsync(@"

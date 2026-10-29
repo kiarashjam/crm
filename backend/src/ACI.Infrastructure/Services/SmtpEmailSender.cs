@@ -57,6 +57,35 @@ public sealed class SmtpEmailSender : IEmailSender
         return await SendAsync(toEmail, recipientName, "Reset your Cadence password", body, ct);
     }
 
+    public async Task<bool> SendEmailVerificationEmailAsync(string toEmail, string recipientName, string verifyUrl, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SmtpHost))
+        {
+            if (_options.LogResetLinksWhenSmtpNotConfigured)
+            {
+                _logger.LogWarning(
+                    "Email:SmtpHost is not set; logging email confirmation link for {Email}: {VerifyUrl}",
+                    toEmail,
+                    verifyUrl);
+                return true;
+            }
+
+            _logger.LogError("Email:SmtpHost is not configured; cannot send email confirmation to {Email}", toEmail);
+            return false;
+        }
+
+        var greeting = string.IsNullOrWhiteSpace(recipientName) ? "" : " " + recipientName;
+        var body =
+            $"Hi{greeting},\n\n" +
+            "Please confirm that this is your email address by opening the link below. " +
+            "This link expires in 24 hours.\n\n" +
+            $"{verifyUrl}\n\n" +
+            "Until you confirm it, you can use your own workspace but cannot join anyone else's.\n\n" +
+            "If you did not create a Cadence account, you can ignore this email.\n";
+
+        return await SendAsync(toEmail, recipientName, "Confirm your email address for Cadence", body, ct);
+    }
+
     public async Task<bool> SendOrganizationInviteEmailAsync(
         string toEmail,
         string organizationName,
@@ -82,10 +111,10 @@ public sealed class SmtpEmailSender : IEmailSender
         var body =
             $"Hi,\n\n" +
             $"{from} invited you to join \"{organizationName}\" on Cadence.\n\n" +
-            $"Open the link below and sign in to accept — the invitation is waiting there:\n\n" +
+            $"Open the link below to accept. It works only for you, so do not forward this email:\n\n" +
             $"{acceptUrl}\n\n" +
-            $"Important: sign in (or create your account) with this email address — {toEmail} — " +
-            "otherwise the invitation will not appear.\n\n" +
+            $"Sign in (or create your account) with this email address — {toEmail} — " +
+            "and confirm the address if Cadence asks you to.\n\n" +
             "This invitation expires in 7 days. If you were not expecting it, you can ignore this email.\n";
 
         return await SendAsync(toEmail, recipientName: "", subject: $"You have been invited to {organizationName} on Cadence", body: body, ct: ct);

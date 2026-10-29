@@ -95,7 +95,7 @@ public class AuthService : IAuthService
         var token = _tokenService.GenerateToken(user);
         
         _logger.LogInformation("User {UserId} logged in successfully", user.Id);
-        return new LoginResponse(token, new UserInfoDto(user.Id, user.Name, user.Email));
+        return new LoginResponse(token, ToInfo(user));
     }
 
     public async Task<Result<LoginResponse>> LoginWithTwoFactorAsync(TwoFactorLoginRequest request, CancellationToken ct = default)
@@ -140,7 +140,7 @@ public class AuthService : IAuthService
         var token = _tokenService.GenerateToken(user);
         
         _logger.LogInformation("User {UserId} completed 2FA login successfully", user.Id);
-        return new LoginResponse(token, new UserInfoDto(user.Id, user.Name, user.Email));
+        return new LoginResponse(token, ToInfo(user));
     }
 
     public async Task<Result<LoginResponse>> RegisterAsync(LoginRequest request, string name, CancellationToken ct = default)
@@ -164,12 +164,80 @@ public class AuthService : IAuthService
             PasswordHash = _passwordHasher.Hash(request.Password),
             CreatedAtUtc = DateTime.UtcNow,
         };
-        
+
+        // Anyone can type any address here, so the account starts unconfirmed. It can
+        // sign in and use its own workspace; invitations and add-by-email wait until the
+        // link we send proves the person reads this inbox.
+        var rawVerificationToken = IssueVerificationToken(user);
         await _userRepository.AddAsync(user, ct);
+
+        // Best-effort: the account exists either way, and the banner can send another.
+        if (await SendVerificationEmailAsync(user, rawVerificationToken, ct))
+            _attempts.Record(AuthAttemptLimiter.VerificationEmail(user.Id));
+
         var token = _tokenService.GenerateToken(user);
-        
+
         _logger.LogInformation("User {UserId} registered successfully with email {Email}", user.Id, request.Email);
-        return new LoginResponse(token, new UserInfoDto(user.Id, user.Name, user.Email));
+        return new LoginResponse(token, ToInfo(user));
+    }
+
+    public async Task<Result> VerifyEmailAsync(VerifyEmailRequest request, CancellationToken ct = default)
+    {
+        var rawToken = request.Token.Trim();
+        if (string.IsNullOrEmpty(rawToken))
+            return DomainErrors.Auth.InvalidVerificationToken;
+
+        var user = await _userRepository.GetByEmailVerificationTokenHashAsync(PasswordResetCrypto.HashRawToken(rawToken), ct);
+        if (user == null
+            || user.EmailVerificationTokenExpiresAtUtc == null
+            || user.EmailVerificationTokenExpiresAtUtc < DateTime.UtcNow)
+        {
+            _logger.LogWarning("Email confirmation failed: invalid or expired token");
+            return DomainErrors.Auth.InvalidVerificationToken;
+        }
+
+        user.EmailVerifiedAtUtc ??= DateTime.UtcNow;
+        // Single use: the link has done its job.
+        user.EmailVerificationTokenHash = null;
+        user.EmailVerificationTokenExpiresAtUtc = null;
+        await _userRepository.UpdateAsync(user, ct);
+
+        _logger.LogInformation("User {UserId} confirmed their email address", user.Id);
+        return Result.Success();
+    }
+
+    public async Task<Result> ResendVerificationEmailAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user == null)
+            return DomainErrors.Auth.EmailNotFound;
+
+        if (user.EmailVerifiedAtUtc != null)
+            return Result.Success();
+
+        // Every send mails the address from the club's sender, so a few per window.
+        var key = AuthAttemptLimiter.VerificationEmail(user.Id);
+        if (_attempts.IsBlocked(key, AuthAttemptLimiter.MaxResetEmails))
+        {
+            _logger.LogWarning("Email confirmation not resent for user {UserId}: too many requests", user.Id);
+            return DomainErrors.Auth.TooManyVerificationEmails;
+        }
+
+        var rawToken = IssueVerificationToken(user);
+        if (!await SendVerificationEmailAsync(user, rawToken, ct))
+            return DomainErrors.Auth.VerificationEmailNotSent;
+
+        _attempts.Record(key);
+        await _userRepository.UpdateAsync(user, ct);
+        return Result.Success();
+    }
+
+    public async Task<Result<UserInfoDto>> GetCurrentUserAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user == null)
+            return DomainErrors.Auth.EmailNotFound;
+        return ToInfo(user);
     }
 
     public async Task<Result<TwoFactorSetupResponse>> GetTwoFactorSetupAsync(Guid userId, CancellationToken ct = default)
@@ -304,7 +372,7 @@ public class AuthService : IAuthService
         var tokenHash = PasswordResetCrypto.HashRawToken(rawToken);
         var expiresAt = DateTime.UtcNow.AddHours(1);
 
-        if (!TryNormalizePasswordResetBaseUrl(_emailSettings.FrontendBaseUrl, out var baseUrl))
+        if (!TryNormalizeFrontendBaseUrl(_emailSettings.FrontendBaseUrl, out var baseUrl))
         {
             _logger.LogError(
                 "Password reset skipped for user {UserId}: Email:FrontendBaseUrl must be an absolute http(s) URL (current: {FrontendBaseUrl})",
@@ -353,6 +421,10 @@ public class AuthService : IAuthService
         user.PasswordHash = _passwordHasher.Hash(request.Password);
         user.PasswordResetTokenHash = null;
         user.PasswordResetTokenExpiresAtUtc = null;
+        // The reset link went to this address, so following it proves the inbox as
+        // well as a confirmation link would. It is also how the real owner takes back
+        // an address someone else registered first.
+        user.EmailVerifiedAtUtc ??= DateTime.UtcNow;
         await _userRepository.UpdateAsync(user, ct);
 
         _logger.LogInformation("Password reset completed for user {UserId}", user.Id);
@@ -370,6 +442,36 @@ public class AuthService : IAuthService
         return password.Any(char.IsDigit) || password.Length >= 15;
     }
 
+    private static UserInfoDto ToInfo(User user) =>
+        new(user.Id, user.Name, user.Email, EmailVerified: user.EmailVerifiedAtUtc != null);
+
+    /// <summary>Puts a new confirmation token's hash on the user and returns the raw token for the link.</summary>
+    private static string IssueVerificationToken(User user)
+    {
+        var rawToken = PasswordResetCrypto.CreateRawToken();
+        user.EmailVerificationTokenHash = PasswordResetCrypto.HashRawToken(rawToken);
+        user.EmailVerificationTokenExpiresAtUtc = DateTime.UtcNow.AddHours(24);
+        return rawToken;
+    }
+
+    private async Task<bool> SendVerificationEmailAsync(User user, string rawToken, CancellationToken ct)
+    {
+        if (!TryNormalizeFrontendBaseUrl(_emailSettings.FrontendBaseUrl, out var baseUrl))
+        {
+            _logger.LogError(
+                "Email confirmation not sent for user {UserId}: Email:FrontendBaseUrl must be an absolute http(s) URL (current: {FrontendBaseUrl})",
+                user.Id,
+                string.IsNullOrWhiteSpace(_emailSettings.FrontendBaseUrl) ? "(empty)" : _emailSettings.FrontendBaseUrl);
+            return false;
+        }
+
+        var verifyUrl = $"{baseUrl}/verify-email?token={Uri.EscapeDataString(rawToken)}";
+        var sent = await _emailSender.SendEmailVerificationEmailAsync(user.Email, user.Name, verifyUrl, ct);
+        if (!sent)
+            _logger.LogWarning("Email confirmation for user {UserId} could not be sent", user.Id);
+        return sent;
+    }
+
     private static void ClearPasswordResetFieldsIfPresent(User user)
     {
         if (user.PasswordResetTokenHash == null && user.PasswordResetTokenExpiresAtUtc == null)
@@ -379,9 +481,10 @@ public class AuthService : IAuthService
     }
 
     /// <summary>
-    /// Reset emails must point at the SPA with an absolute URL so links are not host-relative to the API.
+    /// Links in reset and confirmation emails must point at the SPA with an absolute URL
+    /// so they are not host-relative to the API.
     /// </summary>
-    private static bool TryNormalizePasswordResetBaseUrl(string? configured, out string baseUrl)
+    private static bool TryNormalizeFrontendBaseUrl(string? configured, out string baseUrl)
     {
         baseUrl = (configured ?? string.Empty).Trim().TrimEnd('/');
         if (baseUrl.Length == 0)

@@ -13,7 +13,11 @@ function notifySessionChanged(): void {
   }
 }
 
-export type AuthUser = { id: string; name: string; email: string };
+/**
+ * `emailVerified` is false while the account has not confirmed its address, and
+ * absent for a session saved before the server reported it.
+ */
+export type AuthUser = { id: string; name: string; email: string; emailVerified?: boolean };
 
 export function setSession(token: string, user: AuthUser): void {
   try {
@@ -73,6 +77,20 @@ function forgetAgentConversations(storage: Storage): void {
     if (key?.startsWith(AGENT_KEY_PREFIX)) keys.push(key);
   }
   for (const key of keys) storage.removeItem(key);
+}
+
+/**
+ * Change the stored details of the signed-in user (for example once the address is
+ * confirmed) without touching the token or the chosen workspace, which setSession resets.
+ */
+export function updateCurrentUser(patch: Partial<Omit<AuthUser, 'id'>>): void {
+  const user = getCurrentUser();
+  if (!user) return;
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify({ ...user, ...patch }));
+  } catch {
+    // ignore
+  }
 }
 
 export function clearSession(): void {

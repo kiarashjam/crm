@@ -68,4 +68,17 @@ public interface IAuthService
     /// Sets a new password using a valid reset token from email.
     /// </summary>
     Task<Result> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks the address confirmed using the one-time token from the confirmation email.
+    /// </summary>
+    Task<Result> VerifyEmailAsync(VerifyEmailRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a new confirmation link (a few per window). Does nothing for a confirmed address.
+    /// </summary>
+    Task<Result> ResendVerificationEmailAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>The signed-in user as stored now, including whether the address is confirmed.</summary>
+    Task<Result<UserInfoDto>> GetCurrentUserAsync(Guid userId, CancellationToken ct = default);
 }

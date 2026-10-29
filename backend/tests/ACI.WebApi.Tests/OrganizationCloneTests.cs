@@ -41,8 +41,8 @@ public class OrganizationCloneTests
             new OrganizationMember { OrganizationId = org.Id, UserId = rep, Role = OrgMemberRole.Viewer, JoinedAtUtc = now });
         db.OrgSettings.Add(new OrgSettings { OrganizationId = org.Id, CompanyName = name, UpdatedAtUtc = now });
         db.Invites.AddRange(
-            new Invite { Id = Guid.NewGuid(), OrganizationId = org.Id, Email = $"new@{name}.ch", Token = Guid.NewGuid().ToString("N"), ExpiresAtUtc = now.AddDays(7), CreatedAtUtc = now },
-            new Invite { Id = Guid.NewGuid(), OrganizationId = org.Id, Email = $"joined@{name}.ch", Token = Guid.NewGuid().ToString("N"), ExpiresAtUtc = now, CreatedAtUtc = now, AcceptedByUserId = rep, AcceptedAtUtc = now });
+            new Invite { Id = Guid.NewGuid(), OrganizationId = org.Id, Email = $"new@{name}.ch", TokenHash = Guid.NewGuid().ToString("N"), ExpiresAtUtc = now.AddDays(7), CreatedAtUtc = now },
+            new Invite { Id = Guid.NewGuid(), OrganizationId = org.Id, Email = $"joined@{name}.ch", TokenHash = Guid.NewGuid().ToString("N"), ExpiresAtUtc = now, CreatedAtUtc = now, AcceptedByUserId = rep, AcceptedAtUtc = now });
         db.JoinRequests.Add(new JoinRequest { Id = Guid.NewGuid(), OrganizationId = org.Id, UserId = rep, CreatedAtUtc = now });
 
         var pipeline = new Pipeline { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Memberships" };

@@ -11,10 +11,10 @@ public sealed class InviteRepository : IInviteRepository
 
     public InviteRepository(AppDbContext db) => _db = db;
 
-    public async Task<Invite?> GetByTokenAsync(string token, CancellationToken ct = default) =>
+    public async Task<Invite?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
         await _db.Invites
             .Include(i => i.Organization)
-            .FirstOrDefaultAsync(i => i.Token == token, ct);
+            .FirstOrDefaultAsync(i => i.TokenHash == tokenHash, ct);
 
     public async Task<Invite?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         await _db.Invites.Include(i => i.Organization).FirstOrDefaultAsync(i => i.Id == id, ct);

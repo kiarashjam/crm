@@ -13,6 +13,8 @@ export {
   twoFactorDisable,
   requestPasswordReset,
   resetPassword,
+  verifyEmail,
+  resendVerificationEmail,
   type TwoFactorSetupResponse,
   type ForgotPasswordResponse,
 } from './auth';
