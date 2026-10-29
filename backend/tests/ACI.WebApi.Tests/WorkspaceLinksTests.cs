@@ -164,6 +164,13 @@ public class WorkspaceLinksTests
         }
 
         await Ok(await s.Owner.PutAsync($"/api/tasks/{id}", Body(new { title = "Call back", assigneeId = s.OtherUserId })), "an edit that keeps the assignee");
+        // Moving it to another deal is not a new assignee: it was refused as "the person
+        // you picked is not a member", though nobody was picked. A private deal the kept
+        // assignee could not open is still refused.
+        var other = (await Ok(await s.Owner.PostAsync("/api/deals", Body(new { name = "Upgrade", value = "300" })), "another shared deal")).GetProperty("id").GetGuid();
+        await Ok(await s.Owner.PatchAsync($"/api/tasks/{id}/link-deal", Body(new { dealId = other })), "moving it to another deal");
+        await Refused(await s.Owner.PatchAsync($"/api/tasks/{id}/link-deal", Body(new { dealId = s.PrivateDeal })),
+            HttpStatusCode.BadRequest, "Link.AssigneeCannotSeeDeal", "moving it to a private deal its assignee cannot open");
         await Ok(await s.Owner.PutAsync($"/api/tasks/{id}", Body(new { clearDeal = true })), "unlinking the deal");
         await Ok(await s.Owner.PatchAsync($"/api/tasks/{id}/assign", Body(new { assigneeId = s.RepId })), "handing it to someone still here");
     }
@@ -191,6 +198,10 @@ public class WorkspaceLinksTests
         var id = task.GetProperty("id").GetGuid();
         await Refused(await s.Owner.PatchAsync($"/api/tasks/{id}/assign", Body(new { assigneeId = s.RepId })),
             HttpStatusCode.BadRequest, "Link.AssigneeCannotSeeDeal", "handing it to the rep afterwards");
+
+        var repsTask = (await Ok(await NewTask(s.Owner, new { title = "Call", assigneeId = s.RepId }), "the rep's task")).GetProperty("id").GetGuid();
+        await Refused(await s.Owner.PatchAsync($"/api/tasks/{repsTask}/link-deal", Body(new { dealId = s.PrivateDeal })),
+            HttpStatusCode.BadRequest, "Link.AssigneeCannotSeeDeal", "moving the rep's task onto the private deal");
     }
 
     [Fact]
