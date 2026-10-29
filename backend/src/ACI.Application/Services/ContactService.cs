@@ -13,15 +13,18 @@ public class ContactService : IContactService
 {
     private readonly IContactRepository _repository;
     private readonly IActivityRepository _activityRepository;
+    private readonly IWorkspaceRecords _records;
     private readonly ILogger<ContactService> _logger;
 
     public ContactService(
         IContactRepository repository, 
         IActivityRepository activityRepository,
+        IWorkspaceRecords records,
         ILogger<ContactService> logger)
     {
         _repository = repository;
         _activityRepository = activityRepository;
+        _records = records;
         _logger = logger;
     }
 
@@ -166,6 +169,9 @@ public class ContactService : IContactService
             return DomainErrors.Contact.EmailInvalid;
         }
 
+        var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { CompanyId = request.CompanyId }, ct);
+        if (links.IsFailure) return links.Error;
+
         // Check for duplicate email
         var emailExists = await _repository.EmailExistsAsync(request.Email.Trim(), organizationId, null, ct);
         if (emailExists)
@@ -226,6 +232,12 @@ public class ContactService : IContactService
         {
             _logger.LogWarning("Contact update failed: Invalid email format {Email}", request.Email);
             return DomainErrors.Contact.EmailInvalid;
+        }
+
+        if (request.CompanyId is Guid companyId && companyId != existing.CompanyId)
+        {
+            var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { CompanyId = companyId }, ct);
+            if (links.IsFailure) return links.Error;
         }
 
         // Check for duplicate email if email is being changed

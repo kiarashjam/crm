@@ -29,6 +29,7 @@ public class ContactServiceTests
         _sut = new ContactService(
             _contactRepositoryMock.Object,
             _activityRepositoryMock.Object,
+            WorkspaceRecordsMock.InWorkspace().Object,
             _loggerMock.Object);
     }
 

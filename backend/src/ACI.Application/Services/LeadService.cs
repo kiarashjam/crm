@@ -16,6 +16,7 @@ public class LeadService : ILeadService
     private readonly IContactRepository _contactRepository;
     private readonly IDealRepository _dealRepository;
     private readonly ILeadAutomation _automation;
+    private readonly IWorkspaceRecords _records;
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IContactRelationshipRepository? _relationships;
@@ -27,6 +28,7 @@ public class LeadService : ILeadService
         IContactRepository contactRepository, 
         IDealRepository dealRepository,
         ILeadAutomation automation,
+        IWorkspaceRecords records,
         ILogger<LeadService> logger,
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
@@ -37,6 +39,7 @@ public class LeadService : ILeadService
         _contactRepository = contactRepository;
         _dealRepository = dealRepository;
         _automation = automation;
+        _records = records;
         _logger = logger;
         _automations = automations;
         _webhooks = webhooks;
@@ -174,6 +177,9 @@ public class LeadService : ILeadService
             return DomainErrors.Lead.EmailInvalid;
         }
 
+        var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { CompanyId = request.CompanyId }, ct);
+        if (links.IsFailure) return links.Error;
+
         if (!request.AllowDuplicate)
         {
             var duplicate = await _automation.FindOpenDuplicateAsync(organizationId, request.Email, null, ct);
@@ -274,6 +280,12 @@ public class LeadService : ILeadService
             return DomainErrors.Lead.EmailInvalid;
         }
 
+        if (request.CompanyId is Guid companyId && companyId != existing.CompanyId)
+        {
+            var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { CompanyId = companyId }, ct);
+            if (links.IsFailure) return links.Error;
+        }
+
         if (request.Email != null && !request.Email.Trim().Equals(existing.Email, StringComparison.OrdinalIgnoreCase))
         {
             var duplicate = await _automation.FindOpenDuplicateAsync(organizationId, request.Email, existing.Id, ct);
@@ -368,6 +380,11 @@ public class LeadService : ILeadService
         _logger.LogInformation(
             "Assigning lead {LeadId} to user {AssignedToUserId} (requested by {UserId})",
             id, assignedToUserId, userId);
+
+        // In a workspace, a member; in a personal one, only you. Any account could be
+        // made the owner, and then got the lead's SLA alerts and new inquiries.
+        var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { AssigneeId = assignedToUserId }, ct);
+        if (links.IsFailure) return links.Error;
 
         var updated = await _repository.AssignAsync(id, userId, organizationId, assignedToUserId, ct);
 
@@ -505,6 +522,17 @@ public class LeadService : ILeadService
                 "Lead conversion failed: No conversion action specified for lead {LeadId}",
                 leadId);
             return new Error("Lead.ConversionRequired", "At least one conversion action must be specified");
+        }
+
+        // Before anything is created, so a refused pipeline or stage leaves no half-converted lead.
+        if (request.CreateDeal && !request.ExistingDealId.HasValue)
+        {
+            var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
+            {
+                PipelineId = request.PipelineId,
+                DealStageId = request.DealStageId,
+            }, ct);
+            if (links.IsFailure) return links.Error;
         }
 
         Guid? companyId = lead.CompanyId;

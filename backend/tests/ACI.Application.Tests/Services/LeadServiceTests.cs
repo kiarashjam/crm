@@ -48,6 +48,7 @@ public class LeadServiceTests
             _contactRepositoryMock.Object,
             _dealRepositoryMock.Object,
             automation.Object,
+            WorkspaceRecordsMock.InWorkspace().Object,
             _loggerMock.Object);
     }
 

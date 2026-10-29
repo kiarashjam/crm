@@ -218,6 +218,71 @@ public class WorkspaceLinksTests
             HttpStatusCode.BadRequest, "Deal.InvalidStage", "an organization's stage in a personal workspace");
     }
 
+    [Fact]
+    public async Task AContactOrLeadCannotTakeAnotherWorkspacesCompany()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var s = await SetUpAsync(factory);
+
+        await Refused(await s.Rep.PostAsync("/api/contacts", Body(new { name = "Anna", email = "anna@example.ch", companyId = s.TheirCompany })),
+            HttpStatusCode.BadRequest, "Link.CompanyNotFound", "a contact at a foreign company", "Their Company SA");
+        var contact = await Ok(await s.Rep.PostAsync("/api/contacts", Body(new { name = "Anna", email = "anna@example.ch", companyId = s.OurCompany })),
+            "a contact at a teammate's company");
+        var contactId = contact.GetProperty("id").GetGuid();
+        await Refused(await s.Rep.PutAsync($"/api/contacts/{contactId}", Body(new { companyId = s.TheirCompany })),
+            HttpStatusCode.BadRequest, "Link.CompanyNotFound", "moving the contact to a foreign company", "Their Company SA");
+
+        await Refused(await s.Rep.PostAsync("/api/leads", Body(new { name = "Marc", email = "marc@example.ch", status = "New", companyId = s.TheirCompany })),
+            HttpStatusCode.BadRequest, "Link.CompanyNotFound", "a lead at a foreign company", "Their Company SA");
+        var lead = await Ok(await s.Rep.PostAsync("/api/leads", Body(new { name = "Marc", email = "marc@example.ch", status = "New", companyId = s.OurCompany })),
+            "a lead at our company");
+        var leadId = lead.GetProperty("id").GetGuid();
+        await Refused(await s.Rep.PutAsync($"/api/leads/{leadId}", Body(new { companyId = s.TheirCompany })),
+            HttpStatusCode.BadRequest, "Link.CompanyNotFound", "moving the lead to a foreign company", "Their Company SA");
+
+        (await factory.Services.Read(db => db.Contacts.Single(c => c.Id == contactId).CompanyId)).Should().Be(s.OurCompany);
+        (await factory.Services.Read(db => db.Leads.Single(l => l.Id == leadId).CompanyId)).Should().Be(s.OurCompany);
+    }
+
+    [Fact]
+    public async Task ALeadIsOnlyAssignedToAMemberOfTheWorkspace()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var s = await SetUpAsync(factory);
+        var lead = await Ok(await s.Owner.PostAsync("/api/leads", Body(new { name = "Marc", email = "marc@example.ch", status = "New" })), "a lead");
+        var id = lead.GetProperty("id").GetGuid();
+
+        await Refused(await s.Owner.PutAsync($"/api/leads/{id}/assign", Body(new { assignedToUserId = s.OtherUserId })),
+            HttpStatusCode.Forbidden, "Link.AssigneeNotMember", "an outsider as owner", "owner@rival.ch");
+        (await Ok(await s.Owner.PutAsync($"/api/leads/{id}/assign", Body(new { assignedToUserId = s.RepId })), "a teammate"))
+            .GetProperty("assignedToUserId").GetGuid().Should().Be(s.RepId);
+
+        var (solo, soloId) = await SignInAsync(factory, "solo@example.ch");
+        var mine = (await Ok(await solo.PostAsync("/api/leads", Body(new { name = "Lea", email = "lea@example.ch", status = "New" })), "a personal lead"))
+            .GetProperty("id").GetGuid();
+        await Refused(await solo.PutAsync($"/api/leads/{mine}/assign", Body(new { assignedToUserId = s.OwnerId })),
+            HttpStatusCode.Forbidden, "Link.AssigneeNotMember", "someone else in a personal workspace");
+        (await Ok(await solo.PutAsync($"/api/leads/{mine}/assign", Body(new { assignedToUserId = soloId })), "yourself"))
+            .GetProperty("assignedToUserId").GetGuid().Should().Be(soloId);
+    }
+
+    [Fact]
+    public async Task ConvertingALeadUsesOnlyThisWorkspacesPipeline()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var s = await SetUpAsync(factory);
+        var lead = await Ok(await s.Rep.PostAsync("/api/leads", Body(new { name = "Marc", email = "marc@example.ch", status = "New" })), "a lead");
+        var id = lead.GetProperty("id").GetGuid();
+
+        await Refused(await s.Rep.PostAsync($"/api/leads/{id}/convert", Body(new { createDeal = true, pipelineId = s.TheirPipeline, dealStageId = s.TheirStage })),
+            HttpStatusCode.BadRequest, "Deal.PipelineNotFound", "a foreign pipeline");
+        (await factory.Services.Read(db => db.Leads.Single(l => l.Id == id).IsConverted)).Should().BeFalse("nothing was converted");
+        (await factory.Services.Read(db => db.Deals.Count(d => d.OrganizationId == s.Org))).Should().Be(1, "only the private deal from the setup");
+
+        await Ok(await s.Rep.PostAsync($"/api/leads/{id}/convert", Body(new { createDeal = true, pipelineId = s.OurPipeline, dealStageId = s.OurStage })),
+            "our own pipeline");
+    }
+
     /// <summary>Two anonymous objects as one JSON body.</summary>
     private static Dictionary<string, object?> Merge(object first, object second)
     {
