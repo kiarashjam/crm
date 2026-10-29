@@ -1,8 +1,9 @@
 // Marketing campaigns.
 //
-// A campaign sends a templated message to a segment of members on a schedule
-// (immediate or future). The "send" flow expands the segment to the member
-// list and writes one Communication per recipient.
+// A campaign is a message for a segment of members. "Send" expands the segment
+// to the member list and writes one Communication per member, and that is all:
+// Cadence does not deliver campaigns yet, and nothing runs a scheduled one at its
+// time. The screens call these "logged, not delivered" (`campaignStatusLabel`).
 
 import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
@@ -14,6 +15,20 @@ function delay(ms: number): Promise<void> {
 }
 
 export type CampaignStatus = 'Draft' | 'Scheduled' | 'Sending' | 'Sent' | 'Failed';
+
+/** How a campaign status reads on screen, saying plainly what did not happen. */
+export function campaignStatusLabel(status: CampaignStatus): string {
+  switch (status) {
+    case 'Sent':
+      return 'Logged, not delivered';
+    case 'Sending':
+      return 'Logging';
+    case 'Scheduled':
+      return 'Planned, will not send itself';
+    default:
+      return status;
+  }
+}
 
 export interface SegmentFilter {
   tiers?: MemberTier[];

@@ -1,8 +1,10 @@
-// Outbound communications log.
+// Member communications log.
 //
-// Records every email / SMS / push sent to a member: who got what, when, and
-// whether they opened / clicked / replied. This is the audit trail the
-// hospitality team relies on when a member says "did you ever send me that?".
+// Records the emails, SMS and push messages staff say they sent a member: who,
+// what and when. Cadence does not deliver any of them yet, and nothing reports
+// opens, clicks or bounces back, so a row the server marks "Sent" was logged, not
+// delivered. The screens show it that way (`commStatusLabel`), because the team
+// relies on this log when a member asks "did you ever send me that?".
 
 import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
@@ -37,6 +39,14 @@ export interface Communication {
   openedAtUtc?: string;
   clickedAtUtc?: string;
   campaignName?: string;
+}
+
+/**
+ * How a status reads on screen. "Sent" is what every logged message is stamped
+ * with, and it never meant that anything left Cadence.
+ */
+export function commStatusLabel(status: CommStatus): string {
+  return status === 'Sent' ? 'Logged, not delivered' : status;
 }
 
 export const CHANNELS: CommChannel[] = ['Email', 'SMS', 'Push'];

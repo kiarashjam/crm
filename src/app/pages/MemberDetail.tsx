@@ -40,7 +40,7 @@ import { getCharges, getPayments, type Charge, type Payment } from '@/app/api/ch
 import { getVisits, type Visit } from '@/app/api/visits';
 import { getReservations, type Reservation } from '@/app/api/reservations';
 import { getLoyaltyLedger, type LoyaltyEntry, REASON_LABELS } from '@/app/api/loyalty';
-import { getCommunications, type Communication } from '@/app/api/communications';
+import { commStatusLabel, getCommunications, type Communication } from '@/app/api/communications';
 import { getGiftCards, type GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
@@ -541,7 +541,7 @@ export default function MemberDetail() {
               {memberComms.length === 0 ? (
                 <EmptyMini
                   icon={<MessageSquareText className="w-6 h-6" />}
-                  text="No messages sent to this member yet."
+                  text="No messages logged for this member yet."
                 />
               ) : (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-100">
@@ -550,7 +550,7 @@ export default function MemberDetail() {
                       <div className="flex items-start justify-between gap-2">
                         <p className="font-medium text-slate-900">{c.subject}</p>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 shrink-0">
-                          {c.status}
+                          {commStatusLabel(c.status)}
                         </span>
                       </div>
                       <p className="text-sm text-slate-500 mt-1 line-clamp-2">{c.preview}</p>
