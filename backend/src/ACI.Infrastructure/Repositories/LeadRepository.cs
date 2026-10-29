@@ -248,6 +248,24 @@ public sealed class LeadRepository : ILeadRepository
         existing.PipelineState = lead.PipelineState;
         existing.IsConverted = lead.IsConverted;
         existing.ConvertedAtUtc = lead.ConvertedAtUtc;
+        // Every caller loads the lead, changes it and passes it back, so whatever is
+        // not copied here is silently thrown away. These were: a score set by hand was
+        // rescored over, a first response never ended the SLA clock, a bulk queue move
+        // did nothing, and a converted lead lost its links to what it became.
+        existing.JobTitle = lead.JobTitle;
+        existing.Country = lead.Country;
+        existing.Industry = lead.Industry;
+        existing.CompanySize = lead.CompanySize;
+        existing.ScoreIsManual = lead.ScoreIsManual;
+        existing.FirstResponseAtUtc = lead.FirstResponseAtUtc;
+        existing.FirstResponseDueAtUtc = lead.FirstResponseDueAtUtc;
+        existing.SlaBreached = lead.SlaBreached;
+        existing.QueueId = lead.QueueId;
+        existing.TerritoryId = lead.TerritoryId;
+        existing.EnrichedDomain = lead.EnrichedDomain;
+        existing.ConvertedToContactId = lead.ConvertedToContactId;
+        existing.ConvertedToDealId = lead.ConvertedToDealId;
+        existing.ConvertedToCompanyId = lead.ConvertedToCompanyId;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
         await _db.SaveChangesAsync(ct);

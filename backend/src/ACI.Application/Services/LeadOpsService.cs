@@ -46,6 +46,7 @@ public sealed class LeadOpsService : ILeadOpsService
     private readonly INotificationService _notifications;
     private readonly ILeadAutomation _automation;
     private readonly IActivityService _activities;
+    private readonly IOrganizationRepository? _organizations;
 
     public LeadOpsService(
         ILeadOpsRepository ops,
@@ -53,7 +54,8 @@ public sealed class LeadOpsService : ILeadOpsService
         ILeadRepository leadRepository,
         INotificationService notifications,
         ILeadAutomation automation,
-        IActivityService activities)
+        IActivityService activities,
+        IOrganizationRepository? organizations = null)
     {
         _ops = ops;
         _leads = leads;
@@ -61,6 +63,7 @@ public sealed class LeadOpsService : ILeadOpsService
         _notifications = notifications;
         _automation = automation;
         _activities = activities;
+        _organizations = organizations;
     }
 
     public async Task<IReadOnlyList<ScoringRuleDto>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default)
@@ -314,6 +317,17 @@ public sealed class LeadOpsService : ILeadOpsService
         if (source is { Length: > 64 })
             return new Error("Lead.SourceTooLong", "A source can be at most 64 characters.");
 
+        // The new owner must be in this workspace (in a personal one, only you), or a
+        // bulk edit could hand leads to anyone with an account.
+        if (request.AssignedToUserId is Guid owner)
+        {
+            var mayOwn = organizationId is Guid org
+                ? _organizations == null || await _organizations.GetMemberRoleAsync(owner, org, ct) != null
+                : owner == userId;
+            if (!mayOwn)
+                return new Error("Lead.OwnerNotMember", "The new owner is not a member of this workspace.");
+        }
+
         var updated = 0;
         var missing = 0;
         foreach (var id in request.Ids.Distinct())
@@ -325,14 +339,18 @@ public sealed class LeadOpsService : ILeadOpsService
                 continue;
             }
             if (!string.IsNullOrWhiteSpace(source)) lead.Source = source;
-            if (request.AssignedToUserId != null) lead.AssignedToUserId = request.AssignedToUserId;
             if (request.ClearQueue) lead.QueueId = null;
             else if (request.QueueId != null) lead.QueueId = request.QueueId;
             lead.UpdatedAtUtc = DateTime.UtcNow;
             lead.UpdatedByUserId = userId;
             await _automation.RescoreAsync(lead, ct);
-            await _leadRepository.UpdateAsync(lead, userId, organizationId, ct);
-            updated++;
+            // The general update does not take the owner (a stale copy would undo a
+            // concurrent assignment), so the owner goes through AssignAsync.
+            var saved = await _leadRepository.UpdateAsync(lead, userId, organizationId, ct) != null;
+            if (saved && request.AssignedToUserId is Guid newOwner)
+                saved = await _leadRepository.AssignAsync(id, userId, organizationId, newOwner, ct) != null;
+            if (saved) updated++;
+            else missing++;
         }
         return new BulkLeadUpdateResult(updated, missing);
     }
