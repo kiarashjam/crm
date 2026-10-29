@@ -171,4 +171,60 @@ public class WorkspaceLinksTests
         await Refused(await s.Owner.PatchAsync($"/api/tasks/{id}/assign", Body(new { assigneeId = s.RepId })),
             HttpStatusCode.BadRequest, "Link.AssigneeCannotSeeDeal", "handing it to the rep afterwards");
     }
+
+    [Fact]
+    public async Task ADealCannotLinkToAnotherWorkspacesRecords()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var s = await SetUpAsync(factory);
+        Task<HttpResponseMessage> NewDeal(object extra) => s.Rep.PostAsync("/api/deals", Body(Merge(new { name = "Corporate membership", value = "12000" }, extra)));
+
+        await Refused(await NewDeal(new { companyId = s.TheirCompany }), HttpStatusCode.BadRequest, "Link.CompanyNotFound", "a foreign company", "Their Company SA");
+        await Refused(await NewDeal(new { contactId = s.TheirContact }), HttpStatusCode.BadRequest, "Link.ContactNotFound", "a foreign contact", "Bastien");
+        await Refused(await NewDeal(new { assigneeId = s.OtherUserId }), HttpStatusCode.Forbidden, "Link.AssigneeNotMember", "an outsider as owner");
+        await Refused(await NewDeal(new { pipelineId = s.TheirPipeline }), HttpStatusCode.BadRequest, "Deal.PipelineNotFound", "a foreign pipeline");
+        await Refused(await NewDeal(new { dealStageId = s.TheirStage }), HttpStatusCode.BadRequest, "Deal.InvalidStage", "a foreign stage");
+        await Refused(await NewDeal(new { pipelineId = s.OurPipeline, dealStageId = s.OurOtherPipelineStage }),
+            HttpStatusCode.BadRequest, "Deal.InvalidStage", "a stage from another of our pipelines");
+
+        var deal = await Ok(await NewDeal(new
+        {
+            companyId = s.OurCompany, contactId = s.OurContact, assigneeId = s.OwnerId, pipelineId = s.OurPipeline, dealStageId = s.OurStage,
+        }), "our own records");
+        var id = deal.GetProperty("id").GetGuid();
+
+        await Refused(await s.Rep.PutAsync($"/api/deals/{id}", Body(new { companyId = s.TheirCompany })),
+            HttpStatusCode.BadRequest, "Link.CompanyNotFound", "an edit to a foreign company", "Their Company SA");
+        await Refused(await s.Rep.PutAsync($"/api/deals/{id}", Body(new { assigneeId = s.OtherUserId })),
+            HttpStatusCode.Forbidden, "Link.AssigneeNotMember", "an edit to an outsider");
+        await Refused(await s.Rep.PutAsync($"/api/deals/{id}", Body(new { pipelineId = s.OurPipeline, dealStageId = s.OurOtherPipelineStage })),
+            HttpStatusCode.BadRequest, "Deal.InvalidStage", "a stage that is not in the pipeline sent with it");
+        await Ok(await s.Rep.PutAsync($"/api/deals/{id}", Body(new { description = "Met the board" })), "an edit that changes no link");
+
+        var saved = await factory.Services.Read(db => db.Deals.Single(d => d.Id == id));
+        saved.CompanyId.Should().Be(s.OurCompany);
+        saved.AssigneeId.Should().Be(s.OwnerId);
+        saved.DealStageId.Should().Be(s.OurStage);
+    }
+
+    [Fact]
+    public async Task APersonalDealHasNoPipelineFromAnOrganization()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var s = await SetUpAsync(factory);
+        var (solo, _) = await SignInAsync(factory, "solo@example.ch");
+
+        await Refused(await solo.PostAsync("/api/deals", Body(new { name = "Mine", value = "1", dealStageId = s.OurStage })),
+            HttpStatusCode.BadRequest, "Deal.InvalidStage", "an organization's stage in a personal workspace");
+    }
+
+    /// <summary>Two anonymous objects as one JSON body.</summary>
+    private static Dictionary<string, object?> Merge(object first, object second)
+    {
+        var merged = new Dictionary<string, object?>();
+        foreach (var part in new[] { first, second })
+            foreach (var property in part.GetType().GetProperties())
+                merged[JsonNamingPolicy.CamelCase.ConvertName(property.Name)] = property.GetValue(part);
+        return merged;
+    }
 }

@@ -13,6 +13,7 @@ public class DealService : IDealService
 {
     private readonly IDealRepository _repository;
     private readonly IActivityRepository _activityRepository;
+    private readonly IWorkspaceRecords _records;
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IOrganizationRepository? _organizations;
@@ -22,6 +23,7 @@ public class DealService : IDealService
     public DealService(
         IDealRepository repository, 
         IActivityRepository activityRepository,
+        IWorkspaceRecords records,
         ILogger<DealService> logger,
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
@@ -30,6 +32,7 @@ public class DealService : IDealService
     {
         _repository = repository;
         _activityRepository = activityRepository;
+        _records = records;
         _logger = logger;
         _automations = automations;
         _webhooks = webhooks;
@@ -165,6 +168,16 @@ public class DealService : IDealService
             return DomainErrors.Deal.ValueRequired;
         }
 
+        var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
+        {
+            CompanyId = request.CompanyId,
+            ContactId = request.ContactId,
+            AssigneeId = request.AssigneeId,
+            PipelineId = request.PipelineId,
+            DealStageId = request.DealStageId,
+        }, ct);
+        if (links.IsFailure) return links.Error;
+
         var entity = new Deal
         {
             Id = Guid.NewGuid(),
@@ -224,6 +237,20 @@ public class DealService : IDealService
         if (request.IsPrivate is bool makePrivate && makePrivate != existing.IsPrivate
             && !await MayChangePrivacyAsync(existing, userId, organizationId, ct))
             return DomainErrors.Deal.PrivacyNotOwner;
+
+        // Only what this edit changes is checked, so a deal whose owner has since left
+        // can still be edited. A pipeline and stage sent together have to agree.
+        var stageOrPipelineChanges = (request.DealStageId is Guid st && st != existing.DealStageId)
+            || (request.PipelineId is Guid p && p != existing.PipelineId);
+        var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
+        {
+            CompanyId = request.CompanyId != existing.CompanyId ? request.CompanyId : null,
+            ContactId = request.ContactId != existing.ContactId ? request.ContactId : null,
+            AssigneeId = request.AssigneeId != existing.AssigneeId ? request.AssigneeId : null,
+            PipelineId = stageOrPipelineChanges ? request.PipelineId : null,
+            DealStageId = stageOrPipelineChanges ? request.DealStageId : null,
+        }, ct);
+        if (links.IsFailure) return links.Error;
 
         // Apply partial updates
         if (request.Name != null) existing.Name = request.Name.Trim();

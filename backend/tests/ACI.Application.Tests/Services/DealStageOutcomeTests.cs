@@ -23,6 +23,7 @@ public class DealStageOutcomeTests
     private readonly Mock<IDealRepository> _deals = new();
     private readonly Mock<IDealStageRepository> _stages = new();
     private readonly Mock<IAutomationEngine> _automations = new();
+    private readonly Mock<IWorkspaceRecords> _records = WorkspaceRecordsMock.InWorkspace();
     private readonly DealService _sut;
     private readonly Deal _deal;
 
@@ -36,7 +37,7 @@ public class DealStageOutcomeTests
         _deals.Setup(r => r.GetByIdAsync(_deal.Id, User, Org, It.IsAny<CancellationToken>())).ReturnsAsync(_deal);
         _deals.Setup(r => r.UpdateAsync(It.IsAny<Deal>(), User, Org, It.IsAny<CancellationToken>())).ReturnsAsync((Deal d, Guid _, Guid? _, CancellationToken _) => d);
 
-        _sut = new DealService(_deals.Object, Mock.Of<IActivityRepository>(), Mock.Of<ILogger<DealService>>(),
+        _sut = new DealService(_deals.Object, Mock.Of<IActivityRepository>(), _records.Object, Mock.Of<ILogger<DealService>>(),
             _automations.Object, stages: _stages.Object);
     }
 
@@ -44,6 +45,7 @@ public class DealStageOutcomeTests
     {
         var stage = new DealStage { Id = Guid.NewGuid(), PipelineId = _pipeline, Name = name, IsWon = isWon, IsLost = isLost };
         _stages.Setup(r => r.GetByIdAsync(stage.Id, Org, It.IsAny<CancellationToken>())).ReturnsAsync(stage);
+        _records.Setup(r => r.StagePipelineAsync(stage.Id, Org, It.IsAny<CancellationToken>())).ReturnsAsync(_pipeline);
         return stage;
     }
 
@@ -85,11 +87,13 @@ public class DealStageOutcomeTests
     {
         var foreign = Guid.NewGuid();
         _stages.Setup(r => r.GetByIdAsync(foreign, Org, It.IsAny<CancellationToken>())).ReturnsAsync((DealStage?)null);
+        _records.Setup(r => r.StagePipelineAsync(foreign, Org, It.IsAny<CancellationToken>())).ReturnsAsync((Guid?)null);
 
         var result = await _sut.UpdateAsync(_deal.Id, User, Org, new UpdateDealRequest { DealStageId = foreign });
 
         result.IsSuccess.Should().BeFalse();
-        result.Error.Code.Should().Be("DealStage.NotFound");
+        // Refused by the link check every write runs, before the stage is looked up.
+        result.Error.Code.Should().Be("Deal.InvalidStage");
         _deals.Verify(r => r.UpdateAsync(It.IsAny<Deal>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
