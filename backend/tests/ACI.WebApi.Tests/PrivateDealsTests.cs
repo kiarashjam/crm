@@ -3,7 +3,9 @@ using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
+using ACI.Infrastructure.Repositories;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
@@ -120,6 +122,42 @@ public class PrivateDealsTests
         (await Json(await team.Owner.GetAsync($"/api/activities/deal/{deal}"), "owner's deal activities")).GetArrayLength().Should().Be(1);
         (await Json(await team.Owner.GetAsync($"/api/tasks/by-deal/{deal}"), "owner's deal tasks")).GetArrayLength().Should().Be(1);
         (await Json(await team.Owner.GetAsync($"/api/tasks/{task}"), "owner's task")).GetProperty("dealName").GetString().Should().Be("Secret");
+    }
+
+    [Fact]
+    public async Task TheTaskAndActivityFilterRunsOnARealDatabase()
+    {
+        // The in-memory provider runs the deal-visibility filter in memory. This runs it
+        // as SQL, in the shapes the repositories use: paged, counted, grouped.
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        using var db = SqliteDb.Open(connection);
+        var now = DateTime.UtcNow;
+        var owner = new User { Id = Guid.NewGuid(), Name = "Owner", Email = "owner@example.ch", CreatedAtUtc = now };
+        var rep = new User { Id = Guid.NewGuid(), Name = "Rep", Email = "rep@example.ch", CreatedAtUtc = now };
+        var org = new Organization { Id = Guid.NewGuid(), Name = "Pavillon46", OwnerUserId = owner.Id, CreatedAtUtc = now };
+        db.AddRange(owner, rep, org);
+        db.OrganizationMembers.AddRange(
+            new OrganizationMember { OrganizationId = org.Id, UserId = owner.Id, Role = OrgMemberRole.Owner, JoinedAtUtc = now },
+            new OrganizationMember { OrganizationId = org.Id, UserId = rep.Id, Role = OrgMemberRole.Member, JoinedAtUtc = now });
+        var secret = new Deal { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Name = "Secret", Value = "1", IsPrivate = true, CreatedAtUtc = now };
+        var open = new Deal { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Name = "Open", Value = "1", CreatedAtUtc = now };
+        db.Deals.AddRange(secret, open);
+        foreach (var dealId in new Guid?[] { secret.Id, open.Id, null })
+        {
+            db.TaskItems.Add(new TaskItem { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Title = "Task", DealId = dealId, CreatedAtUtc = now });
+            db.Activities.Add(new Activity { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Type = "call", DealId = dealId, CreatedAtUtc = now });
+        }
+        await db.SaveChangesAsync();
+        var tasks = new TaskRepository(db);
+        var activities = new ActivityRepository(db);
+
+        (await tasks.GetPagedAsync(rep.Id, org.Id, 0, 50)).TotalCount.Should().Be(2);
+        (await tasks.GetPagedAsync(owner.Id, org.Id, 0, 50)).TotalCount.Should().Be(3);
+        (await tasks.GetByDealIdAsync(secret.Id, rep.Id, org.Id)).Should().BeEmpty();
+        (await tasks.GetCountByStatusAsync(rep.Id, org.Id, Domain.Enums.TaskStatus.Todo)).Should().Be(2);
+        (await activities.GetPagedAsync(rep.Id, org.Id, 0, 50)).TotalCount.Should().Be(2);
+        (await activities.GetActivityCountsByOrgAsync(rep.Id, org.Id))[owner.Id].Should().Be(2);
+        (await activities.GetLastActivityByDealIdsAsync(rep.Id, org.Id, new[] { secret.Id, open.Id })).Keys.Should().Equal(open.Id);
     }
 
     [Fact]
