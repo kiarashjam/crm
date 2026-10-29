@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.SqlServer.TransactSql.ScriptDom;
 
 namespace ACI.WebApi.Tests;
 
@@ -20,7 +21,45 @@ public class ClubSchemaTests
     public static readonly TheoryData<string, string> AddedLater = new()
     {
         { "ClubDocuments", "Version" },
+        { "ClubMembers", "ManualBalance" },
     };
+
+    [Fact]
+    public void TheOpeningBalanceFixIsValidTSql()
+    {
+        new TSql160Parser(initialQuotedIdentifiers: true).Parse(new StringReader(DataFixes.KeepClubOpeningBalancesSql), out var errors);
+        errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TheOpeningBalanceFixRunsOnceAndRecordsItselfInTheSameTransaction()
+    {
+        // Run on every start, it would add each member's charges to their balance again.
+        var sql = DataFixes.KeepClubOpeningBalancesSql;
+        var name = DataFixes.KeepClubOpeningBalancesName;
+        var marks = new[]
+        {
+            sql.IndexOf("BEGIN TRANSACTION", StringComparison.Ordinal),
+            sql.IndexOf($"IF NOT EXISTS (SELECT 1 FROM [AppliedDataFixes] WITH (UPDLOCK, HOLDLOCK) WHERE [Name] = N'{name}')", StringComparison.Ordinal),
+            sql.IndexOf("UPDATE m SET [ManualBalance]", StringComparison.Ordinal),
+            sql.IndexOf($"INSERT INTO [AppliedDataFixes] ([Name], [AppliedAtUtc]) VALUES (N'{name}'", StringComparison.Ordinal),
+            sql.IndexOf("COMMIT TRANSACTION", StringComparison.Ordinal),
+        };
+
+        marks.Should().NotContain(-1);
+        marks.Should().BeInAscendingOrder();
+        sql.Should().Contain("<> N'Voided'", "a voided charge owes nothing");
+    }
+
+    [Fact]
+    public void ProgramFillsTheManualBalanceOnceTheColumnExists()
+    {
+        var ddl = ProgramDdl();
+        var column = ddl.IndexOf("ALTER TABLE [ClubMembers] ADD [ManualBalance]", StringComparison.Ordinal);
+        var fix = ddl.IndexOf("ExecuteSqlRawAsync(ACI.WebApi.DataFixes.KeepClubOpeningBalancesSql)", StringComparison.Ordinal);
+        column.Should().BeGreaterThan(-1);
+        fix.Should().BeGreaterThan(column, "the fix writes the column, so it runs after the DDL that adds it");
+    }
 
     [Theory]
     [InlineData("ClubDocuments")]

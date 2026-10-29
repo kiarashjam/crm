@@ -334,6 +334,61 @@ public class ClubMoneyTests
         await Refused(await client.SendAsync(Redeem(card, 10)), HttpStatusCode.Conflict, "redeeming a voided card");
     }
 
+    // ── the house balance ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AnOpeningBalanceOutlivesTheNextCharge()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        // A member brought over from the old system, owing 500.
+        var memberId = (await Json(await client.PostAsync("/api/members", Body(new
+        {
+            firstName = "Jean", lastName = "Dupont", email = "jean@example.ch", houseAccountBalance = -500,
+        })), "add member with an opening balance")).GetProperty("id").GetGuid();
+
+        var charge = await ChargeAsync(client, memberId, 100);
+        (await BalanceAsync(client, memberId)).Should().Be(-600, "the first charge used to set the balance to -100 and forget the 500");
+        await Json(await client.PostAsync("/api/payments", Payment(memberId, charge, 100)), "pay the charge");
+        (await BalanceAsync(client, memberId)).Should().Be(-500);
+    }
+
+    [Fact]
+    public async Task AHandCorrectionOutlivesTheNextCharge_AndSaysWhoMadeIt()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        await ChargeAsync(client, memberId, 100);
+
+        await Json(await client.PutAsync($"/api/members/{memberId}", Body(new { houseAccountBalance = 50 })), "correct the balance by hand");
+        (await BalanceAsync(client, memberId)).Should().Be(50);
+        await ChargeAsync(client, memberId, 20);
+
+        (await BalanceAsync(client, memberId)).Should().Be(30, "the correction stands; the new charge comes off it");
+        (await TrailAsync(client, "member", memberId.ToString())).Should().ContainSingle(t => t.Action == "updated")
+            .Which.Should().Be(("updated", "House balance changed by hand from -100.00 to 50.00", "kia@pavillon46.ch", "Jean Dupont"));
+    }
+
+    [Fact]
+    public async Task MergedOpeningBalancesOutliveTheNextCharge()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        async Task<Guid> Owing(string first, decimal balance) =>
+            (await Json(await client.PostAsync("/api/members", Body(new
+            {
+                firstName = first, lastName = "Dupont", email = $"{first.ToLowerInvariant()}@example.ch", houseAccountBalance = balance,
+            })), "add member")).GetProperty("id").GetGuid();
+        var keep = await Owing("Jean", -100);
+        var drop = await Owing("Jeannot", -50);
+
+        (await client.PostAsync($"/api/members/{keep}/merge", Body(new { otherMemberId = drop }))).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        await ChargeAsync(client, keep, 10);
+
+        (await BalanceAsync(client, keep)).Should().Be(-160, "both opening balances, and the new charge");
+    }
+
     // ── the audit trail ──────────────────────────────────────────────────────
 
     private static async Task<List<(string Action, string Summary, string Actor, string? Label)>> TrailAsync(HttpClient client, string entityType, string id) =>

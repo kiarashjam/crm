@@ -35,6 +35,7 @@ public sealed class ClubRepository : IClubRepository
             existing.DuesAmount = member.DuesAmount;
             existing.DuesFrequency = member.DuesFrequency;
             existing.HouseAccountBalance = member.HouseAccountBalance;
+            existing.ManualBalance = member.ManualBalance;
             existing.Notes = member.Notes;
         }
         await _db.SaveChangesAsync(ct);
@@ -101,8 +102,10 @@ public sealed class ClubRepository : IClubRepository
                 : string.IsNullOrWhiteSpace(keep.Notes) ? drop.Notes : $"{keep.Notes.TrimEnd()}\n\n{drop.Notes.Trim()}";
             keep.JoinedAtUtc = keep.JoinedAtUtc <= drop.JoinedAtUtc ? keep.JoinedAtUtc : drop.JoinedAtUtc;
             keep.RenewsAtUtc = keep.RenewsAtUtc >= drop.RenewsAtUtc ? keep.RenewsAtUtc : drop.RenewsAtUtc;
-            // What the duplicate owed moved with its charges.
+            // What the duplicate owed moved with its charges, and its opening or corrected
+            // part with it, so the next recompute keeps both.
             keep.HouseAccountBalance += drop.HouseAccountBalance;
+            keep.ManualBalance += drop.ManualBalance;
 
             _db.ClubMembers.Remove(drop);
             await _db.SaveChangesAsync(ct);

@@ -790,10 +790,15 @@ public sealed class ClubDocumentService : IClubDocumentService
     }
 
     /// <summary>
-    /// The member's house balance is what their open charges leave owing, negative when
-    /// they owe. The browser used to work this out from its own copy of the charges,
-    /// which is empty once they live here, and wrote back a balance of zero.
+    /// The member's house balance: what their open charges leave owing, negative when they
+    /// owe, plus the opening or hand-corrected part no charge explains. The browser used to
+    /// work this out from its own copy of the charges, which is empty once they live here,
+    /// and wrote back a balance of zero.
     /// </summary>
+    /// <remarks>
+    /// Without <see cref="ClubMember.ManualBalance"/> the first charge after an opening
+    /// balance of -500 set the balance to that charge alone, and the 500 was gone.
+    /// </remarks>
     private async Task RecomputeBalanceAsync(Guid? organizationId, string memberIdText, CancellationToken ct)
     {
         if (!Guid.TryParse(memberIdText, out var memberId)) return;
@@ -806,7 +811,7 @@ public sealed class ClubDocumentService : IClubDocumentService
             if (Text(charge, "status") == "Voided") continue;
             outstanding += Dec(charge, "amount") - Dec(charge, "paidAmount");
         }
-        member.HouseAccountBalance = -Math.Round(outstanding, 2);
+        member.HouseAccountBalance = member.ManualBalance - Math.Round(outstanding, 2);
         await _club.SaveMemberAsync(member, ct);
     }
 

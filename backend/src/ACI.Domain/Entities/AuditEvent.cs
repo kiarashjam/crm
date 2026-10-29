@@ -48,7 +48,7 @@ public static class AuditVocabulary
     {
         "lead", "contact", "company", "deal", "task", "sequence", "automation",
         // Club money: written by the server alone, from the save that changed it.
-        "charge", "payment", "gift_card", "tab", "subscription", "donation",
+        "charge", "payment", "gift_card", "tab", "subscription", "donation", "member",
     };
 
     public static readonly IReadOnlySet<string> Actions = new HashSet<string>(StringComparer.Ordinal)

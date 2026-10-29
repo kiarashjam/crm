@@ -853,8 +853,14 @@ try
                     [DuesAmount] decimal(18,2) NOT NULL,
                     [DuesFrequency] nvarchar(32) NOT NULL,
                     [HouseAccountBalance] decimal(18,2) NOT NULL,
-                    [Notes] nvarchar(max) NULL
+                    [Notes] nvarchar(max) NULL,
+                    [ManualBalance] decimal(18,2) NOT NULL CONSTRAINT DF_ClubMembers_ManualBalance DEFAULT 0
                 );
+                -- Added after the table shipped: the opening or hand-corrected part of a
+                -- member's house balance, which recomputing from charges used to wipe
+                -- (see ClubMember.ManualBalance). DataFixes fills it for existing members.
+                IF COL_LENGTH(N'dbo.ClubMembers', N'ManualBalance') IS NULL
+                    ALTER TABLE [ClubMembers] ADD [ManualBalance] decimal(18,2) NOT NULL CONSTRAINT DF_ClubMembers_ManualBalance DEFAULT 0;
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ClubVisits')
                 CREATE TABLE [ClubVisits] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,
@@ -1027,6 +1033,17 @@ try
                     [NextActionAtUtc] datetime2 NULL
                 );
             ");
+
+            // Needs ClubMembers.ManualBalance, added just above (see DataFixes). Like the
+            // fixes before it, a failure is logged and retried on the next start.
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.KeepClubOpeningBalancesSql);
+            }
+            catch (Exception fixEx)
+            {
+                Log.Warning(fixEx, "A one-time data fix failed; it will be retried on the next start");
+            }
 
             // The indexes the model declares for the tables above. The DDL created the
             // tables without them, so the follow-up runner — once a minute, on every
