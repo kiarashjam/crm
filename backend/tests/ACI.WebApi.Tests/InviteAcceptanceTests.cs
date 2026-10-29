@@ -29,6 +29,8 @@ public class InviteAcceptanceTests : IDisposable
     private readonly AppDbContext _db;
     private readonly InviteService _invites;
     private readonly List<string> _acceptUrls = new();
+    /// <summary>False: the mail server refuses, and the invitee receives nothing.</summary>
+    private bool _mailGoesOut = true;
     private readonly Guid _ownerId = Guid.NewGuid();
     private readonly Guid _orgId = Guid.NewGuid();
 
@@ -37,8 +39,11 @@ public class InviteAcceptanceTests : IDisposable
         _db = SqliteDb.Open(_connection);
         var sender = new Mock<IEmailSender>();
         sender.Setup(s => s.SendOrganizationInviteEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback((string _, string _, string _, string url, CancellationToken _) => _acceptUrls.Add(url))
-            .ReturnsAsync(true);
+            .Callback((string _, string _, string _, string url, CancellationToken _) =>
+            {
+                if (_mailGoesOut) _acceptUrls.Add(url);
+            })
+            .ReturnsAsync(() => _mailGoesOut);
         _invites = new InviteService(
             new InviteRepository(_db),
             new OrganizationRepository(_db),
@@ -117,6 +122,32 @@ public class InviteAcceptanceTests : IDisposable
         (await _invites.AcceptInviteAsync(storedHash, newHire)).IsFailure.Should().BeTrue("a copy of the table accepts nothing");
         (await _invites.AcceptInviteAsync("not-the-token", newHire)).IsFailure.Should().BeTrue();
         IsMember(newHire).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AnInvitationWhoseEmailDidNotGoOutIsNotCreated()
+    {
+        // Only the emailed link accepts. An invitation saved without its email reaching
+        // anyone could never be used, yet was listed as pending and reported as sent.
+        _mailGoesOut = false;
+
+        var created = await _invites.CreateInviteAsync(_orgId, _ownerId, new CreateInviteRequest { Email = "newhire@club.ch" });
+
+        created.IsFailure.Should().BeTrue();
+        created.Error.Code.Should().Be("Invite.EmailNotSent");
+        _db.Invites.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AResendThatCannotBeEmailedKeepsTheLinkAlreadySent()
+    {
+        var first = await InviteAsync("newhire@club.ch");
+        var newHire = Account("newhire@club.ch", confirmed: true);
+        _mailGoesOut = false;
+
+        (await _invites.ResendInviteAsync(_db.Invites.Single().Id, _ownerId)).IsFailure.Should().BeTrue();
+
+        (await _invites.AcceptInviteAsync(first, newHire)).IsSuccess.Should().BeTrue("nothing replaced the link the invitee has");
     }
 
     [Fact]

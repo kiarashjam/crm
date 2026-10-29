@@ -78,21 +78,21 @@ public sealed class InviteService : IInviteService
             ExpiresAtUtc = DateTime.UtcNow.AddDays(7),
             CreatedAtUtc = DateTime.UtcNow,
         };
-        await _inviteRepository.AddAsync(invite, ct);
 
-        // Tell the invitee. Delivery is best-effort: the invitation already exists and
-        // is visible in the app, so a mail problem must not fail the request. The
-        // sender logs its own failures.
+        // Mailed first, kept only once it is sent. The emailed link is the only way to
+        // accept, so an invitation whose email did not go out could never be used, yet
+        // it would be listed as pending and reported as sent.
         var inviter = await _userRepository.GetByIdAsync(userId, ct);
         var acceptUrl = BuildAcceptUrl(rawToken);
         var sent = await _emailSender.SendOrganizationInviteEmailAsync(
             email, org.Name, inviter?.Name ?? string.Empty, acceptUrl, ct);
         if (!sent)
         {
-            _logger.LogWarning(
-                "Invite {InviteId} was created but the notification email to {Email} could not be sent",
-                invite.Id, email);
+            _logger.LogError("Invite not created: could not send the invitation email to {Email}", email);
+            return Result.Failure<InviteDto>(EmailNotSent);
         }
+
+        await _inviteRepository.AddAsync(invite, ct);
 
         _logger.LogInformation("Invite {InviteId} created for email {Email} to organization {OrganizationId}", invite.Id, email, organizationId);
         return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
@@ -129,15 +129,8 @@ public sealed class InviteService : IInviteService
             return Result.Failure<InviteDto>(DomainErrors.Organization.NotOwnerOrManager);
         }
 
-        // Give the recipient a full window again — an invitation worth re-sending is
-        // usually one that sat unseen, and an already-expired link would be useless.
-        // Only the hash of the first link was kept, so this email carries a new one
-        // and the old link stops working.
+        // Only the hash of the first link was kept, so this email carries a new one.
         var rawToken = PasswordResetCrypto.CreateRawToken();
-        invite.TokenHash = PasswordResetCrypto.HashRawToken(rawToken);
-        invite.ExpiresAtUtc = DateTime.UtcNow.AddDays(7);
-        await _inviteRepository.UpdateAsync(invite, ct);
-
         var inviter = await _userRepository.GetByIdAsync(userId, ct);
         var sent = await _emailSender.SendOrganizationInviteEmailAsync(
             invite.Email, org.Name, inviter?.Name ?? string.Empty, BuildAcceptUrl(rawToken), ct);
@@ -145,10 +138,18 @@ public sealed class InviteService : IInviteService
         if (!sent)
         {
             // Surfaced to the caller on purpose: "resend" that silently does nothing is
-            // indistinguishable from a mail server that is not configured at all.
+            // indistinguishable from a mail server that is not configured at all. The
+            // link sent before keeps working: nothing replaced it.
             _logger.LogError("Resend failed: could not send invitation email to {Email}", invite.Email);
             return Result.Failure<InviteDto>(EmailNotSent);
         }
+
+        // The new link replaces the old one, which stops working. Give the recipient a
+        // full window again — an invitation worth re-sending is usually one that sat
+        // unseen, and an already-expired link would be useless.
+        invite.TokenHash = PasswordResetCrypto.HashRawToken(rawToken);
+        invite.ExpiresAtUtc = DateTime.UtcNow.AddDays(7);
+        await _inviteRepository.UpdateAsync(invite, ct);
 
         _logger.LogInformation("Invite {InviteId} re-sent to {Email}", inviteId, invite.Email);
         return Result.Success(new InviteDto(invite.Id, org.Id, org.Name, invite.Email, invite.ExpiresAtUtc, invite.CreatedAtUtc));
