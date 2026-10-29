@@ -518,7 +518,7 @@ public class OrganizationServiceTests
         { 
             Id = orgId, 
             Name = "Test Org",
-            WebhookApiKey = "aci_testkey123",
+            WebhookApiKeyHash = OrganizationService.HashApiKey("aci_testkey123"),
             WebhookApiKeyCreatedAtUtc = DateTime.UtcNow
         };
 
@@ -536,18 +536,18 @@ public class OrganizationServiceTests
         // Assert
         result.IsSuccess.Should().BeTrue();
         result.Value.HasApiKey.Should().BeTrue();
-        result.Value.ApiKey.Should().Be("aci_testkey123");
         result.Value.UsesDefaultWebhookPassword.Should().BeTrue();
         result.Value.PasswordWebhookUrl.Should().BeEmpty();
     }
 
     [Theory]
-    [InlineData(OrgMemberRole.Owner, true)]
-    [InlineData(OrgMemberRole.Manager, true)]
-    [InlineData(OrgMemberRole.Member, false)]
-    public async Task GetWebhookInfoAsync_ShowsTheKeyOnlyToOwnersAndManagers(OrgMemberRole role, bool seesKey)
+    [InlineData(OrgMemberRole.Owner)]
+    [InlineData(OrgMemberRole.Manager)]
+    [InlineData(OrgMemberRole.Member)]
+    public async Task GetWebhookInfoAsync_NeverCarriesTheKey(OrgMemberRole role)
     {
-        // The key reads the whole workspace as the owner, private deals included.
+        // Only the key's hash is stored, so anyone may learn there is one, and nobody
+        // can read it back: it is shown once, to whoever generates it.
         var userId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
         _organizationRepositoryMock
@@ -555,13 +555,14 @@ public class OrganizationServiceTests
             .ReturnsAsync(role);
         _organizationRepositoryMock
             .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Organization { Id = orgId, Name = "Test Org", WebhookApiKey = "aci_testkey123" });
+            .ReturnsAsync(new Organization { Id = orgId, Name = "Test Org", WebhookApiKeyHash = OrganizationService.HashApiKey("aci_testkey123") });
 
         var result = await _sut.GetWebhookInfoAsync(orgId, userId);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.HasApiKey.Should().BeTrue();
-        result.Value.ApiKey.Should().Be(seesKey ? "aci_testkey123" : null);
+        result.Value.Should().NotBeNull();
+        System.Text.Json.JsonSerializer.Serialize(result.Value).Should().NotContain("aci_testkey123");
     }
 
     [Fact]

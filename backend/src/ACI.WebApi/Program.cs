@@ -480,6 +480,15 @@ try
                 IF COL_LENGTH(N'dbo.Organizations', N'McpApiKeyCreatedAtUtc') IS NULL
                     ALTER TABLE [Organizations] ADD [McpApiKeyCreatedAtUtc] datetime2 NULL;
             ");
+
+            // The lead webhook key, stored as a hash like the MCP key. Keys saved in plain
+            // text before are hashed in place, so senders using them carry on, and the
+            // plain copy is cleared. Its own batch: it names the column added just above.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Organizations', N'WebhookApiKeyHash') IS NULL
+                    ALTER TABLE [Organizations] ADD [WebhookApiKeyHash] nvarchar(64) NULL;
+            ");
+            await db.Database.ExecuteSqlRawAsync(LegacyWebhookKeys.HashInPlaceSql);
             
             // Create OrganizationMembers table if missing
             await db.Database.ExecuteSqlRawAsync(@"

@@ -94,7 +94,7 @@ public interface IOrganizationService
     Task<Result> UpdateOutboundWebhookAsync(Guid organizationId, Guid userId, string? url, string? secret, CancellationToken ct = default);
     
     /// <summary>
-    /// Generates a new webhook API key (owner/manager only).
+    /// Generates a new webhook API key (owner/manager only). Returned once; only its hash is kept.
     /// </summary>
     /// <param name="organizationId">The organization ID.</param>
     /// <param name="userId">The requesting user's ID.</param>

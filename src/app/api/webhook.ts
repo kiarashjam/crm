@@ -2,8 +2,8 @@ import { authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient'
 
 export interface WebhookInfo {
   webhookUrl: string;
-  apiKey: string | null;
   apiKeyCreatedAt: string | null;
+  /** Whether the workspace has a lead webhook key. The key itself is shown once, when made. */
   hasApiKey: boolean;
   usesDefaultWebhookPassword: boolean;
   passwordWebhookUrl: string;
@@ -21,7 +21,6 @@ export interface WebhookInfo {
  * and the `demo://…` URLs as "not configured". */
 const DEMO_WEBHOOK_INFO: WebhookInfo = {
   webhookUrl: 'demo://webhook/leads',
-  apiKey: null,
   apiKeyCreatedAt: null,
   hasApiKey: false,
   usesDefaultWebhookPassword: true,
@@ -33,6 +32,10 @@ export async function getWebhookInfo(orgId: string): Promise<WebhookInfo> {
   return authFetchJson<WebhookInfo>(`/api/webhook/organizations/${orgId}`);
 }
 
+/**
+ * A new lead webhook key, replacing any earlier one. Returned once: the server keeps
+ * only its hash, so this is the only time anyone can copy it.
+ */
 export async function generateWebhookApiKey(orgId: string): Promise<string> {
   if (servesDemoData()) {
     // Demo mode: return a clearly-fake key so the UI shows a value but ops know

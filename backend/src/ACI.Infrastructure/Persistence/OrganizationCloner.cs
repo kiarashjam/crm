@@ -124,7 +124,7 @@ public sealed class OrganizationCloner
         org.Id = copyId;
         org.Name = name;
         org.CreatedAtUtc = DateTime.UtcNow;
-        org.WebhookApiKey = null;
+        org.WebhookApiKeyHash = null;
         org.WebhookApiKeyCreatedAtUtc = null;
         org.WebhookPassword = null;
         org.OutboundWebhookUrl = null;

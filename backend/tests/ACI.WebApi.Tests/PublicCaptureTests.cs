@@ -28,7 +28,7 @@ public class PublicCaptureTests
             PublicToken = Token, IsActive = true, CreatedAtUtc = DateTime.UtcNow, SuccessMessage = "Merci, à bientôt.",
         });
         var org1 = await db.Organizations.FindAsync(org);
-        org1!.WebhookApiKey = "test-webhook-key";
+        org1!.WebhookApiKeyHash = ACI.Application.Services.OrganizationService.HashApiKey("test-webhook-key");
         await db.SaveChangesAsync();
         return (factory, org, owner);
     }

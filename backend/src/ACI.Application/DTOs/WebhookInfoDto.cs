@@ -2,7 +2,7 @@ namespace ACI.Application.DTOs;
 
 public record WebhookInfoDto(
     string WebhookUrl,
-    string? ApiKey,
+    // Whether a lead webhook key exists. The key itself is shown once, when it is generated.
     DateTime? ApiKeyCreatedAt,
     bool HasApiKey,
     bool UsesDefaultWebhookPassword,

@@ -299,12 +299,7 @@ public sealed class OrganizationService : IOrganizationService
             _logger.LogWarning("User {UserId} is not a member of organization {OrganizationId}", userId, organizationId);
             return DomainErrors.Organization.NotMember;
         }
-        // The key opens the whole workspace to whoever holds it: inbound leads, and the
-        // CRM tools an assistant connects with, which read as the owner and so see private
-        // deals. Everyone may know whether there is one; only the owner or a manager sees it.
-        var mayHoldKey = role is OrgMemberRole.Owner or OrgMemberRole.Manager;
-        
-        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
         if (org == null)
         {
             _logger.LogWarning("Organization {OrganizationId} not found", organizationId);
@@ -316,9 +311,10 @@ public sealed class OrganizationService : IOrganizationService
         _logger.LogDebug("Successfully retrieved webhook info for organization {OrganizationId}", organizationId);
         return new WebhookInfoDto(
             WebhookUrl: webhookUrl,
-            ApiKey: mayHoldKey ? org.WebhookApiKey : null,
+            // Only the key's hash is kept, so there is no key to send back: it is shown
+            // once, to whoever generates it.
             ApiKeyCreatedAt: org.WebhookApiKeyCreatedAtUtc,
-            HasApiKey: !string.IsNullOrEmpty(org.WebhookApiKey),
+            HasApiKey: !string.IsNullOrEmpty(org.WebhookApiKeyHash),
             UsesDefaultWebhookPassword: string.IsNullOrEmpty(org.WebhookPassword),
             PasswordWebhookUrl: string.Empty,
             OutboundWebhookUrl: org.OutboundWebhookUrl,
@@ -424,7 +420,7 @@ public sealed class OrganizationService : IOrganizationService
         RandomNumberGenerator.Fill(randomBytes);
         var apiKey = "aci_" + Convert.ToBase64String(randomBytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
 
-        org.WebhookApiKey = apiKey;
+        org.WebhookApiKeyHash = HashApiKey(apiKey);
         org.WebhookApiKeyCreatedAtUtc = DateTime.UtcNow;
 
         await _organizationRepository.UpdateAsync(org, ct);
@@ -435,7 +431,8 @@ public sealed class OrganizationService : IOrganizationService
 
     public async Task<Organization?> GetByApiKeyAsync(string apiKey, CancellationToken ct = default)
     {
-        return await _organizationRepository.GetByApiKeyAsync(apiKey, ct);
+        if (string.IsNullOrWhiteSpace(apiKey)) return null;
+        return await _organizationRepository.GetByWebhookApiKeyHashAsync(HashApiKey(apiKey.Trim()), ct);
     }
 
     public async Task<Result<string>> GenerateMcpApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
@@ -451,7 +448,7 @@ public sealed class OrganizationService : IOrganizationService
         RandomNumberGenerator.Fill(randomBytes);
         var apiKey = "aci_mcp_" + Convert.ToBase64String(randomBytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
 
-        org.McpApiKeyHash = HashMcpKey(apiKey);
+        org.McpApiKeyHash = HashApiKey(apiKey);
         org.McpApiKeyCreatedAtUtc = DateTime.UtcNow;
         await _organizationRepository.UpdateAsync(org, ct);
 
@@ -462,10 +459,13 @@ public sealed class OrganizationService : IOrganizationService
     public async Task<Organization?> GetByMcpApiKeyAsync(string apiKey, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(apiKey)) return null;
-        return await _organizationRepository.GetByMcpApiKeyHashAsync(HashMcpKey(apiKey.Trim()), ct);
+        return await _organizationRepository.GetByMcpApiKeyHashAsync(HashApiKey(apiKey.Trim()), ct);
     }
 
-    /// <summary>Lower-case hex SHA-256: what is stored and looked up, never the key itself.</summary>
-    public static string HashMcpKey(string apiKey) =>
+    /// <summary>
+    /// Lower-case hex SHA-256 of the key's UTF-8 bytes: what is stored and looked up for
+    /// webhook and MCP keys, never the key itself. LegacyWebhookKeys computes the same in SQL.
+    /// </summary>
+    public static string HashApiKey(string apiKey) =>
         Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(apiKey))).ToLowerInvariant();
 }

@@ -37,7 +37,8 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
             db.Organizations.Add(new Organization
             {
                 Id = Guid.NewGuid(), Name = "Forms only", OwnerUserId = owner, CreatedAtUtc = DateTime.UtcNow,
-                WebhookApiKey = webhookKey, WebhookApiKeyCreatedAtUtc = DateTime.UtcNow,
+                WebhookApiKeyHash = ACI.Application.Services.OrganizationService.HashApiKey(webhookKey),
+                WebhookApiKeyCreatedAtUtc = DateTime.UtcNow,
             });
             await db.SaveChangesAsync();
         }
@@ -326,7 +327,7 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
             Name = name,
             OwnerUserId = userId,
             CreatedAtUtc = DateTime.UtcNow,
-            McpApiKeyHash = ACI.Application.Services.OrganizationService.HashMcpKey(apiKey),
+            McpApiKeyHash = ACI.Application.Services.OrganizationService.HashApiKey(apiKey),
             McpApiKeyCreatedAtUtc = DateTime.UtcNow,
         });
 

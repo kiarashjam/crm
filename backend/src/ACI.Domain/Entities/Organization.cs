@@ -9,14 +9,17 @@ public class Organization : Common.BaseEntity
     /// <summary>User who owns the organization; can invite, accept/reject join requests.</summary>
     public Guid OwnerUserId { get; set; }
     public DateTime CreatedAtUtc { get; set; }
-    /// <summary>API key for webhook authentication. Generated per organization.</summary>
-    public string? WebhookApiKey { get; set; }
+    /// <summary>
+    /// SHA-256 (hex) of the key website forms and Zapier post leads with. The raw key
+    /// is shown once, when it is made; a copy of the table cannot post as anyone.
+    /// </summary>
+    public string? WebhookApiKeyHash { get; set; }
     /// <summary>Timestamp when the webhook API key was created.</summary>
     public DateTime? WebhookApiKeyCreatedAtUtc { get; set; }
     /// <summary>
     /// SHA-256 (hex) of the key AI assistants connect with over MCP, which reads the
-    /// whole workspace. Kept apart from <see cref="WebhookApiKey"/>, which only posts
-    /// leads and so ends up in website forms and Zapier; the raw key is shown once.
+    /// whole workspace. Kept apart from <see cref="WebhookApiKeyHash"/>, whose key only
+    /// posts leads and so ends up in website forms and Zapier; the raw key is shown once.
     /// </summary>
     public string? McpApiKeyHash { get; set; }
     public DateTime? McpApiKeyCreatedAtUtc { get; set; }

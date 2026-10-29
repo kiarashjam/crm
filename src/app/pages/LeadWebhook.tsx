@@ -7,6 +7,7 @@ import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getWebhookInfo, generateWebhookApiKey, type WebhookInfo } from '@/app/api/webhook';
 import { useOrg } from '@/app/contexts/OrgContext';
+import { isOrgAdmin } from '@/app/api/organizations';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import {
@@ -105,6 +106,9 @@ export default function LeadWebhook() {
   usePageLoading(loading);
   const [generating, setGenerating] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  // The key as it came back from generating it. The server keeps only its hash, so this
+  // page is the one chance to copy it; reloading the page cannot bring it back.
+  const [freshKey, setFreshKey] = useState<string | null>(null);
   const [regenerateConfirm, setRegenerateConfirm] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<keyof typeof CODE_EXAMPLES>('curl');
 
@@ -135,7 +139,7 @@ export default function LeadWebhook() {
     if (!currentOrg?.id) return;
     setGenerating(true);
     try {
-      await generateWebhookApiKey(currentOrg.id);
+      setFreshKey(await generateWebhookApiKey(currentOrg.id));
       await loadWebhookInfo();
       setShowApiKey(true);
       toast.success('API key generated successfully');
@@ -188,8 +192,9 @@ export default function LeadWebhook() {
     );
   }
 
-  const apiKey = webhookInfo?.apiKey || null;
+  const apiKey = freshKey;
   const maskedKey = maskApiKey(apiKey);
+  const canManageKey = isOrgAdmin(currentOrg);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -269,9 +274,9 @@ export default function LeadWebhook() {
                   <Copy className="w-4 h-4" />
                 </Button>
               </div>
-              {webhookInfo?.apiKeyCreatedAt && (
-                <p className="text-sm text-slate-600 mb-4">Created: {formatDate(webhookInfo.apiKeyCreatedAt)}</p>
-              )}
+              <p className="text-sm font-medium text-slate-900 mb-4">
+                Copy it now. Cadence keeps only a fingerprint of the key and cannot show it again.
+              </p>
               <Button
                 variant="outline"
                 onClick={() => setRegenerateConfirm(true)}
@@ -288,8 +293,29 @@ export default function LeadWebhook() {
               </div>
             </>
           ) : webhookInfo?.hasApiKey ? (
-            // The server shows the key only to an owner or a manager: it reads the whole workspace.
-            <p className="text-slate-600">This workspace has an API key. Ask an owner or a manager for it.</p>
+            // Only the key's hash is stored, so nobody can read it back, not even an owner.
+            <div>
+              <p className="text-slate-600 mb-1">
+                This workspace has an API key
+                {webhookInfo.apiKeyCreatedAt ? `, created ${formatDate(webhookInfo.apiKeyCreatedAt)}` : ''}.
+              </p>
+              <p className="text-slate-600 mb-4">
+                It is shown only once, when it is made.{' '}
+                {canManageKey
+                  ? 'If it has been lost, make a new one; the old key then stops working.'
+                  : 'Ask an owner or a manager if you need it.'}
+              </p>
+              {canManageKey && (
+                <Button
+                  variant="outline"
+                  onClick={() => setRegenerateConfirm(true)}
+                  className="text-orange-700 border-orange-200 hover:bg-orange-50"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Regenerate Key
+                </Button>
+              )}
+            </div>
           ) : (
             <div>
               <p className="text-slate-600 mb-4">No API key generated yet. Generate one to start using the webhook.</p>
