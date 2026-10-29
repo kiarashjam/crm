@@ -11,7 +11,8 @@ import { server } from '@/test/mocks/server';
 import { resetLocalOnly } from './localOnly';
 import type { ClubEvent } from './events';
 import {
-  addEventAttendee, getEventAttendees, localAttendeesToUpload, uploadLocalAttendees, type EventAttendee,
+  addEventAttendee, getEventAttendees, localAttendeesToUpload, setAttendeeStatus, uploadLocalAttendees,
+  type EventAttendee,
 } from './eventAttendees';
 
 const BASE = 'http://api.test';
@@ -110,5 +111,15 @@ describe('event attendees', () => {
 
     expect(await getEventAttendees(EVENT_ID)).toEqual([kept]);
     expect(localAttendeesToUpload(EVENT_ID)).toEqual([]);
+  });
+
+  it('on a server without the route, still refuses to check someone in twice', async () => {
+    // The page gives a member event points for each check-in that succeeds.
+    const kept: EventAttendee = { ...ON_SERVER, id: 'att-local-1', status: 'CheckedIn', checkedInAtUtc: '2026-11-06T18:01:00Z' };
+    localStorage.setItem(LOCAL_KEY, JSON.stringify([kept]));
+    server.use(http.put(`${BASE}/api/events/${EVENT_ID}/attendees/att-local-1`, () => new HttpResponse(null, { status: 404 })));
+
+    await expect(setAttendeeStatus(EVENT, { ...kept, status: 'Reserved' }, 'CheckedIn')).rejects.toThrow(/already checked in/);
+    expect(JSON.parse(localStorage.getItem(LOCAL_KEY)!)[0].checkedInAtUtc).toBe(kept.checkedInAtUtc);
   });
 });

@@ -71,6 +71,28 @@ public class EventAttendeesTests
     }
 
     [Fact]
+    public async Task SomeoneAlreadyCheckedInIsNotCheckedInAgain()
+    {
+        // Two door hosts share the list now. The second one's screen can still show the
+        // member as reserved, and each check-in the page sees succeed gives the member
+        // their event points, so a repeat has to be refused rather than answered as done.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var eventId = await EventAsync(client, capacity: 40);
+        var attendee = await Json(await AddGuestAsync(client, eventId, "Claire Martin"), "add attendee");
+        var url = $"/api/events/{eventId}/attendees/{attendee.GetProperty("id").GetString()}";
+
+        var first = await Json(await client.PutAsync(url, Body(new { status = "CheckedIn" })), "first check-in");
+        var again = await client.PutAsync(url, Body(new { status = "CheckedIn" }));
+
+        again.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await again.Content.ReadAsStringAsync()).Should().Contain("already checked in");
+        var list = await Json(await client.GetAsync($"/api/events/{eventId}/attendees"), "list");
+        list[0].GetProperty("checkedInAtUtc").GetString().Should().Be(first.GetProperty("checkedInAtUtc").GetString());
+        (await EventOf(client, eventId)).GetProperty("registeredCount").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
     public async Task TheServerKeepsCapacityAndTheCounts()
     {
         using var factory = new CustomWebApplicationFactory();

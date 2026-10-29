@@ -226,7 +226,10 @@ export default function EventDetail() {
     try {
       await setAttendeeStatus(event, a, 'CheckedIn');
     } catch (err) {
+      // Refused, e.g. because another door host already checked them in: no points, and
+      // the list is read again so this screen stops offering the check-in.
       failed('Failed to check in')(err);
+      await load();
       return;
     }
     if (a.memberId) {

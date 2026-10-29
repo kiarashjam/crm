@@ -14,7 +14,8 @@ import type { ClubEvent } from '@/app/api/events';
 import type { EventAttendee } from '@/app/api/eventAttendees';
 
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const toast = { success: vi.fn(), error: vi.fn() };
+vi.mock('sonner', () => ({ toast }));
 
 const EventDetail = (await import('./EventDetail')).default;
 
@@ -37,6 +38,8 @@ let onServer: EventAttendee[];
 beforeEach(() => {
   localStorage.clear();
   resetLocalOnly();
+  toast.success.mockReset();
+  toast.error.mockReset();
   vi.stubEnv('VITE_API_URL', BASE);
   localStorage.setItem('aci_user', JSON.stringify({ id: 'pat', name: 'Pierre', email: 'pierre@example.ch' }));
   localStorage.setItem('aci_token', 'token');
@@ -56,6 +59,12 @@ beforeEach(() => {
   );
 });
 afterEach(() => vi.unstubAllEnvs());
+
+const MEMBER = {
+  id: '5b0e0c4a-0000-4000-8000-000000000009', firstName: 'Jean', lastName: 'Dupont', email: 'jean@example.ch',
+  tier: 'Gold', status: 'Active', joinedAtUtc: '2024-01-01T00:00:00Z', renewsAtUtc: '2027-01-01T00:00:00Z',
+  duesAmount: 299, duesFrequency: 'Monthly', houseAccountBalance: 0,
+};
 
 const show = () => render(
   <MemoryRouter initialEntries={[`/events/${EVENT_ID}`]}>
@@ -84,5 +93,38 @@ describe('event attendees', () => {
     await waitFor(() => expect(screen.queryByText(/saved only in this browser/)).toBeNull());
     expect(screen.getByText('Amélie Roux')).toBeInTheDocument();
     expect(onServer.map((a) => a.memberName)).toEqual(['Claire Martin', 'Amélie Roux']);
+  });
+
+  it('gives no points when another door host already checked the member in', async () => {
+    // This screen still shows Jean as reserved; on the server he was checked in a minute ago.
+    const reserved: EventAttendee = {
+      id: 'a-9', eventId: EVENT_ID, memberId: MEMBER.id, memberName: 'Jean Dupont', ticketTier: 'Member',
+      status: 'Reserved', rsvpAtUtc: '2026-10-01T18:00:00Z',
+    };
+    const checkedIn: EventAttendee = { ...reserved, status: 'CheckedIn', checkedInAtUtc: '2026-11-06T18:01:00Z' };
+    let reads = 0;
+    const pointsGiven: unknown[] = [];
+    server.use(
+      http.get(`${BASE}/api/members`, () => HttpResponse.json([MEMBER])),
+      http.get(`${BASE}/api/events/${EVENT_ID}/attendees`, () => HttpResponse.json([reads++ === 0 ? reserved : checkedIn])),
+      http.put(`${BASE}/api/events/${EVENT_ID}/attendees/a-9`, () => HttpResponse.json(
+        { title: 'Conflict', status: 409, detail: 'This person is already checked in' }, { status: 409 },
+      )),
+      http.post(`${BASE}/api/loyalty/ledger`, async ({ request }) => {
+        pointsGiven.push(await request.json());
+        return HttpResponse.json({});
+      }),
+    );
+    const user = userEvent.setup();
+    show();
+
+    await user.click(await screen.findByRole('button', { name: /Check in/ }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('This person is already checked in'));
+    expect(pointsGiven).toEqual([]);
+    expect(toast.success).not.toHaveBeenCalledWith(expect.stringMatching(/loyalty points/));
+    // The list is read again, so the screen stops offering the check-in.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Check in/ })).toBeNull());
+    expect(screen.getByText(/^Checked in .*\d/)).toBeInTheDocument();
   });
 });

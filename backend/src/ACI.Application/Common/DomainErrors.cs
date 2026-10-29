@@ -81,6 +81,11 @@ public static class DomainErrors
         // Mapped to 409 in ResultExtensions: the event's state, not the request, is the problem.
         public static readonly Error EventFull = new(
             "EventAttendee.EventFull", "The event is full: cancel a reservation first");
+
+        // Also 409: someone else already checked this person in, and the screen asking
+        // has not caught up yet.
+        public static readonly Error AlreadyCheckedIn = new(
+            "EventAttendee.AlreadyCheckedIn", "This person is already checked in");
     }
 
     /// <summary>

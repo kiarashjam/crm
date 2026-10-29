@@ -101,6 +101,10 @@ public sealed class EventAttendeeService : IEventAttendeeService
         var next = Text(body, "status");
         if (!Statuses.Contains(next)) return DomainErrors.EventAttendee.StatusInvalid;
         var current = Text(attendee, "status");
+        // The page gives a member their event points for every check-in it sees succeed.
+        // With the list shared, a second door host's screen can still show someone as
+        // reserved after they were checked in, so a repeat is refused, not answered as done.
+        if (current == next && next == "CheckedIn") return DomainErrors.EventAttendee.AlreadyCheckedIn;
         if (current == next) return attendee;
 
         var wasRegistered = IsRegistered(current);

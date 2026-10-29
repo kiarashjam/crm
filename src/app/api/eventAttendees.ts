@@ -162,7 +162,10 @@ export async function addEventAttendee(event: ClubEvent, input: AttendeeInput): 
   );
 }
 
-/** Check in, cancel, or move off the waitlist. The server refuses a promotion while the event is full. */
+/**
+ * Check in, cancel, or move off the waitlist. The server refuses a promotion while the
+ * event is full, and a check-in of someone already checked in.
+ */
 export async function setAttendeeStatus(
   event: ClubEvent,
   attendee: EventAttendee,
@@ -174,6 +177,11 @@ export async function setAttendeeStatus(
       body: JSON.stringify({ status }),
     }),
     async () => {
+      // As on the server: a check-in is refused when it already happened, so the page
+      // does not give the member their event points twice.
+      if (status === 'CheckedIn' && attendeeStore.byId(attendee.id)?.status === 'CheckedIn') {
+        throw new Error('This person is already checked in');
+      }
       const row = attendeeStore.update(attendee.id, {
         status,
         checkedInAtUtc: status === 'CheckedIn' ? new Date().toISOString() : undefined,
