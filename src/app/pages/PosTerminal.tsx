@@ -59,6 +59,12 @@ function formatCurrency(n: number): string {
   return n.toLocaleString(undefined, { style: 'currency', currency: 'USD' });
 }
 
+// The server says why it refused (a card used up or expired, a member who has left), and
+// the sentence is what staff at the till need to see.
+function errorText(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
 const TIER_RING: Record<MemberTier, string> = {
   Bronze: 'ring-amber-400',
   Silver: 'ring-slate-400',
@@ -87,6 +93,8 @@ export default function PosTerminal() {
     amount: '',
   });
   const [gcForm, setGcForm] = useState({ code: '', amount: '' });
+  // One key per redemption: pressing Redeem again after a timeout cannot spend the card twice.
+  const [redeemKey, setRedeemKey] = useState('');
   const [redeemForm, setRedeemForm] = useState({ points: '' });
 
   const load = async () => {
@@ -145,6 +153,8 @@ export default function PosTerminal() {
       await openTab({ memberId: selected.id, venue: tabForm.venue });
       toast.success(`Tab opened at ${TAB_VENUE_LABELS[tabForm.venue]}`);
       setActionDialog(null);
+    } catch (err) {
+      toast.error(errorText(err, 'Could not open the tab'));
     } finally {
       setBusy(false);
     }
@@ -174,6 +184,8 @@ export default function PosTerminal() {
       setActionDialog(null);
       setChargeForm({ kind: 'Dining', description: '', amount: '' });
       await load();
+    } catch (err) {
+      toast.error(errorText(err, 'Could not post the charge'));
     } finally {
       setBusy(false);
     }
@@ -200,6 +212,7 @@ export default function PosTerminal() {
         amount,
         redeemedByName: `${selected.firstName} ${selected.lastName}`,
         appliedTo: 'POS terminal',
+        idempotencyKey: redeemKey,
       });
       if (result) {
         toast.success(`Redeemed ${formatCurrency(result.amount)} from ${card.code}`);
@@ -209,6 +222,11 @@ export default function PosTerminal() {
       } else {
         toast.error('Redemption failed');
       }
+    } catch (err) {
+      // Used up, expired or voided since this screen loaded, or used at another till at
+      // the same moment: the refusal used to vanish, with no message and nothing redeemed.
+      toast.error(errorText(err, 'Redemption failed'));
+      await load();
     } finally {
       setBusy(false);
     }
@@ -417,6 +435,7 @@ export default function PosTerminal() {
                       desc="Apply a gift card to a purchase"
                       onClick={() => {
                         setGcForm({ code: '', amount: '' });
+                        setRedeemKey(crypto.randomUUID());
                         setActionDialog('redeemGiftCard');
                       }}
                       color="rose"
