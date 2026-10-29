@@ -36,6 +36,7 @@ const LeadWebhook = lazy(() => import('@/app/pages/LeadWebhook'));
 const LeadImport = lazy(() => import('@/app/pages/LeadImport'));
 const LeadRouting = lazy(() => import('@/app/pages/LeadRouting'));
 const PublicCapture = lazy(() => import('@/app/pages/PublicCapture'));
+const Unsubscribe = lazy(() => import('@/app/pages/Unsubscribe'));
 const Pipeline = lazy(() => import('@/app/pages/Pipeline'));
 const DealDetail = lazy(() => import('@/app/pages/DealDetail'));
 const Tasks = lazy(() => import('@/app/pages/Tasks'));
@@ -140,6 +141,13 @@ export default function App() {
                 <Route path="/capture/:token" element={
                   <Suspense fallback={<PageLoader />}>
                     <PublicCapture />
+                  </Suspense>
+                } />
+                {/* The unsubscribe link in a workspace's email. Public for the same
+                    reason as signing: the person following it has no account. */}
+                <Route path="/unsubscribe/:token" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <Unsubscribe />
                   </Suspense>
                 } />
                 <Route path="/terms" element={

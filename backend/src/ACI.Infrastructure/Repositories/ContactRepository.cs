@@ -361,6 +361,49 @@ public sealed class ContactRepository : IContactRepository
         return false;
     }
 
+    public async Task<DoNotContactMarked> MarkDoNotContactAsync(Guid organizationId, string email, Guid ownerUserId, CancellationToken ct = default)
+    {
+        var address = DoNotContactRules.Normalize(email);
+        var leads = await _db.Leads
+            .Where(l => l.OrganizationId == organizationId && l.Email.Trim().ToLower() == address)
+            .ToListAsync(ct);
+        // A lead keeps its "stop" on its person contact, so each needs one.
+        foreach (var lead in leads)
+            await EnsurePersonContactAsync(lead, ct);
+        var leadIds = leads.Select(l => l.Id).ToList();
+        var personIds = leads.Where(l => l.ConvertedToContactId != null).Select(l => l.ConvertedToContactId!.Value).ToList();
+
+        var contacts = await _db.Contacts
+            .Where(c => c.OrganizationId == organizationId
+                && (c.Email.Trim().ToLower() == address
+                    || personIds.Contains(c.Id)
+                    || (c.ConvertedFromLeadId != null && leadIds.Contains(c.ConvertedFromLeadId.Value))))
+            .ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        if (contacts.Count == 0)
+        {
+            var contact = new Contact
+            {
+                Id = Guid.NewGuid(),
+                UserId = ownerUserId,
+                OrganizationId = organizationId,
+                Name = email.Trim(),
+                Email = email.Trim(),
+                Description = $"Unsubscribed from this workspace's email on {now:yyyy-MM-dd} (UTC).",
+                CreatedAtUtc = now,
+            };
+            _db.Contacts.Add(contact);
+            contacts.Add(contact);
+        }
+        foreach (var contact in contacts.Where(c => !c.DoNotContact))
+        {
+            contact.DoNotContact = true;
+            contact.UpdatedAtUtc = now;
+        }
+        await _db.SaveChangesAsync(ct);
+        return new DoNotContactMarked(contacts.Select(c => c.Id).ToList(), leadIds);
+    }
+
     /// <summary>
     /// The dropped record's spouse, children and so on are the kept person's. One that
     /// would relate the person to themselves, repeat a relative the kept record already

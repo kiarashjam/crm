@@ -88,8 +88,11 @@ public sealed class ComposedEmailService : IComposedEmailService
         // product's ("Cadence"), which means nothing to the person reading it. A reply
         // goes to whoever wrote it, not to the shared sender address.
         var sender = await _outreach.SenderAsync(organizationId, sentByUserId == default ? null : sentByUserId, ct);
+        // A link at the foot for each person it is visibly addressed to, to stop this
+        // workspace's email. Not for Bcc: naming them would show everyone who else got it.
+        var mail = _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList());
         var outcome = await _sender.SendComposedAsync(
-            new ComposedEmail(to, cc, bcc, subject, body, PlainTextEmail.ToHtml(body), sender.WorkspaceName, sender.ReplyTo), ct);
+            new ComposedEmail(to, cc, bcc, subject, mail.Text, mail.Html, sender.WorkspaceName, sender.ReplyTo), ct);
 
         switch (outcome)
         {

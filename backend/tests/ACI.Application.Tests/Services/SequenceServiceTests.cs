@@ -29,6 +29,10 @@ public class SequenceServiceTests
     {
         _outreach.Setup(o => o.SenderAsync(It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid? _, Guid? user, CancellationToken _) => new OutreachSender("Club Nautique", user == Rep ? "rep@club.ch" : "owner@club.ch"));
+        // The footer itself is OutreachMail's (see OutreachMailTests); here the words pass through.
+        _outreach.Setup(o => o.Body(It.IsAny<Guid?>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<string?>()))
+            .Returns((Guid? _, string? _, string text, IReadOnlyList<string> _, string? tracking) =>
+                new OutreachBody(text, PlainTextEmail.ToHtml(text, tracking), "https://crm.example.ch/unsubscribe/t"));
     }
 
     private static readonly Guid Rep = Guid.NewGuid();
@@ -126,6 +130,9 @@ public class SequenceServiceTests
 
         sent!.FromName.Should().Be("Club Nautique");
         sent.ReplyTo.Should().Be(replyTo);
+        // The footer and header come from the workspace's outreach mail, for the one address it went to.
+        sent.UnsubscribeUrl.Should().Be("https://crm.example.ch/unsubscribe/t");
+        _outreach.Verify(o => o.Body(Org, "Club Nautique", "Hi", It.Is<IReadOnlyList<string>>(a => a.SequenceEqual(new[] { "jean-michel@example.ch" })), It.IsAny<string?>()));
         _outreach.Verify(o => o.SenderAsync(Org, routedToRep ? Rep : Owner, It.IsAny<CancellationToken>()));
     }
 
@@ -140,14 +147,14 @@ public class SequenceServiceTests
         var lead = Guid.NewGuid();
         Service().TrackingUrl(lead).Should().Be($"https://api.example.ch/api/public/track/{lead}");
 
-        SequenceService.HtmlFor("Hi", "https://api.example.ch/api/public/track/x").Should().Contain("<img src=\"https://api.example.ch/api/public/track/x\"");
-        SequenceService.HtmlFor("Hi", null).Should().NotContain("<img");
+        PlainTextEmail.ToHtml("Hi", "https://api.example.ch/api/public/track/x").Should().Contain("<img src=\"https://api.example.ch/api/public/track/x\"");
+        PlainTextEmail.ToHtml("Hi", null).Should().NotContain("<img");
     }
 
     [Fact]
     public void TextIsEscapedInTheHtmlPart()
     {
-        SequenceService.HtmlFor("<script>alert(1)</script> & co", null)
+        PlainTextEmail.ToHtml("<script>alert(1)</script> & co", null)
             .Should().Contain("&lt;script&gt;alert(1)&lt;/script&gt; &amp; co")
             .And.NotContain("<script>");
     }

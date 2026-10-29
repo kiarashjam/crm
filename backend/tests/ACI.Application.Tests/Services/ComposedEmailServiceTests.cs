@@ -1,7 +1,9 @@
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
+using ACI.Application.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Tests.Services;
 
@@ -31,8 +33,26 @@ public class ComposedEmailServiceTests
             _organizations.Setup(o => o.GetMemberRoleAsync(id, Org, It.IsAny<CancellationToken>())).ReturnsAsync(ACI.Domain.Enums.OrgMemberRole.Member);
             _users.Setup(u => u.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new ACI.Domain.Entities.User { Id = id, Email = email });
         }
-        return new ComposedEmailService(
-            _sender.Object, new OutreachMail(_organizations.Object, _users.Object), _contacts.Object, NullLogger<ComposedEmailService>.Instance);
+        var links = new Mock<IUnsubscribeLinks>();
+        links.Setup(l => l.CreateToken(Org, It.IsAny<string>())).Returns((Guid _, string email) => $"t-{email.Split('@')[0]}");
+        var outreach = new OutreachMail(_organizations.Object, _users.Object, links.Object,
+            Options.Create(new EmailSettings { FrontendBaseUrl = "https://crm.example.ch" }), NullLogger<OutreachMail>.Instance);
+        return new ComposedEmailService(_sender.Object, outreach, _contacts.Object, NullLogger<ComposedEmailService>.Instance);
+    }
+
+    [Fact]
+    public async Task EachVisibleRecipientCanUnsubscribe_ButBccIsNotNamed()
+    {
+        await Service().SendAsync(Org, new SendEmailRequest(
+            "jean@example.ch, anne@example.ch", "boss@club.ch", "archive@club.ch", "Votre visite", "Bonjour"), Rep);
+
+        foreach (var address in new[] { "jean@example.ch", "anne@example.ch", "boss@club.ch" })
+        {
+            _sent!.TextBody.Should().Contain($"{address}: https://crm.example.ch/unsubscribe/t-{address.Split('@')[0]}");
+            _sent.HtmlBody.Should().Contain($"href=\"https://crm.example.ch/unsubscribe/t-{address.Split('@')[0]}\"");
+        }
+        _sent!.TextBody.Should().StartWith("Bonjour").And.Contain("Don't want emails from Pavillon 46?").And.NotContain("archive@club.ch");
+        _sent.HtmlBody.Should().NotContain("archive@club.ch");
     }
 
     [Fact]
@@ -94,8 +114,10 @@ public class ComposedEmailServiceTests
         _sent!.To.Should().Equal("jean@example.ch", "anne@example.ch");
         _sent.Cc.Should().Equal("boss@club.ch");
         _sent.Bcc.Should().Equal("archive@club.ch");
-        _sent.TextBody.Should().Be("Bonjour <Jean>,\nÀ bientôt");
+        _sent.TextBody.Should().StartWith("Bonjour <Jean>,\nÀ bientôt\n\n--\n");
         _sent.HtmlBody.Should().Contain("Bonjour &lt;Jean&gt;,<br>").And.NotContain("<Jean>");
+        // The copy kept is what the person wrote, without the footer.
+        result.Value.Body.Should().Be("Bonjour <Jean>,\nÀ bientôt");
         result.Value.Status.Should().Be("sent");
         result.Value.To.Should().Be("jean@example.ch, anne@example.ch");
         _sent.FromName.Should().Be("Pavillon 46", "a lead should see the club's name, not the product's");

@@ -301,12 +301,14 @@ public sealed class SequenceService : ISequenceService
             var name = target.Name ?? enrollment.TargetName;
             var subject = Fill(string.IsNullOrWhiteSpace(step.Subject) ? sequence.Name : step.Subject, name, target.CompanyName);
             var text = Fill(step.Body ?? "", name, target.CompanyName);
-            var html = HtmlFor(text, enrollment.TargetType == "lead" ? TrackingUrl(enrollment.TargetId) : null);
             // Under the workspace's name, and a reply reaches whoever works the lead,
-            // or else whoever enrolled them.
+            // or else whoever enrolled them. The footer says how to stop it.
             var sender = await _outreach.SenderAsync(enrollment.OrganizationId, target.OwnerUserId ?? enrollment.EnrolledByUserId, ct);
+            var mail = _outreach.Body(enrollment.OrganizationId, sender.WorkspaceName, text, [to],
+                enrollment.TargetType == "lead" ? TrackingUrl(enrollment.TargetId) : null);
 
-            if (!await _email.SendOutreachAsync(new OutreachEmail(to, name, subject, text, html, sender.WorkspaceName, sender.ReplyTo), ct))
+            if (!await _email.SendOutreachAsync(
+                    new OutreachEmail(to, name, subject, mail.Text, mail.Html, sender.WorkspaceName, sender.ReplyTo, mail.UnsubscribeUrl), ct))
             {
                 _logger.LogWarning("Sequence email for enrollment {EnrollmentId} was not delivered; retrying later", enrollment.Id);
                 return StepOutcome.Retry;
@@ -385,14 +387,6 @@ public sealed class SequenceService : ISequenceService
         if (api.IsLoopback || api.Scheme != Uri.UriSchemeHttps) return null;
         return $"{api.GetLeftPart(UriPartial.Authority)}{api.AbsolutePath.TrimEnd('/')}/api/public/track/{leadId}";
     }
-
-    /// <summary>
-    /// The HTML part: the same words, escaped, with line breaks kept — and the
-    /// tracking image, which exists only here. It used to be appended to the text
-    /// body, and since the message was sent as plain text every recipient saw
-    /// &lt;img src="http://localhost:5160/api/public/track/…"&gt; at the bottom.
-    /// </summary>
-    internal static string HtmlFor(string text, string? trackingUrl) => PlainTextEmail.ToHtml(text, trackingUrl);
 
     private static string FirstName(string name)
     {

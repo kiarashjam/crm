@@ -1,5 +1,4 @@
 using System.Text.Json;
-using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
@@ -229,9 +228,10 @@ public sealed class AutomationEngine : IAutomationEngine
         // Under the workspace's name, not the product's, and a reply reaches whoever
         // works the lead (or whoever set the rule off) rather than the shared inbox.
         var sender = await _outreach.SenderAsync(evt.OrganizationId, await OwnerAsync(evt, ct) ?? evt.ActorUserId, ct);
+        var mail = _outreach.Body(evt.OrganizationId, sender.WorkspaceName, body, [target.Email]);
         await _email.SendOutreachAsync(new OutreachEmail(
-            target.Email, target.Name ?? evt.RecordName ?? "", subject, body, PlainTextEmail.ToHtml(body),
-            sender.WorkspaceName, sender.ReplyTo), ct);
+            target.Email, target.Name ?? evt.RecordName ?? "", subject, mail.Text, mail.Html,
+            sender.WorkspaceName, sender.ReplyTo, mail.UnsubscribeUrl), ct);
     }
 
     private async Task EnrollAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)

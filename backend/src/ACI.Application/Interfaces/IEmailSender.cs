@@ -37,6 +37,11 @@ public sealed record ComposedEmail(
 /// <param name="HtmlBody">The same words as HTML, plus anything that only works there (a tracking image).</param>
 /// <param name="FromName">The workspace's name, shown beside the configured address. Null falls back to Email:FromName.</param>
 /// <param name="ReplyTo">Who a reply should reach: the person who works this lead.</param>
+/// <param name="UnsubscribeUrl">
+/// The page that stops this workspace emailing the recipient, sent as the
+/// List-Unsubscribe header so mail apps can offer it next to the sender. The same
+/// link is in the footer of both parts.
+/// </param>
 public sealed record OutreachEmail(
     string To,
     string RecipientName,
@@ -44,7 +49,8 @@ public sealed record OutreachEmail(
     string TextBody,
     string HtmlBody,
     string? FromName = null,
-    string? ReplyTo = null);
+    string? ReplyTo = null,
+    string? UnsubscribeUrl = null);
 
 /// <summary>What happened to a composed message.</summary>
 public enum ComposedEmailOutcome

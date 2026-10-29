@@ -165,6 +165,10 @@ public sealed class SmtpEmailSender : IEmailSender
         AddReplyTo(message, email.ReplyTo);
         message.To.Add(new MailboxAddress(string.IsNullOrWhiteSpace(email.RecipientName) ? email.To : email.RecipientName, email.To));
         message.Subject = email.Subject;
+        // The page, not a one-click POST endpoint (RFC 8058): the link opens the
+        // confirmation page, which is what a mail app's "Unsubscribe" does with it.
+        if (!string.IsNullOrWhiteSpace(email.UnsubscribeUrl))
+            message.Headers.Add("List-Unsubscribe", $"<{email.UnsubscribeUrl.Trim()}>");
         message.Body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody }.ToMessageBody();
         return message;
     }
