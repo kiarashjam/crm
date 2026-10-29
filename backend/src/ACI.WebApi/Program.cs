@@ -194,6 +194,7 @@ try
     builder.Services.AddScoped<ILeadAutomation, LeadAutomation>();
     builder.Services.AddScoped<ILeadOpsService, LeadOpsService>();
     builder.Services.AddScoped<ISequenceService, SequenceService>();
+    builder.Services.AddScoped<IOutreachMail, OutreachMail>();
     builder.Services.AddScoped<IComposedEmailService, ComposedEmailService>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();

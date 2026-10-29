@@ -131,8 +131,50 @@ public sealed class SmtpEmailSender : IEmailSender
     public Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default) =>
         SendAsync(toEmail, recipientName, subject, body, ct);
 
-    public Task<bool> SendHtmlMessageAsync(string toEmail, string recipientName, string subject, string textBody, string htmlBody, CancellationToken ct = default) =>
-        SendAsync(toEmail, recipientName, subject, textBody, htmlBody, null, ct);
+    /// <summary>
+    /// Outreach for a workspace. Sent from the configured address — the one the relay
+    /// has verified — but under the workspace's name, with Reply-To set to its
+    /// person. It used to go out as "Cadence", and every reply went to the shared
+    /// sender inbox.
+    /// </summary>
+    public async Task<bool> SendOutreachAsync(OutreachEmail email, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SmtpHost) || string.IsNullOrWhiteSpace(_options.FromAddress))
+        {
+            _logger.LogWarning("Email:SmtpHost or Email:FromAddress is not set, so outreach \"{Subject}\" was NOT sent", email.Subject);
+            return false;
+        }
+
+        try
+        {
+            await TransmitAsync(BuildOutreachMessage(email, _options.FromName, _options.FromAddress), ct);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send outreach \"{Subject}\" to {Email}", email.Subject, email.To);
+            return false;
+        }
+    }
+
+    /// <summary>The MIME message for one piece of outreach.</summary>
+    public static MimeMessage BuildOutreachMessage(OutreachEmail email, string defaultFromName, string fromAddress)
+    {
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(string.IsNullOrWhiteSpace(email.FromName) ? defaultFromName : email.FromName.Trim(), fromAddress));
+        AddReplyTo(message, email.ReplyTo);
+        message.To.Add(new MailboxAddress(string.IsNullOrWhiteSpace(email.RecipientName) ? email.To : email.RecipientName, email.To));
+        message.Subject = email.Subject;
+        message.Body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody }.ToMessageBody();
+        return message;
+    }
+
+    /// <summary>Replies go to this address, when it is one.</summary>
+    private static void AddReplyTo(MimeMessage message, string? replyTo)
+    {
+        if (!string.IsNullOrWhiteSpace(replyTo) && MailboxAddress.TryParse(replyTo.Trim(), out var address))
+            message.ReplyTo.Add(address);
+    }
 
     /// <summary>
     /// Builds and delivers one plain-text message. Returns false (never throws) so a
@@ -238,6 +280,7 @@ public sealed class SmtpEmailSender : IEmailSender
     {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(fromName, fromAddress));
+        AddReplyTo(message, email.ReplyTo);
         message.To.AddRange(email.To.Select(MailboxAddress.Parse));
         message.Cc.AddRange(email.Cc.Select(MailboxAddress.Parse));
         message.Bcc.AddRange(email.Bcc.Select(MailboxAddress.Parse));

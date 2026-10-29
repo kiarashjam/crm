@@ -30,20 +30,20 @@ public sealed class ComposedEmailService : IComposedEmailService
     public const int MaxBodyLength = 50_000;
 
     private readonly IEmailSender _sender;
-    private readonly IOrganizationRepository _organizations;
+    private readonly IOutreachMail _outreach;
     private readonly IContactRepository _contacts;
     private readonly ISentMessageRepository? _messages;
     private readonly ILogger<ComposedEmailService> _logger;
 
     public ComposedEmailService(
         IEmailSender sender,
-        IOrganizationRepository organizations,
+        IOutreachMail outreach,
         IContactRepository contacts,
         ILogger<ComposedEmailService> logger,
         ISentMessageRepository? messages = null)
     {
         _sender = sender;
-        _organizations = organizations;
+        _outreach = outreach;
         _contacts = contacts;
         _logger = logger;
         _messages = messages;
@@ -85,10 +85,11 @@ public sealed class ComposedEmailService : IComposedEmailService
             return new Error(DomainErrors.Contact.DoNotContact.Code, "This person is marked do not contact, so nothing was sent.");
 
         // Sent under the workspace's name: the configured Email:FromName is the
-        // product's ("Cadence"), which means nothing to the person reading it.
-        var workspace = await _organizations.GetByIdAsync(organizationId, ct);
+        // product's ("Cadence"), which means nothing to the person reading it. A reply
+        // goes to whoever wrote it, not to the shared sender address.
+        var sender = await _outreach.SenderAsync(organizationId, sentByUserId == default ? null : sentByUserId, ct);
         var outcome = await _sender.SendComposedAsync(
-            new ComposedEmail(to, cc, bcc, subject, body, PlainTextEmail.ToHtml(body), workspace?.Name), ct);
+            new ComposedEmail(to, cc, bcc, subject, body, PlainTextEmail.ToHtml(body), sender.WorkspaceName, sender.ReplyTo), ct);
 
         switch (outcome)
         {

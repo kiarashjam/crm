@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
@@ -45,6 +46,7 @@ public sealed class AutomationEngine : IAutomationEngine
     private readonly ILeadRepository _leads;
     private readonly IDealRepository _deals;
     private readonly IEmailSender _email;
+    private readonly IOutreachMail _outreach;
     private readonly ISequenceService _sequences;
     private readonly ISequenceRepository _targets;
     private readonly IOrganizationRepository _organizations;
@@ -57,6 +59,7 @@ public sealed class AutomationEngine : IAutomationEngine
         ILeadRepository leads,
         IDealRepository deals,
         IEmailSender email,
+        IOutreachMail outreach,
         ISequenceService sequences,
         ISequenceRepository targets,
         IOrganizationRepository organizations,
@@ -68,6 +71,7 @@ public sealed class AutomationEngine : IAutomationEngine
         _leads = leads;
         _deals = deals;
         _email = email;
+        _outreach = outreach;
         _sequences = sequences;
         _targets = targets;
         _organizations = organizations;
@@ -222,7 +226,12 @@ public sealed class AutomationEngine : IAutomationEngine
         var target = await _targets.TargetStateAsync("lead", leadId, evt.OrganizationId, ct);
         if (!target.Exists || target.DoNotContact || string.IsNullOrWhiteSpace(target.Email)) return;
         body = body.Replace("{{firstName}}", FirstName(target.Name ?? evt.RecordName), StringComparison.OrdinalIgnoreCase);
-        await _email.SendMessageAsync(target.Email, target.Name ?? evt.RecordName ?? "", subject, body, ct);
+        // Under the workspace's name, not the product's, and a reply reaches whoever
+        // works the lead (or whoever set the rule off) rather than the shared inbox.
+        var sender = await _outreach.SenderAsync(evt.OrganizationId, await OwnerAsync(evt, ct) ?? evt.ActorUserId, ct);
+        await _email.SendOutreachAsync(new OutreachEmail(
+            target.Email, target.Name ?? evt.RecordName ?? "", subject, body, PlainTextEmail.ToHtml(body),
+            sender.WorkspaceName, sender.ReplyTo), ct);
     }
 
     private async Task EnrollAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)

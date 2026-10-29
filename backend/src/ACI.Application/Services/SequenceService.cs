@@ -60,6 +60,7 @@ public sealed class SequenceService : ISequenceService
 
     private readonly ISequenceRepository _sequences;
     private readonly IEmailSender _email;
+    private readonly IOutreachMail _outreach;
     private readonly IActivityService _activities;
     private readonly ITaskService _tasks;
     private readonly EmailSettings _emailSettings;
@@ -68,6 +69,7 @@ public sealed class SequenceService : ISequenceService
     public SequenceService(
         ISequenceRepository sequences,
         IEmailSender email,
+        IOutreachMail outreach,
         IActivityService activities,
         ITaskService tasks,
         IOptions<EmailSettings> emailSettings,
@@ -75,6 +77,7 @@ public sealed class SequenceService : ISequenceService
     {
         _sequences = sequences;
         _email = email;
+        _outreach = outreach;
         _activities = activities;
         _tasks = tasks;
         _emailSettings = emailSettings.Value;
@@ -299,8 +302,11 @@ public sealed class SequenceService : ISequenceService
             var subject = Fill(string.IsNullOrWhiteSpace(step.Subject) ? sequence.Name : step.Subject, name, target.CompanyName);
             var text = Fill(step.Body ?? "", name, target.CompanyName);
             var html = HtmlFor(text, enrollment.TargetType == "lead" ? TrackingUrl(enrollment.TargetId) : null);
+            // Under the workspace's name, and a reply reaches whoever works the lead,
+            // or else whoever enrolled them.
+            var sender = await _outreach.SenderAsync(enrollment.OrganizationId, target.OwnerUserId ?? enrollment.EnrolledByUserId, ct);
 
-            if (!await _email.SendHtmlMessageAsync(to, name, subject, text, html, ct))
+            if (!await _email.SendOutreachAsync(new OutreachEmail(to, name, subject, text, html, sender.WorkspaceName, sender.ReplyTo), ct))
             {
                 _logger.LogWarning("Sequence email for enrollment {EnrollmentId} was not delivered; retrying later", enrollment.Id);
                 return StepOutcome.Retry;

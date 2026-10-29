@@ -22,10 +22,19 @@ public class SequenceServiceTests
     private readonly Mock<IEmailSender> _email = new();
     private readonly Mock<IActivityService> _activities = new();
     private readonly Mock<ITaskService> _tasks = new();
+    private readonly Mock<IOutreachMail> _outreach = new();
     private readonly EmailSettings _settings = new() { ApiBaseUrl = "http://localhost:5160" };
 
+    public SequenceServiceTests()
+    {
+        _outreach.Setup(o => o.SenderAsync(It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid? _, Guid? user, CancellationToken _) => new OutreachSender("Club Nautique", user == Rep ? "rep@club.ch" : "owner@club.ch"));
+    }
+
+    private static readonly Guid Rep = Guid.NewGuid();
+
     private SequenceService Service() => new(
-        _repo.Object, _email.Object, _activities.Object, _tasks.Object,
+        _repo.Object, _email.Object, _outreach.Object, _activities.Object, _tasks.Object,
         Options.Create(_settings), NullLogger<SequenceService>.Instance);
 
     private static OutreachSequence Sequence(params OutreachStep[] steps)
@@ -82,8 +91,8 @@ public class SequenceServiceTests
         var enrollment = Due(sequence);
         Ready(sequence, enrollment, Reachable);
         string? text = null, html = null, subject = null, to = null;
-        _email.Setup(e => e.SendHtmlMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback<string, string, string, string, string, CancellationToken>((t, _, s, tx, h, _) => { to = t; subject = s; text = tx; html = h; })
+        _email.Setup(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
+            .Callback<OutreachEmail, CancellationToken>((m, _) => { to = m.To; subject = m.Subject; text = m.TextBody; html = m.HtmlBody; })
             .ReturnsAsync(true);
 
         await Service().RunDueAsync();
@@ -96,6 +105,28 @@ public class SequenceServiceTests
         html.Should().Contain("Hi Jean-Michel,<br>");
         // Sent to the address on the record today, not the one copied at enrollment.
         to.Should().Be("jean-michel@example.ch");
+    }
+
+    [Theory]
+    [InlineData(true, "rep@club.ch")]
+    [InlineData(false, "owner@club.ch")]
+    public async Task TheEmailIsTheWorkspacesAndAReplyReachesWhoeverWorksTheLead(bool routedToRep, string replyTo)
+    {
+        // It went out as "Cadence" with no Reply-To, so an answer landed in the shared
+        // sender inbox. With nobody working the lead, the enroller gets the reply.
+        var sequence = Sequence(EmailStep(0, "Hello", "Hi"));
+        var enrollment = Due(sequence);
+        Ready(sequence, enrollment, Reachable with { OwnerUserId = routedToRep ? Rep : null });
+        OutreachEmail? sent = null;
+        _email.Setup(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
+            .Callback<OutreachEmail, CancellationToken>((m, _) => sent = m)
+            .ReturnsAsync(true);
+
+        await Service().RunDueAsync();
+
+        sent!.FromName.Should().Be("Club Nautique");
+        sent.ReplyTo.Should().Be(replyTo);
+        _outreach.Verify(o => o.SenderAsync(Org, routedToRep ? Rep : Owner, It.IsAny<CancellationToken>()));
     }
 
     [Fact]
@@ -131,7 +162,7 @@ public class SequenceServiceTests
         var sequence = Sequence(EmailStep(0, "Hi", "Body"), EmailStep(1, "Again", "Body"));
         var enrollment = Due(sequence);
         Ready(sequence, enrollment, Reachable);
-        _email.Setup(e => e.SendHtmlMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _email.Setup(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         await Service().RunDueAsync();
@@ -150,7 +181,7 @@ public class SequenceServiceTests
         var sequence = Sequence(EmailStep(0, "Hi", "Body"), EmailStep(1, "Again", "Body"));
         var enrollment = Due(sequence);
         Ready(sequence, enrollment, Reachable);
-        _email.Setup(e => e.SendHtmlMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _email.Setup(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         await Service().RunDueAsync();
@@ -171,7 +202,7 @@ public class SequenceServiceTests
 
         await Service().RunDueAsync();
 
-        _email.Verify(e => e.SendHtmlMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _email.Verify(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()), Times.Never);
         _repo.Verify(r => r.SaveEnrollmentAsync(It.IsAny<OutreachEnrollment>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -204,7 +235,7 @@ public class SequenceServiceTests
 
         enrollment.Status.Should().Be("stopped");
         enrollment.NextActionAtUtc.Should().BeNull();
-        _email.Verify(e => e.SendHtmlMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _email.Verify(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

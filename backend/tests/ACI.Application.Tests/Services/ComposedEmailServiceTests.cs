@@ -12,7 +12,10 @@ public class ComposedEmailServiceTests
 {
     private static readonly Guid Org = Guid.NewGuid();
     private readonly Mock<IEmailSender> _sender = new();
+    private static readonly Guid Owner = Guid.NewGuid();
+    private static readonly Guid Rep = Guid.NewGuid();
     private readonly Mock<IOrganizationRepository> _organizations = new();
+    private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IContactRepository> _contacts = new();
     private ComposedEmail? _sent;
 
@@ -22,8 +25,36 @@ public class ComposedEmailServiceTests
             .Callback((ComposedEmail email, CancellationToken _) => _sent = email)
             .ReturnsAsync(outcome);
         _organizations.Setup(o => o.GetByIdAsync(Org, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ACI.Domain.Entities.Organization { Id = Org, Name = "Pavillon 46" });
-        return new ComposedEmailService(_sender.Object, _organizations.Object, _contacts.Object, NullLogger<ComposedEmailService>.Instance);
+            .ReturnsAsync(new ACI.Domain.Entities.Organization { Id = Org, Name = "Pavillon 46", OwnerUserId = Owner });
+        foreach (var (id, email) in new[] { (Owner, "owner@pavillon46.ch"), (Rep, "anna@pavillon46.ch") })
+        {
+            _organizations.Setup(o => o.GetMemberRoleAsync(id, Org, It.IsAny<CancellationToken>())).ReturnsAsync(ACI.Domain.Enums.OrgMemberRole.Member);
+            _users.Setup(u => u.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new ACI.Domain.Entities.User { Id = id, Email = email });
+        }
+        return new ComposedEmailService(
+            _sender.Object, new OutreachMail(_organizations.Object, _users.Object), _contacts.Object, NullLogger<ComposedEmailService>.Instance);
+    }
+
+    [Fact]
+    public async Task AReplyGoesToWhoeverWroteIt()
+    {
+        // Every workspace sends from one shared address, and nothing set Reply-To, so
+        // a prospect's answer landed in that shared inbox instead of with the rep.
+        await Service().SendAsync(Org, new SendEmailRequest("jean@example.ch", null, null, "Votre visite", "Bonjour"), Rep);
+
+        _sent!.ReplyTo.Should().Be("anna@pavillon46.ch");
+        _sent.FromName.Should().Be("Pavillon 46");
+    }
+
+    [Fact]
+    public async Task SomeoneWhoHasLeftTheWorkspaceIsNotTheReplyTo_TheOwnerIs()
+    {
+        var former = Guid.NewGuid();
+        _users.Setup(u => u.GetByIdAsync(former, It.IsAny<CancellationToken>())).ReturnsAsync(new ACI.Domain.Entities.User { Id = former, Email = "gone@example.ch" });
+
+        await Service().SendAsync(Org, new SendEmailRequest("jean@example.ch", null, null, "Votre visite", "Bonjour"), former);
+
+        _sent!.ReplyTo.Should().Be("owner@pavillon46.ch");
     }
 
     [Fact]

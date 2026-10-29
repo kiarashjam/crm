@@ -22,6 +22,7 @@ public class AutomationRulesTests
     private sealed class WithMailServer : CustomWebApplicationFactory
     {
         public readonly List<string> SentTo = new();
+        public readonly List<OutreachEmail> Sent = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -29,8 +30,8 @@ public class AutomationRulesTests
             builder.ConfigureTestServices(services =>
             {
                 var sender = new Mock<IEmailSender>();
-                sender.Setup(s => s.SendMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                    .Callback((string to, string _, string _, string _, CancellationToken _) => SentTo.Add(to))
+                sender.Setup(s => s.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
+                    .Callback((OutreachEmail email, CancellationToken _) => { Sent.Add(email); SentTo.Add(email.To); })
                     .ReturnsAsync(true);
                 services.AddSingleton(sender.Object);
             });
@@ -126,6 +127,9 @@ public class AutomationRulesTests
         task.GetProperty("assigneeId").GetGuid().Should().Be(repId);
         (await factory.Services.Read(db => db.Leads.Single(l => l.Id == leadId).AssignedToUserId)).Should().Be(repId);
         factory.SentTo.Should().Equal("jean@example.ch");
+        // Under the workspace's name, not "Cadence", and a reply reaches the rep who now works the lead.
+        factory.Sent.Single().FromName.Should().Be("Pavillon46");
+        factory.Sent.Single().ReplyTo.Should().Be("rep@example.ch");
     }
 
     [Fact]

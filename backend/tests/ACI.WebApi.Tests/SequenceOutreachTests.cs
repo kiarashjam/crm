@@ -22,6 +22,7 @@ public class SequenceOutreachTests
     private sealed class App : CustomWebApplicationFactory
     {
         public readonly List<string> SentTo = new();
+        public readonly List<OutreachEmail> Sent = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -31,8 +32,8 @@ public class SequenceOutreachTests
                 var runner = services.Single(d => d.ImplementationType == typeof(ACI.WebApi.Services.LeadFollowUpBackgroundService));
                 services.Remove(runner);
                 var sender = new Mock<IEmailSender>();
-                sender.Setup(s => s.SendHtmlMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                    .Callback((string to, string _, string _, string _, string _, CancellationToken _) => SentTo.Add(to))
+                sender.Setup(s => s.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
+                    .Callback((OutreachEmail email, CancellationToken _) => { Sent.Add(email); SentTo.Add(email.To); })
                     .ReturnsAsync(true);
                 services.AddSingleton(sender.Object);
             });
@@ -152,6 +153,29 @@ public class SequenceOutreachTests
         await app.RunDueStepsAsync();
 
         app.SentTo.Should().Equal("jean@example.ch");
+    }
+
+    [Fact]
+    public async Task TheEmailIsTheWorkspaces_AndAReplyReachesTheRepWhoWorksTheLead()
+    {
+        // Sequence mail went out as "Cadence" with no Reply-To, so a prospect's answer
+        // landed in the shared sender inbox.
+        await using var app = new App();
+        var (owner, ownerId) = await SignInAsync(app, "owner@example.ch");
+        var org = await CreateAsync(app, ownerId, "Pavillon46");
+        owner.In(org);
+        var (_, repId) = await SignInAsync(app, "rep@example.ch");
+        await AddMemberAsync(app, org, repId, OrgMemberRole.Member);
+        var sequenceId = await SequenceAsync(owner, new { type = "email", dayOffset = 0, subject = "Hello", body = "Hi" });
+        var leadId = await LeadAsync(owner);
+        await Json(await owner.PutAsync($"/api/leads/{leadId}/assign", Body(new { assignedToUserId = repId })), "assign to the rep");
+        await Json(await EnrollAsync(owner, sequenceId, leadId), "enroll");
+
+        await app.RunDueStepsAsync();
+
+        var sent = app.Sent.Should().ContainSingle().Subject;
+        sent.FromName.Should().Be("Pavillon46");
+        sent.ReplyTo.Should().Be("rep@example.ch");
     }
 
     [Fact]

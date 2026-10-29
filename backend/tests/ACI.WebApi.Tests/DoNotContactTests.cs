@@ -33,8 +33,8 @@ public class DoNotContactTests
                 sender.Setup(s => s.SendComposedAsync(It.IsAny<ComposedEmail>(), It.IsAny<CancellationToken>()))
                     .Callback((ComposedEmail email, CancellationToken _) => SentTo.AddRange(email.To.Concat(email.Cc).Concat(email.Bcc)))
                     .ReturnsAsync(ComposedEmailOutcome.Sent);
-                sender.Setup(s => s.SendMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                    .Callback((string to, string _, string _, string _, CancellationToken _) => SentTo.Add(to))
+                sender.Setup(s => s.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
+                    .Callback((OutreachEmail email, CancellationToken _) => SentTo.Add(email.To))
                     .ReturnsAsync(true);
                 services.AddSingleton(sender.Object);
             });
