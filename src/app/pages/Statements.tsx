@@ -22,6 +22,7 @@ import {
 import { getMembers, type Member } from '@/app/api/members';
 import { getCharges, getPayments, type Charge, type Payment, PAYMENT_METHOD_LABELS } from '@/app/api/charges';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { buildStatement } from '@/app/lib/statement';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 
@@ -95,32 +96,12 @@ export default function Statements() {
     [payments, memberId],
   );
 
-  const inPeriod = useMemo(() => {
-    const inChg = memberCharges.filter((c) => {
-      const t = Date.parse(c.postedAtUtc);
-      return t >= periodStart && t < periodEnd;
-    });
-    const inPay = memberPayments.filter((p) => {
-      const t = Date.parse(p.receivedAtUtc);
-      return t >= periodStart && t < periodEnd;
-    });
-    return { charges: inChg, payments: inPay };
-  }, [memberCharges, memberPayments, periodStart, periodEnd]);
-
-  // Opening balance: net of everything before this period.
-  const openingBalance = useMemo(() => {
-    const priorCharges = memberCharges
-      .filter((c) => Date.parse(c.postedAtUtc) < periodStart && c.status !== 'Voided')
-      .reduce((s, c) => s + c.amount - c.paidAmount, 0);
-    return priorCharges; // positive = owed
-  }, [memberCharges, periodStart]);
-
-  const periodCharges = inPeriod.charges.filter((c) => c.status !== 'Voided').reduce(
-    (s, c) => s + c.amount,
-    0,
+  const statement = useMemo(
+    () => buildStatement(memberCharges, memberPayments, periodStart, periodEnd),
+    [memberCharges, memberPayments, periodStart, periodEnd],
   );
-  const periodPayments = inPeriod.payments.reduce((s, p) => s + p.amount, 0);
-  const closingBalance = openingBalance + periodCharges - periodPayments;
+  const inPeriod = { charges: statement.charges, payments: statement.payments };
+  const { openingBalance, periodCharges, periodPayments, closingBalance } = statement;
 
   const goPrev = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1));
   const goNext = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1));
