@@ -9,6 +9,8 @@ using ACI.WebApi.Middleware;
 using ACI.WebApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -362,6 +364,19 @@ try
             var connStr = app.Configuration.GetConnectionString("DefaultConnection") ?? "(not configured)";
             var maskedConnStr = connStr.Length > 30 ? connStr.Substring(0, 30) + "..." : connStr;
             Log.Information("Database connection: {ConnectionString}", maskedConnStr);
+            
+            // The schema work below adds to the tables InitialCreate makes (its first
+            // statement points a foreign key at Users), but the migrations only run after
+            // it. So a new database -- missing, or created empty -- failed on its first
+            // statement on every start and was never set up. An empty one is now given the
+            // migrations first. A database with any table in it, as production's has,
+            // skips this and is set up in exactly the order it always was.
+            var databaseCreator = db.Database.GetService<IRelationalDatabaseCreator>();
+            if (!await databaseCreator.ExistsAsync() || !await databaseCreator.HasTablesAsync())
+            {
+                Log.Information("Empty database: creating the core tables from the migrations first...");
+                await db.Database.MigrateAsync();
+            }
             
             // First, create missing tables and fix schema
             Log.Information("Checking and fixing database schema...");

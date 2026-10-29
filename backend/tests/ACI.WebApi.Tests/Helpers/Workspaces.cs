@@ -4,6 +4,7 @@ using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ACI.WebApi.Tests.Helpers;
@@ -26,7 +27,7 @@ public static class Workspaces
         new(JsonSerializer.Serialize(value, Json), Encoding.UTF8, "application/json");
 
     /// <summary>Register an account and return a client signed in as it, plus its user id.</summary>
-    public static async Task<(HttpClient Client, Guid UserId)> SignInAsync(CustomWebApplicationFactory factory, string email)
+    public static async Task<(HttpClient Client, Guid UserId)> SignInAsync(WebApplicationFactory<Program> factory, string email)
     {
         var client = factory.CreateClient();
         var res = await client.PostAsync("/api/auth/register", Body(new { email, password = "correct horse battery staple", name = email }));
