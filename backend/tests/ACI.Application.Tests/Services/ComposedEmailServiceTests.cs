@@ -13,6 +13,7 @@ public class ComposedEmailServiceTests
     private static readonly Guid Org = Guid.NewGuid();
     private readonly Mock<IEmailSender> _sender = new();
     private readonly Mock<IOrganizationRepository> _organizations = new();
+    private readonly Mock<IContactRepository> _contacts = new();
     private ComposedEmail? _sent;
 
     private ComposedEmailService Service(ComposedEmailOutcome outcome = ComposedEmailOutcome.Sent)
@@ -22,7 +23,34 @@ public class ComposedEmailServiceTests
             .ReturnsAsync(outcome);
         _organizations.Setup(o => o.GetByIdAsync(Org, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ACI.Domain.Entities.Organization { Id = Org, Name = "Pavillon 46" });
-        return new ComposedEmailService(_sender.Object, _organizations.Object, NullLogger<ComposedEmailService>.Instance);
+        return new ComposedEmailService(_sender.Object, _organizations.Object, _contacts.Object, NullLogger<ComposedEmailService>.Instance);
+    }
+
+    [Fact]
+    public async Task AnAddressMarkedDoNotContactIsNotSentTo()
+    {
+        // The flag used to be honoured only by hiding the Email button on a contact's
+        // page; the server sent to anyone.
+        _contacts.Setup(c => c.FindDoNotContactAddressAsync(Org, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<string> all, CancellationToken _) => all.Contains("Anne@Example.ch") ? "Anne@Example.ch" : null);
+
+        var result = await Service().SendAsync(Org, new SendEmailRequest("jean@example.ch", "Anne@Example.ch", null, "Hello", "Hi"));
+
+        result.Error.Code.Should().Be("Contact.DoNotContact");
+        result.Error.Description.Should().Contain("Anne@Example.ch");
+        _sender.Verify(s => s.SendComposedAsync(It.IsAny<ComposedEmail>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ALeadWhosePersonSaidStopIsNotSentTo()
+    {
+        var lead = Guid.NewGuid();
+        _contacts.Setup(c => c.IsDoNotContactAsync(Org, lead, null, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        var result = await Service().SendAsync(Org, new SendEmailRequest("jean.private@example.ch", null, null, "Hello", "Hi", LeadId: lead));
+
+        result.Error.Code.Should().Be("Contact.DoNotContact");
+        _sender.Verify(s => s.SendComposedAsync(It.IsAny<ComposedEmail>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

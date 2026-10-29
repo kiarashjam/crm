@@ -42,4 +42,16 @@ public interface IContactRepository
     Task<IReadOnlyList<Contact>> FindLookalikesAsync(Contact contact, CancellationToken ct = default);
 
     Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The first of these addresses that belongs to a do-not-contact contact in the
+    /// workspace (archived ones included), or null when none does.
+    /// </summary>
+    Task<string?> FindDoNotContactAddressAsync(Guid organizationId, IReadOnlyCollection<string> addresses, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether this lead or contact of the workspace is do not contact: a contact by
+    /// its own flag or its address, a lead through its person contact or its address.
+    /// </summary>
+    Task<bool> IsDoNotContactAsync(Guid organizationId, Guid? leadId, Guid? contactId, CancellationToken ct = default);
 }

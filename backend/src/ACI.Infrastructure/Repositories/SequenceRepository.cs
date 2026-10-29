@@ -162,15 +162,15 @@ public sealed class SequenceRepository : ISequenceRepository
                 .Where(c => c.Id == targetId && c.OrganizationId == organizationId)
                 .Select(c => new { c.Name, c.Email, Company = c.Company != null ? c.Company.Name : null, c.DoNotContact, c.IsArchived })
                 .FirstOrDefaultAsync(ct);
-            return contact == null
-                ? SequenceTargetState.Missing
-                : new SequenceTargetState(true, contact.Name, contact.Email, contact.Company,
-                    DoNotContact: contact.DoNotContact, IsArchived: contact.IsArchived);
+            if (contact == null) return SequenceTargetState.Missing;
+            var contactStopped = contact.DoNotContact || await DoNotContactRules.AddressAsync(_db, organizationId, contact.Email, ct);
+            return new SequenceTargetState(true, contact.Name, contact.Email, contact.Company,
+                DoNotContact: contactStopped, IsArchived: contact.IsArchived);
         }
 
         var lead = await _db.Leads.AsNoTracking()
             .Where(l => l.Id == targetId && l.OrganizationId == organizationId)
-            .Select(l => new { l.Name, l.Email, Company = l.Company != null ? l.Company.Name : null, l.IsConverted, l.Status, l.AssignedToUserId })
+            .Select(l => new { l.Name, l.Email, Company = l.Company != null ? l.Company.Name : null, l.IsConverted, l.Status, l.AssignedToUserId, l.ConvertedToContactId })
             .FirstOrDefaultAsync(ct);
         if (lead == null) return SequenceTargetState.Missing;
         // Someone who has left the workspace no longer works its leads.
@@ -178,7 +178,10 @@ public sealed class SequenceRepository : ISequenceRepository
             && await _db.OrganizationMembers.AnyAsync(m => m.OrganizationId == organizationId && m.UserId == assignee, ct)
                 ? lead.AssignedToUserId
                 : null;
+        // A lead has no flag of its own; its person says "stop" through their contact.
+        // This was never read, so DoNotContact was always false for every lead.
+        var leadStopped = await DoNotContactRules.LeadAsync(_db, organizationId, targetId, lead.ConvertedToContactId, lead.Email, ct);
         return new SequenceTargetState(true, lead.Name, lead.Email, lead.Company, IsConverted: lead.IsConverted, Status: lead.Status,
-            OwnerUserId: owner);
+            DoNotContact: leadStopped, OwnerUserId: owner);
     }
 }
