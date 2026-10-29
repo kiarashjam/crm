@@ -24,8 +24,20 @@ public static class TaskReminderPolicy
     /// <summary>How far ahead of its due date a task counts as "due" for the bell.</summary>
     public static readonly TimeSpan DueSoonWindow = TimeSpan.FromDays(1);
 
-    /// <summary>Reminders go to whoever the task is assigned to, else its owner.</summary>
-    public static Guid RecipientId(TaskItem task) => task.AssigneeId ?? task.UserId;
+    /// <summary>
+    /// Reminders go to whoever the task is assigned to, else its owner, as long as they
+    /// are still in the task's workspace; null when neither is, and nothing is sent.
+    /// </summary>
+    /// <remarks>
+    /// Writes now refuse an assignee from outside the workspace, but tasks saved before
+    /// that, and tasks whose assignee has since left, kept emailing the task's title to
+    /// that person, and a repeating task passed them on to every occurrence.
+    /// </remarks>
+    public static Guid? RecipientId(TaskItem task, Func<Guid, bool> inWorkspace)
+    {
+        if (task.AssigneeId is Guid assignee && inWorkspace(assignee)) return assignee;
+        return inWorkspace(task.UserId) ? task.UserId : null;
+    }
 
     /// <summary>A task nobody needs chasing about any more.</summary>
     public static bool IsClosed(TaskItem task) =>

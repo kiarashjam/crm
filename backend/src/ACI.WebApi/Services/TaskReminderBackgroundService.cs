@@ -111,8 +111,23 @@ public class TaskReminderBackgroundService : BackgroundService
 
         if (candidates.Count == 0) return;
 
+        // Who is still in each task's workspace: an organization's members, and in a
+        // personal workspace only its owner (see TaskReminderPolicy.RecipientId).
+        var orgIds = candidates.Where(t => t.OrganizationId != null).Select(t => t.OrganizationId!.Value).Distinct().ToList();
+        var people = candidates.SelectMany(t => t.AssigneeId is Guid a ? new[] { a, t.UserId } : new[] { t.UserId }).Distinct().ToList();
+        var memberships = orgIds.Count == 0
+            ? new HashSet<(Guid, Guid)>()
+            : (await db.OrganizationMembers
+                .Where(m => orgIds.Contains(m.OrganizationId) && people.Contains(m.UserId))
+                .Select(m => new { m.OrganizationId, m.UserId })
+                .ToListAsync(ct))
+                .Select(m => (m.OrganizationId, m.UserId))
+                .ToHashSet();
+        Guid? RecipientOf(TaskItem task) => TaskReminderPolicy.RecipientId(task, user =>
+            task.OrganizationId is Guid org ? memberships.Contains((org, user)) : user == task.UserId);
+
         // One query for everyone's notification preferences rather than one per task.
-        var recipientIds = candidates.Select(TaskReminderPolicy.RecipientId).Distinct().ToList();
+        var recipientIds = candidates.Select(RecipientOf).OfType<Guid>().Distinct().ToList();
         var settingsByUserId = await db.UserSettings
             .Where(s => recipientIds.Contains(s.UserId))
             .ToDictionaryAsync(s => s.UserId, ct);
@@ -126,17 +141,19 @@ public class TaskReminderBackgroundService : BackgroundService
 
         foreach (var task in candidates)
         {
-            var recipientId = TaskReminderPolicy.RecipientId(task);
-            var recipient = task.Assignee ?? task.User;
+            // Null when neither the assignee nor the owner is still in the workspace.
+            var recipientId = RecipientOf(task);
+            var recipient = recipientId == null ? null : recipientId == task.AssigneeId ? task.Assignee : task.User;
             // No settings row means defaults, which have both channels on.
-            settingsByUserId.TryGetValue(recipientId, out var settings);
+            UserSettings? settings = null;
+            if (recipientId is Guid id) settingsByUserId.TryGetValue(id, out settings);
 
             var handled = true;
 
             // ── In-app ──
             if (TaskReminderPolicy.NeedsInAppReminder(task, now))
             {
-                if (settings != null && !settings.InAppNotificationsEnabled)
+                if (recipientId is not Guid inAppRecipient || (settings != null && !settings.InAppNotificationsEnabled))
                 {
                     inAppSkipped++;
                 }
@@ -145,7 +162,7 @@ public class TaskReminderBackgroundService : BackgroundService
                     try
                     {
                         var created = await notifications.CreateTaskReminderAsync(
-                            recipientId,
+                            inAppRecipient,
                             task.OrganizationId,
                             task,
                             TaskReminderPolicy.IsOverdue(task, now),
@@ -168,7 +185,7 @@ public class TaskReminderBackgroundService : BackgroundService
                 {
                     await automations.DispatchAsync("task.overdue", new AutomationEvent(
                         task.OrganizationId,
-                        recipientId,
+                        recipientId ?? task.UserId,
                         task.Id.ToString(),
                         task.Title,
                         LeadId: task.LeadId,
@@ -196,7 +213,7 @@ public class TaskReminderBackgroundService : BackgroundService
             var wantsEmail = settings == null
                 || (settings.EmailNotificationsEnabled && settings.EmailOnTaskDue);
 
-            if (!wantsEmail || string.IsNullOrWhiteSpace(recipient.Email))
+            if (recipient == null || !wantsEmail || string.IsNullOrWhiteSpace(recipient.Email))
             {
                 emailSkipped++;
             }
