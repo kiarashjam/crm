@@ -88,6 +88,8 @@ export default function GiftCards() {
   const [statusFilter, setStatusFilter] = useState<'All' | GiftCardStatus>('All');
   const [issueDialog, setIssueDialog] = useState(false);
   const [redeemDialog, setRedeemDialog] = useState<GiftCard | null>(null);
+  // One key per redemption: pressing Redeem again after a timeout cannot spend the card twice.
+  const [redeemKey, setRedeemKey] = useState('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const [issueForm, setIssueForm] = useState({
@@ -196,6 +198,7 @@ export default function GiftCards() {
       redeemedByName: c.recipientName,
       appliedTo: '',
     });
+    setRedeemKey(crypto.randomUUID());
     setRedeemDialog(c);
   };
 
@@ -213,6 +216,7 @@ export default function GiftCards() {
         amount,
         redeemedByName: redeemForm.redeemedByName.trim() || redeemDialog.recipientName,
         appliedTo: redeemForm.appliedTo.trim() || undefined,
+        idempotencyKey: redeemKey,
       });
       if (result) {
         toast.success(`Redeemed ${formatCurrency(result.amount)}`);
@@ -221,8 +225,10 @@ export default function GiftCards() {
       }
       setRedeemDialog(null);
       await load();
-    } catch {
-      toast.error('Failed to redeem');
+    } catch (err) {
+      // The server says why: expired, used up, or used elsewhere at the same moment.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to redeem');
+      await load();
     } finally {
       setSaving(false);
     }

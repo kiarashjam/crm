@@ -16,7 +16,8 @@ public interface IClubDocumentService
     Task<bool> DeleteAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct = default);
     Task<JsonObject?> RsvpAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<JsonObject?> AcknowledgeDonationAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
-    Task<Result<JsonObject>> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
+    /// <param name="idempotencyKey">From the Idempotency-Key header: a retry carrying the same key gets the first redemption back instead of spending the card again.</param>
+    Task<Result<JsonObject>> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, string? idempotencyKey, CancellationToken ct = default);
     Task<Result<JsonObject>> VoidGiftCardAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<Result<JsonObject>> AddTabItemAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
     Task<Result<JsonObject>> RemoveTabItemAsync(Guid? organizationId, Guid tabId, Guid itemId, CancellationToken ct = default);
@@ -73,10 +74,26 @@ public sealed class ClubDocumentService : IClubDocumentService
             await EnsureResourcesAsync(organizationId, ct);
         var rows = await _docs.ListAsync(organizationId, kind, ct);
         var array = new JsonArray();
+        var now = DateTime.UtcNow;
         foreach (var row in rows)
             if (Parse(row.Payload) is JsonObject obj)
-                array.Add(obj);
+                array.Add(AsOf(kind, obj, now));
         return array;
+    }
+
+    /// <summary>
+    /// A record as it stands now. Some states come from the clock rather than from a
+    /// write: a gift card past its expiry is expired whether or not anything saved that.
+    /// </summary>
+    /// <remarks>
+    /// Worked out on every read, so the screens, the reports and the assistant all see
+    /// the same thing, and no read has to write.
+    /// </remarks>
+    private static JsonObject AsOf(string kind, JsonObject obj, DateTime now)
+    {
+        if (kind == "gift-cards" && Text(obj, "status") == "Active" && ReadDate(obj, "expiresAtUtc") is { } expires && expires <= now)
+            obj["status"] = "Expired";
+        return obj;
     }
 
     public async Task<Result<JsonObject>> CreateAsync(Guid? organizationId, string kind, JsonObject body, CancellationToken ct = default)
@@ -163,18 +180,27 @@ public sealed class ClubDocumentService : IClubDocumentService
         return row;
     }
 
-    public async Task<Result<JsonObject>> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> RedeemGiftCardAsync(Guid? organizationId, Guid id, JsonObject body, string? idempotencyKey, CancellationToken ct = default)
     {
+        var key = idempotencyKey?.Trim() ?? "";
+        if (key.Length > 100) return DomainErrors.Club.TooLong("An Idempotency-Key", 100);
+        // A retry after a timeout, say, carries the key of the try that already went through.
+        if (key.Length > 0 && await RedemptionAsync(organizationId, id, key, ct) is { } earlier) return earlier;
+
         var card = await Load(organizationId, "gift-cards", id, ct);
-        if (card == null || Text(card, "status") != "Active") return DomainErrors.Club.GiftCardNotFound;
+        if (card == null) return DomainErrors.Club.GiftCardNotFound;
+        var status = Text(card, "status");
+        // Only the clock says a card has expired, so it is checked here rather than trusted to a status.
+        if (status == "Active" && ReadDate(card, "expiresAtUtc") is { } expires && expires <= DateTime.UtcNow)
+            return DomainErrors.Club.GiftCardExpired(expires);
+        if (status != "Active") return DomainErrors.Club.GiftCardNotActive(status);
+        if (Amount(body, "amount") is not { } asked) return DomainErrors.Club.AmountInvalid;
         var remaining = Dec(card, "remainingValue");
-        var asked = Dec(body, "amount");
         var amount = Math.Min(asked, remaining);
-        if (amount <= 0) return DomainErrors.Club.GiftCardNotFound;
+        if (amount <= 0) return DomainErrors.Club.GiftCardNotActive("Redeemed");
         remaining -= amount;
         card["remainingValue"] = remaining;
         card["status"] = remaining <= 0 ? "Redeemed" : "Active";
-        await Save(organizationId, "gift-cards", id, card, ct);
 
         var redemption = new JsonObject
         {
@@ -186,8 +212,27 @@ public sealed class ClubDocumentService : IClubDocumentService
             ["redeemedAtUtc"] = DateTime.UtcNow.ToString("o"),
             ["appliedTo"] = body["appliedTo"]?.DeepClone(),
         };
-        await Save(organizationId, "gift-card-redemptions", ReadId(redemption)!.Value, redemption, ct);
-        return redemption;
+        if (key.Length > 0) redemption["idempotencyKey"] = key;
+
+        // Two terminals redeeming the same card both read its balance, and both spent it.
+        // Now the card is saved first, checked against the balance this request read: the
+        // second terminal is refused there, before any redemption of its own is written,
+        // and the card and its redemption are saved together or not at all.
+        return await WriteAsync(async () =>
+        {
+            await Save(organizationId, "gift-cards", id, card, ct);
+            await Save(organizationId, "gift-card-redemptions", ReadId(redemption)!.Value, redemption, ct);
+            return Result.Success(redemption);
+        }, ct, DomainErrors.Club.GiftCardChanged);
+    }
+
+    /// <summary>The redemption of this card made with this idempotency key, if there is one.</summary>
+    private async Task<JsonObject?> RedemptionAsync(Guid? organizationId, Guid cardId, string key, CancellationToken ct)
+    {
+        foreach (var row in await _docs.ListAsync(organizationId, "gift-card-redemptions", ct))
+            if (Parse(row.Payload) is { } redemption && Text(redemption, "giftCardId") == cardId.ToString() && Text(redemption, "idempotencyKey") == key)
+                return redemption;
+        return null;
     }
 
     public async Task<Result<JsonObject>> VoidGiftCardAsync(Guid? organizationId, Guid id, CancellationToken ct = default)

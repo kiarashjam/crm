@@ -606,6 +606,20 @@ public static class DomainErrors
         public static readonly Error Changed = new(
             "ClubRecord.Changed.Conflict", "Someone else changed this at the same moment, so nothing was saved. Reload and try again.");
 
+        public static readonly Error GiftCardChanged = new(
+            "GiftCard.Changed.Conflict", "This gift card was used somewhere else at the same moment, so nothing was redeemed. Check its balance and try again.");
+
+        public static Error GiftCardExpired(DateTime expiredAtUtc) => new(
+            "GiftCard.Expired.Conflict", $"This gift card expired on {expiredAtUtc:d MMM yyyy}, so it can't be redeemed.");
+
+        public static Error GiftCardNotActive(string status) => new(
+            "GiftCard.NotActive.Conflict", status switch
+            {
+                "Redeemed" => "This gift card has nothing left on it.",
+                "Voided" => "This gift card was voided, so it can't be redeemed.",
+                _ => "This gift card can't be redeemed.",
+            });
+
         public static Error DateInvalid(string what) => new(
             "Club.DateInvalid", $"{what} must be a date.");
 

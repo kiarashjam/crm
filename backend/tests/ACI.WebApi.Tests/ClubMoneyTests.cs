@@ -1,6 +1,9 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using ACI.Infrastructure.Persistence;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
 namespace ACI.WebApi.Tests;
@@ -178,5 +181,91 @@ public class ClubMoneyTests
         edited.GetProperty("memberId").GetString().Should().Be(memberId.ToString(), "a PUT cannot move someone's dues to another member");
         edited.GetProperty("startedAtUtc").GetString().Should().Be(sub.GetProperty("startedAtUtc").GetString());
         edited.TryGetProperty("lastChargedAtUtc", out _).Should().BeFalse();
+    }
+
+    // ── gift cards ───────────────────────────────────────────────────────────
+
+    private static async Task<string> CardAsync(HttpClient client, decimal faceValue, DateTime? expiresAtUtc = null) =>
+        (await Json(await client.PostAsync("/api/gift-cards", Body(new
+        {
+            purchaserName = "Ana", recipientName = "Bea", faceValue, expiresAtUtc,
+        })), "issue a gift card")).GetProperty("id").GetString()!;
+
+    private static HttpRequestMessage Redeem(string cardId, decimal amount, string? key = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/gift-cards/{cardId}/redeem")
+        {
+            Content = Body(new { amount, redeemedByName = "Front desk" }),
+        };
+        if (key != null) request.Headers.Add("Idempotency-Key", key);
+        return request;
+    }
+
+    private static async Task<decimal> RemainingAsync(HttpClient client, string cardId) =>
+        (await Json(await client.GetAsync("/api/gift-cards"), "list cards")).EnumerateArray()
+            .Single(c => c.GetProperty("id").GetString() == cardId).GetProperty("remainingValue").GetDecimal();
+
+    [Fact]
+    public async Task TwoRedeemsAtOnceCannotSpendOneBalanceTwice()
+    {
+        using var factory = new RaceFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var card = await CardAsync(client, 50);
+        // Both terminals read the card, with 50 on it, before either saves.
+        factory.Gate.Arm("gift-cards");
+
+        var answers = await Task.WhenAll(client.SendAsync(Redeem(card, 50)), client.SendAsync(Redeem(card, 50)));
+
+        answers.Select(a => a.StatusCode).Should().BeEquivalentTo(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict },
+            "the second redeem read a balance that was already spent");
+        (await answers.Single(a => a.StatusCode == HttpStatusCode.Conflict).Content.ReadAsStringAsync())
+            .Should().Contain("at the same moment");
+        (await Json(await client.GetAsync("/api/gift-cards/redemptions"), "redemptions")).GetArrayLength()
+            .Should().Be(1, "100 used to be redeemed from a 50 card");
+        (await RemainingAsync(client, card)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ARetriedRedeemSpendsTheCardOnce()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var card = await CardAsync(client, 50);
+        var key = Guid.NewGuid().ToString();
+
+        var first = await Json(await client.SendAsync(Redeem(card, 20, key)), "redeem");
+        var retry = await Json(await client.SendAsync(Redeem(card, 20, key)), "the same redeem, sent again after a timeout");
+
+        retry.GetProperty("id").GetString().Should().Be(first.GetProperty("id").GetString(), "it is the same redemption");
+        (await RemainingAsync(client, card)).Should().Be(30);
+        await Json(await client.SendAsync(Redeem(card, 20, Guid.NewGuid().ToString())), "a new redeem has a new key");
+        (await RemainingAsync(client, card)).Should().Be(10);
+        (await Json(await client.GetAsync("/api/gift-cards/redemptions"), "redemptions")).GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task AnExpiredCardIsNeitherRedeemableNorOutstanding()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var card = await CardAsync(client, 100, DateTime.UtcNow.AddDays(30));
+        // Time passes: the card's expiry is now behind it, and nothing has saved that.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var row = db.ClubDocuments.Single(d => d.Id == Guid.Parse(card));
+            var payload = JsonNode.Parse(row.Payload)!.AsObject();
+            payload["expiresAtUtc"] = DateTime.UtcNow.AddDays(-1).ToString("o");
+            row.Payload = payload.ToJsonString();
+            await db.SaveChangesAsync();
+        }
+
+        var listed = (await Json(await client.GetAsync("/api/gift-cards"), "list cards"))[0];
+        listed.GetProperty("status").GetString().Should().Be("Expired", "the outstanding-balance figure counts Active cards only");
+
+        var body = await Refused(await client.SendAsync(Redeem(card, 40)), HttpStatusCode.Conflict, "redeeming an expired card");
+        body.Should().Contain("expired on");
+        (await RemainingAsync(client, card)).Should().Be(100);
+        (await Json(await client.GetAsync("/api/gift-cards/redemptions"), "redemptions")).GetArrayLength().Should().Be(0);
     }
 }

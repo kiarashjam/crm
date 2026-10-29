@@ -231,7 +231,7 @@ public class GiftCardsController : ControllerBase
     [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "gift-cards", ct)); }
     [HttpGet("redemptions")] public async Task<IActionResult> Redemptions(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "gift-card-redemptions", ct)); }
     [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "gift-cards", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPost("{id:guid}/redeem")] public async Task<IActionResult> Redeem(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.RedeemGiftCardAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPost("{id:guid}/redeem")] public async Task<IActionResult> Redeem(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.RedeemGiftCardAsync(org, id, await ClubDocs.Body(Request, ct), Request.Headers["Idempotency-Key"].ToString(), ct)); }
     [HttpPost("{id:guid}/void")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidGiftCardAsync(org, id, ct)); }
 }
 
