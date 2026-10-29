@@ -491,7 +491,7 @@ export default function Loyalty() {
                           {formatPoints(b.points)} pts
                         </span>
                         <span className="text-sm text-slate-500">
-                          ≈ ${(b.points / POINTS_PER_DOLLAR).toFixed(2)}
+                          ≈ {formatCurrency(b.points / POINTS_PER_DOLLAR)}
                         </span>
                       </div>
                     </StaggerItem>

@@ -6,7 +6,8 @@
 // settings (CHF unless the club chose another), through one formatter.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { Member } from '@/app/api/members';
 import type { Charge } from '@/app/api/charges';
@@ -41,8 +42,24 @@ vi.mock('@/app/api/charges', async (importOriginal) => ({
   getPayments: async () => [],
 }));
 
+vi.mock('@/app/api/loyalty', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/api/loyalty')>()),
+  getLoyaltyLedger: async () => [{
+    id: 'l1', memberId: 'm1', memberName: 'Jean Dupont', kind: 'Earned', reason: 'DiningPurchase', points: 2050,
+    createdAtUtc: '2026-10-01T00:00:00Z',
+  }],
+}));
+
 const Statements = (await import('./Statements')).default;
 const Members = (await import('./Members')).default;
+const Loyalty = (await import('./Loyalty')).default;
+const Applications = (await import('./Applications')).default;
+
+// Radix Select asks the browser about pointer capture and scrolling, which happy-dom lacks.
+const proto = Element.prototype as unknown as Record<string, unknown>;
+proto.hasPointerCapture ??= () => false;
+proto.releasePointerCapture ??= () => undefined;
+proto.scrollIntoView ??= () => undefined;
 
 const show = (page: React.ReactNode) => render(<MemoryRouter>{page}</MemoryRouter>);
 
@@ -80,5 +97,34 @@ describe('the members list', () => {
     const text = document.body.textContent ?? '';
     expect(text).not.toMatch(/321(?![.,]\d)/);
     expect(text).not.toContain('$');
+  });
+});
+
+describe('pages that built their own dollar amounts', () => {
+  // These wrote "$" into the text by hand rather than through a formatter.
+  it('shows what a member\'s points are worth in the club currency', async () => {
+    const user = userEvent.setup();
+    show(<Loyalty />);
+
+    await user.click(await screen.findByRole('tab', { name: /Balances by member/ }));
+
+    expect(await screen.findByText(/2,050 pts/)).toBeInTheDocument();
+    expect(screen.getByText(/^≈\s?CHF\s?20[.,]50$/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('$');
+  });
+
+  it('shows the dues of each tier an applicant can ask for in the club currency', async () => {
+    const user = userEvent.setup();
+    show(<Applications />);
+
+    await user.click((await screen.findAllByRole('button', { name: /New application/ }))[0]!);
+    await user.click(within(await screen.findByRole('dialog')).getByLabelText('Requested tier'));
+
+    const options = await screen.findAllByRole('option');
+    expect(options.length).toBe(4);
+    for (const option of options) {
+      expect(option).toHaveTextContent(/CHF/);
+      expect(option).not.toHaveTextContent('$');
+    }
   });
 });
