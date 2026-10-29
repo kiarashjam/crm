@@ -28,7 +28,7 @@ public class LeadUpdateAutomationTests
         _leads.Setup(r => r.UpdateAsync(It.IsAny<Lead>(), User, Org, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Lead l, Guid _, Guid? _, CancellationToken _) => l);
         _sut = new LeadService(_leads.Object, new Mock<ICompanyRepository>().Object, new Mock<IContactRepository>().Object,
-            new Mock<IDealRepository>().Object, _automation.Object, NullLogger<LeadService>.Instance);
+            new Mock<IDealRepository>().Object, _automation.Object, WorkspaceRecordsMock.InWorkspace().Object, NullLogger<LeadService>.Instance);
     }
 
     private Lead Given(string status = "New", int score = 35) => _lead = new Lead

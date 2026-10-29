@@ -262,7 +262,7 @@ public sealed class LeadOpsService : ILeadOpsService
     public async Task<Guid?> AttachInquiryAsync(Guid? organizationId, Guid actingUserId, string email, string source, string summary, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(email)) return null;
-        var existing = await _automation.FindOpenDuplicateAsync(organizationId, email, null, ct);
+        var existing = await _automation.FindOpenDuplicateAsync(actingUserId, organizationId, email, null, ct);
         if (existing == null) return null;
 
         // An inbound inquiry, not our response to them — so automated: it must not

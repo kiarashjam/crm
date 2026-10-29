@@ -1532,6 +1532,24 @@ try
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'Description')
                     ALTER TABLE [Contacts] ADD [Description] nvarchar(max) NULL;
             ");
+
+            // Contact emails are unique per workspace: per organization, and with none,
+            // per user (see ContactEmailIndexes). An index the existing rows do not meet
+            // is left out rather than failing, and in its own catch, so it cannot stop
+            // the schema work after it; the warning says which data needs merging.
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(ACI.WebApi.ContactEmailIndexes.Sql);
+                var emailIndexes = await db.Database.SqlQueryRaw<int>(ACI.WebApi.ContactEmailIndexes.CountSql).SingleAsync();
+                if (emailIndexes < 2)
+                    Log.Warning("Some active contacts in one workspace share an email, so the unique index on contact "
+                        + "emails ({OrganizationIndex}, {PersonalIndex}) is not in place; merge the duplicates and restart",
+                        ACI.WebApi.ContactEmailIndexes.OrganizationIndex, ACI.WebApi.ContactEmailIndexes.PersonalIndex);
+            }
+            catch (Exception indexEx)
+            {
+                Log.Warning(indexEx, "Could not put the per-workspace contact email indexes in place; it will be retried on the next start");
+            }
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')

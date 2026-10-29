@@ -260,10 +260,12 @@ public class LeadsController : ControllerBase
     /// <returns>The updated lead.</returns>
     /// <response code="200">Lead assignment updated.</response>
     /// <response code="401">User is not authenticated.</response>
+    /// <response code="403">The new owner is not a member of this workspace.</response>
     /// <response code="404">Lead not found.</response>
     [HttpPut("{id:guid}/assign")]
     [ProducesResponseType(typeof(LeadDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<LeadDto>> Assign(
         Guid id,

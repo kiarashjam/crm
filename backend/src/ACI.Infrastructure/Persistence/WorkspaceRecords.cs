@@ -29,4 +29,22 @@ public sealed class WorkspaceRecords : IWorkspaceRecords
             RecordTypes.Deal => _db.Deals.VisibleTo(_db, userId, organizationId).AnyAsync(r => r.Id == recordId, ct),
             _ => Task.FromResult(false),
         };
+
+    public Task<bool> IsAssignableAsync(Guid assigneeId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        organizationId == null
+            ? Task.FromResult(assigneeId == userId)
+            : _db.OrganizationMembers.AnyAsync(m => m.OrganizationId == organizationId && m.UserId == assigneeId, ct);
+
+    public Task<bool> PipelineExistsAsync(Guid pipelineId, Guid? organizationId, CancellationToken ct = default) =>
+        organizationId == null
+            ? Task.FromResult(false)
+            : _db.Pipelines.AnyAsync(p => p.Id == pipelineId && p.OrganizationId == organizationId, ct);
+
+    public async Task<Guid?> StagePipelineAsync(Guid stageId, Guid? organizationId, CancellationToken ct = default) =>
+        organizationId == null
+            ? null
+            : await _db.DealStages
+                .Where(s => s.Id == stageId && s.Pipeline.OrganizationId == organizationId)
+                .Select(s => (Guid?)s.PipelineId)
+                .FirstOrDefaultAsync(ct);
 }

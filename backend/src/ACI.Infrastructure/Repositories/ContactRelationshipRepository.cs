@@ -18,14 +18,21 @@ public sealed class ContactRelationshipRepository : IContactRelationshipReposito
             .Where(r => r.ContactId == contactId || r.RelatedContactId == contactId)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<ContactRelationship>> ForContactsAsync(IReadOnlyCollection<Guid> contactIds, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ContactRelationship>> ForContactsAsync(IReadOnlyCollection<Guid> contactIds, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         if (contactIds.Count == 0) return [];
+        // Both people have to be in the workspace. A lead linked to another personal
+        // user's contact (by an email match that ignored whose contact it was) listed
+        // that contact's spouse and family, with their names and emails.
         return await _db.ContactRelationships
             .AsNoTracking()
             .Include(r => r.Contact)
             .Include(r => r.RelatedContact)
             .Where(r => contactIds.Contains(r.ContactId) || contactIds.Contains(r.RelatedContactId))
+            .Where(r => organizationId == null
+                ? r.Contact.OrganizationId == null && r.Contact.UserId == userId
+                    && r.RelatedContact.OrganizationId == null && r.RelatedContact.UserId == userId
+                : r.Contact.OrganizationId == organizationId && r.RelatedContact.OrganizationId == organizationId)
             .ToListAsync(ct);
     }
 

@@ -109,12 +109,14 @@ public sealed class ContactRepository : IContactRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<bool> EmailExistsAsync(string email, Guid? organizationId, Guid? excludeContactId = null, CancellationToken ct = default)
+    public async Task<bool> EmailExistsAsync(string email, Guid userId, Guid? organizationId, Guid? excludeContactId = null, CancellationToken ct = default)
     {
         var normalizedEmail = email.Trim().ToLowerInvariant();
-        var query = _db.Contacts
-            .Where(c => !c.IsArchived && c.Email.ToLower() == normalizedEmail)
-            .Where(c => organizationId == null ? c.OrganizationId == null : c.OrganizationId == organizationId);
+        // The workspace's contacts, as everywhere else. "OrganizationId IS NULL" alone
+        // was every personal user's, so check-email answered whether some other user
+        // had that person, and adding them was refused as a duplicate nobody could see.
+        var query = FilterByUserAndOrg(_db.Contacts, userId, organizationId)
+            .Where(c => !c.IsArchived && c.Email.ToLower() == normalizedEmail);
         if (excludeContactId.HasValue)
             query = query.Where(c => c.Id != excludeContactId.Value);
         return await query.AnyAsync(ct);
@@ -187,23 +189,36 @@ public sealed class ContactRepository : IContactRepository
         if (string.IsNullOrWhiteSpace(lead.Name) || string.IsNullOrWhiteSpace(lead.Email))
             return;
 
+        // Only contacts in the lead's own workspace. Matched by organization alone,
+        // two users with no organization shared one pool: a lead took another user's
+        // contact of the same email, and showed that contact's spouse and family.
+        var workspace = FilterByUserAndOrg(_db.Contacts, lead.UserId, lead.OrganizationId);
+
         var linked = await _db.Contacts.FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct);
         if (linked != null)
         {
-            await RememberContactOnLeadAsync(lead, linked.Id, ct);
-            return;
+            var sameWorkspace = linked.OrganizationId == lead.OrganizationId
+                && (lead.OrganizationId != null || linked.UserId == lead.UserId);
+            if (sameWorkspace)
+            {
+                await RememberContactOnLeadAsync(lead, linked.Id, ct);
+                return;
+            }
+            // Another user's contact, claimed by the old match. It lets go of this lead
+            // (one contact per lead), and the lead gets a contact of its own below.
+            linked.ConvertedFromLeadId = null;
+            await _db.SaveChangesAsync(ct);
         }
 
         if (lead.ConvertedToContactId is Guid existingId)
         {
-            var existing = await _db.Contacts.FirstOrDefaultAsync(c => c.Id == existingId && !c.IsArchived, ct);
+            var existing = await workspace.FirstOrDefaultAsync(c => c.Id == existingId && !c.IsArchived, ct);
             if (existing != null)
                 return;
         }
 
         var email = lead.Email.Trim();
-        var byEmail = await _db.Contacts.FirstOrDefaultAsync(
-            c => !c.IsArchived && c.Email == email && c.OrganizationId == lead.OrganizationId, ct);
+        var byEmail = await workspace.FirstOrDefaultAsync(c => !c.IsArchived && c.Email == email, ct);
         if (byEmail != null)
         {
             if (byEmail.ConvertedFromLeadId == null)

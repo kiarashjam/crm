@@ -26,6 +26,7 @@ public class DealServiceTests
         _sut = new DealService(
             _dealRepositoryMock.Object,
             _activityRepositoryMock.Object,
+            WorkspaceRecordsMock.InWorkspace().Object,
             _loggerMock.Object);
     }
 

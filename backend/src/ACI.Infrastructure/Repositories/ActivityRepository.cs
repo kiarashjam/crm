@@ -11,10 +11,19 @@ public sealed class ActivityRepository : IActivityRepository
 
     public ActivityRepository(AppDbContext db) => _db = db;
 
-    private static IQueryable<Activity> FilterByUserAndOrg(IQueryable<Activity> q, Guid userId, Guid? organizationId) =>
-        organizationId == null
+    /// <summary>
+    /// The workspace's activities, less those on a private deal the caller cannot see.
+    /// They carry the deal's name and what was said on the call, and Recent Activity and
+    /// the Reports chart read them from here, so they are as hidden as the deal is.
+    /// </summary>
+    private IQueryable<Activity> FilterByUserAndOrg(IQueryable<Activity> q, Guid userId, Guid? organizationId)
+    {
+        var visibleDeals = _db.Deals.VisibleTo(_db, userId, organizationId);
+        var inWorkspace = organizationId == null
             ? q.Where(a => a.UserId == userId && a.OrganizationId == null)
             : q.Where(a => a.OrganizationId == organizationId);
+        return inWorkspace.Where(a => a.DealId == null || visibleDeals.Any(d => d.Id == a.DealId));
+    }
 
     /// <summary>Include Contact, Deal, Lead, and User nav properties so the DTO mapper can read names.</summary>
     private static IQueryable<Activity> IncludeRelated(IQueryable<Activity> q) =>
@@ -74,15 +83,16 @@ public sealed class ActivityRepository : IActivityRepository
             .OrderByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
+    // A lead's activities are the whole organization's, not only the caller's, so the
+    // team sees each other's calls; with no organization they are the user's own.
+    // "OrganizationId IS NULL" alone was every personal user's.
     public async Task<IReadOnlyList<Activity>> GetByLeadIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
-        // For lead activities, show all activities for the lead within the organization (not just current user's)
-        // This allows team members to see each other's interactions with leads
-        await IncludeRelated(_db.Activities.AsNoTracking())
-            .Where(a => a.LeadId == leadId && (organizationId == null ? a.OrganizationId == null : a.OrganizationId == organizationId))
+        await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId))
+            .Where(a => a.LeadId == leadId)
             .OrderByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<Activity>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid? organizationId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Activity>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         if (leadIds.Count == 0) return Array.Empty<Activity>();
         var ids = leadIds.Where(id => id != Guid.Empty).Distinct().Take(100).ToList();
@@ -90,10 +100,8 @@ public sealed class ActivityRepository : IActivityRepository
 
         // Scalar columns only. The leads list renders type, subject, body, and time,
         // so joining contact, deal, lead, and user would multiply the payload for no benefit.
-        return await _db.Activities.AsNoTracking()
-            .Where(a => a.LeadId != null
-                && ids.Contains(a.LeadId.Value)
-                && (organizationId == null ? a.OrganizationId == null : a.OrganizationId == organizationId))
+        return await FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId)
+            .Where(a => a.LeadId != null && ids.Contains(a.LeadId.Value))
             .OrderByDescending(a => a.CreatedAtUtc)
             .ToListAsync(ct);
     }
@@ -151,12 +159,11 @@ public sealed class ActivityRepository : IActivityRepository
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyDictionary<Guid, int>> GetActivityCountsByOrgAsync(Guid? organizationId, CancellationToken ct = default)
+    public async Task<IReadOnlyDictionary<Guid, int>> GetActivityCountsByOrgAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
-        var query = _db.Activities.Where(a =>
-            organizationId == null ? a.OrganizationId == null : a.OrganizationId == organizationId);
-
-        var list = await query
+        // With no organization, only the caller's own count. Every personal user's
+        // activities were counted, which listed the ids of everyone who had any.
+        var list = await FilterByUserAndOrg(_db.Activities, userId, organizationId)
             .GroupBy(a => a.UserId)
             .Select(g => new { UserId = g.Key, Count = g.Count() })
             .ToListAsync(ct);

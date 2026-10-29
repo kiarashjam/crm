@@ -71,7 +71,7 @@ public interface IActivityService
     /// Gets activities for many leads in one query. Used by the leads list so it
     /// does not call the per-lead endpoint once per card.
     /// </summary>
-    Task<IReadOnlyList<ActivityDto>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid? organizationId, CancellationToken ct = default);
+    Task<IReadOnlyList<ActivityDto>> GetByLeadIdsAsync(IReadOnlyCollection<Guid> leadIds, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     /// <summary>
     /// Creates a new activity.
@@ -108,8 +108,9 @@ public interface IActivityService
     /// Gets activity counts per user for all members in the organization.
     /// Used by team management pages to display real activity metrics (HP-3).
     /// </summary>
+    /// <param name="userId">The caller; with no organization, only their own count is returned.</param>
     /// <param name="organizationId">The organization ID.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A dictionary mapping user IDs to their activity counts.</returns>
-    Task<IReadOnlyDictionary<Guid, int>> GetOrgMemberActivityCountsAsync(Guid? organizationId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, int>> GetOrgMemberActivityCountsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

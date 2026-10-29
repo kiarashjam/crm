@@ -16,6 +16,7 @@ public class LeadService : ILeadService
     private readonly IContactRepository _contactRepository;
     private readonly IDealRepository _dealRepository;
     private readonly ILeadAutomation _automation;
+    private readonly IWorkspaceRecords _records;
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IContactRelationshipRepository? _relationships;
@@ -27,6 +28,7 @@ public class LeadService : ILeadService
         IContactRepository contactRepository, 
         IDealRepository dealRepository,
         ILeadAutomation automation,
+        IWorkspaceRecords records,
         ILogger<LeadService> logger,
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
@@ -37,6 +39,7 @@ public class LeadService : ILeadService
         _contactRepository = contactRepository;
         _dealRepository = dealRepository;
         _automation = automation;
+        _records = records;
         _logger = logger;
         _automations = automations;
         _webhooks = webhooks;
@@ -61,7 +64,7 @@ public class LeadService : ILeadService
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, options, ct);
 
-        var dtos = await MapWithRelationshipsAsync(items, ct);
+        var dtos = await MapWithRelationshipsAsync(items, userId, organizationId, ct);
 
         _logger.LogInformation(
             "Retrieved {Count} of {Total} leads for user {UserId} (page {Page})",
@@ -92,7 +95,7 @@ public class LeadService : ILeadService
             "Retrieved {Count} leads for user {UserId}",
             list.Count, userId);
 
-        return await MapWithRelationshipsAsync(list, ct);
+        return await MapWithRelationshipsAsync(list, userId, organizationId, ct);
     }
 
     /// <inheritdoc />
@@ -116,7 +119,7 @@ public class LeadService : ILeadService
             "Search returned {Count} leads for query '{Query}'",
             list.Count, query);
 
-        return await MapWithRelationshipsAsync(list, ct);
+        return await MapWithRelationshipsAsync(list, userId, organizationId, ct);
     }
 
     /// <inheritdoc />
@@ -174,9 +177,12 @@ public class LeadService : ILeadService
             return DomainErrors.Lead.EmailInvalid;
         }
 
+        var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { CompanyId = request.CompanyId }, ct);
+        if (links.IsFailure) return links.Error;
+
         if (!request.AllowDuplicate)
         {
-            var duplicate = await _automation.FindOpenDuplicateAsync(organizationId, request.Email, null, ct);
+            var duplicate = await _automation.FindOpenDuplicateAsync(userId, organizationId, request.Email, null, ct);
             if (duplicate != null)
             {
                 return new Error(
@@ -274,9 +280,15 @@ public class LeadService : ILeadService
             return DomainErrors.Lead.EmailInvalid;
         }
 
+        if (request.CompanyId is Guid companyId && companyId != existing.CompanyId)
+        {
+            var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { CompanyId = companyId }, ct);
+            if (links.IsFailure) return links.Error;
+        }
+
         if (request.Email != null && !request.Email.Trim().Equals(existing.Email, StringComparison.OrdinalIgnoreCase))
         {
-            var duplicate = await _automation.FindOpenDuplicateAsync(organizationId, request.Email, existing.Id, ct);
+            var duplicate = await _automation.FindOpenDuplicateAsync(userId, organizationId, request.Email, existing.Id, ct);
             if (duplicate != null)
                 return new Error("Lead.Duplicate", $"An open lead with this email already exists ({duplicate.Name}).");
         }
@@ -368,6 +380,11 @@ public class LeadService : ILeadService
         _logger.LogInformation(
             "Assigning lead {LeadId} to user {AssignedToUserId} (requested by {UserId})",
             id, assignedToUserId, userId);
+
+        // In a workspace, a member; in a personal one, only you. Any account could be
+        // made the owner, and then got the lead's SLA alerts and new inquiries.
+        var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { AssigneeId = assignedToUserId }, ct);
+        if (links.IsFailure) return links.Error;
 
         var updated = await _repository.AssignAsync(id, userId, organizationId, assignedToUserId, ct);
 
@@ -505,6 +522,17 @@ public class LeadService : ILeadService
                 "Lead conversion failed: No conversion action specified for lead {LeadId}",
                 leadId);
             return new Error("Lead.ConversionRequired", "At least one conversion action must be specified");
+        }
+
+        // Before anything is created, so a refused pipeline or stage leaves no half-converted lead.
+        if (request.CreateDeal && !request.ExistingDealId.HasValue)
+        {
+            var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
+            {
+                PipelineId = request.PipelineId,
+                DealStageId = request.DealStageId,
+            }, ct);
+            if (links.IsFailure) return links.Error;
         }
 
         Guid? companyId = lead.CompanyId;
@@ -677,13 +705,13 @@ public class LeadService : ILeadService
     /// Leads for a list, each with the relationships of its person contact (spouse or
     /// partner first), read in one query for the whole page.
     /// </summary>
-    private async Task<List<LeadDto>> MapWithRelationshipsAsync(IReadOnlyList<Lead> leads, CancellationToken ct)
+    private async Task<List<LeadDto>> MapWithRelationshipsAsync(IReadOnlyList<Lead> leads, Guid userId, Guid? organizationId, CancellationToken ct)
     {
         var dtos = leads.Select(Map).ToList();
         if (_relationships == null) return dtos;
         var contactIds = leads.Where(l => l.ConvertedToContactId != null).Select(l => l.ConvertedToContactId!.Value).Distinct().ToList();
         if (contactIds.Count == 0) return dtos;
-        var rows = await _relationships.ForContactsAsync(contactIds, ct);
+        var rows = await _relationships.ForContactsAsync(contactIds, userId, organizationId, ct);
         if (rows.Count == 0) return dtos;
         for (var i = 0; i < leads.Count; i++)
         {
