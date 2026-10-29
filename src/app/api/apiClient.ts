@@ -90,13 +90,28 @@ export class ApiError extends Error {
    * so this is what tells "no such feature" from "no such record".
    */
   readonly hasBody: boolean;
+  /**
+   * The server's error code (problem+json `errorCode`, e.g. "Contact.DoNotContact"),
+   * for a caller whose next step depends on why it was refused, not only that it was.
+   */
+  readonly code?: string;
 
-  constructor(message: string, status: number, path?: string, hasBody = false) {
+  constructor(message: string, status: number, path?: string, hasBody = false, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.path = path;
     this.hasBody = hasBody;
+    this.code = code;
+  }
+}
+
+function errorCodeFrom(text: string): string | undefined {
+  try {
+    const code = (JSON.parse(text) as { errorCode?: unknown } | null)?.errorCode;
+    return typeof code === 'string' && code ? code : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -123,7 +138,7 @@ export async function authFetchJson<T>(path: string, options: AuthFetchOptions =
     // The status rides along as a property instead of being prefixed onto the
     // text, so callers that need to branch on it (notifications skips endpoints
     // that 404) can do so without parsing prose.
-    throw new ApiError(errorMessageFrom(text, res), res.status, path, text.length > 0);
+    throw new ApiError(errorMessageFrom(text, res), res.status, path, text.length > 0, errorCodeFrom(text));
   }
   if (!text) return undefined as T;
   try {
@@ -144,7 +159,7 @@ export async function ensureOk(res: Response): Promise<void> {
     path = undefined;
   }
   const text = await res.text();
-  throw new ApiError(errorMessageFrom(text, res), res.status, path, text.length > 0);
+  throw new ApiError(errorMessageFrom(text, res), res.status, path, text.length > 0, errorCodeFrom(text));
 }
 
 /**
