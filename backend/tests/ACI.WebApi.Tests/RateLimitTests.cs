@@ -3,6 +3,7 @@ using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Enums;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -102,6 +103,66 @@ public class RateLimitTests
         // Per workspace: another workspace's address still works.
         (await client.PostAsync($"/api/webhook/organizations/{other}/leads", Body(Lead("the-real-password"))))
             .StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task AStrangersWrongPasswordsDoNotCloseTheClubsOwnForm()
+    {
+        // The workspace id is in the form's address, so anyone can see it. Counting
+        // wrong passwords per workspace let one stranger close the club's own form for
+        // fifteen minutes with ten bad posts.
+        await using var factory = new WithCallerAddress();
+        var (_, ownerId) = await SignInAsync(factory, "owner@club.ch");
+        var org = await CreateAsync(factory, ownerId, "Pavillon 46");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            foreach (var o in db.Organizations) o.WebhookPassword = "the-real-password";
+            await db.SaveChangesAsync();
+        }
+        HttpClient From(string address)
+        {
+            var c = factory.CreateClient();
+            c.DefaultRequestHeaders.Add(WithCallerAddress.Header, address);
+            return c;
+        }
+        object Lead(string password) => new { name = "Jean Dupont", email = "jean@example.ch", webhookPassword = password };
+        var stranger = From("203.0.113.7");
+        var clubWebsite = From("198.51.100.20");
+
+        for (var i = 0; i < 10; i++)
+            await stranger.PostAsync($"/api/webhook/organizations/{org}/leads", Body(Lead($"guess-{i}")));
+        (await stranger.PostAsync($"/api/webhook/organizations/{org}/leads", Body(Lead("the-real-password"))))
+            .StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "the guesser is stopped");
+
+        (await clubWebsite.PostAsync($"/api/webhook/organizations/{org}/leads", Body(Lead("the-real-password"))))
+            .StatusCode.Should().Be(HttpStatusCode.Created, "the club's own form keeps working");
+    }
+
+    /// <summary>The app, with each test request's connection address taken from a header.</summary>
+    private sealed class WithCallerAddress : CustomWebApplicationFactory
+    {
+        public const string Header = "X-Test-Caller-Address";
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureTestServices(services => services.AddSingleton<Microsoft.AspNetCore.Hosting.IStartupFilter, CallerAddressFilter>());
+        }
+
+        private sealed class CallerAddressFilter : Microsoft.AspNetCore.Hosting.IStartupFilter
+        {
+            public Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> Configure(Action<Microsoft.AspNetCore.Builder.IApplicationBuilder> next) => app =>
+            {
+                app.Use(async (context, call) =>
+                {
+                    if (context.Request.Headers.TryGetValue(Header, out var address))
+                        context.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(address.ToString());
+                    await call();
+                });
+                next(app);
+            };
+        }
     }
 
     /// <summary>The app with a copy generator that answers at once and costs nothing.</summary>

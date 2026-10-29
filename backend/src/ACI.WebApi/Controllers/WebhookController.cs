@@ -27,10 +27,19 @@ public class WebhookController : ControllerBase
     private readonly AuthAttemptLimiter _attempts;
 
     /// <summary>
-    /// Wrong webhook passwords allowed per workspace in one window before the address
-    /// stops answering for a while. A sender with the right password never gets near it.
+    /// Wrong webhook passwords allowed from one caller to one workspace in one window
+    /// before that caller is refused for a while. A sender with the right password never
+    /// gets near it, and a stranger guessing locks out only themselves.
     /// </summary>
     internal const int MaxWrongWebhookPasswords = 10;
+
+    /// <summary>
+    /// Wrong webhook passwords allowed for one workspace from all callers together: the
+    /// ceiling for guessing spread over many addresses. High enough that one person
+    /// cannot close the club's form by sending a few bad posts, which a per-workspace
+    /// limit of ten let anyone do with nothing but the workspace id.
+    /// </summary>
+    internal const int MaxWrongWebhookPasswordsPerWorkspace = 200;
 
     /// <summary>
     /// Initializes a new instance of the WebhookController.
@@ -124,12 +133,17 @@ public class WebhookController : ControllerBase
             return Unauthorized(new { error = "This workspace has no webhook password. Set one in Settings before using this address." });
 
         // The address is public and the password is the only thing guarding it, so
-        // guesses are counted per workspace. While blocked even the right password is
-        // refused: answering it differently would let the guessing carry on.
-        var attemptKey = AuthAttemptLimiter.WebhookPassword(organization.Id);
-        if (_attempts.IsBlocked(attemptKey, MaxWrongWebhookPasswords))
+        // guesses are counted per caller and, with a much higher ceiling, per workspace.
+        // While blocked even the right password is refused: answering it differently
+        // would let the guessing carry on. The caller is the connection address; see
+        // the note on IPs behind Azure in Program.cs.
+        var caller = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var callerKey = AuthAttemptLimiter.WebhookPassword(organization.Id, caller);
+        var workspaceKey = AuthAttemptLimiter.WebhookPassword(organization.Id);
+        if (_attempts.IsBlocked(callerKey, MaxWrongWebhookPasswords)
+            || _attempts.IsBlocked(workspaceKey, MaxWrongWebhookPasswordsPerWorkspace))
             return StatusCode(StatusCodes.Status429TooManyRequests,
-                new { error = "Too many wrong webhook passwords for this workspace. Wait 15 minutes, then try again." });
+                new { error = "Too many wrong webhook passwords. Wait 15 minutes, then try again." });
 
         var expected = organization.WebhookPassword;
 
@@ -139,7 +153,8 @@ public class WebhookController : ControllerBase
         if (expectedBytes.Length != providedBytes.Length ||
             !CryptographicOperations.FixedTimeEquals(expectedBytes, providedBytes))
         {
-            _attempts.Record(attemptKey);
+            _attempts.Record(callerKey);
+            _attempts.Record(workspaceKey);
             return Unauthorized(new { error = "Invalid webhook password" });
         }
 
