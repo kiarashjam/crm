@@ -145,6 +145,7 @@ public class ClubMoneyTests
         var tab = await Json(await client.PostAsync("/api/tabs", Body(new
         {
             memberId, venue = "Bar", memberTier = "Platinum", status = "Closed", total = 999, pointsAwarded = 5000,
+            chargeId = Guid.NewGuid(), loyaltyEntryId = Guid.NewGuid(),
             items = new[] { new { id = Guid.NewGuid(), name = "Champagne", quantity = 1, unitPrice = -500 } },
         })), "open a tab");
 
@@ -153,6 +154,8 @@ public class ClubMoneyTests
         tab.GetProperty("items").GetArrayLength().Should().Be(0);
         tab.GetProperty("total").GetDecimal().Should().Be(0);
         tab.TryGetProperty("pointsAwarded", out _).Should().BeFalse();
+        tab.TryGetProperty("chargeId", out _).Should().BeFalse("a tab names the charge it posted only once it has posted one");
+        tab.TryGetProperty("loyaltyEntryId", out _).Should().BeFalse();
     }
 
     [Fact]

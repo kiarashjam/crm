@@ -723,7 +723,8 @@ public sealed class ClubDocumentService : IClubDocumentService
                 obj["status"] = "Open";
                 obj["openedAtUtc"] = now;
                 obj["total"] = 0;
-                Drop(obj, "closedAtUtc", "pointsAwarded", "chargeId", "voidedAtUtc", "voidedByUserId", "voidedByName", "voidReason");
+                Drop(obj, "closedAtUtc", "closedByUserId", "closedByName", "pointsAwarded", "chargeId", "loyaltyEntryId",
+                    "voidedAtUtc", "voidedByUserId", "voidedByName", "voidReason");
                 break;
             case "households":
                 Set(obj, "createdAtUtc", now);
