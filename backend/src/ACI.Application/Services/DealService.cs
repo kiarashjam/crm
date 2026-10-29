@@ -239,7 +239,9 @@ public class DealService : IDealService
             return DomainErrors.Deal.PrivacyNotOwner;
 
         // Only what this edit changes is checked, so a deal whose owner has since left
-        // can still be edited. A pipeline and stage sent together have to agree.
+        // can still be edited. A pipeline and stage sent together have to agree, and a
+        // new pipeline sent alone has to hold the stage the deal keeps: otherwise the
+        // deal sat in a pipeline with none of its columns and dropped off the board.
         var stageOrPipelineChanges = (request.DealStageId is Guid st && st != existing.DealStageId)
             || (request.PipelineId is Guid p && p != existing.PipelineId);
         var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
@@ -248,7 +250,7 @@ public class DealService : IDealService
             ContactId = request.ContactId != existing.ContactId ? request.ContactId : null,
             AssigneeId = request.AssigneeId != existing.AssigneeId ? request.AssigneeId : null,
             PipelineId = stageOrPipelineChanges ? request.PipelineId : null,
-            DealStageId = stageOrPipelineChanges ? request.DealStageId : null,
+            DealStageId = stageOrPipelineChanges ? request.DealStageId ?? existing.DealStageId : null,
         }, ct);
         if (links.IsFailure) return links.Error;
 

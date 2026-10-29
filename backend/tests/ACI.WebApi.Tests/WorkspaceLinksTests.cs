@@ -229,6 +229,30 @@ public class WorkspaceLinksTests
     }
 
     [Fact]
+    public async Task ADealMovedToAnotherPipelineTakesOneOfItsStages()
+    {
+        // Sent alone, the new pipeline kept the deal's old stage, which is not one of
+        // its columns, so the deal dropped off that pipeline's board.
+        using var factory = new CustomWebApplicationFactory();
+        var s = await SetUpAsync(factory);
+        var otherPipeline = await factory.Services.Read(db => db.DealStages.Single(st => st.Id == s.OurOtherPipelineStage).PipelineId);
+        var id = (await Ok(await s.Rep.PostAsync("/api/deals", Body(new { name = "Corporate membership", value = "12000", pipelineId = s.OurPipeline, dealStageId = s.OurStage })), "a deal"))
+            .GetProperty("id").GetGuid();
+
+        await Refused(await s.Rep.PutAsync($"/api/deals/{id}", Body(new { pipelineId = otherPipeline })),
+            HttpStatusCode.BadRequest, "Deal.InvalidStage", "a pipeline the deal's stage is not in");
+        var unchanged = await factory.Services.Read(db => db.Deals.Single(d => d.Id == id));
+        unchanged.PipelineId.Should().Be(s.OurPipeline);
+        unchanged.DealStageId.Should().Be(s.OurStage);
+
+        await Ok(await s.Rep.PutAsync($"/api/deals/{id}", Body(new { pipelineId = otherPipeline, dealStageId = s.OurOtherPipelineStage })),
+            "the pipeline with one of its own stages");
+        var moved = await factory.Services.Read(db => db.Deals.Single(d => d.Id == id));
+        moved.PipelineId.Should().Be(otherPipeline);
+        moved.DealStageId.Should().Be(s.OurOtherPipelineStage);
+    }
+
+    [Fact]
     public async Task APersonalDealHasNoPipelineFromAnOrganization()
     {
         using var factory = new CustomWebApplicationFactory();
