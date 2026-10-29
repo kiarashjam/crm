@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
@@ -21,6 +22,8 @@ public sealed class ClubDocumentRepository : IClubDocumentRepository
 
     public async Task SaveAsync(ClubDocument document, CancellationToken ct = default)
     {
+        // A row this request already read comes back as the tracked copy, still holding
+        // the version it was read at, so the save below is checked against that read.
         var existing = await _db.ClubDocuments.FirstOrDefaultAsync(d => d.Id == document.Id, ct);
         if (existing == null) _db.ClubDocuments.Add(document);
         else if (existing.OrganizationId != document.OrganizationId || existing.Kind != document.Kind)
@@ -30,7 +33,16 @@ public sealed class ClubDocumentRepository : IClubDocumentRepository
             existing.Payload = document.Payload;
             existing.UpdatedAtUtc = document.UpdatedAtUtc;
         }
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // Forget the stale copy, so nothing later in this request saves it again.
+            foreach (var entry in ex.Entries) entry.State = EntityState.Detached;
+            throw new ConcurrencyConflictException();
+        }
     }
 
     public async Task<bool> DeleteAsync(Guid id, Guid? organizationId, string kind, CancellationToken ct = default)
@@ -40,5 +52,20 @@ public sealed class ClubDocumentRepository : IClubDocumentRepository
         _db.ClubDocuments.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
+    }
+
+    public async Task<Result<T>> InTransactionAsync<T>(Func<Task<Result<T>>> work, CancellationToken ct = default)
+    {
+        // The in-memory provider the tests use has no transactions. The work is written
+        // so its first save is the one that can lose a race, so a refusal there still
+        // leaves nothing behind.
+        if (!_db.Database.IsRelational() || _db.Database.CurrentTransaction != null)
+            return await work();
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+        var result = await work();
+        if (result.IsSuccess) await transaction.CommitAsync(ct);
+        else await transaction.RollbackAsync(ct);
+        return result;
     }
 }

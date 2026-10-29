@@ -904,8 +904,14 @@ try
                     [OrganizationId] uniqueidentifier NULL,
                     [Kind] nvarchar(40) NOT NULL,
                     [Payload] nvarchar(max) NOT NULL,
-                    [UpdatedAtUtc] datetime2 NOT NULL
+                    [UpdatedAtUtc] datetime2 NOT NULL,
+                    [Version] uniqueidentifier NOT NULL CONSTRAINT DF_ClubDocuments_Version DEFAULT NEWID()
                 );
+                -- Added after the table shipped. Without it two redeems of one gift card
+                -- both spent its balance, and two closes of one tab both posted a charge
+                -- (see ClubDocument.Version). Existing rows take a fresh value.
+                IF COL_LENGTH(N'dbo.ClubDocuments', N'Version') IS NULL
+                    ALTER TABLE [ClubDocuments] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT DF_ClubDocuments_Version DEFAULT NEWID();
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Products')
                 CREATE TABLE [Products] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,

@@ -123,6 +123,8 @@ public static class ResultExtensions
         var code when code.Contains("AlreadyPending") => StatusCodes.Status409Conflict,
         var code when code.Contains("AlreadyProcessed") => StatusCodes.Status409Conflict,
         "Error.Conflict" => StatusCodes.Status409Conflict,
+        // A record that moved on: changed by someone else meanwhile, or already closed.
+        var code when code.EndsWith(".Conflict") => StatusCodes.Status409Conflict,
         
         // A dependency that is missing or did not answer — not the caller's fault
         var code when code.EndsWith(".NotConfigured") => StatusCodes.Status503ServiceUnavailable,
