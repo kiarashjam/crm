@@ -127,4 +127,15 @@ describe('event attendees', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: /Check in/ })).toBeNull());
     expect(screen.getByText(/^Checked in .*\d/)).toBeInTheDocument();
   });
+
+  it('does not say where seats without a name came from, since another browser may still hold them', async () => {
+    // Before the move, the events manager's laptop kept the names and raised the server's
+    // count; until that list is uploaded, the door host sees the count and no names.
+    server.use(http.get(`${BASE}/api/events`, () => HttpResponse.json([{ ...EVENT, registeredCount: 41 }])));
+    show();
+
+    expect(await screen.findByText('Claire Martin')).toBeInTheDocument();
+    expect(screen.queryByText(/RSVPs? from the events list with no name/)).toBeNull();
+    expect(screen.getByText(/40 seats counted with no name on this list/)).toHaveTextContent(/another browser/);
+  });
 });

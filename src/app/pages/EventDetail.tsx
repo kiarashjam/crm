@@ -156,7 +156,8 @@ export default function EventDetail() {
   );
 
   // Seats taken: the people on the list, or the event's count when that is higher,
-  // because an RSVP from the events list adds to the count without a name.
+  // because an RSVP from the events list adds to the count without a name, and so did
+  // every name a browser kept before the list moved here, until it is uploaded.
   const seatsTaken = event ? Math.max(reserved.length, event.registeredCount) : 0;
   const unnamedRsvps = event ? Math.max(0, event.registeredCount - reserved.length) : 0;
   const isFull = !!event && event.capacity > 0 && seatsTaken >= event.capacity;
@@ -437,7 +438,10 @@ export default function EventDetail() {
                   <strong>{seatsTaken}</strong> / {event.capacity > 0 ? event.capacity : 'no limit'} registered ·{' '}
                   <strong>{checkedInCount}</strong> checked in
                   {unnamedRsvps > 0 && (
-                    <> · {unnamedRsvps} RSVP{unnamedRsvps === 1 ? '' : 's'} from the events list with no name on this list</>
+                    <>
+                      {' '}· {unnamedRsvps} seat{unnamedRsvps === 1 ? '' : 's'} counted with no name on this list (an
+                      RSVP from the events list, or a name still saved in another browser)
+                    </>
                   )}
                 </span>
                 {waitlisted.length > 0 && (
