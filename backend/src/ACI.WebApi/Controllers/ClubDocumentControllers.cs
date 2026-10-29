@@ -250,7 +250,7 @@ public class TabsController : ControllerBase
     [HttpPost("{id:guid}/items")] public async Task<IActionResult> AddItem(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.AddTabItemAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
     [HttpDelete("{tabId:guid}/items/{itemId:guid}")] public async Task<IActionResult> RemoveItem(Guid tabId, Guid itemId, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.RemoveTabItemAsync(org, tabId, itemId, ct)); }
     [HttpPost("{id:guid}/close")] public async Task<IActionResult> Close(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CloseTabAsync(org, id, ct)); }
-    [HttpPost("{id:guid}/void")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidTabAsync(org, id, ct)); }
+    [HttpPost("{id:guid}/void")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidTabAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
 }
 
 [ApiController]

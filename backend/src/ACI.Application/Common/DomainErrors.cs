@@ -620,6 +620,29 @@ public static class DomainErrors
                 _ => "This gift card can't be redeemed.",
             });
 
+        public static readonly Error TabChanged = new(
+            "Tab.Changed.Conflict", "Someone else changed this tab at the same moment, so nothing was saved. Reload the tab and try again.");
+
+        public static readonly Error TabClosedCannotVoid = new(
+            "Tab.Closed.Conflict", "This tab is already closed and posted to the member's account, so it can't be voided. A manager can void the charge instead.");
+
+        public static readonly Error TabItemNotFound = new(
+            "TabItem.NotFound", "That item is not on this tab.");
+
+        public static readonly Error TabItemNameRequired = new(
+            "Tab.ItemNameRequired", "An item needs a name.");
+
+        public static readonly Error TabQuantityInvalid = new(
+            "Tab.QuantityInvalid", "A quantity must be more than 0 and at most 1,000, to two decimal places.");
+
+        public static readonly Error TabPriceInvalid = new(
+            "Tab.PriceInvalid", "A price must be a number from 0 to 100,000, to the cent.");
+
+        public static Error TabNotOpen(string status) => new(
+            "Tab.NotOpen.Conflict", status == "Closed"
+                ? "This tab is already closed and posted to the member's account, so it can't be changed."
+                : "This tab was voided, so it can't be changed.");
+
         public static Error DateInvalid(string what) => new(
             "Club.DateInvalid", $"{what} must be a date.");
 

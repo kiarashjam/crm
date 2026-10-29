@@ -66,6 +66,10 @@ function timeAgo(iso: string): string {
   return `${h}h ${min % 60}m`;
 }
 
+function errorText(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
+
 export default function Tabs() {
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -81,6 +85,8 @@ export default function Tabs() {
   });
   const [itemForm, setItemForm] = useState({ name: '', quantity: '1', unitPrice: '' });
   const [busy, setBusy] = useState(false);
+  // The tab being closed or voided, so a second press cannot send it twice.
+  const [actingOn, setActingOn] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -129,7 +135,13 @@ export default function Tabs() {
       toast.error('Item name is required');
       return;
     }
-    const qty = Number(itemForm.quantity) || 1;
+    // An empty quantity is one; anything typed must be more than nothing. A typed -3
+    // used to pass, and took money off the tab.
+    const qty = itemForm.quantity.trim() === '' ? 1 : Number(itemForm.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast.error('Quantity must be more than 0');
+      return;
+    }
     const price = Number(itemForm.unitPrice);
     if (!price || price <= 0) {
       toast.error('Price is required');
@@ -145,35 +157,57 @@ export default function Tabs() {
       });
       setItemForm({ name: '', quantity: '1', unitPrice: '' });
       await load();
+    } catch (err) {
+      toast.error(errorText(err, 'Could not add the item'));
+      await load();
     } finally {
       setBusy(false);
     }
   };
 
   const removeItem = async (tabId: string, itemId: string) => {
-    await removeItemFromTab(tabId, itemId);
+    try {
+      await removeItemFromTab(tabId, itemId);
+    } catch (err) {
+      toast.error(errorText(err, 'Could not remove the item'));
+    }
     await load();
   };
 
   const close = async (t: OpenTab) => {
     if (!confirm(`Close tab? ${formatCurrency(t.total)} will post to ${t.memberName}'s house account.`)) return;
-    const result = await closeTab(t.id);
-    if (result) {
-      toast.success(
-        result.pointsAwarded
-          ? `Tab closed · +${result.pointsAwarded} loyalty points`
-          : 'Tab closed',
-      );
-      setAddingTo(null);
-      await load();
+    setActingOn(t.id);
+    try {
+      const result = await closeTab(t.id);
+      if (result) {
+        toast.success(
+          result.pointsAwarded
+            ? `Tab closed · +${result.pointsAwarded} loyalty points`
+            : 'Tab closed',
+        );
+        setAddingTo(null);
+      }
+    } catch (err) {
+      // Someone else closed or voided it meanwhile: the server says so, and the list shows how it stands.
+      toast.error(errorText(err, 'Could not close the tab'));
+    } finally {
+      setActingOn(null);
     }
+    await load();
   };
 
   const doVoid = async (t: OpenTab) => {
     if (!confirm('Void this tab? No charge will post.')) return;
-    await voidTab(t.id);
-    toast.success('Tab voided');
-    setAddingTo(null);
+    setActingOn(t.id);
+    try {
+      await voidTab(t.id);
+      toast.success('Tab voided');
+      setAddingTo(null);
+    } catch (err) {
+      toast.error(errorText(err, 'Could not void the tab'));
+    } finally {
+      setActingOn(null);
+    }
     await load();
   };
 
@@ -260,6 +294,7 @@ export default function Tabs() {
       <Button
         size="sm"
         onClick={() => close(t)}
+        disabled={actingOn === t.id}
         className="bg-emerald-600 hover:bg-emerald-700"
       >
         Close + post
@@ -268,6 +303,7 @@ export default function Tabs() {
         size="sm"
         variant="outline"
         onClick={() => doVoid(t)}
+        disabled={actingOn === t.id}
         className="text-rose-700 hover:bg-rose-50"
       >
         Void

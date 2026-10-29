@@ -268,4 +268,123 @@ public class ClubMoneyTests
         (await RemainingAsync(client, card)).Should().Be(100);
         (await Json(await client.GetAsync("/api/gift-cards/redemptions"), "redemptions")).GetArrayLength().Should().Be(0);
     }
+
+    // ── tabs ─────────────────────────────────────────────────────────────────
+
+    /// <summary>An open Bar tab with 2 × 15 on it.</summary>
+    private static async Task<string> TabAsync(HttpClient client, Guid memberId)
+    {
+        var tab = await Json(await client.PostAsync("/api/tabs", Body(new { memberId, venue = "Bar", serverName = "Ana" })), "open tab");
+        var id = tab.GetProperty("id").GetString()!;
+        await Json(await client.PostAsync($"/api/tabs/{id}/items", Body(new { name = "Negroni", quantity = 2, unitPrice = 15 })), "add item");
+        return id;
+    }
+
+    private static async Task<(int Charges, int Points)> PostedAsync(HttpClient client) => (
+        (await Json(await client.GetAsync("/api/charges"), "charges")).GetArrayLength(),
+        (await Json(await client.GetAsync("/api/loyalty/ledger"), "ledger")).GetArrayLength());
+
+    [Fact]
+    public async Task TwoClosesAtOnceChargeTheMemberOnce()
+    {
+        using var factory = new RaceFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var tab = await TabAsync(client, memberId);
+        // Two bartenders press Close on two devices: both see the tab open.
+        factory.Gate.Arm("tabs");
+
+        var answers = await Task.WhenAll(
+            client.PostAsync($"/api/tabs/{tab}/close", null),
+            client.PostAsync($"/api/tabs/{tab}/close", null));
+
+        answers.Select(a => a.StatusCode).Should().BeEquivalentTo(new[] { HttpStatusCode.OK, HttpStatusCode.Conflict });
+        (await PostedAsync(client)).Should().Be((1, 1), "the tab is posted once: one charge, one set of points");
+        (await BalanceAsync(client, memberId)).Should().Be(-30);
+    }
+
+    [Fact]
+    public async Task ClosingAClosedTabPostsNothingMore()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var tab = await TabAsync(client, memberId);
+
+        var first = await Json(await client.PostAsync($"/api/tabs/{tab}/close", null), "close");
+        var again = await Json(await client.PostAsync($"/api/tabs/{tab}/close", null), "close again, from a double click");
+
+        again.GetProperty("closedAtUtc").GetString().Should().Be(first.GetProperty("closedAtUtc").GetString());
+        first.GetProperty("chargeId").GetString().Should().Be((await Json(await client.GetAsync("/api/charges"), "charges"))[0].GetProperty("id").GetString(),
+            "the tab says which charge it posted");
+        (await PostedAsync(client)).Should().Be((1, 1));
+        (await BalanceAsync(client, memberId)).Should().Be(-30);
+    }
+
+    [Fact]
+    public async Task AClosedTabCannotBeVoidedOrChanged()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var tab = await TabAsync(client, memberId);
+        var closed = await Json(await client.PostAsync($"/api/tabs/{tab}/close", null), "close");
+        var item = closed.GetProperty("items")[0].GetProperty("id").GetString();
+
+        (await Refused(await client.PostAsync($"/api/tabs/{tab}/void", null), HttpStatusCode.Conflict, "voiding a tab that has posted"))
+            .Should().Contain("already closed");
+        await Refused(await client.PostAsync($"/api/tabs/{tab}/items", Body(new { name = "Olives", quantity = 1, unitPrice = 6 })),
+            HttpStatusCode.Conflict, "adding to a closed tab");
+        await Refused(await client.DeleteAsync($"/api/tabs/{tab}/items/{item}"), HttpStatusCode.Conflict, "taking an item off a closed tab");
+
+        var still = (await Json(await client.GetAsync("/api/tabs"), "tabs"))[0];
+        still.GetProperty("status").GetString().Should().Be("Closed");
+        still.GetProperty("total").GetDecimal().Should().Be(30);
+        (await PostedAsync(client)).Should().Be((1, 1), "the charge and the points stand, and so does the tab that explains them");
+    }
+
+    [Fact]
+    public async Task AnOpenTabCanBeVoidedWithAReason()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var tab = await TabAsync(client, memberId);
+
+        var voided = await Json(await client.PostAsync($"/api/tabs/{tab}/void", Body(new { reason = "Opened on the wrong member" })), "void");
+
+        voided.GetProperty("status").GetString().Should().Be("Voided");
+        voided.GetProperty("voidReason").GetString().Should().Be("Opened on the wrong member");
+        voided.TryGetProperty("voidedByUserId", out _).Should().BeTrue();
+        await Refused(await client.PostAsync($"/api/tabs/{tab}/close", null), HttpStatusCode.Conflict, "closing a voided tab");
+        (await PostedAsync(client)).Should().Be((0, 0));
+    }
+
+    public static readonly TheoryData<object> NonsenseItems = new()
+    {
+        new { name = "Negroni", quantity = -3, unitPrice = 15 },
+        new { name = "Negroni", quantity = 0, unitPrice = 15 },
+        new { name = "Negroni", quantity = 1001, unitPrice = 15 },
+        new { name = "Negroni", quantity = 0.001, unitPrice = 15 },
+        new { name = "Negroni", quantity = "many", unitPrice = 15 },
+        new { name = "Negroni", unitPrice = 15 },
+        new { name = "Negroni", quantity = 1, unitPrice = -15 },
+        new { name = "Negroni", quantity = 1, unitPrice = 1_000_000 },
+        new { name = "Negroni", quantity = 1 },
+        new { name = "  ", quantity = 1, unitPrice = 15 },
+    };
+
+    [Theory]
+    [MemberData(nameof(NonsenseItems))]
+    public async Task ATabItemMustBeSomethingThatWasServed(object item)
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var tab = await TabAsync(client, memberId);
+
+        await Refused(await client.PostAsync($"/api/tabs/{tab}/items", Body(item)), HttpStatusCode.BadRequest, $"adding {JsonSerializer.Serialize(item)}");
+
+        (await Json(await client.GetAsync("/api/tabs"), "tabs"))[0].GetProperty("total").GetDecimal().Should().Be(30);
+    }
 }

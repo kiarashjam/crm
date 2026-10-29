@@ -22,7 +22,7 @@ public interface IClubDocumentService
     Task<Result<JsonObject>> AddTabItemAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
     Task<Result<JsonObject>> RemoveTabItemAsync(Guid? organizationId, Guid tabId, Guid itemId, CancellationToken ct = default);
     Task<Result<JsonObject>> CloseTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
-    Task<Result<JsonObject>> VoidTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
+    Task<Result<JsonObject>> VoidTabAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default);
     Task<Result<JsonObject>> BillSubscriptionAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<JsonObject?> SendCampaignAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
     Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
@@ -61,11 +61,13 @@ public sealed class ClubDocumentService : IClubDocumentService
 
     private readonly IClubDocumentRepository _docs;
     private readonly IClubRepository _club;
+    private readonly ICurrentUserService _user;
 
-    public ClubDocumentService(IClubDocumentRepository docs, IClubRepository club)
+    public ClubDocumentService(IClubDocumentRepository docs, IClubRepository club, ICurrentUserService user)
     {
         _docs = docs;
         _club = club;
+        _user = user;
     }
 
     public async Task<JsonArray> ListAsync(Guid? organizationId, string kind, CancellationToken ct = default)
@@ -247,26 +249,46 @@ public sealed class ClubDocumentService : IClubDocumentService
     public async Task<Result<JsonObject>> AddTabItemAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
     {
         var tab = await Load(organizationId, "tabs", id, ct);
-        if (tab == null || Text(tab, "status") != "Open") return DomainErrors.Club.TabNotFound;
+        if (tab == null) return DomainErrors.Club.TabNotFound;
+        var status = Text(tab, "status");
+        if (status != "Open") return DomainErrors.Club.TabNotOpen(status);
+        var name = Text(body, "name").Trim();
+        if (name.Length == 0) return DomainErrors.Club.TabItemNameRequired;
+        if (name.Length > 200) return DomainErrors.Club.TooLong("An item name", 200);
+        // A quantity of -3 took 45 off the tab with no reason recorded: a comp nobody
+        // could trace. A half portion is fine; less than nothing, or a thousand, is not.
+        if (Number(body, "quantity") is not { } quantity || quantity <= 0 || quantity > 1000 || quantity != Math.Round(quantity, 2))
+            return DomainErrors.Club.TabQuantityInvalid;
+        if (Number(body, "unitPrice") is not { } unitPrice || unitPrice < 0 || unitPrice > 100_000 || unitPrice != Math.Round(unitPrice, 2))
+            return DomainErrors.Club.TabPriceInvalid;
         var items = CopyArray(tab["items"] as JsonArray);
-        items.Add(new JsonObject
+        var item = new JsonObject
         {
             ["id"] = Guid.NewGuid().ToString(),
-            ["name"] = Text(body, "name"),
-            ["quantity"] = Dec(body, "quantity"),
-            ["unitPrice"] = Dec(body, "unitPrice"),
+            ["name"] = name,
+            ["quantity"] = quantity,
+            ["unitPrice"] = unitPrice,
             ["addedAtUtc"] = DateTime.UtcNow.ToString("o"),
-        });
+        };
+        StampWho(item, "added");
+        items.Add(item);
         tab["items"] = items;
         tab["total"] = Total(items);
-        await Save(organizationId, "tabs", id, tab, ct);
-        return tab;
+        return await WriteAsync(async () =>
+        {
+            await Save(organizationId, "tabs", id, tab, ct);
+            return Result.Success(tab);
+        }, ct, DomainErrors.Club.TabChanged);
     }
 
     public async Task<Result<JsonObject>> RemoveTabItemAsync(Guid? organizationId, Guid tabId, Guid itemId, CancellationToken ct = default)
     {
         var tab = await Load(organizationId, "tabs", tabId, ct);
         if (tab == null) return DomainErrors.Club.TabNotFound;
+        // Taking an item off a tab that has already posted left the posted charge as it
+        // was, and the tab's history no longer matched the member's account.
+        var status = Text(tab, "status");
+        if (status != "Open") return DomainErrors.Club.TabNotOpen(status);
         var items = CopyArray(tab["items"] as JsonArray);
         JsonArray next = new();
         foreach (var item in items)
@@ -274,66 +296,106 @@ public sealed class ClubDocumentService : IClubDocumentService
             if (item is JsonObject obj && Text(obj, "id") == itemId.ToString()) continue;
             next.Add(item?.DeepClone());
         }
+        if (next.Count == items.Count) return DomainErrors.Club.TabItemNotFound;
         tab["items"] = next;
         tab["total"] = Total(next);
-        await Save(organizationId, "tabs", tabId, tab, ct);
-        return tab;
+        return await WriteAsync(async () =>
+        {
+            await Save(organizationId, "tabs", tabId, tab, ct);
+            return Result.Success(tab);
+        }, ct, DomainErrors.Club.TabChanged);
     }
 
     public async Task<Result<JsonObject>> CloseTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
     {
         var tab = await Load(organizationId, "tabs", id, ct);
-        if (tab == null || Text(tab, "status") != "Open") return DomainErrors.Club.TabNotFound;
+        if (tab == null) return DomainErrors.Club.TabNotFound;
+        var status = Text(tab, "status");
+        // Closing twice posts once: a double click, or a second device, gets the closed tab back.
+        if (status == "Closed") return tab;
+        if (status != "Open") return DomainErrors.Club.TabNotOpen(status);
         var items = tab["items"] as JsonArray ?? new JsonArray();
         var total = Total(items);
-        tab["total"] = total;
         var venue = Text(tab, "venue");
         var label = VenueLabel(venue);
-        var itemCount = (tab["items"] as JsonArray)?.Count ?? 0;
+        var itemCount = items.Count;
+
+        // Everything the close writes is worked out first, so a refusal (a member who has
+        // since left, say) comes before anything is saved.
+        JsonObject? charge = null;
         if (total > 0)
         {
-            var charge = await CreateAsync(organizationId, "charges", new JsonObject
+            var prepared = await PrepareAsync(organizationId, "charges", new JsonObject
             {
                 ["memberId"] = tab["memberId"]?.DeepClone(),
-                ["memberName"] = tab["memberName"]?.DeepClone(),
                 ["kind"] = venue switch { "Bar" => "Bar", "Spa" => "Spa", _ => "Dining" },
                 ["description"] = $"{label} tab ({itemCount} items)",
                 ["amount"] = total,
             }, ct);
-            if (!charge.IsSuccess) return charge;
+            if (!prepared.IsSuccess) return prepared;
+            charge = prepared.Value;
+            tab["chargeId"] = Text(charge, "id");
         }
         var tier = Text(tab, "memberTier");
         var multiplier = tier switch { "Silver" => 1.25m, "Gold" => 1.5m, "Platinum" => 2m, _ => 1m };
         var points = (int)Math.Floor(total * 10m * multiplier);
-        tab["pointsAwarded"] = points;
-        tab["status"] = "Closed";
-        tab["closedAtUtc"] = DateTime.UtcNow.ToString("o");
-        await Save(organizationId, "tabs", id, tab, ct);
+        LoyaltyLedgerEntry? earned = null;
         if (points > 0 && Guid.TryParse(Text(tab, "memberId"), out var memberId))
         {
-            await _club.AddLedgerAsync(new LoyaltyLedgerEntry
+            earned = new LoyaltyLedgerEntry
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = organizationId,
                 MemberId = memberId,
                 MemberName = Text(tab, "memberName"),
                 Kind = "Earned",
-                Reason = Text(tab, "venue") == "Bar" ? "BarPurchase" : "DiningPurchase",
+                Reason = venue == "Bar" ? "BarPurchase" : "DiningPurchase",
                 Points = points,
                 Note = $"{label} tab — {itemCount} items",
                 CreatedAtUtc = DateTime.UtcNow,
-            }, ct);
+            };
+            tab["loyaltyEntryId"] = earned.Id.ToString();
         }
-        return tab;
+        tab["total"] = total;
+        tab["pointsAwarded"] = points;
+        tab["status"] = "Closed";
+        tab["closedAtUtc"] = DateTime.UtcNow.ToString("o");
+        StampWho(tab, "closed");
+
+        // Two bartenders closing the same tab both saw it open, and both posted a charge
+        // and the points. The tab is saved first now, checked against the open tab this
+        // request read: the second close is refused there, before it posts anything, and
+        // the charge, the balance and the points are saved with the tab or not at all.
+        return await WriteAsync(async () =>
+        {
+            await Save(organizationId, "tabs", id, tab, ct);
+            if (charge != null) await InsertAsync(organizationId, "charges", charge, ct);
+            if (earned != null) await _club.AddLedgerAsync(earned, ct);
+            return Result.Success(tab);
+        }, ct, DomainErrors.Club.TabChanged);
     }
 
-    public async Task<Result<JsonObject>> VoidTabAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> VoidTabAsync(Guid? organizationId, Guid id, JsonObject body, CancellationToken ct = default)
     {
         var tab = await Load(organizationId, "tabs", id, ct);
         if (tab == null) return DomainErrors.Club.TabNotFound;
+        var status = Text(tab, "status");
+        if (status == "Voided") return tab;
+        // A stale screen used to void a tab someone else had closed: the tab said "no
+        // charge", while the charge and the points it posted stayed on the account.
+        if (status == "Closed") return DomainErrors.Club.TabClosedCannotVoid;
+        if (status != "Open") return DomainErrors.Club.TabNotOpen(status);
+        var reason = Text(body, "reason").Trim();
+        if (reason.Length > 500) return DomainErrors.Club.TooLong("A reason", 500);
         tab["status"] = "Voided";
-        await Save(organizationId, "tabs", id, tab, ct);
-        return tab;
+        tab["voidedAtUtc"] = DateTime.UtcNow.ToString("o");
+        StampWho(tab, "voided");
+        if (reason.Length > 0) tab["voidReason"] = reason;
+        return await WriteAsync(async () =>
+        {
+            await Save(organizationId, "tabs", id, tab, ct);
+            return Result.Success(tab);
+        }, ct, DomainErrors.Club.TabChanged);
     }
 
     public async Task<Result<JsonObject>> BillSubscriptionAsync(Guid? organizationId, Guid id, CancellationToken ct = default)
@@ -801,9 +863,19 @@ public sealed class ClubDocumentService : IClubDocumentService
     private static int Int(JsonObject obj, string key) =>
         obj[key] is JsonValue value && value.TryGetValue<int>(out var n) ? n : int.TryParse(Text(obj, key), out var p) ? p : 0;
 
-    private static decimal Dec(JsonObject obj, string key) =>
+    private static decimal Dec(JsonObject obj, string key) => Number(obj, key) ?? 0;
+
+    /// <summary>The value as a number; null when it is missing or is not one.</summary>
+    private static decimal? Number(JsonObject obj, string key) =>
         obj[key] is JsonValue value && value.TryGetValue<decimal>(out var n) ? n
-        : decimal.TryParse(Text(obj, key), NumberStyles.Number, CultureInfo.InvariantCulture, out var p) ? p : 0;
+        : decimal.TryParse(Text(obj, key), NumberStyles.Number, CultureInfo.InvariantCulture, out var p) ? p : null;
+
+    /// <summary>Who did this, on the record itself, so the tab or charge says it without the audit log.</summary>
+    private void StampWho(JsonObject obj, string action)
+    {
+        if (_user.UserId is { } userId) obj[$"{action}ByUserId"] = userId.ToString();
+        if (!string.IsNullOrWhiteSpace(_user.UserName)) obj[$"{action}ByName"] = _user.UserName;
+    }
 
     /// <summary>A positive amount of money, to the cent; null when the value is not one.</summary>
     private static decimal? Amount(JsonObject obj, string key)
@@ -829,7 +901,7 @@ public sealed class ClubDocumentService : IClubDocumentService
         foreach (var item in items)
             if (item is JsonObject obj)
                 sum += Dec(obj, "quantity") * Dec(obj, "unitPrice");
-        return sum;
+        return Math.Round(sum, 2, MidpointRounding.AwayFromZero);
     }
 
     private static string GiftCode()
