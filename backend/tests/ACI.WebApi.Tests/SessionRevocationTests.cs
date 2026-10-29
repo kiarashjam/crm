@@ -70,6 +70,30 @@ public class SessionRevocationTests
     }
 
     [Fact]
+    public async Task AStampCachedBeforeAChangeDoesNotRefuseTheTokenIssuedAfterIt()
+    {
+        // The change happens on another instance of the API (or a read here raced it), so
+        // this instance still holds the stamp from before. The person who just turned 2FA
+        // on, or reset their password, was refused with 401 and signed out by the browser.
+        await using var factory = new CustomWebApplicationFactory();
+        var (before, userId) = await SignInAsync(factory, "kia@club.ch");
+        (await before.GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.OK, "this caches the stamp");
+
+        string after;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var user = await db.Users.FindAsync(userId);
+            user!.SecurityStamp = "changed-on-another-instance";
+            await db.SaveChangesAsync();
+            after = scope.ServiceProvider.GetRequiredService<ITokenService>().GenerateToken(user);
+        }
+
+        (await As(factory, after).GetAsync("/api/auth/me")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await As(factory, after).GetAsync("/api/contacts")).StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task TurningTwoFactorOnOrOffSignsOutOtherSessions_AndKeepsThisOne()
     {
         await using var factory = new CustomWebApplicationFactory();

@@ -361,10 +361,10 @@ try
                     }
 
                     var services = context.HttpContext.RequestServices;
-                    var current = await services.GetRequiredService<ACI.WebApi.Services.SecurityStampCache>()
-                        .CurrentAsync(userId, services.GetRequiredService<IUserRepository>(), context.HttpContext.RequestAborted);
                     var carried = context.Principal?.FindFirst(ACI.Infrastructure.Services.JwtTokenService.SecurityStampClaim)?.Value ?? "";
-                    if (current == null || !string.Equals(current, carried, StringComparison.Ordinal))
+                    var live = await services.GetRequiredService<ACI.WebApi.Services.SecurityStampCache>()
+                        .AcceptsAsync(userId, carried, services.GetRequiredService<IUserRepository>(), context.HttpContext.RequestAborted);
+                    if (!live)
                         context.Fail("This session was signed out.");
                 },
             };

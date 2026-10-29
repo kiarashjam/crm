@@ -28,10 +28,31 @@ public sealed class SecurityStampCache : ISecurityStampCache
         if (_cache.TryGetValue(Key(userId), out string? cached))
             return cached;
 
+        return await ReadAsync(userId, users, ct);
+    }
+
+    /// <summary>Whether a token carrying <paramref name="carried"/> is still a live session.</summary>
+    /// <remarks>
+    /// A cached stamp can be older than the token in front of it: the change was made on
+    /// another instance, or a read that started just before the change finished after it.
+    /// Refusing then would sign out the very person who just reset their password or
+    /// turned 2FA on, so a mismatch is checked against the database before it counts.
+    /// An old token pays that read on every request; a current one almost never does.
+    /// </remarks>
+    public async Task<bool> AcceptsAsync(Guid userId, string carried, IUserRepository users, CancellationToken ct)
+    {
+        if (string.Equals(await CurrentAsync(userId, users, ct), carried, StringComparison.Ordinal))
+            return true;
+
+        return string.Equals(await ReadAsync(userId, users, ct), carried, StringComparison.Ordinal);
+    }
+
+    public void Forget(Guid userId) => _cache.Remove(Key(userId));
+
+    private async Task<string?> ReadAsync(Guid userId, IUserRepository users, CancellationToken ct)
+    {
         var stamp = await users.GetSecurityStampAsync(userId, ct);
         _cache.Set(Key(userId), stamp, Lifetime);
         return stamp;
     }
-
-    public void Forget(Guid userId) => _cache.Remove(Key(userId));
 }
