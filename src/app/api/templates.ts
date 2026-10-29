@@ -152,7 +152,8 @@ export async function getTemplatesPaged(options?: GetTemplatesPagedOptions): Pro
 /** Get all templates (real API or mock). */
 export async function getTemplates(): Promise<ExtendedTemplate[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<TemplateApiResponse[]>('/api/templates');
+    // GET /api/templates is the paged endpoint ({ items, totalCount, … }); /all is the list.
+    const list = await authFetchJson<TemplateApiResponse[]>('/api/templates/all');
     return Array.isArray(list) ? list.map(mapTemplate) : [];
   }
   await delay(200);

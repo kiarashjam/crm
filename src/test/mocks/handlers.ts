@@ -71,7 +71,7 @@ export const handlers = [
   }),
 
   // Templates
-  http.get('/api/templates', () => {
+  http.get('/api/templates/all', () => {
     return HttpResponse.json([
       { 
         id: '1', 
