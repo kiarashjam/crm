@@ -1,7 +1,9 @@
+using System.Data;
 using System.Text.RegularExpressions;
 using ACI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace ACI.Infrastructure.Persistence;
 
@@ -13,6 +15,13 @@ public sealed record OrganizationCloneReport(
     IReadOnlyDictionary<string, int> RowsCopied,
     IReadOnlyDictionary<string, int> RowsLeftOut,
     IReadOnlyDictionary<string, int> Adjustments);
+
+/// <summary>What a copy would hold, table by table, counted without copying anything.</summary>
+public sealed record OrganizationClonePlan(
+    Guid SourceId,
+    IReadOnlyDictionary<string, int> RowsToCopy,
+    IReadOnlyDictionary<string, int> RowsLeftOut,
+    long AttachmentBytes);
 
 /// <summary>
 /// Copies an organization into a new one: every record it owns, everything that hangs
@@ -73,6 +82,109 @@ public sealed class OrganizationCloner
             .Where(t => t.FindProperty("OrganizationId") != null && !LeftOut.ContainsKey(t.ClrType))
             .OrderBy(t => t.GetTableName())
             .ToList();
+
+    /// <summary>
+    /// A copy is only started with at least this many times its estimated size free in
+    /// the database. The copy's rows, their indexes and the transaction that writes them
+    /// all take room, and the database is shared: running out mid-copy fails every
+    /// tenant's writes until the rollback is done.
+    /// </summary>
+    public const int Headroom = 2;
+
+    /// <summary>
+    /// Counts what <see cref="CloneAsync"/> would copy from <paramref name="sourceId"/>, and
+    /// the bytes of its attachments, without writing anything.
+    /// </summary>
+    /// <remarks>
+    /// The dry run used to make the whole copy, attachment bytes included, inside a
+    /// transaction in the production database every tenant shares, and then roll it back.
+    /// This reads ids and counts only.
+    /// </remarks>
+    public async Task<OrganizationClonePlan> PlanAsync(Guid sourceId, CancellationToken ct = default)
+    {
+        var model = _db.Model;
+        var keys = new Dictionary<Type, List<Guid>>();
+        var toCopy = new Dictionary<string, int>();
+        var leftOut = new Dictionary<string, int>
+        {
+            ["JoinRequests"] = await _db.JoinRequests.CountAsync(r => r.OrganizationId == sourceId, ct),
+        };
+
+        async Task Count(IEntityType type, string column, IReadOnlyCollection<Guid> ids)
+        {
+            var (count, found) = await CountOf(type, column, ids, ct);
+            if (type.ClrType == typeof(Invite))
+            {
+                // As in the copy: an accepted invitation is history, and stays behind.
+                var accepted = await _db.Invites.CountAsync(i => i.OrganizationId == sourceId && i.AcceptedByUserId != null, ct);
+                leftOut[type.GetTableName()!] = accepted;
+                count -= accepted;
+            }
+            toCopy[type.GetTableName()!] = count;
+            if (found != null) keys[type.ClrType] = found;
+        }
+
+        foreach (var type in OrganizationTables(model))
+            await Count(type, "OrganizationId", [sourceId]);
+        foreach (var (child, parentKey, parent) in Children)
+            await Count(model.FindEntityType(child)!, parentKey, keys.GetValueOrDefault(parent) ?? []);
+
+        var attachmentBytes = await _db.Attachments.Where(a => a.OrganizationId == sourceId).SumAsync(a => (long)a.Content.Length, ct);
+        return new OrganizationClonePlan(sourceId, toCopy, leftOut, attachmentBytes);
+    }
+
+    /// <summary>
+    /// Roughly how many bytes the copy in <paramref name="plan"/> adds: each table's share
+    /// of the space it takes now, by rows, and never less than the attachments' own bytes,
+    /// of which one organization can hold far more than its share. SQL Server only.
+    /// </summary>
+    public async Task<long> EstimateBytesAsync(OrganizationClonePlan plan, CancellationToken ct = default)
+    {
+        var tables = new Dictionary<string, (long Bytes, long Rows)>(StringComparer.OrdinalIgnoreCase);
+        await ReadAsync(@"
+            SELECT t.[name],
+                   SUM(CAST(ps.[used_page_count] AS bigint)) * 8192,
+                   SUM(CASE WHEN ps.[index_id] IN (0, 1) THEN ps.[row_count] ELSE 0 END)
+            FROM sys.dm_db_partition_stats ps
+            INNER JOIN sys.tables t ON t.[object_id] = ps.[object_id]
+            GROUP BY t.[name]", r => tables[r.GetString(0)] = (r.GetInt64(1), r.GetInt64(2)), ct);
+
+        long estimate = 0;
+        foreach (var (table, rows) in plan.RowsToCopy)
+        {
+            if (rows == 0 || !tables.TryGetValue(table, out var space) || space.Rows == 0) continue;
+            var share = (long)Math.Ceiling((double)space.Bytes * rows / space.Rows);
+            if (string.Equals(table, "Attachments", StringComparison.OrdinalIgnoreCase)) share = Math.Max(share, plan.AttachmentBytes);
+            estimate += share;
+        }
+        return estimate;
+    }
+
+    /// <summary>
+    /// How many bytes the database can still take. On Azure SQL Database that is its size
+    /// cap less what it uses; on a SQL Server, what its data files can still grow to on
+    /// their disks. SQL Server only.
+    /// </summary>
+    public async Task<long> FreeBytesAsync(CancellationToken ct = default)
+    {
+        long? cap = null, used = null;
+        await ReadAsync(@"
+            SELECT CAST(DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes') AS bigint),
+                   (SELECT SUM(CAST(FILEPROPERTY([name], 'SpaceUsed') AS bigint)) * 8192 FROM sys.database_files WHERE [type_desc] = 'ROWS')",
+            r => { cap = r.IsDBNull(0) ? null : r.GetInt64(0); used = r.IsDBNull(1) ? null : r.GetInt64(1); }, ct);
+        if (cap is { } max && used is { } inUse) return max - inUse;
+
+        // Not Azure SQL Database: no cap on the database, only on its files and disks.
+        long free = 0;
+        await ReadAsync(@"
+            SELECT CASE WHEN f.[max_size] = -1
+                        THEN (CAST(f.[size] AS bigint) - CAST(FILEPROPERTY(f.[name], 'SpaceUsed') AS bigint)) * 8192 + v.[available_bytes]
+                        ELSE (CAST(f.[max_size] AS bigint) - CAST(FILEPROPERTY(f.[name], 'SpaceUsed') AS bigint)) * 8192 END
+            FROM sys.database_files f
+            CROSS APPLY sys.dm_os_volume_stats(DB_ID(), f.[file_id]) v
+            WHERE f.[type_desc] = 'ROWS'", r => free += r.GetInt64(0), ct);
+        return free;
+    }
 
     /// <summary>
     /// Copies <paramref name="sourceId"/> into a new organization called <paramref name="name"/>.
@@ -255,21 +367,62 @@ public sealed class OrganizationCloner
         return rows;
     }
 
-    private async Task<List<object>> Load<T>(string column, Guid[] ids, CancellationToken ct) where T : class
+    private async Task<List<object>> Load<T>(string column, Guid[] ids, CancellationToken ct) where T : class =>
+        (await Matching<T>(column, ids).ToListAsync(ct)).Cast<object>().ToList();
+
+    /// <summary>How many rows of <paramref name="type"/> have <paramref name="column"/> in <paramref name="ids"/>, and their ids if they have one.</summary>
+    private async Task<(int Count, List<Guid>? Keys)> CountOf(IEntityType type, string column, IReadOnlyCollection<Guid> ids, CancellationToken ct)
     {
-        var nullable = _db.Model.FindEntityType(typeof(T))!.FindProperty(column)!.IsNullable;
-        List<T> found;
-        if (nullable)
+        var count = typeof(OrganizationCloner)
+            .GetMethod(nameof(CountChunk), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .MakeGenericMethod(type.ClrType);
+        var keys = SingleGuidKey(type) != null ? new List<Guid>() : null;
+        var total = 0;
+        foreach (var chunk in ids.Chunk(1000))
+        {
+            var (n, found) = await (Task<(int, List<Guid>?)>)count.Invoke(this, [column, chunk, keys != null, ct])!;
+            total += n;
+            keys?.AddRange(found!);
+        }
+        return (total, keys);
+    }
+
+    private async Task<(int, List<Guid>?)> CountChunk<T>(string column, Guid[] ids, bool withKeys, CancellationToken ct) where T : class
+    {
+        if (!withKeys) return (await Matching<T>(column, ids).CountAsync(ct), null);
+        var keys = await Matching<T>(column, ids).Select(r => EF.Property<Guid>(r, "Id")).ToListAsync(ct);
+        return (keys.Count, keys);
+    }
+
+    private IQueryable<T> Matching<T>(string column, Guid[] ids) where T : class
+    {
+        if (_db.Model.FindEntityType(typeof(T))!.FindProperty(column)!.IsNullable)
         {
             var any = ids.Select(i => (Guid?)i).ToList();
-            found = await _db.Set<T>().AsNoTracking().Where(r => any.Contains(EF.Property<Guid?>(r, column))).ToListAsync(ct);
+            return _db.Set<T>().AsNoTracking().Where(r => any.Contains(EF.Property<Guid?>(r, column)));
         }
-        else
+        var all = ids.ToList();
+        return _db.Set<T>().AsNoTracking().Where(r => all.Contains(EF.Property<Guid>(r, column)));
+    }
+
+    /// <summary>Runs <paramref name="sql"/> on the context's connection, in its transaction if it has one.</summary>
+    private async Task ReadAsync(string sql, Action<System.Data.Common.DbDataReader> row, CancellationToken ct)
+    {
+        var connection = _db.Database.GetDbConnection();
+        var opened = connection.State != ConnectionState.Open;
+        if (opened) await connection.OpenAsync(ct);
+        try
         {
-            var any = ids.ToList();
-            found = await _db.Set<T>().AsNoTracking().Where(r => any.Contains(EF.Property<Guid>(r, column))).ToListAsync(ct);
+            await using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            command.Transaction = _db.Database.CurrentTransaction?.GetDbTransaction();
+            await using var reader = await command.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct)) row(reader);
         }
-        return found.Cast<object>().ToList();
+        finally
+        {
+            if (opened) await connection.CloseAsync();
+        }
     }
 
     private static IProperty? SingleGuidKey(IEntityType type)

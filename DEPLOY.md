@@ -112,15 +112,14 @@ The script prints:
 
 ## 4. Deploy
 
-**Frontend (Static Web App)**  
-- Workflow: `Build and deploy to Azure Static Web Apps`  
-- Runs on **push to `main`** (ignoring `.md` / `.gitignore`) or **publish release**.  
-- Builds the React app and deploys to the Static Web App.
+**Checks (CI)**  
+- Workflow: `CI` (`.github/workflows/ci.yml`)  
+- Runs on every **pull request** and every push to a branch other than `main`: backend build and `dotnet test` (with a SQL Server container), frontend `tsc --noEmit`, lint, Vitest and build.
 
-**Backend (Web App)**  
-- Workflow: `Build and deploy backend to Azure Web App`  
-- Runs on **push to `main`** when `backend/**` or `.github/workflows/deploy-backend.yml` change, on **publish release**, or via **workflow_dispatch**.  
-- Builds the .NET Web API and deploys to the Azure Web App. EF migrations run on app startup.
+**Deploy (backend, then frontend)**  
+- Workflow: `Build and deploy to Azure Static Web Apps` (`.github/workflows/deploy.yml`)  
+- Runs on **push to `main`**, on **publish release**, or via **Run workflow**.  
+- Runs the CI checks first. Only if they pass does it deploy the backend (`deploy-backend.yml`, which has no trigger of its own), and only once the backend is deployed does it deploy the frontend. One deploy runs at a time.
 
 ## 5. Verify
 
@@ -137,12 +136,11 @@ The backend runs **EF Core migrations on startup** (`Program.cs` → `MigrateAsy
 ### Publish the website (frontend + backend)
 
 1. **Push to `main`**
-   - **Frontend** deploys on every push to `main` (except when only `.md` / `.gitignore` change).
-   - **Backend** deploys only when files under `backend/` or `.github/workflows/deploy-backend.yml` change.
+   - Every push to `main` runs the checks, then deploys the backend, then the frontend. If a check fails, nothing is deployed.
 
 2. **To update the Azure database** (apply the latest migration):
-   - Deploy the backend: either **push a change under `backend/`** (e.g. commit the migration and push) or **run the backend workflow manually**:
-     - GitHub → **Actions** → **Build and deploy backend to Azure Web App** → **Run workflow** → Run.
+   - Deploy the backend: either **push to `main`** or **run the deploy manually**:
+     - GitHub → **Actions** → **Build and deploy to Azure Static Web Apps** → **Run workflow** → Run.
    - After the backend finishes deploying, the Web App restarts and runs `MigrateAsync()`, updating the Azure SQL database.
 
 3. **Ensure frontend talks to the backend**
@@ -160,7 +158,7 @@ The backend runs **EF Core migrations on startup** (`Program.cs` → `MigrateAsy
 
 ### If the backend workflow didn’t run
 
-- Backend workflow runs only when `backend/**` or `.github/workflows/deploy-backend.yml` change. If you only changed frontend or docs, trigger it manually: **Actions** → **Build and deploy backend to Azure Web App** → **Run workflow**.
+- The backend is deployed by **Build and deploy to Azure Static Web Apps**, after its checks pass. If a check failed, fix it and push again; to redeploy without a change, **Actions** → **Build and deploy to Azure Static Web Apps** → **Run workflow**.
 
 ### Optional: run migrations against Azure from your machine
 
@@ -184,11 +182,12 @@ Normally you don’t need this: deploying the backend and letting it run `Migrat
 | 1 | Push code to GitHub |
 | 2 | Run `./scripts/azure-create-west-europe.ps1 -SqlAdminPassword '...' -CreateServicePrincipal` (West Europe) or `./scripts/azure-create.ps1 -SqlAdminPassword '...'` (East US 2) |
 | 3 | Add `AZURE_STATIC_WEB_APPS_API_TOKEN`, `AZURE_WEBAPP_NAME`, `AZURE_WEBAPP_PUBLISH_PROFILE`, and `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_CLIENT_SECRET`; set `VITE_API_URL` variable so frontend uses the backend |
-| 4 | Push to `main` or create a release → frontend and/or backend deploy. To update Azure DB: deploy backend (push `backend/` or run "Build and deploy backend to Azure Web App" manually). |
+| 4 | Push to `main` or create a release → checks, then backend, then frontend deploy. To update Azure DB: deploy backend (push to `main` or run "Build and deploy to Azure Static Web Apps" manually). |
 | 5 | Check Static Web App URL, backend Swagger, and login from the site (see §6 checklist) |
 
 **Cost:**  
 - **Static Web App** Free tier: $0/month.  
-- **Azure SQL** Basic: paid. **App Service** uses **F1** (Free) by default; switch to B1 in the script if you have quota and want a paid plan.
+- **Azure SQL** Basic: paid. **App Service** uses **B1** (Basic, paid) with **Always On** by default (`-AppServicePlanSku` takes B1 or above). Not F1: the sequence, reminder and SLA jobs run inside the web app, and a Free plan unloads it when idle, so those jobs stop until someone opens the app.
+- To check an existing deployment: `az appservice plan show -g <resource-group> -n <plan> --query sku.name` should be B1 or above, and `az webapp config show -g <resource-group> -n <web-app> --query alwaysOn` should be `true`. To fix one: `az appservice plan update -g <resource-group> -n <plan> --sku B1`, then `az webapp config set -g <resource-group> -n <web-app> --always-on true`.
 
 **Quota:** If App Service Plan creation fails with *"Operation cannot be completed without additional quota"*, your subscription has no App Service (Free/Basic) quota in that region. Either request a quota increase (Azure Portal → Subscriptions → your subscription → Usage + quotas → App Service), or run the script in another region (e.g. `-Location eastus`) where you have quota.

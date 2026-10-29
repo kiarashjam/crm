@@ -7,7 +7,7 @@ Automation scripts for provisioning/deploying infrastructure.
 ### West Europe (recommended – cheapest, West Europe)
 
 - **`azure-create-west-europe.ps1`**: Creates all CRM resources in **West Europe** with cheapest tiers:
-  - Resource group `rg-crm-aci-we`, Static Web App (Free), SQL (Basic), Web App (F1 Free)
+  - Resource group `rg-crm-aci-we`, Static Web App (Free), SQL (Basic), Web App (B1 with Always On, so the background jobs keep running)
   - Use `-CreateServicePrincipal` to auto-create GitHub-ready Azure credentials
   - Run: `./scripts/azure-create-west-europe.ps1 -SqlAdminPassword 'YourPwd1!'`
 

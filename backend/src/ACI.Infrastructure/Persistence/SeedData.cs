@@ -14,9 +14,14 @@ public static class SeedData
     public const string SeedUserName = "Demo User";
     public const string SeedUserPassword = "DemoPass123!";
 
-    public static async Task SeedAsync(AppDbContext db, IPasswordHasher passwordHasher, CancellationToken ct = default)
+    /// <param name="seedDemoUser">
+    /// Whether a database with no accounts gets the demo user. Its password is in the
+    /// repository, so only development asks for it: a new production database must
+    /// not come up with a sign-in anyone can use.
+    /// </param>
+    public static async Task SeedAsync(AppDbContext db, IPasswordHasher passwordHasher, bool seedDemoUser, CancellationToken ct = default)
     {
-        if (!await db.Users.AnyAsync(ct))
+        if (seedDemoUser && !await db.Users.AnyAsync(ct))
         {
             var seedUser = new User
             {

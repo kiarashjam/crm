@@ -9,6 +9,8 @@ using ACI.WebApi.Middleware;
 using ACI.WebApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -456,6 +458,32 @@ try
             var connStr = app.Configuration.GetConnectionString("DefaultConnection") ?? "(not configured)";
             var maskedConnStr = connStr.Length > 30 ? connStr.Substring(0, 30) + "..." : connStr;
             Log.Information("Database connection: {ConnectionString}", maskedConnStr);
+            
+            // The schema work below adds to the tables InitialCreate makes (its first
+            // statement points a foreign key at Users), but the migrations only run after
+            // it. So a new database -- missing, or created empty -- failed on its first
+            // statement on every start and was never set up. An empty one is now given the
+            // migrations first. A database with any table in it, as production's has,
+            // skips this and is set up in exactly the order it always was.
+            //
+            // A missing one is only created in development (docker-compose's first
+            // start). Anywhere else the database is provisioned first, so a missing one
+            // means a mistyped name in the connection string: creating it would start
+            // the app on a new, empty database (on Azure, one at the default, paid tier)
+            // while the real one sat unused, and people would sign up into it.
+            var databaseCreator = db.Database.GetService<IRelationalDatabaseCreator>();
+            var databaseExists = await databaseCreator.ExistsAsync();
+            if (!databaseExists && !app.Environment.IsDevelopment())
+            {
+                throw new InvalidOperationException(
+                    "The database named in the connection string does not exist. Outside development it is not "
+                    + "created at start-up: create it first (the scripts in scripts/ do), or correct the name.");
+            }
+            if (!databaseExists || !await databaseCreator.HasTablesAsync())
+            {
+                Log.Information("Empty database: creating the core tables from the migrations first...");
+                await db.Database.MigrateAsync();
+            }
             
             // First, create missing tables and fix schema
             Log.Information("Checking and fixing database schema...");
@@ -1776,7 +1804,7 @@ try
             }
             
             Log.Information("Seeding database...");
-            await SeedData.SeedAsync(db, passwordHasher);
+            await SeedData.SeedAsync(db, passwordHasher, seedDemoUser: app.Environment.IsDevelopment());
             
             // Bring EXISTING organisations onto the agreed lead status vocabulary.
             //
@@ -1788,14 +1816,15 @@ try
             // leads stayed on "New" however much work was logged. So the alignment
             // lives here, where this application's schema work actually happens.
             //
-            // Runs after seeding so an organisation the seeder has just created is
-            // aligned in the same boot rather than the next one, and in its own
-            // try/catch so a stale vocabulary degrades the pipeline without taking
-            // the whole initialisation -- or /db-status -- down with it.
+            // It runs once, as a data fix (see DataFixes): run on every start, it
+            // deleted statuses managers had made and put back ones they had removed.
+            // After seeding, and in its own try/catch so a failure degrades the
+            // pipeline without taking the whole initialisation -- or /db-status --
+            // down with it; it is retried on the next start.
             try
             {
                 Log.Information("Aligning lead status vocabulary...");
-                var aligned = await db.Database.ExecuteSqlRawAsync(LeadStatusVocabulary.AlignmentSql());
+                var aligned = await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.AlignLeadStatusVocabularySql);
                 Log.Information("Lead status vocabulary aligned ({Rows} row(s) affected)", aligned);
             }
             catch (Exception vocabEx)

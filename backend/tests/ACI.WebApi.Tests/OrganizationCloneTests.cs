@@ -304,6 +304,30 @@ public class OrganizationCloneTests
     }
 
     [Fact]
+    public async Task ThePlanCountsWhatTheCopyHolds_WithoutWritingAnything()
+    {
+        // The dry run used to make the whole copy and roll it back, in the database every
+        // tenant shares. It now only counts, and has to count what the copy really makes.
+        var (connection, db, original, _, _) = await WorldAsync();
+        using var _c = connection;
+        await using var _d = db;
+        var organizations = await db.Organizations.CountAsync();
+        var before = await CountsAsync(db, original.Org);
+        var cloner = new OrganizationCloner(db);
+
+        var plan = await cloner.PlanAsync(original.Org);
+
+        (await db.Organizations.CountAsync()).Should().Be(organizations, "planning makes no copy");
+        (await CountsAsync(db, original.Org)).Should().Equal(before);
+        db.ChangeTracker.Entries().Should().BeEmpty();
+        plan.AttachmentBytes.Should().Be("%PDF"u8.Length);
+
+        var report = await cloner.CloneAsync(original.Org, "Pavillon 46 v2");
+        plan.RowsToCopy.Should().Equal(report.RowsCopied);
+        plan.RowsLeftOut.Should().Equal(report.RowsLeftOut);
+    }
+
+    [Fact]
     public async Task CopyingWritesNoHistoryOfItsOwn()
     {
         // The original's history is copied as it is. Each copied record would otherwise get
