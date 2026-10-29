@@ -494,14 +494,27 @@ export default function Tasks() {
     }
   };
 
-  const handleAssigneeChange = async (task: TaskItem, newAssigneeId: string | null) => {
+  // The card shows a change at once. The server can refuse it (someone outside the
+  // workspace, or who cannot open the task's private deal), and the request then
+  // throws, which left the card showing a change that was never saved. So a refused
+  // change is put back with the server's reason, and the detail view is told whether
+  // it was saved.
+  const attempt = async (save: Promise<TaskItem | null>): Promise<{ updated: TaskItem | null; refusal: string }> => {
+    try {
+      return { updated: await save, refusal: messages.errors.generic };
+    } catch (err) {
+      return { updated: null, refusal: err instanceof Error && err.message ? err.message : messages.errors.generic };
+    }
+  };
+
+  const handleAssigneeChange = async (task: TaskItem, newAssigneeId: string | null): Promise<boolean> => {
     const assigneeName = newAssigneeId ? orgMembers.find((m) => m.userId === newAssigneeId)?.name : undefined;
     const oldAssigneeName = task.assigneeName;
     setTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, assigneeId: newAssigneeId ?? undefined, assigneeName } : t))
     );
 
-    const updated = await assignTask(task.id, newAssigneeId);
+    const { updated, refusal } = await attempt(assignTask(task.id, newAssigneeId));
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       // Update detail modal if it's the same task
@@ -514,10 +527,11 @@ export default function Tasks() {
         : `Task unassigned${oldAssigneeName ? ` (was: ${oldAssigneeName})` : ''}`;
       await logTaskActivity(updated, newAssigneeId ? 'assigned' : 'unassigned', details);
       toast.success(newAssigneeId ? 'Task assigned' : 'Task unassigned');
-    } else {
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
-      toast.error(messages.errors.generic);
+      return true;
     }
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+    toast.error(refusal);
+    return false;
   };
 
   const handlePriorityChange = async (task: TaskItem, newPriority: TaskPriorityType) => {
@@ -540,14 +554,14 @@ export default function Tasks() {
     }
   };
 
-  const handleLeadChange = async (task: TaskItem, newLeadId: string | null) => {
+  const handleLeadChange = async (task: TaskItem, newLeadId: string | null): Promise<boolean> => {
     const leadName = newLeadId ? leads.find((l) => l.id === newLeadId)?.name : undefined;
     const oldLeadName = task.leadName;
     setTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, leadId: newLeadId ?? undefined, leadName } : t))
     );
 
-    const updated = await linkTaskToLead(task.id, newLeadId);
+    const { updated, refusal } = await attempt(linkTaskToLead(task.id, newLeadId));
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       // Update detail modal if it's the same task
@@ -560,20 +574,21 @@ export default function Tasks() {
         : `Task unlinked from lead${oldLeadName ? ` "${oldLeadName}"` : ''}`;
       await logTaskActivity(updated, newLeadId ? 'linked to lead' : 'unlinked from lead', details);
       toast.success(newLeadId ? 'Task linked to lead' : 'Task unlinked from lead');
-    } else {
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
-      toast.error(messages.errors.generic);
+      return true;
     }
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+    toast.error(refusal);
+    return false;
   };
 
-  const handleDealChange = async (task: TaskItem, newDealId: string | null) => {
+  const handleDealChange = async (task: TaskItem, newDealId: string | null): Promise<boolean> => {
     const dealName = newDealId ? deals.find((d) => d.id === newDealId)?.name : undefined;
     const oldDealName = task.dealName;
     setTasks((prev) =>
       prev.map((t) => (t.id === task.id ? { ...t, dealId: newDealId ?? undefined, dealName } : t))
     );
 
-    const updated = await linkTaskToDeal(task.id, newDealId);
+    const { updated, refusal } = await attempt(linkTaskToDeal(task.id, newDealId));
     if (updated) {
       setTasks((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
       // Update detail modal if it's the same task
@@ -586,10 +601,11 @@ export default function Tasks() {
         : `Task unlinked from deal${oldDealName ? ` "${oldDealName}"` : ''}`;
       await logTaskActivity(updated, newDealId ? 'linked to deal' : 'unlinked from deal', details);
       toast.success(newDealId ? 'Task linked to deal' : 'Task unlinked from deal');
-    } else {
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
-      toast.error(messages.errors.generic);
+      return true;
     }
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+    toast.error(refusal);
+    return false;
   };
 
   const handleQuickAdd = async (column: KanbanColumn) => {
