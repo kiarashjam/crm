@@ -9,6 +9,7 @@ export {
   register,
   me,
   twoFactorSetup,
+  twoFactorStatus,
   twoFactorEnable,
   twoFactorDisable,
   requestPasswordReset,

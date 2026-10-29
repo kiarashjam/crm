@@ -51,13 +51,21 @@ export function resendVerificationEmail() {
   return authFetchJson<void>('/api/auth/verify-email/resend', { method: 'POST' });
 }
 
-export type TwoFactorSetupResponse = { enabled: boolean; secret: string; otpauthUri: string };
+/** `secret` and `otpauthUri` are null once 2FA is on: the server never sends the live secret. */
+export type TwoFactorSetupResponse = { enabled: boolean; secret: string | null; otpauthUri: string | null };
 
+/** Only for turning 2FA on. To show whether it is on, ask {@link twoFactorStatus}. */
 export async function twoFactorSetup(): Promise<TwoFactorSetupResponse> {
   // The demo user has no account to protect, and the server would answer 401, which
-  // signs the session out. The Settings page asks for this every time it opens.
+  // signs the session out.
   if (servesDemoData()) throw new Error('Two-factor sign-in is for accounts. The demo has none.');
   return authFetchJson<TwoFactorSetupResponse>('/api/auth/2fa/setup', { method: 'POST' });
+}
+
+/** Whether 2FA is on. What the Settings page asks every time it opens. */
+export async function twoFactorStatus(): Promise<{ enabled: boolean }> {
+  if (servesDemoData()) throw new Error('Two-factor sign-in is for accounts. The demo has none.');
+  return authFetchJson<{ enabled: boolean }>('/api/auth/2fa/status');
 }
 
 export function twoFactorEnable(code: string) {

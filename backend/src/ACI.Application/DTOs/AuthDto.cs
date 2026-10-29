@@ -57,10 +57,16 @@ public record TwoFactorLoginRequest
     public required string Code { get; init; }
 }
 
+/// <summary>
+/// The secret to enter in an authenticator app. Once 2FA is on, Secret and OtpauthUri
+/// are null: the live secret is the second factor, and is never sent again.
+/// </summary>
 public record TwoFactorSetupResponse(
     bool Enabled,
-    string Secret, // Base32
-    string OtpauthUri);
+    string? Secret, // Base32
+    string? OtpauthUri);
+
+public record TwoFactorStatusResponse(bool Enabled);
 
 /// <summary>
 /// Request to enable two-factor authentication.

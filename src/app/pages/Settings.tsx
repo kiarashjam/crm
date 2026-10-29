@@ -15,7 +15,7 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getUserSettings, saveUserSettings, resetUserSettings,
   getTimezones, getCurrencies, getLanguages,
-  twoFactorSetup, twoFactorEnable, twoFactorDisable,
+  twoFactorSetup, twoFactorStatus, twoFactorEnable, twoFactorDisable,
 } from '@/app/api';
 import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption, CurrencyOption, LanguageOption } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
@@ -178,12 +178,10 @@ export default function Settings() {
     getCurrencies().then(setCurrencies).catch(() => {});
     getLanguages().then(setLanguages).catch(() => {});
 
-    twoFactorSetup()
-      .then((r) => {
-        setTwoFaEnabled(r.enabled);
-        setTwoFaSecret(r.secret);
-        setTwoFaUri(r.otpauthUri);
-      })
+    // Only whether 2FA is on. Opening Settings used to ask for "setup", which sent the
+    // live secret to the browser on every visit; setup is asked for when starting it.
+    twoFactorStatus()
+      .then((r) => setTwoFaEnabled(r.enabled))
       .catch(() => setTwoFaEnabled(false));
   }, []);
 
@@ -489,7 +487,7 @@ export default function Settings() {
       setTwoFaEnabled(r.enabled);
       setTwoFaSecret(r.secret);
       setTwoFaUri(r.otpauthUri);
-      toast.message(messages.twoFa.scanSecretConfirm);
+      if (!r.enabled) toast.message(messages.twoFa.scanSecretConfirm);
     } catch {
       toast.error(messages.errors.generic);
     } finally {

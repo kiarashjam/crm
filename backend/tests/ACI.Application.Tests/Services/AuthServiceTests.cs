@@ -400,6 +400,36 @@ public class AuthServiceTests
         result.Error.Code.Should().Be("Auth.EmailNotFound");
     }
 
+    [Fact]
+    public async Task GetTwoFactorSetupAsync_NeverReturnsTheLiveSecret_OnceEnabled()
+    {
+        // The live secret is the second factor. Any session asking for "setup" used to
+        // get it back, and could pass (or switch off) 2FA from then on.
+        var userId = Guid.NewGuid();
+        var user = new User
+        {
+            Id = userId,
+            Email = "test@example.com",
+            TwoFactorEnabled = true,
+            TwoFactorSecretProtected = "protected-live-secret",
+        };
+        _userRepositoryMock
+            .Setup(r => r.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(user);
+        _secretProtectorMock
+            .Setup(s => s.Unprotect("protected-live-secret"))
+            .Returns("JBSWY3DPEHPK3PXP");
+
+        var result = await _sut.GetTwoFactorSetupAsync(userId);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Enabled.Should().BeTrue();
+        result.Value.Secret.Should().BeNull();
+        result.Value.OtpauthUri.Should().BeNull();
+        user.TwoFactorSecretProtected.Should().Be("protected-live-secret", "the live secret is left alone");
+        _secretProtectorMock.Verify(s => s.Unprotect(It.IsAny<string>()), Times.Never);
+    }
+
     #endregion
 
     #region Password reset

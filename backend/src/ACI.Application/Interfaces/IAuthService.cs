@@ -38,9 +38,12 @@ public interface IAuthService
     /// </summary>
     /// <param name="userId">The user's ID.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>2FA setup info including QR code URI.</returns>
+    /// <returns>2FA setup info including QR code URI; no secret once 2FA is enabled.</returns>
     Task<Result<TwoFactorSetupResponse>> GetTwoFactorSetupAsync(Guid userId, CancellationToken ct = default);
     
+    /// <summary>Whether two-factor sign-in is on, and nothing else.</summary>
+    Task<Result<TwoFactorStatusResponse>> GetTwoFactorStatusAsync(Guid userId, CancellationToken ct = default);
+
     /// <summary>
     /// Enables two-factor authentication for a user.
     /// </summary>

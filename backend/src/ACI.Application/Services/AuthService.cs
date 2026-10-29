@@ -251,6 +251,15 @@ public class AuthService : IAuthService
             return DomainErrors.Auth.EmailNotFound;
         }
 
+        // Once 2FA is on, the stored secret is the second factor itself. Handing it to
+        // any session that asks (a stolen token, a desk left signed in) would let that
+        // session pass 2FA, and switch it off, from then on.
+        if (user.TwoFactorEnabled)
+        {
+            _logger.LogInformation("2FA setup asked for user {UserId}, who already has it on; no secret returned", userId);
+            return new TwoFactorSetupResponse(Enabled: true, Secret: null, OtpauthUri: null);
+        }
+
         // Generate (or reuse) secret until 2FA is enabled.
         string secretBase32;
         if (!string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected))
@@ -274,6 +283,14 @@ public class AuthService : IAuthService
             Enabled: user.TwoFactorEnabled,
             Secret: secretBase32,
             OtpauthUri: otpauthUri);
+    }
+
+    public async Task<Result<TwoFactorStatusResponse>> GetTwoFactorStatusAsync(Guid userId, CancellationToken ct = default)
+    {
+        var user = await _userRepository.GetByIdAsync(userId, ct);
+        if (user == null)
+            return DomainErrors.Auth.EmailNotFound;
+        return new TwoFactorStatusResponse(user.TwoFactorEnabled);
     }
 
     public async Task<Result> EnableTwoFactorAsync(Guid userId, TwoFactorEnableRequest request, CancellationToken ct = default)

@@ -152,11 +152,33 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// Says whether two-factor authentication is on for the current user.
+    /// </summary>
+    /// <remarks>
+    /// What the Settings page asks when it opens. It never carries the secret.
+    /// </remarks>
+    /// <response code="200">Returns whether 2FA is enabled.</response>
+    /// <response code="401">User is not authenticated.</response>
+    [HttpGet("2fa/status")]
+    [Authorize]
+    [ProducesResponseType(typeof(TwoFactorStatusResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<TwoFactorStatusResponse>> TwoFactorStatus(CancellationToken ct)
+    {
+        if (!_currentUser.UserId.HasValue)
+            return Unauthorized();
+
+        var result = await _authService.GetTwoFactorStatusAsync(_currentUser.UserId.Value, ct);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
     /// Gets two-factor authentication setup information.
     /// </summary>
     /// <remarks>
     /// Returns the TOTP secret and QR code URI for setting up an authenticator app.
-    /// The secret is generated on first call and persisted until 2FA is enabled.
+    /// The secret is generated on first call and persisted until 2FA is enabled. Once it
+    /// is enabled, the secret is not returned again (Secret and OtpauthUri are null).
     /// </remarks>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Two-factor setup information with QR code URI.</returns>
