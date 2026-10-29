@@ -8,12 +8,15 @@ namespace ACI.Application.DTOs;
 public record CreateActivityRequest
 {
     /// <summary>
-    /// Activity type. Valid values: call, meeting, email, note, task, follow_up, deadline, video, demo.
+    /// Activity type. Valid values: call, meeting, email, note, task, follow_up, deadline, video, demo, system.
+    /// "system" is an update the app writes on a lead's timeline — reassigned, a
+    /// follow-up done, a pipeline move. It was refused, so on the real backend none of
+    /// those entries were ever saved and the lead's history had gaps.
     /// </summary>
     [Required(ErrorMessage = "Type is required")]
     [StringLength(20, ErrorMessage = "Type cannot exceed 20 characters")]
-    [RegularExpression(@"(?i)^(call|meeting|email|note|task|follow_up|deadline|video|demo)$", 
-        ErrorMessage = "Type must be one of: call, meeting, email, note, task, follow_up, deadline, video, demo")]
+    [RegularExpression(@"(?i)^(call|meeting|email|note|task|follow_up|deadline|video|demo|system)$", 
+        ErrorMessage = "Type must be one of: call, meeting, email, note, task, follow_up, deadline, video, demo, system")]
     public required string Type { get; init; }
 
     /// <summary>

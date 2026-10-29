@@ -225,7 +225,7 @@ public class ActivitiesController : ControllerBase
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The created activity.</returns>
     /// <remarks>
-    /// Valid activity types: call, meeting, email, note, task, follow_up, deadline, video, demo.
+    /// Valid activity types: call, meeting, email, note, task, follow_up, deadline, video, demo, system.
     /// At least one of ContactId, DealId, or LeadId must be specified.
     /// </remarks>
     /// <response code="200">Activity created successfully.</response>

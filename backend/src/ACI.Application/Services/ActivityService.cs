@@ -24,8 +24,10 @@ public class ActivityService : IActivityService
         "call", "meeting", "email", "video", "demo",
     };
 
-    // HP-1: All 9 activity types supported (matches frontend config)
-    private static readonly string[] ValidActivityTypes = { "call", "meeting", "email", "note", "task", "follow_up", "deadline", "video", "demo" };
+    // HP-1: The 9 types a person logs (matches frontend config), plus "system": the
+    // updates the lead page records on its timeline. "system" is not a reply, so it
+    // never counts as a first response or stops a sequence.
+    private static readonly string[] ValidActivityTypes = { "call", "meeting", "email", "note", "task", "follow_up", "deadline", "video", "demo", "system" };
 
     public ActivityService(
         IActivityRepository repository,
