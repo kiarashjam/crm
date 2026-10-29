@@ -93,6 +93,28 @@ public class SecretPathRedactionTests
             .And.NotContain("DEF");
     }
 
+}
+
+/// <summary>
+/// Tests that capture process-wide output. They run on their own, after the parallel
+/// tests: Console.Out is one per process, and every test app that starts or stops
+/// replaces or closes Serilog's static logger, so a host starting beside this test
+/// swallowed the very log line it reads.
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class ProcessWideLogCollection
+{
+    public const string Name = "Process-wide log";
+}
+
+/// <summary>
+/// The signing token is not in the log Serilog writes for a real request.
+/// </summary>
+[Collection(ProcessWideLogCollection.Name)]
+public class SecretPathRequestLogTests
+{
+    private const string Token = "SUPERSECRETTOKEN123abcXYZ";
+
     [Fact]
     public async Task TheTokenIsNotInTheRequestLogAtAll()
     {
@@ -123,5 +145,4 @@ public class SecretPathRedactionTests
         log.Should().Contain("/api/public/contracts/[redacted]");
         log.Should().NotContain(Token, "the raw signing token must never reach a log");
     }
-
 }
