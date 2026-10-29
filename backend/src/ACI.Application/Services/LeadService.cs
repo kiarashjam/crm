@@ -551,6 +551,14 @@ public class LeadService : ILeadService
             if (links.IsFailure) return links.Error;
         }
 
+        // A deal to convert into must be one this workspace has. Asked together with
+        // "create a deal", the id was stored as the lead's deal without any check.
+        if (request.ExistingDealId is Guid existingDealId)
+        {
+            var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { DealId = existingDealId }, ct);
+            if (links.IsFailure) return links.Error;
+        }
+
         Guid? companyId = lead.CompanyId;
         Guid? newCompanyId = null;
 

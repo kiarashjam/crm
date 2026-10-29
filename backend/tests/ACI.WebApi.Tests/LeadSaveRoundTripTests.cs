@@ -110,4 +110,28 @@ public class LeadSaveRoundTripTests
         lead.ConvertedToContactId.Should().NotBeNull();
         lead.ConvertedToDealId.Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task ALeadCannotBeConvertedIntoAnotherWorkspacesDeal()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, userId) = await SignInAsync(factory, "rep@example.ch");
+        var org = await CreateAsync(factory, userId, "Club Nautique");
+        var (stranger, strangerId) = await SignInAsync(factory, "stranger@example.ch");
+        var otherOrg = await CreateAsync(factory, strangerId, "Other club");
+        var foreignDeal = await stranger.In(otherOrg).PostAsync("/api/deals", Body(new { name = "Their deal", value = "5000" }));
+        foreignDeal.IsSuccessStatusCode.Should().BeTrue(await foreignDeal.Content.ReadAsStringAsync());
+        using var doc = JsonDocument.Parse(await foreignDeal.Content.ReadAsStringAsync());
+        var foreignDealId = doc.RootElement.GetProperty("id").GetGuid();
+        var id = await CreateLead(client.In(org), "jean@example.ch");
+
+        var res = await client.In(org).PostAsync($"/api/leads/{id}/convert",
+            Body(new { createContact = true, createDeal = true, existingDealId = foreignDealId }));
+
+        res.IsSuccessStatusCode.Should().BeFalse();
+        var lead = await Stored(factory, id);
+        lead.IsConverted.Should().BeFalse();
+        lead.ConvertedToDealId.Should().BeNull();
+    }
 }
+
