@@ -33,6 +33,7 @@ public class OrganizationCloneTests
             Id = Guid.NewGuid(), Name = name, OwnerUserId = owner, CreatedAtUtc = now.AddYears(-1),
             WebhookApiKeyHash = ACI.Application.Services.OrganizationService.HashApiKey($"key-{name}"), WebhookApiKeyCreatedAtUtc = now, WebhookPassword = "secret",
             OutboundWebhookUrl = "https://hooks.example.com/cadence", OutboundWebhookSecret = "s3cret",
+            McpApiKeyHash = ACI.Application.Services.OrganizationService.HashApiKey($"mcp-{name}"), McpApiKeyCreatedAtUtc = now,
         };
         db.Organizations.Add(org);
         db.OrganizationMembers.AddRange(
@@ -282,7 +283,9 @@ public class OrganizationCloneTests
         var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
 
         var org = await db.Organizations.SingleAsync(o => o.Id == report.CopyId);
-        new[] { org.WebhookApiKeyHash, org.WebhookPassword, org.OutboundWebhookUrl, org.OutboundWebhookSecret }.Should().OnlyContain(v => v == null);
+        new[] { org.WebhookApiKeyHash, org.WebhookPassword, org.OutboundWebhookUrl, org.OutboundWebhookSecret, org.McpApiKeyHash }
+            .Should().OnlyContain(v => v == null, "a copied MCP key would open both workspaces, whichever the lookup found first");
+        org.McpApiKeyCreatedAtUtc.Should().BeNull();
         (await db.OutreachEnrollments.Where(e => e.OrganizationId == report.CopyId).Select(e => e.Status).ToListAsync())
             .Should().BeEquivalentTo(["paused", "stopped"]);
         var contract = await db.Set<Contract>().SingleAsync(c => c.OrganizationId == report.CopyId);

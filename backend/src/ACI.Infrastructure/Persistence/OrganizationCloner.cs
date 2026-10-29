@@ -126,6 +126,8 @@ public sealed class OrganizationCloner
         org.CreatedAtUtc = DateTime.UtcNow;
         org.WebhookApiKeyHash = null;
         org.WebhookApiKeyCreatedAtUtc = null;
+        org.McpApiKeyHash = null;
+        org.McpApiKeyCreatedAtUtc = null;
         org.WebhookPassword = null;
         org.OutboundWebhookUrl = null;
         org.OutboundWebhookSecret = null;
