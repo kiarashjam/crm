@@ -101,14 +101,33 @@ export default function Reports() {
   useEffect(() => { saveFilters(filters); }, [filters]);
 
   useEffect(() => {
-    getPipelines().then(setPipelines).catch(() => setPipelines([]));
+    // The filters are remembered per browser, not per workspace. A pipeline or team
+    // remembered from another workspace (or since deleted) is not this one's: the
+    // server refused every request for it, and the picker, which lists only this
+    // workspace's, could not show what was being asked for. Without a list there
+    // is no picker at all, so nothing is narrowed by what cannot be seen.
+    getPipelines()
+      .then((list) => {
+        setPipelines(list);
+        setFilters((f) => (f.pipelineId && !list.some((p) => p.id === f.pipelineId) ? { ...f, pipelineId: '' } : f));
+      })
+      .catch(() => {
+        setPipelines([]);
+        setFilters((f) => (f.pipelineId ? { ...f, pipelineId: '' } : f));
+      });
+    const noTeams = () => setFilters((f) => (f.scope === 'team' || f.teamId ? { ...f, scope: f.scope === 'team' ? 'org' : f.scope, teamId: '' } : f));
     getSalesTeams()
       .then((list) => {
         setTeams(list);
         // "My team" remembered from a workspace that has teams, in one that has none.
-        if (list.length === 0) setFilters((f) => (f.scope === 'team' ? { ...f, scope: 'org', teamId: '' } : f));
+        if (list.length === 0) noTeams();
+        else setFilters((f) => (f.teamId && !list.some((t) => t.id === f.teamId) ? { ...f, teamId: '' } : f));
       })
-      .catch(() => setTeams([]));
+      .catch(() => {
+        // A personal workspace has no teams, and the server says so with a refusal.
+        setTeams([]);
+        noTeams();
+      });
   }, []);
 
   useEffect(() => {
