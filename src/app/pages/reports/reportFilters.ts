@@ -1,11 +1,13 @@
 // The Reports page's filters, as pure functions.
 //
 // A period is chosen by name ("This month", "Last quarter") and turned into two
-// instants here, at this browser's own midnights. The server has no organisation
-// time zone yet, so it counts between the instants it is given rather than
-// guessing where the viewer's month starts.
+// instants here, at the workspace's midnights in its own time zone, and the server
+// counts between the instants it is given. These used this browser's midnights, so a
+// manager away from the club cut its months at their own midnight, and a deal won in
+// Zurich at half past midnight on the 1st counted in the month before.
 
 import type { ReportFilters, ReportScope } from '@/app/api/reporting';
+import { dayKeyIn, startOfDayIn, zonedParts } from '@/app/lib/zonedTime';
 
 export type PeriodPreset =
   | 'this-month' | 'last-month' | 'this-quarter' | 'last-quarter'
@@ -24,59 +26,51 @@ export const PERIOD_LABELS: Record<PeriodPreset, string> = {
 };
 
 export interface Period {
-  /** Local midnight that starts the period. */
+  /** The workspace's midnight that starts the period. */
   from: Date;
-  /** Local midnight after its last day (exclusive). */
+  /** The workspace's midnight after its last day (exclusive). */
   to: Date;
 }
 
-/** The period a preset names, at local midnights, as of `now`. */
-export function periodFor(preset: Exclude<PeriodPreset, 'custom'>, now = new Date()): Period {
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const today = new Date(y, m, now.getDate());
-  const tomorrow = new Date(y, m, now.getDate() + 1);
-  const quarter = Math.floor(m / 3) * 3;
+/** The period a preset names, between midnights in `timeZone`, as of `now`. */
+export function periodFor(preset: Exclude<PeriodPreset, 'custom'>, timeZone: string, now = new Date()): Period {
+  const { year: y, month: m, day } = zonedParts(now, timeZone);
+  // Months and days out of range roll over: month 0 is last December.
+  const at = (year: number, month: number, d: number) => startOfDayIn(year, month, d, timeZone);
+  const quarter = Math.floor((m - 1) / 3) * 3 + 1;
   switch (preset) {
-    case 'this-month': return { from: new Date(y, m, 1), to: new Date(y, m + 1, 1) };
-    case 'last-month': return { from: new Date(y, m - 1, 1), to: new Date(y, m, 1) };
-    case 'this-quarter': return { from: new Date(y, quarter, 1), to: new Date(y, quarter + 3, 1) };
-    case 'last-quarter': return { from: new Date(y, quarter - 3, 1), to: new Date(y, quarter, 1) };
+    case 'this-month': return { from: at(y, m, 1), to: at(y, m + 1, 1) };
+    case 'last-month': return { from: at(y, m - 1, 1), to: at(y, m, 1) };
+    case 'this-quarter': return { from: at(y, quarter, 1), to: at(y, quarter + 3, 1) };
+    case 'last-quarter': return { from: at(y, quarter - 3, 1), to: at(y, quarter, 1) };
     // The last N days include today.
-    case 'last-30': return { from: new Date(y, m, today.getDate() - 29), to: tomorrow };
-    case 'last-90': return { from: new Date(y, m, today.getDate() - 89), to: tomorrow };
-    case 'this-year': return { from: new Date(y, 0, 1), to: new Date(y + 1, 0, 1) };
-    case 'last-year': return { from: new Date(y - 1, 0, 1), to: new Date(y, 0, 1) };
+    case 'last-30': return { from: at(y, m, day - 29), to: at(y, m, day + 1) };
+    case 'last-90': return { from: at(y, m, day - 89), to: at(y, m, day + 1) };
+    case 'this-year': return { from: at(y, 1, 1), to: at(y + 1, 1, 1) };
+    case 'last-year': return { from: at(y - 1, 1, 1), to: at(y, 1, 1) };
   }
 }
 
-/** yyyy-MM-dd of a local date, as an <input type="date"> holds it. */
-export function dateInputValue(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** yyyy-MM-dd of the day an instant falls on in `timeZone`, as an <input type="date"> holds it. */
+export function dateInputValue(d: Date, timeZone: string): string {
+  return dayKeyIn(d, timeZone);
 }
 
 /**
- * A custom period from two date inputs, both days included. Null when either is
- * missing or the end is before the start.
+ * A custom period from two date inputs, both days included, between midnights in
+ * `timeZone`. Null when either is missing or the end is before the start.
  */
-export function customPeriod(fromDay: string, toDay: string): Period | null {
+export function customPeriod(fromDay: string, toDay: string, timeZone: string): Period | null {
   const parse = (s: string) => {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-    return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
+    return match ? { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) } : null;
   };
-  const from = parse(fromDay);
+  const first = parse(fromDay);
   const last = parse(toDay);
-  if (!from || !last || last < from) return null;
-  return { from, to: new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1) };
-}
-
-/** The browser's IANA time zone, which the server counts the charts' days in. */
-export function browserTimeZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
-  } catch {
-    return undefined;
-  }
+  if (!first || !last) return null;
+  const from = startOfDayIn(first.y, first.m, first.d, timeZone);
+  const to = startOfDayIn(last.y, last.m, last.d + 1, timeZone);
+  return to > from ? { from, to } : null;
 }
 
 export interface FilterState {
@@ -100,9 +94,12 @@ export const DEFAULT_FILTERS: FilterState = {
   currency: '',
 };
 
-/** The request a filter state makes, or null for a custom period that is not complete yet. */
-export function toReportFilters(state: FilterState, now = new Date()): ReportFilters | null {
-  const period = state.preset === 'custom' ? customPeriod(state.customFrom, state.customTo) : periodFor(state.preset, now);
+/**
+ * The request a filter state makes, or null for a custom period that is not complete
+ * yet. The charts' days are counted in the zone the period was cut in.
+ */
+export function toReportFilters(state: FilterState, timeZone: string, now = new Date()): ReportFilters | null {
+  const period = state.preset === 'custom' ? customPeriod(state.customFrom, state.customTo, timeZone) : periodFor(state.preset, timeZone, now);
   if (!period) return null;
   return {
     from: period.from.toISOString(),
@@ -111,29 +108,37 @@ export function toReportFilters(state: FilterState, now = new Date()): ReportFil
     teamId: state.scope === 'team' && state.teamId ? state.teamId : undefined,
     pipelineId: state.pipelineId || undefined,
     currency: state.currency || undefined,
-    timeZone: browserTimeZone(),
+    timeZone,
   };
 }
 
-/** yyyy-MM of the local month a date is in. */
-export function monthOf(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+/** yyyy-MM of the month an instant falls in, in `timeZone`. */
+export function monthOf(d: Date, timeZone: string): string {
+  return dayKeyIn(d, timeZone).slice(0, 7);
 }
 
-/** "2026-10" as "Oct 2026" in the viewer's language. */
-export function monthLabel(month: string): string {
+/** The yyyy-MM `by` months after (or before) another. */
+export function addMonths(month: string, by: number): string {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(Date.UTC(y!, m! - 1 + by, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** "2026-10" as "Oct 2026" in `locale`. */
+export function monthLabel(month: string, locale?: string): string {
   const [y, m] = month.split('-').map(Number);
   if (!y || !m) return month;
-  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  // A calendar month, not an instant: written as it is, wherever the viewer is.
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString(locale, { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
 /** A chart bucket's label: the day, or for weeks "w/c" the Monday, or the month. */
-export function bucketLabel(start: string, bucket: 'day' | 'week' | 'month'): string {
+export function bucketLabel(start: string, bucket: 'day' | 'week' | 'month', locale?: string): string {
   const [y, m, d] = start.split('-').map(Number);
   if (!y || !m || !d) return start;
-  const date = new Date(y, m - 1, d);
-  if (bucket === 'month') return date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
-  const day = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (bucket === 'month') return date.toLocaleDateString(locale, { month: 'short', year: '2-digit', timeZone: 'UTC' });
+  const day = date.toLocaleDateString(locale, { month: 'short', day: 'numeric', timeZone: 'UTC' });
   return bucket === 'week' ? `w/c ${day}` : day;
 }
 

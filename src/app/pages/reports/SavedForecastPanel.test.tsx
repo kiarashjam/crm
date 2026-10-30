@@ -1,8 +1,9 @@
 // A month's saved forecasts are kept, not replaced, and set against what was won.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ForecastSnapshotSet, ForecastSnapshotRow } from '@/app/api/reporting';
+import { formatMoney } from '@/app/lib/money';
 
 const line = (p: Partial<ForecastSnapshotRow>): ForecastSnapshotRow => ({
   id: 'r', month: '2026-10', currency: 'CHF', assigneeName: 'Anna Keller', weightedValue: 5000, openValue: 10000,
@@ -29,10 +30,15 @@ vi.mock('@/app/api/reporting', async (importOriginal) => ({
   saveForecastSnapshot: (...a: unknown[]) => saveForecastSnapshot(...a),
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const workspace = vi.hoisted(() => ({ current: null as null | { id: string; name: string; currency?: string; locale?: string; timeZone?: string } }));
+vi.mock('@/app/contexts/OrgContext', () => ({
+  useOrgOptional: () => (workspace.current ? { currentOrg: workspace.current } : null),
+}));
 
 import { SavedForecastPanel, compareWithActual } from './SavedForecastPanel';
 
 beforeEach(() => {
+  workspace.current = null;
   getForecastSnapshots.mockClear();
   saveForecastSnapshot.mockClear();
 });
@@ -51,6 +57,42 @@ describe('compareWithActual', () => {
 });
 
 describe('SavedForecastPanel', () => {
+  describe("on the workspace's calendar", () => {
+    // Half past midnight on 1 November in Zurich is still October in UTC and New York.
+    // The panel opened on this browser's month, and offered to save October's forecast
+    // for a club whose November had begun.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-31T23:30:00Z'));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it("opens on the month that has begun at the club", async () => {
+      workspace.current = { id: 'o', name: 'Pavillon 46', timeZone: 'Europe/Zurich' };
+      render(<SavedForecastPanel />);
+      await screen.findByLabelText('Save shown');
+
+      expect(getForecastSnapshots).toHaveBeenCalledWith(2026, 11, undefined);
+    });
+
+    it("opens on a workspace's own month wherever the browser is", async () => {
+      workspace.current = { id: 'o', name: 'Brooklyn Club', timeZone: 'America/New_York' };
+      render(<SavedForecastPanel />);
+      await screen.findByLabelText('Save shown');
+
+      expect(getForecastSnapshots).toHaveBeenCalledWith(2026, 10, undefined);
+    });
+  });
+
+  it("writes the amounts in the workspace's format", async () => {
+    workspace.current = { id: 'o', name: 'Pavillon 46', currency: 'CHF', locale: 'de-CH', timeZone: 'Europe/Zurich' };
+    render(<SavedForecastPanel />);
+    await screen.findByLabelText('Save shown');
+
+    const swiss = formatMoney(10000, 'CHF', { locale: 'de-CH', cents: 'never' }).replace(/\s+/g, ' ');
+    expect(screen.getByText(swiss)).toBeInTheDocument();
+  });
+
   it('lists every save of the month and says saving again keeps the earlier one', async () => {
     render(<SavedForecastPanel />);
 

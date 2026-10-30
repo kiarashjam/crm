@@ -36,21 +36,8 @@ import { servesDemoData } from '@/app/api/apiClient';
 import { isOrgAdmin } from '@/app/api/organizations';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { SavedForecastPanel } from './reports/SavedForecastPanel';
+import { useMoney } from '@/app/hooks/useMoney';
 
-/**
- * Money in a specific currency. The old page hardcoded USD, so an organisation
- * billing in CHF saw dollar signs on every figure.
- */
-function money(n: number, currency: string): string {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency', currency, maximumFractionDigits: 0,
-    }).format(n);
-  } catch {
-    // An unrecognised currency code must not blank the whole page.
-    return `${currency} ${Math.round(n).toLocaleString()}`;
-  }
-}
 const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -71,10 +58,9 @@ const SECTIONS = [
 
 const reason = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
 
-/** Last day of a period ending at the exclusive instant `to`, as yyyy-MM-dd. */
-function lastDayOf(toIso: string): string {
-  const d = new Date(Date.parse(toIso) - 1);
-  return dateInputValue(d);
+/** Last day of a period ending at the exclusive instant `to`, as yyyy-MM-dd in `timeZone`. */
+function lastDayOf(toIso: string, timeZone: string): string {
+  return dateInputValue(new Date(Date.parse(toIso) - 1), timeZone);
 }
 
 export default function Reports() {
@@ -88,6 +74,11 @@ export default function Reports() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [teams, setTeams] = useState<SalesTeam[]>([]);
   usePageLoading(loading);
+  // Every figure is written in the workspace's format, and its periods and months
+  // begin at the workspace's midnight, not at this browser's.
+  const regional = useMoney();
+  const { timeZone, locale } = regional;
+  const money = (n: number, currency: string) => regional.format(n, currency, 'never');
   const orgs = useOrgOptional();
   const org = orgs?.currentOrg ?? null;
   // Saved forecasts live on the server and, in an organization, are a manager's: they
@@ -95,7 +86,7 @@ export default function Reports() {
   // organizations to load, or everyone looks personal for a moment.
   const canSaveForecast = !servesDemoData() && Boolean(orgs?.hasFetched) && (org === null || isOrgAdmin(org));
 
-  const request = useMemo(() => toReportFilters(filters), [filters]);
+  const request = useMemo(() => toReportFilters(filters, timeZone), [filters, timeZone]);
   const latest = useRef(0);
 
   useEffect(() => { saveFilters(filters); }, [filters]);
@@ -144,7 +135,7 @@ export default function Reports() {
     const scope = { scope: request.scope, teamId: request.teamId, pipelineId: request.pipelineId, currency: request.currency };
     Promise.allSettled([
       getReportSummary(request),
-      getForecast({ ...scope, firstMonth: monthOf(new Date()), months: 6 }),
+      getForecast({ ...scope, firstMonth: monthOf(new Date(), timeZone), months: 6 }),
     ]).then(([s, f]) => {
       // A slower answer to an older filter must not overwrite a newer one.
       if (ticket !== latest.current) return;
@@ -159,16 +150,16 @@ export default function Reports() {
       setLoading(false);
       setRefreshing(false);
     });
-  }, [request]);
+  }, [request, timeZone]);
 
   const set = (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch }));
 
   const cur = summary?.headlineCurrency ?? null;
   const period = summary?.period ?? null;
-  const firstDay = period ? dateInputValue(new Date(period.fromUtc)) : '';
-  const lastDay = period ? lastDayOf(period.toUtc) : '';
+  const firstDay = period ? dateInputValue(new Date(period.fromUtc), timeZone) : '';
+  const lastDay = period ? lastDayOf(period.toUtc, timeZone) : '';
   const periodText = period
-    ? `${new Date(period.fromUtc).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} – ${new Date(Date.parse(period.toUtc) - 1).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
+    ? `${new Date(period.fromUtc).toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone })} – ${new Date(Date.parse(period.toUtc) - 1).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone })}`
     : '';
   const exportTable = <T,>(t: CsvTable<T>) => downloadCsv(csvFileName(t.name, firstDay, lastDay), t.rows, t.columns);
   // Leads and activities have no pipeline or currency, so those filters cannot narrow
@@ -181,7 +172,7 @@ export default function Reports() {
     if (!summary) return null;
     const open = rowFor(summary.open.byCurrency, cur);
     const won = rowFor(summary.won.byCurrency, cur);
-    const weighted = summary.weighted.find((w) => w.currency === cur) ?? { currency: cur ?? 'USD', value: 0, covered: 0, missing: 0 };
+    const weighted = summary.weighted.find((w) => w.currency === cur) ?? { currency: cur ?? regional.currency, value: 0, covered: 0, missing: 0 };
     const closing = rowFor(summary.closingInPeriod.byCurrency, cur);
     const readableWon = won.count - won.unreadable;
     return {
@@ -191,7 +182,7 @@ export default function Reports() {
       unreadableOpen: summary.open.byCurrency.reduce((s, r) => s + r.unreadable, 0),
       missingProbability: summary.weighted.reduce((s, w) => s + w.missing, 0),
     };
-  }, [summary, cur]);
+  }, [summary, cur, regional.currency]);
 
   const multiplePipelines = new Set(summary?.byStage.map((r) => r.pipelineName) ?? []).size > 1;
   const byStage = useMemo(() => (summary && cur
@@ -209,8 +200,8 @@ export default function Reports() {
     ? topNWithOther(groupSum(summary.leads.bySource, (r) => humanise(r.key), (r) => r.count), 6)
     : []), [summary]);
   const bucket = period?.bucket ?? 'day';
-  const leadSeries = useMemo(() => (summary?.leads.createdSeries ?? []).map((p) => ({ name: bucketLabel(p.start, bucket), value: p.count })), [summary, bucket]);
-  const activitySeries = useMemo(() => (summary?.activities.series ?? []).map((p) => ({ name: bucketLabel(p.start, bucket), value: p.count })), [summary, bucket]);
+  const leadSeries = useMemo(() => (summary?.leads.createdSeries ?? []).map((p) => ({ name: bucketLabel(p.start, bucket, locale), value: p.count })), [summary, bucket, locale]);
+  const activitySeries = useMemo(() => (summary?.activities.series ?? []).map((p) => ({ name: bucketLabel(p.start, bucket, locale), value: p.count })), [summary, bucket, locale]);
   const forecastRows = useMemo(() => (forecast && cur ? forecast.rows.filter((r) => r.currency === cur) : []), [forecast, cur]);
 
   /**
@@ -258,7 +249,7 @@ export default function Reports() {
     );
   }
 
-  const presetPeriod = filters.preset === 'custom' ? null : periodFor(filters.preset);
+  const presetPeriod = filters.preset === 'custom' ? null : periodFor(filters.preset, timeZone);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -307,7 +298,7 @@ export default function Reports() {
                   const preset = e.target.value as PeriodPreset;
                   if (preset === 'custom' && presetPeriod) {
                     // Start the custom dates from the period being looked at.
-                    set({ preset, customFrom: dateInputValue(presetPeriod.from), customTo: dateInputValue(new Date(presetPeriod.to.getTime() - 1)) });
+                    set({ preset, customFrom: dateInputValue(presetPeriod.from, timeZone), customTo: dateInputValue(new Date(presetPeriod.to.getTime() - 1), timeZone) });
                   } else set({ preset });
                 }}
                 className="h-9 rounded-xl border border-slate-200 bg-white px-2 text-sm font-normal normal-case tracking-normal text-slate-800"
@@ -574,7 +565,7 @@ export default function Reports() {
                         <tbody>
                           {forecastRows.map((r) => (
                             <tr key={r.month} className="border-t border-slate-100">
-                              <td className="py-1.5 pr-3 text-slate-700">{monthLabel(r.month)}</td>
+                              <td className="py-1.5 pr-3 text-slate-700">{monthLabel(r.month, locale)}</td>
                               <td className="py-1.5 pr-3 text-right text-slate-900">{money(r.value, r.currency)}<span className="text-slate-400"> · {r.count}</span></td>
                               <td className="py-1.5 pr-3 text-right font-medium text-slate-900">{money(r.weighted, r.currency)}</td>
                               <td className="py-1.5 pr-3 text-right text-slate-500">{r.missing}</td>

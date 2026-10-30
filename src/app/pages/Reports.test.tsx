@@ -1,11 +1,12 @@
 // The Reports page asks the server for its figures instead of downloading every
 // deal, lead and activity and working them out here.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { ReportSummary, Forecast, SalesTeam, ReportFilters } from '@/app/api/reporting';
 import type { Pipeline } from '@/app/api/types';
+import { formatMoney } from '@/app/lib/money';
 
 const summary = (p: Partial<ReportSummary> = {}): ReportSummary => ({
   period: {
@@ -58,7 +59,10 @@ vi.mock('@/app/lib/exportCsv', async (importOriginal) => ({
 }));
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 vi.mock('./reports/ConversionReportPanel', () => ({ ConversionReportPanel: () => null }));
-vi.mock('@/app/contexts/OrgContext', () => ({ useOrgOptional: () => null }));
+const workspace = vi.hoisted(() => ({ current: null as null | { id: string; name: string; currency?: string; locale?: string; timeZone?: string } }));
+vi.mock('@/app/contexts/OrgContext', () => ({
+  useOrgOptional: () => (workspace.current ? { currentOrg: workspace.current, hasFetched: true } : null),
+}));
 
 import Reports from './Reports';
 
@@ -66,6 +70,7 @@ const renderPage = () => render(<MemoryRouter><Reports /></MemoryRouter>);
 
 beforeEach(() => {
   localStorage.clear();
+  workspace.current = null;
   getReportSummary.mockClear();
   getReportSummary.mockImplementation(async () => summary());
   getDeals.mockClear();
@@ -77,6 +82,9 @@ beforeEach(() => {
   getForecast.mockImplementation(async () => forecast);
 });
 
+// Intl writes a no-break space after the code; the page's text is read with plain spaces.
+const swiss = (n: number) => formatMoney(n, 'CHF', { locale: 'de-CH', cents: 'never' }).replace(/\s+/g, ' ');
+
 const lastRequest = () => {
   const calls = getReportSummary.mock.calls;
   return calls[calls.length - 1]![0];
@@ -87,7 +95,9 @@ describe('Reports', () => {
     renderPage();
 
     expect(await screen.findByText('Anna Keller')).toBeInTheDocument();
-    expect(screen.getAllByText(/300,000/).length).toBeGreaterThan(0);
+    // In the workspace's format (de-CH unless it says otherwise), not this browser's.
+    expect(screen.getAllByText(new RegExp(swiss(300000))).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/300,000/)).toBeNull();
     expect(screen.getByText('1 won · 1 lost')).toBeInTheDocument();
     expect(screen.getByText(/EUR is listed separately/)).toBeInTheDocument();
     expect(getDeals).not.toHaveBeenCalled();
@@ -193,6 +203,38 @@ describe('Reports', () => {
     const [name, rows] = downloadCsv.mock.calls[0]!;
     expect(name).toMatch(/^cadence-by-owner-.*\.csv$/);
     expect(rows).toHaveLength(1);
+  });
+
+  describe("on the workspace's calendar", () => {
+    // Half past midnight on 1 November in Zurich is still 31 October in UTC and in
+    // New York. The page cut its periods and months at this browser's midnight.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-31T23:30:00Z'));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('asks for the month that has begun at the club, and the forecast from it', async () => {
+      workspace.current = { id: 'o', name: 'Pavillon 46', currency: 'CHF', locale: 'de-CH', timeZone: 'Europe/Zurich' };
+      renderPage();
+
+      await waitFor(() => expect(getReportSummary).toHaveBeenCalled());
+      expect(lastRequest()).toMatchObject({
+        from: '2026-10-31T23:00:00.000Z', to: '2026-11-30T23:00:00.000Z', timeZone: 'Europe/Zurich',
+      });
+      expect(getForecast).toHaveBeenLastCalledWith(expect.objectContaining({ firstMonth: '2026-11' }));
+    });
+
+    it("keeps to a workspace's own zone wherever the browser is", async () => {
+      workspace.current = { id: 'o', name: 'Brooklyn Club', currency: 'USD', locale: 'en-US', timeZone: 'America/New_York' };
+      renderPage();
+
+      await waitFor(() => expect(getReportSummary).toHaveBeenCalled());
+      expect(lastRequest()).toMatchObject({
+        from: '2026-10-01T04:00:00.000Z', to: '2026-11-01T04:00:00.000Z', timeZone: 'America/New_York',
+      });
+      expect(getForecast).toHaveBeenLastCalledWith(expect.objectContaining({ firstMonth: '2026-10' }));
+    });
   });
 
   it('says the figures could not be loaded rather than showing zeros', async () => {

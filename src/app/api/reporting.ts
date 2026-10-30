@@ -187,7 +187,7 @@ export async function getPipelineValueByAssignee(): Promise<PipelineValueByAssig
 export type ReportScope = 'me' | 'team' | 'org';
 
 export interface ReportFilters {
-  /** Start of the period, an ISO instant: the viewer's own local midnight. */
+  /** Start of the period, an ISO instant: a midnight in the workspace's time zone. */
   from: string;
   /** End of the period, exclusive. */
   to: string;
@@ -198,7 +198,7 @@ export interface ReportFilters {
   pipelineId?: string;
   /** Deals in this currency only. */
   currency?: string;
-  /** IANA time zone the charts count days in. */
+  /** IANA time zone the charts count days in. Left out, the server uses the workspace's. */
   timeZone?: string;
 }
 
