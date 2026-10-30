@@ -186,4 +186,46 @@ public static class DataFixes
         await db.Database.ExecuteSqlRawAsync(RecordDealAmountsFilledSql, ct);
         return filled;
     }
+
+    public const string FillDealCurrenciesName = "2026-10 fill deal currencies";
+
+    /// <summary>
+    /// Give every existing deal a currency code, written the way new deals have it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The New Deal dialog opened with no currency picked and lead conversion never set
+    /// one, so many deals have none, and everything counted those as USD for a club that
+    /// bills in francs. New deals now take their workspace's currency
+    /// (Organization.Currency), and these get the same: their workspace's, which is the
+    /// default, CHF, everywhere when this first runs, and the default for a personal
+    /// workspace's deals.
+    /// </para>
+    /// <para>
+    /// A code written in another case or with spaces ("chf ") becomes the code ("CHF"),
+    /// so it is no longer totalled as a currency of its own. Anything else, a symbol or a
+    /// word, is left as it was: what "Fr." meant is not for a data fix to guess, and the
+    /// reports show it under its own name. The audit trail is not written, as nobody
+    /// priced the deals.
+    /// </para>
+    /// </remarks>
+    public const string FillDealCurrenciesSql = @"
+        BEGIN TRY
+            BEGIN TRANSACTION;
+            IF NOT EXISTS (SELECT 1 FROM [AppliedDataFixes] WITH (UPDLOCK, HOLDLOCK) WHERE [Name] = N'" + FillDealCurrenciesName + @"')
+            BEGIN
+                UPDATE [Deals] SET [Currency] = UPPER(LTRIM(RTRIM([Currency])))
+                WHERE LTRIM(RTRIM([Currency])) COLLATE Latin1_General_BIN2 LIKE N'[A-Za-z][A-Za-z][A-Za-z]'
+                  AND [Currency] COLLATE Latin1_General_BIN2 <> UPPER(LTRIM(RTRIM([Currency]))) COLLATE Latin1_General_BIN2;
+                UPDATE d SET [Currency] = ISNULL(o.[Currency], N'CHF')
+                FROM [Deals] d LEFT JOIN [Organizations] o ON o.[Id] = d.[OrganizationId]
+                WHERE d.[Currency] IS NULL OR LTRIM(RTRIM(d.[Currency])) = N'';
+                INSERT INTO [AppliedDataFixes] ([Name], [AppliedAtUtc]) VALUES (N'" + FillDealCurrenciesName + @"', SYSUTCDATETIME());
+            END;
+            COMMIT TRANSACTION;
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+            THROW;
+        END CATCH;";
 }

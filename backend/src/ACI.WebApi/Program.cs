@@ -1275,6 +1275,15 @@ try
             {
                 Log.Warning(fixEx, "A one-time data fix failed; it will be retried on the next start");
             }
+            // Needs Organizations.Currency, added above, for the currency each deal gets.
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.FillDealCurrenciesSql);
+            }
+            catch (Exception fixEx)
+            {
+                Log.Warning(fixEx, "A one-time data fix failed; it will be retried on the next start");
+            }
 
             // The indexes the model declares for the tables above. The DDL created the
             // tables without them, so the follow-up runner — once a minute, on every
