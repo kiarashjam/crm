@@ -33,7 +33,8 @@ public interface ILeadStatusSync
     /// <param name="actorUserId">Who the automations and the timeline entry act for.</param>
     /// <param name="changedByUserId">Who the history credits; null when nobody in the workspace did it (a counterparty declining).</param>
     /// <param name="plan">The decision from <see cref="SettleAsync"/>, when the move came from it.</param>
-    Task AnnounceAsync(Lead lead, string? fromStatus, Guid actorUserId, Guid? changedByUserId, Plan? plan, CancellationToken ct = default);
+    /// <param name="runAutomations">False for an import that was not asked to run them: the history still records the move.</param>
+    Task AnnounceAsync(Lead lead, string? fromStatus, Guid actorUserId, Guid? changedByUserId, Plan? plan, CancellationToken ct = default, bool runAutomations = true);
 
     /// <summary>
     /// For a writer outside the lead editor that has already changed the pipeline:
@@ -99,7 +100,7 @@ public sealed class LeadStatusSync : ILeadStatusSync
         return plan;
     }
 
-    public async Task AnnounceAsync(Lead lead, string? fromStatus, Guid actorUserId, Guid? changedByUserId, Plan? plan, CancellationToken ct = default)
+    public async Task AnnounceAsync(Lead lead, string? fromStatus, Guid actorUserId, Guid? changedByUserId, Plan? plan, CancellationToken ct = default, bool runAutomations = true)
     {
         if (string.Equals(fromStatus, lead.Status, StringComparison.Ordinal)) return;
 
@@ -136,7 +137,7 @@ public sealed class LeadStatusSync : ILeadStatusSync
             }, ct);
         }
 
-        if (_automations != null)
+        if (_automations != null && runAutomations)
         {
             await _automations.DispatchAsync("lead.status_changed", new AutomationEvent(
                 lead.OrganizationId, actorUserId, $"{lead.Id}:{lead.Status}", lead.Name,

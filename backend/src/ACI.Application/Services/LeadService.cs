@@ -387,7 +387,8 @@ public class LeadService : ILeadService
 
         await _contactRepository.EnsurePersonContactAsync(updated, ct);
         if (!string.Equals(previousStatus, updated.Status, StringComparison.Ordinal))
-            await _statusSync.AnnounceAsync(updated, previousStatus, userId, userId, plan, ct);
+            await _statusSync.AnnounceAsync(updated, previousStatus, userId, userId, plan, ct,
+                runAutomations: !request.IsImport || request.RunAutomations);
 
         _logger.LogInformation(
             "Lead {LeadId} updated successfully",
