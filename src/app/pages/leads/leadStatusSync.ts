@@ -1,10 +1,18 @@
 // Derives a lead's `status` from its 5-phase pipeline, so advancing a step in
 // the tracker keeps the status badge honest without anyone retyping it.
 //
-// Everything here is PURE. The single impure write path lives in
-// `saveLeadPipeline.ts`; the three interactive editors (LeadPipelineTracker,
-// SalesTrackerCard, InlineSalesEditorPopover) all go through it, so they cannot
-// disagree about what a click means.
+// The SERVER decides. backend/src/ACI.Application/Common/LeadStatusDerivation.cs
+// is a one-for-one port of this file, and it sets the status whenever anything
+// writes a pipeline: the editors here, an e-signed contract, a merge, an API
+// caller. This copy previews the outcome on the controls that would cause it and
+// explains it afterwards. The two are held to the same answer for every reachable
+// pipeline by leadStatusSync.parity.test.ts and its C# twin, so a rule changed
+// here must be changed there too.
+//
+// Everything here is PURE. The single write path lives in `saveLeadPipeline.ts`;
+// the three interactive editors (LeadPipelineTracker, SalesTrackerCard,
+// InlineSalesEditorPopover) all go through it, so they cannot disagree about what
+// a click means.
 //
 // ── Invariants ────────────────────────────────────────────────────────────────
 //  1. DATES ARE NEVER DERIVATION INPUTS. Only the categorical fields decide the
@@ -560,7 +568,9 @@ export type SkipReason =
   | 'disabled'
   | 'no_signal'
   | 'unresolvable'
-  | 'noop';
+  | 'noop'
+  /** This browser expected a move, and the server, which decides, kept the status. */
+  | 'server_kept';
 
 /**
  * Why a derived status was NOT written.
@@ -654,7 +664,7 @@ function trailer(derived: DerivedStage, to: ResolvedStatus): string {
   return `[auto-status rule=${derived.rule} canonical=${to.canonical} match=${to.match} phase=${derived.phase}]`;
 }
 
-function buildActivity(from: string, to: ResolvedStatus, derived: DerivedStage): StatusSyncActivity {
+export function buildActivity(from: string, to: ResolvedStatus, derived: DerivedStage): StatusSyncActivity {
   const lines = [
     `Because you set ${derived.because}${derived.phase ? ` (Phase ${derived.phase})` : ''}.`,
     from ? `Status moved from "${from}" to "${to.name}".` : `Status set to "${to.name}".`,

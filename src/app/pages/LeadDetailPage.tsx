@@ -417,6 +417,27 @@ export default function LeadDetailPage() {
   );
 
   /**
+   * Re-reads the lead after something on the server moved it, so the tracker and
+   * the status badge show what the server now holds, and the timeline gets the
+   * entry the server wrote explaining the move.
+   */
+  const refreshLead = useCallback(() => {
+    if (!lead) return;
+    const leadId = lead.id;
+    void getLeadById(leadId)
+      .then((fresh) => {
+        if (!fresh) return;
+        setLead((prev) => (prev && prev.id === leadId ? {
+          ...prev,
+          ...fresh,
+          assignedToId: fresh.assignedToId ?? prev.assignedToId,
+        } : prev));
+      })
+      .catch(() => { /* the page keeps what it has */ });
+    getActivitiesByLead(leadId).then(setActivities).catch(() => { /* non-fatal */ });
+  }, [lead]);
+
+  /**
    * Writes a status the PIPELINE derived — never one a person typed.
    *
    * The only caller is the drift strip's "bring it in line" action, which accepts
@@ -988,8 +1009,6 @@ export default function LeadDetailPage() {
                   className="mb-3"
                   drift={statusSyncView.drift}
                   reasons={statusSyncView.reasons}
-                  enabled={statusSync.enabled}
-                  onToggleEnabled={statusSync.setEnabled}
                   disabled={lead.isConverted || isReadOnly}
                   onApply={(name) => applyDerivedStatus(name)}
                 />
@@ -1006,9 +1025,9 @@ export default function LeadDetailPage() {
 
               {/* Sits directly under the tracker because it drives it: sending
                   satisfies the Contract phase and full execution satisfies the
-                  Signature phase, which the status auto-sync then carries through. */}
+                  Signature phase, and the server moves the status with them. */}
               <motion.div {...rise(0.2)}>
-                <ContractPanel leadId={lead.id} leadName={lead.name} readOnly={isReadOnly} />
+                <ContractPanel leadId={lead.id} leadName={lead.name} readOnly={isReadOnly} onLeadChanged={refreshLead} />
               </motion.div>
 
               {/* Tab bar: a pill that slides to the tab you pick. */}

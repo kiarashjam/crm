@@ -5,9 +5,12 @@
 // cannot diverge on what a click means, what gets logged, or whether the status
 // moves. Do not call `updateLead({ pipelineState })` directly from a component.
 //
-// Pipeline and status travel in ONE PUT: a split write can leave the server with
-// a phase recorded but the status not moved (or vice versa), which is exactly
-// the inconsistency this feature exists to remove.
+// Only the pipeline is sent. The server works the status out from it (see
+// LeadStatusDerivation.cs) and returns the lead with the status it settled on,
+// which is what the editors then show. This browser used to decide the status
+// and send it along, so anything else that wrote a pipeline (an e-signed
+// contract, a merge, an integration) left the status behind. The local plan is
+// still computed, but only to explain the server's answer in the toast.
 
 import { updateLead } from '@/app/api/leads';
 import { createActivity } from '@/app/api/activities';
@@ -15,9 +18,12 @@ import type { Lead } from '@/app/api/types';
 import { serializePipeline, type LeadPipeline } from './leadPipeline';
 import {
   planStatusSync,
+  classifyStatusLabel,
+  buildActivity,
   type StatusOption,
   type StatusSyncPlan,
   type CanonicalStage,
+  type ResolvedStatus,
 } from './leadStatusSync';
 
 export interface SavePipelineArgs {
@@ -27,9 +33,8 @@ export interface SavePipelineArgs {
   statusOptions: StatusOption[];
   statusesLoaded: boolean;
   /** The status list arrived empty / failed, so it is never arriving. Only
-   *  affects the SkipReason in the returned plan — the write is held either way. */
+   *  affects the SkipReason of the local preview. */
   statusesUnavailable?: boolean;
-  enabled: boolean;
   lastAutoStatus?: string;
   overrides?: Partial<Record<CanonicalStage, string>>;
   /** Activity line describing the pipeline edit itself, if the caller wants one. */
@@ -40,14 +45,55 @@ export interface SavePipelineResult {
   ok: boolean;
   /** The server's updated lead, when the PUT succeeded. */
   lead?: Lead;
-  /** What auto-sync decided. Callers use this to render the toast / strip. */
+  /** What happened to the status, as the server decided it. Callers use this to
+   *  render the toast / strip. Before the server answers, it is the preview. */
   plan: StatusSyncPlan;
-  /** Status the lead had before this save — the Undo target. */
+  /** Status the lead had before this save. */
   previousStatus: string;
 }
 
 /**
- * Persist a pipeline edit, applying any status change the pipeline now implies.
+ * The plan that describes what the server did, given what this browser expected.
+ *
+ * The server's status is the truth. When it matches the preview, the preview's
+ * explanation stands. When the server moved the status somewhere else (its
+ * status list was newer than ours, or this tab was stale), the move is reported
+ * as the server made it, still explained by the step that caused it. When the
+ * server kept the status, nothing is announced.
+ */
+export function planFromServer(
+  preview: StatusSyncPlan,
+  previousStatus: string,
+  server: Pick<Lead, 'status' | 'leadStatusId'>,
+): StatusSyncPlan {
+  const after = server.status ?? '';
+  if (after === previousStatus) {
+    return preview.kind === 'apply'
+      ? { kind: 'skip', reason: 'server_kept', derived: preview.derived }
+      : preview;
+  }
+
+  if (preview.kind === 'apply' && preview.to.name === after) {
+    return { ...preview, to: { ...preview.to, id: server.leadStatusId ?? preview.to.id } };
+  }
+
+  const to: ResolvedStatus = {
+    name: after,
+    id: server.leadStatusId,
+    match: 'exact',
+    canonical: classifyStatusLabel(after) ?? preview.derived.stage,
+  };
+  return {
+    kind: 'apply',
+    from: previousStatus,
+    to,
+    derived: preview.derived,
+    activity: buildActivity(previousStatus, to, preview.derived),
+  };
+}
+
+/**
+ * Persist a pipeline edit and report the status the server settled on.
  *
  * Never throws: failures come back as `ok: false` so the caller can roll its
  * optimistic update back. The toast is intentionally the caller's job, and must
@@ -58,56 +104,41 @@ export async function saveLeadPipeline(args: SavePipelineArgs): Promise<SavePipe
   const { lead, pipeline, log } = args;
   const previousStatus = lead.status ?? '';
 
-  const plan = planStatusSync({
+  const preview = planStatusSync({
     pipeline,
     currentStatus: previousStatus,
     statusOptions: args.statusOptions,
     statusesLoaded: args.statusesLoaded,
     statusesUnavailable: args.statusesUnavailable,
     isConverted: lead.isConverted,
-    enabled: args.enabled,
     lastAutoStatus: args.lastAutoStatus,
     overrides: args.overrides,
   });
 
-  const patch: Parameters<typeof updateLead>[1] = {
-    pipelineState: serializePipeline(pipeline),
-  };
-  if (plan.kind === 'apply') {
-    patch.status = plan.to.name;
-    // Manual status picks send `leadStatusId` alongside `status`; auto-sync must
-    // too, or the server keeps a status id that contradicts the status name.
-    if (plan.to.id) patch.leadStatusId = plan.to.id;
-  }
-
   let updated: Lead | null = null;
   try {
-    updated = await updateLead(lead.id, patch);
+    updated = await updateLead(lead.id, { pipelineState: serializePipeline(pipeline) });
   } catch {
-    return { ok: false, plan, previousStatus };
+    return { ok: false, plan: preview, previousStatus };
   }
-  if (!updated) return { ok: false, plan, previousStatus };
+  if (!updated) return { ok: false, plan: preview, previousStatus };
 
   // NB: `lastAutoStatus` is deliberately NOT recorded here. Only the caller
   // knows whether this response was superseded by a newer save, and recording
   // it for a stale response would leave the memory out of step with the status
-  // actually on the lead — which the next edit would read as a manual change.
-  // `useLeadStatusSync` records it after its sequence check.
+  // actually on the lead. `useLeadStatusSync` records it after its sequence check.
 
-  // Activity writes are best-effort: the timeline is an audit convenience, and a
-  // failed log must never make a successful save look broken.
-  const activities: { subject: string; body?: string }[] = [];
-  if (log) activities.push(log);
-  if (plan.kind === 'apply') activities.push(plan.activity);
-  for (const entry of activities) {
+  // Best-effort: the timeline is an audit convenience, and a failed log must
+  // never make a successful save look broken. The entry explaining a status move
+  // is the server's to write, since it is the server that moved it.
+  if (log) {
     void createActivity({
       type: 'system',
-      subject: entry.subject,
-      body: entry.body,
+      subject: log.subject,
+      body: log.body,
       leadId: lead.id,
     }).catch(() => { /* non-fatal */ });
   }
 
-  return { ok: true, lead: updated, plan, previousStatus };
+  return { ok: true, lead: updated, plan: planFromServer(preview, previousStatus, updated), previousStatus };
 }
-

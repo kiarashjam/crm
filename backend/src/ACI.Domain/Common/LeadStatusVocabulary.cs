@@ -19,7 +19,8 @@ public static class LeadStatusVocabulary
     /// <summary>
     /// The agreed stages, in display order. These mirror the five-phase lead
     /// pipeline one-for-one so a status is always derivable from recorded work
-    /// rather than typed in separately — see leadStatusSync.ts for the mapping.
+    /// rather than typed in separately — see LeadStatusDerivation in ACI.Application
+    /// for the mapping (leadStatusSync.ts in the browser previews the same rule).
     /// </summary>
     public static readonly string[] Default =
     {
