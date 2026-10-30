@@ -134,6 +134,19 @@ describe('the lead page hears when a contract moved the lead', () => {
     await waitFor(() => expect(onLeadChanged).toHaveBeenCalledTimes(1));
   });
 
+  it('after a send', async () => {
+    const draft = contract({ status: 'draft', allowedActions: ['edit', 'send', 'void'] });
+    api.contracts = [draft];
+    api.send.mockResolvedValue({ contract: { ...draft, status: 'sent' }, emailSent: true, signingUrl: 'https://crm.example.com/sign/t' });
+    const onLeadChanged = vi.fn();
+    render(<ContractPanel leadId="l1" leadName="Jean Dupont" onLeadChanged={onLeadChanged} />);
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /send for signature/i }));
+
+    await waitFor(() => expect(onLeadChanged).toHaveBeenCalledTimes(1));
+  });
+
   it('not when the countersign was refused', async () => {
     api.contracts = [contract({})];
     api.countersign.mockRejectedValue(new ApiError('That is not possible at this stage of the contract', 400));
