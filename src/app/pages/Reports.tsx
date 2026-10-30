@@ -317,7 +317,7 @@ export default function Reports() {
                 ))}
               </div>
             </div>
-            {filters.scope === 'team' && teams.length > 1 && (
+            {filters.scope === 'team' && teams.length > 0 && (
               <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 Team
                 <select value={filters.teamId} onChange={(e) => set({ teamId: e.target.value })}

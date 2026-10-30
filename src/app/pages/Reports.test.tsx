@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import type { ReportSummary, Forecast } from '@/app/api/reporting';
+import type { ReportSummary, Forecast, SalesTeam } from '@/app/api/reporting';
 
 const summary = (p: Partial<ReportSummary> = {}): ReportSummary => ({
   period: {
@@ -35,12 +35,13 @@ const getDeals = vi.fn(async () => []);
 const getActivities = vi.fn(async () => []);
 const getLeads = vi.fn(async () => []);
 const downloadCsv = vi.fn();
+const getSalesTeams = vi.fn(async (): Promise<SalesTeam[]> => []);
 
 vi.mock('@/app/api/reporting', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/reporting')>()),
   getReportSummary: (f: unknown) => getReportSummary(f),
   getForecast: (f: unknown) => getForecast(f),
-  getSalesTeams: vi.fn(async () => []),
+  getSalesTeams: () => getSalesTeams(),
 }));
 vi.mock('@/app/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api')>()),
@@ -69,6 +70,7 @@ beforeEach(() => {
   getActivities.mockClear();
   getLeads.mockClear();
   downloadCsv.mockClear();
+  getSalesTeams.mockImplementation(async () => []);
 });
 
 describe('Reports', () => {
@@ -91,6 +93,17 @@ describe('Reports', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mine' }));
 
     await waitFor(() => expect(getReportSummary).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'me' })));
+  });
+
+  it('offers the teams once there are any, and asks for the one picked', async () => {
+    getSalesTeams.mockImplementation(async () => [{ id: 'geneva', name: 'Geneva', memberUserIds: [] }]);
+    renderPage();
+    await screen.findByText('Anna Keller');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'My team' }));
+    fireEvent.change(await screen.findByLabelText('Team'), { target: { value: 'geneva' } });
+
+    await waitFor(() => expect(getReportSummary).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'team', teamId: 'geneva' })));
   });
 
   it('exports the owners table as CSV, every currency in it', async () => {
