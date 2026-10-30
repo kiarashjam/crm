@@ -334,6 +334,8 @@ export interface UserSettings {
   inAppNotificationsEnabled: boolean;
   inAppSoundEnabled: boolean;
   browserNotificationsEnabled: boolean;
+  /** A weekly email of the figures for each workspace this person owns or manages. Off by default. */
+  weeklyDigestEnabled?: boolean;
 
   // Defaults
   defaultPipelineId?: string;
@@ -386,6 +388,7 @@ export interface UpdateUserSettingsRequest {
   inAppNotificationsEnabled?: boolean;
   inAppSoundEnabled?: boolean;
   browserNotificationsEnabled?: boolean;
+  weeklyDigestEnabled?: boolean;
 
   // Defaults
   defaultPipelineId?: string;

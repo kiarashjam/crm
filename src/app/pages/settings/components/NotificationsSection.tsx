@@ -1,4 +1,4 @@
-import { Bell, Mail } from 'lucide-react';
+import { BarChart3, Bell, Mail } from 'lucide-react';
 import type { UserSettings, UpdateUserSettingsRequest } from '@/app/api/types';
 
 type ToggleSwitchProps = {
@@ -6,18 +6,22 @@ type ToggleSwitchProps = {
   onChange: (val: boolean) => void;
   label: string;
   description: string;
+  /** Marks a switch whose delivery is not built yet. A switch that works says nothing. */
+  comingSoon?: boolean;
 };
 
-function ToggleSwitch({ checked, onChange, label, description }: ToggleSwitchProps) {
+function ToggleSwitch({ checked, onChange, label, description, comingSoon = true }: ToggleSwitchProps) {
   return (
     <label className="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <p className="font-medium text-slate-900">{label}</p>
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-700">
-            <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
-            Coming soon
-          </span>
+          {comingSoon && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+              <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+              Coming soon
+            </span>
+          )}
         </div>
         <p className="text-sm text-slate-500">{description}</p>
       </div>
@@ -53,7 +57,7 @@ export function NotificationsSection({
         <p className="text-slate-600 text-sm mt-1">Manage how you receive notifications</p>
         <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-50 border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-          Coming soon — notification delivery is being set up. Your preferences are saved and will take effect once the backend service is live.
+          Switches marked coming soon are saved, but nothing is sent for them yet. The weekly report digest is live.
         </div>
       </div>
 
@@ -99,6 +103,21 @@ export function NotificationsSection({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Reports digest: delivered for real, unlike the switches marked coming soon. */}
+      <div className="pt-6 border-t border-slate-200">
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart3 className="w-5 h-5 text-slate-500" />
+          <h3 className="font-semibold text-slate-900">Reports</h3>
+        </div>
+        <ToggleSwitch
+          comingSoon={false}
+          checked={settings.weeklyDigestEnabled === true}
+          onChange={(val) => updateSettings({ weeklyDigestEnabled: val })}
+          label="Weekly report digest"
+          description="Every Monday from 7:00 in your time zone (set under Profile), an email with last week's won, lost and new deals, the open pipeline, this month's forecast, leads and activity — for each workspace you own or manage."
+        />
       </div>
 
       {/* In-App Notifications */}
