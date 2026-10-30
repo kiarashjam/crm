@@ -1,7 +1,7 @@
 // A month's saved forecasts are kept, not replaced, and set against what was won.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ForecastSnapshotSet, ForecastSnapshotRow } from '@/app/api/reporting';
 
 const line = (p: Partial<ForecastSnapshotRow>): ForecastSnapshotRow => ({
@@ -58,6 +58,24 @@ describe('SavedForecastPanel', () => {
     expect(screen.getByRole('option', { name: /by Beat/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save again (keeps the earlier one)' })).toBeInTheDocument();
     expect(screen.getByText(/2 with no close date/)).toBeInTheDocument();
+  });
+
+  it('shows the month picked last, whichever answer comes back first', async () => {
+    render(<SavedForecastPanel />);
+    await screen.findByLabelText('Save shown');
+
+    // One month back answers slowly, two months back at once.
+    let answerLate: (s: ForecastSnapshotSet) => void = () => {};
+    getForecastSnapshots.mockImplementationOnce(() => new Promise<ForecastSnapshotSet>((resolve) => { answerLate = resolve; }));
+    getForecastSnapshots.mockImplementationOnce(async () => ({ month: '2026-08', saves: [], snapshotId: null, rows: [], actual: [] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(await screen.findByText(/^Nothing saved for/)).toBeInTheDocument();
+
+    await act(async () => { answerLate(twoSaves); });
+
+    expect(screen.queryByLabelText('Save shown')).toBeNull();
+    expect(screen.getByText(/^Nothing saved for/)).toBeInTheDocument();
   });
 
   it('shows an earlier save when it is picked, and warns when it counted every open deal', async () => {

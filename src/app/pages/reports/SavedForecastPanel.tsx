@@ -8,7 +8,7 @@
 // Saving and reading are for the owner and managers, because the saved lines count
 // private deals and name their owners.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
@@ -74,13 +74,26 @@ export function SavedForecastPanel() {
   const [saving, setSaving] = useState(false);
 
   const [year, monthNumber] = month.split('-').map(Number) as [number, number];
+  const latest = useRef(0);
 
   const load = useCallback(() => {
+    // Stepping through the months asks for each in turn, and the answers can come
+    // back out of order: only the one for the month now shown may fill the panel,
+    // or a slow answer for September showed its saves under August.
+    const ticket = ++latest.current;
     setFailed(false);
     getForecastSnapshots(year, monthNumber, snapshotId)
-      .then(setSet)
-      .catch(() => setFailed(true));
+      .then((s) => { if (ticket === latest.current) setSet(s); })
+      .catch(() => { if (ticket === latest.current) setFailed(true); });
   }, [year, monthNumber, snapshotId]);
+
+  const showMonth = (by: number) => {
+    setSnapshotId(undefined);
+    // The saves on show are the other month's, so they go now rather than when
+    // this month's arrive.
+    setSet(null);
+    setMonth(shiftMonth(month, by));
+  };
 
   useEffect(() => { load(); }, [load]);
 
@@ -126,10 +139,10 @@ export function SavedForecastPanel() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center rounded-xl border border-slate-200">
-            <button type="button" aria-label="Previous month" onClick={() => { setSnapshotId(undefined); setMonth(shiftMonth(month, -1)); }}
+            <button type="button" aria-label="Previous month" onClick={() => showMonth(-1)}
               className="h-9 w-8 rounded-l-xl text-slate-500 hover:bg-slate-50"><ChevronLeft className="mx-auto h-4 w-4" /></button>
             <span className="min-w-[88px] px-1 text-center text-sm font-medium text-slate-700">{monthLabel(month)}</span>
-            <button type="button" aria-label="Next month" onClick={() => { setSnapshotId(undefined); setMonth(shiftMonth(month, 1)); }}
+            <button type="button" aria-label="Next month" onClick={() => showMonth(1)}
               className="h-9 w-8 rounded-r-xl text-slate-500 hover:bg-slate-50"><ChevronRight className="mx-auto h-4 w-4" /></button>
           </div>
           {canSave && (
