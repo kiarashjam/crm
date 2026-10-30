@@ -286,4 +286,28 @@ public class ReportSummaryTests
         days["2026-10-11"].Should().Be(1);
         days["2026-10-10"].Should().Be(0);
     }
+
+    [Fact]
+    public async Task AWeeklyChartKeepsWhatHappenedInThePeriodsFirstHour()
+    {
+        // Twelve weeks from Monday 3 August in Zurich, which starts at 22:00 UTC on
+        // Sunday the 2nd. Weekly charts count by UTC day, and a call at half past
+        // midnight on the Monday fell in the week of 27 July, which is not drawn.
+        using var factory = new CustomWebApplicationFactory();
+        var org = await OrgAsync(factory);
+        await SeedAsync(org, db => db.Activities.Add(new Activity
+        {
+            Id = Guid.NewGuid(), UserId = org.OwnerId, OrganizationId = org.Id, Type = "call",
+            CreatedAtUtc = new DateTime(2026, 8, 2, 22, 30, 0, DateTimeKind.Utc),
+        }));
+
+        var activities = (await GetJson(org.Owner, "/api/reporting/summary?from=2026-08-02T22:00:00Z&to=2026-10-25T23:00:00Z&tz=Europe/Zurich"))
+            .GetProperty("activities");
+
+        activities.GetProperty("total").GetInt32().Should().Be(1);
+        var series = activities.GetProperty("series").EnumerateArray().ToList();
+        series[0].GetProperty("start").GetString().Should().Be("2026-08-03");
+        series[0].GetProperty("count").GetInt32().Should().Be(1, "the chart shows what the total counts");
+        series.Sum(p => p.GetProperty("count").GetInt32()).Should().Be(1);
+    }
 }

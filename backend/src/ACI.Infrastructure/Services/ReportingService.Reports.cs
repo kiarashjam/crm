@@ -550,6 +550,12 @@ public partial class ReportingService
         var counts = new Dictionary<DateOnly, int>();
         void Add(DateOnly day, int count)
         {
+            // Read by UTC day, something from the period's first or last hours can land
+            // on the day before or after it, in a bucket the chart does not draw, and it
+            // vanished from the chart while the total still counted it. It happened in
+            // the period, so it goes on the period's first or last day.
+            if (day < window.FirstDay) day = window.FirstDay;
+            else if (day > window.LastDay) day = window.LastDay;
             var bucket = window.BucketOf(day);
             counts[bucket] = counts.GetValueOrDefault(bucket) + count;
         }
