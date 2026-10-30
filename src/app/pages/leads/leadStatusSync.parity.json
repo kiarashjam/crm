@@ -42,7 +42,10 @@
     "{\"contactOutcome\":\"Meeting Scheduled\"}",
     "{\"contractSigned\":\"no\",\"contractSigned\":\"yes\"}",
     "{\"outreachStatus\":\"contacted\",\"outreachDate\":\"2026-05-13\",\"meetingDate\":\"2026-05-20\",\"contractSentDate\":\"2026-05-22\",\"signatureDate\":\"2026-05-25\",\"paymentDate\":\"2026-05-28\"}",
-    "{\"stillInterested\":true,\"dropoutReason\":\"too_soon\",\"dropoutReasonPhase\":2}"
+    "{\"stillInterested\":true,\"dropoutReason\":\"too_soon\",\"dropoutReasonPhase\":2}",
+    "{\"notes\":\"\\ud83d\",\"contractSigned\":\"yes\"}",
+    "{\"\\ud83d\":true,\"contractSigned\":\"yes\"}",
+    "{\"contractSigned\":\"\\ud83d\"}"
   ],
   "vocabularies": [
     {
@@ -171,7 +174,7 @@
   ],
   "extraStatuses": ["", "Do Not Contact", "Cold Outreach Q3", "  qualified ", "open deal", "Lost"],
   "expected": {
-    "derive": { "cases": 8662, "sha256": "0fe69abac3a84b94950a97f19468b6e4c34c2f45a7da6bcd6529090853ee6a14" },
+    "derive": { "cases": 8665, "sha256": "6568238ca5914e5ed06282fa4abcc20203b57c8362dd4b35369fcd2752ed2323" },
     "plan": { "cases": 2565, "sha256": "d5b273fbc14c9cfa237488ef3f9e0bb6da4c950f02eb0fcaa7b823bcc28ff435" }
   }
 }

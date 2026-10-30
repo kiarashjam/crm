@@ -325,6 +325,16 @@ public class LeadStatusDerivationTests
         d.Phase.Should().Be(0);
     }
 
+    [Fact]
+    public void HalfASurrogatePairInATextFieldDoesNotHideTheRestOfThePipeline()
+    {
+        // A note cut off in the middle of an emoji leaves half of it in the string.
+        // JSON.parse reads the rest of such a pipeline as usual, and so must the
+        // server. The escaped form of the same thing is in the parity file; this raw
+        // form cannot be written there, because .NET will not read it back as text.
+        D("{\"notes\":\"\ud83d\",\"contractSigned\":\"yes\"}").Stage.Should().Be(Stage.Signed);
+    }
+
     /* ---------------------------------------- resolveStatus: default vocabulary */
 
     [Fact]

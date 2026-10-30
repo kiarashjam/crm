@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -20,7 +21,7 @@ namespace ACI.Application.Common;
 /// Everything here is pure and mirrors the TypeScript one-for-one: the same stage
 /// names, synonyms, ladder and holds. The two are kept in step by tests on both
 /// sides that hash the outcome of every reachable pipeline (see
-/// <c>leadStatusSync.parity.txt</c>). Change one, and the other side's test fails
+/// <c>leadStatusSync.parity.json</c>). Change one, and the other side's test fails
 /// until it matches.
 /// </para>
 /// <para>
@@ -106,7 +107,10 @@ public static class LeadStatusDerivation
         JsonDocument doc;
         try
         {
-            doc = JsonDocument.Parse(json);
+            // Through UTF-8 with replacement: a JavaScript string can hold half of a
+            // surrogate pair (an emoji cut short), which JSON.parse reads without
+            // complaint and parsing the string directly refuses outright.
+            doc = JsonDocument.Parse(Encoding.UTF8.GetBytes(json));
         }
         catch (JsonException)
         {
@@ -117,13 +121,26 @@ public static class LeadStatusDerivation
         {
             if (doc.RootElement.ValueKind != JsonValueKind.Object) return Pipeline.Empty;
 
-            // The last of a repeated key wins, as it does in JSON.parse.
+            // The last of a repeated key wins, as it does in JSON.parse. A name or value
+            // that escapes half of a surrogate pair ("\ud83d") is valid JSON that .NET
+            // will not turn into a string. It can never equal a field name or a value
+            // the rule compares against, so it is skipped, or read as unset, rather
+            // than failing the whole save the way it used to.
             var fields = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
             foreach (var property in doc.RootElement.EnumerateObject())
-                fields[property.Name] = property.Value;
+            {
+                string name;
+                try { name = property.Name; }
+                catch (InvalidOperationException) { continue; }
+                fields[name] = property.Value;
+            }
 
-            string? Text(string name) =>
-                fields.TryGetValue(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+            string? Text(string name)
+            {
+                if (!fields.TryGetValue(name, out var v) || v.ValueKind != JsonValueKind.String) return null;
+                try { return v.GetString(); }
+                catch (InvalidOperationException) { return null; }
+            }
             bool? Flag(string name) =>
                 fields.TryGetValue(name, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False
                     ? v.GetBoolean()

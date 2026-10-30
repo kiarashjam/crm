@@ -173,6 +173,24 @@ public class LeadStatusOnServerTests
     }
 
     [Fact]
+    public async Task APipelineTheBrowserCanReadIsSavedRatherThanFailingTheRequest()
+    {
+        // JSON.parse accepts an escaped half of a surrogate pair, so the browser reads
+        // this pipeline as signed. The server reads every pipeline it is sent now, and
+        // its reader threw on it, so the save was refused as an invalid request.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await WorkspaceAsync(factory);
+        var leadId = await NewLeadAsync(client);
+
+        var saved = await Ok(await client.PutAsync($"/api/leads/{leadId}", Body(new
+        {
+            pipelineState = """{"\ud83d":true,"contractSigned":"yes"}""",
+        })), "save the pipeline");
+
+        saved.GetProperty("status").GetString().Should().Be("Signed");
+    }
+
+    [Fact]
     public async Task APersonalWorkspaceHasNoStatusListSoTheStatusStays()
     {
         // Nothing to choose from, and the browser does not derive there either:
