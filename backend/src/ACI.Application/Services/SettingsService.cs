@@ -82,6 +82,7 @@ public class SettingsService : ISettingsService
         if (request.InAppNotificationsEnabled.HasValue) settings.InAppNotificationsEnabled = request.InAppNotificationsEnabled.Value;
         if (request.InAppSoundEnabled.HasValue) settings.InAppSoundEnabled = request.InAppSoundEnabled.Value;
         if (request.BrowserNotificationsEnabled.HasValue) settings.BrowserNotificationsEnabled = request.BrowserNotificationsEnabled.Value;
+        if (request.WeeklyDigestEnabled.HasValue) settings.WeeklyDigestEnabled = request.WeeklyDigestEnabled.Value;
 
         // Defaults
         if (request.DefaultPipelineId != null) settings.DefaultPipelineId = request.DefaultPipelineId;
@@ -173,6 +174,7 @@ public class SettingsService : ISettingsService
         InAppNotificationsEnabled = s.InAppNotificationsEnabled,
         InAppSoundEnabled = s.InAppSoundEnabled,
         BrowserNotificationsEnabled = s.BrowserNotificationsEnabled,
+        WeeklyDigestEnabled = s.WeeklyDigestEnabled,
 
         // Defaults
         DefaultPipelineId = s.DefaultPipelineId,

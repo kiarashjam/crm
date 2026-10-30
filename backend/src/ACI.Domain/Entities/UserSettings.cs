@@ -38,6 +38,13 @@ public class UserSettings
     public bool InAppNotificationsEnabled { get; set; } = true;
     public bool InAppSoundEnabled { get; set; } = true;
     public bool BrowserNotificationsEnabled { get; set; } = false;
+    /// <summary>
+    /// A weekly email of the figures for each workspace this person owns or manages.
+    /// Off until they turn it on: it is a report, not an alert they asked for by default.
+    /// </summary>
+    public bool WeeklyDigestEnabled { get; set; }
+    /// <summary>When the weekly digest last went out to them, so a week is sent once.</summary>
+    public DateTime? WeeklyDigestSentAtUtc { get; set; }
 
     // =========== DEFAULTS ===========
     public string? DefaultPipelineId { get; set; }

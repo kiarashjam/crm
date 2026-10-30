@@ -308,6 +308,7 @@ try
             client => client.Timeout = TimeSpan.FromSeconds(5))
         .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.OutboundWebhookPublisher.PublicOnlyHandler);
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
@@ -735,6 +736,20 @@ try
                     ALTER TABLE [UserSettings] ADD [InAppSoundEnabled] bit NOT NULL DEFAULT 1;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'BrowserNotificationsEnabled')
                     ALTER TABLE [UserSettings] ADD [BrowserNotificationsEnabled] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'WeeklyDigestEnabled')
+                    ALTER TABLE [UserSettings] ADD [WeeklyDigestEnabled] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'WeeklyDigestSentAtUtc')
+                    ALTER TABLE [UserSettings] ADD [WeeklyDigestSentAtUtc] datetime2 NULL;
+                -- The first migration made an EmailDigestFrequency column, NOT NULL with no
+                -- default, that the model has not had since. On a database it created, the
+                -- first settings save of anyone without settings yet failed on it, the
+                -- weekly digest switch included. A default lets the insert through; the
+                -- column and anything in it are left alone.
+                IF COL_LENGTH('UserSettings', 'EmailDigestFrequency') IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM sys.default_constraints
+                        WHERE parent_object_id = OBJECT_ID('UserSettings')
+                          AND parent_column_id = COLUMNPROPERTY(OBJECT_ID('UserSettings'), 'EmailDigestFrequency', 'ColumnId'))
+                    ALTER TABLE [UserSettings] ADD CONSTRAINT [DF_UserSettings_EmailDigestFrequency] DEFAULT 0 FOR [EmailDigestFrequency];
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultPipelineId')
                     ALTER TABLE [UserSettings] ADD [DefaultPipelineId] nvarchar(64) NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultLeadStatusId')
