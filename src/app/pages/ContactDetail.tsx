@@ -44,7 +44,7 @@ import {
   SelectValue,
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
-import { currencyOf, formatDealSum, formatMoney, parseAmount } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
@@ -52,12 +52,8 @@ import { RecordAvatar, RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { ActivityLogForm, ActivityRow } from '@/app/components/RecordActivity';
 
-/** A deal's amount in its own currency, however the value was typed. */
-function dealAmount(deal: Deal): string {
-  return formatMoney(parseAmount(deal.value), currencyOf(deal));
-}
-
 export default function ContactDetail() {
+  const money = useMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [contact, setContact] = useState<Contact | null>(null);
@@ -279,7 +275,7 @@ export default function ContactDetail() {
   const createdLabel = contact.createdAtUtc
     ? new Date(contact.createdAtUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
-  const dealsHint = deals.length > 0 ? `${formatDealSum(deals)} in all` : 'none yet';
+  const dealsHint = deals.length > 0 ? `${money.formatDeals(deals)} in all` : 'none yet';
   const lastActivityHint = activities[0]
     ? `last ${new Date(activities[0].createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
     : 'none yet';
@@ -574,7 +570,7 @@ export default function ContactDetail() {
                             </p>
                             <p className="text-xs text-slate-500">{deal.dealStageName || deal.stage || 'No stage'}</p>
                           </div>
-                          <p className="text-sm font-bold text-emerald-700">{dealAmount(deal)}</p>
+                          <p className="text-sm font-bold text-emerald-700">{money.formatDeal(deal)}</p>
                         </Link>
                       </StaggerItem>
                     ))}

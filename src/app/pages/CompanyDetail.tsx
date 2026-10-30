@@ -32,11 +32,12 @@ import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar, RecordCard, initialsOf } from '@/app/components/RecordCard';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { cn } from '@/app/components/ui/utils';
-import { currencyOf, formatDealSum, formatMoney, parseAmount } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 
 type CompanyRaw = Company & Record<string, unknown>;
 
 export default function CompanyDetail() {
+  const money = useMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [company, setCompany] = useState<Company | null>(null);
@@ -260,7 +261,7 @@ export default function CompanyDetail() {
             }
             stats={[
               { label: 'Contacts', value: contacts.length, icon: Users, tone: 'emerald', hint: contacts[0] ? `incl. ${contacts[0].name}` : 'none yet' },
-              { label: 'Deals', value: deals.length, icon: Briefcase, tone: 'violet', hint: deals.length > 0 ? `${formatDealSum(deals)} in all` : 'none yet' },
+              { label: 'Deals', value: deals.length, icon: Briefcase, tone: 'violet', hint: deals.length > 0 ? `${money.formatDeals(deals)} in all` : 'none yet' },
               { label: 'Industry', value: company.industry || '—', icon: Building2, tone: 'blue', hint: company.size ? `${company.size} people` : undefined },
               { label: 'Since', value: createdLabel ?? '—', icon: Clock, tone: 'amber', hint: company.updatedAtUtc ? `updated ${new Date(company.updatedAtUtc).toLocaleDateString()}` : undefined },
             ]}
@@ -332,9 +333,9 @@ export default function CompanyDetail() {
                               )}
                             </div>
                           </div>
-                          {deal.value && (
+                          {deal.amount != null && (
                             <span className="shrink-0 text-sm font-bold text-emerald-700">
-                              {formatMoney(parseAmount(deal.value), currencyOf(deal))}
+                              {money.formatDeal(deal)}
                             </span>
                           )}
                         </Link>

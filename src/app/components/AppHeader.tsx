@@ -37,9 +37,11 @@ import LocalOnlyNotice from './LocalOnlyNotice';
 import LocalDataUploadDialog from './LocalDataUploadDialog';
 import { AppSideNav } from './AppSideNav';
 import { NextActions } from '@/app/salesAgent/NextActions';
+import { useMoney } from '@/app/hooks/useMoney';
 
 // HP-9: Global search bar component
 function GlobalSearchBar() {
+  const money = useMoney();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -231,7 +233,7 @@ function GlobalSearchBar() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{d.name}</p>
                       </div>
-                      {d.value && <span className="text-xs font-semibold text-emerald-700 shrink-0">${d.value}</span>}
+                      {d.amount != null && <span className="text-xs font-semibold text-emerald-700 shrink-0">{money.formatDeal(d)}</span>}
                     </button>
                   ))}
                 </div>

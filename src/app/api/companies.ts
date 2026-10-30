@@ -1,4 +1,4 @@
-import type { Company, PagedResult, PaginationParams } from './types';
+import type { Company, CurrencyTotal, PagedResult, PaginationParams } from './types';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { mockCompanies } from './mockData';
 
@@ -142,14 +142,16 @@ export interface CompanyStatsItem {
   companyId: string;
   contactCount: number;
   dealCount: number;
-  totalDealValue: number;
+  /** The company's deals, one total per currency, largest first. Never added across currencies. */
+  dealTotals: CurrencyTotal[];
 }
 
-/** Fetch per-company stats (contact count, deal count, deal value). */
+/** Fetch per-company stats (contact count, deal count, deal value per currency). */
 export async function getCompanyStats(): Promise<CompanyStatsItem[]> {
   if (!servesDemoData()) {
     const result = await authFetchJson<CompanyStatsItem[]>('/api/companies/stats');
-    return Array.isArray(result) ? result : [];
+    // A server from before the totals were per currency sends none: no figure, not a wrong one.
+    return Array.isArray(result) ? result.map((s) => ({ ...s, dealTotals: Array.isArray(s.dealTotals) ? s.dealTotals : [] })) : [];
   }
   // Mock: return empty array (mock companies don't have linked contacts/deals)
   await delay(100);

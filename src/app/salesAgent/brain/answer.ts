@@ -1,4 +1,4 @@
-import { currencyOf, formatMoney, tryParseAmount } from '@/app/lib/money';
+import { amountOf, currencyOf, formatMoney } from '@/app/lib/money';
 import { shiftKey, todayKey } from '../calendarDay';
 import type { SuggestableLead } from '../nextAction';
 import type { SuggestableContact, SuggestableDeal, SuggestableTask, WorkSuggestion } from '../workspace';
@@ -643,7 +643,7 @@ export function askAgent(question: string, world: AgentWorld, now: Date = new Da
     }
     const withMoney = world.deals
       .filter(isOpenDeal)
-      .map((deal) => ({ deal, amount: tryParseAmount(deal.value) }))
+      .map((deal) => ({ deal, amount: amountOf(deal) }))
       .filter((row): row is { deal: SuggestableDeal; amount: number } => row.amount !== null && row.amount > 0)
       .sort((a, b) => b.amount - a.amount);
     if (withMoney.length === 0) return say('No open amount is saved on the loaded deals.');

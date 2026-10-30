@@ -11,7 +11,8 @@ import {
   lineItemsTotal, updateDeal,
   type Product, type DealLineItem,
 } from '@/app/api';
-import { formatMoney, DEFAULT_CURRENCY } from '@/app/lib/money';
+import { roundCents } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 
 interface DealLineItemsCardProps {
   dealId: string;
@@ -23,7 +24,8 @@ interface DealLineItemsCardProps {
 }
 
 export default function DealLineItemsCard({ dealId, currency, className, onValueSynced }: DealLineItemsCardProps) {
-  const fmt = (n: number) => formatMoney(n, currency || DEFAULT_CURRENCY);
+  const money = useMoney();
+  const fmt = (n: number) => money.format(n, currency || money.currency, 'always');
   const [items, setItems] = useState<DealLineItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,9 +105,12 @@ export default function DealLineItemsCard({ dealId, currency, className, onValue
 
   const syncValue = async () => {
     setSyncing(true);
+    // To the cent: seven platters at 14.20 add up to 99.39999999999999 in floating
+    // point, which the deal's old text field refused, so the value and the lines parted.
+    const amount = roundCents(total);
     try {
-      const ok = await updateDeal(dealId, { value: String(total) });
-      if (ok) { toast.success('Deal value updated to line-item total'); onValueSynced?.(total); }
+      const ok = await updateDeal(dealId, { amount });
+      if (ok) { toast.success('Deal value updated to line-item total'); onValueSynced?.(amount); }
       else toast.error('Failed to update deal value');
     } catch (err) {
       toast.error(reason(err, 'Failed to update deal value'));

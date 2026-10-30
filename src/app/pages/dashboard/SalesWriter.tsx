@@ -15,6 +15,7 @@ import { cn } from '@/app/components/ui/utils';
 import { copyTypes, goals } from './config';
 import type { CopyTypeId, Lead, Contact, Deal } from '@/app/api/types';
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '@/app/api/copyGenerator';
+import { useMoney } from '@/app/hooks/useMoney';
 
 interface SalesWriterProps {
   /**
@@ -160,6 +161,7 @@ export function SalesWriter({
   recipientSearch,
   setRecipientSearch,
 }: SalesWriterProps) {
+  const money = useMoney();
   return (
     <section className="relative overflow-hidden rounded-2xl border border-slate-200/60 bg-gradient-to-br from-white via-slate-50/30 to-white shadow-xl shadow-slate-200/40">
       {/* Animated background elements */}
@@ -441,7 +443,8 @@ export function SalesWriter({
                                       email: lead?.email || contact?.email,
                                       company: undefined,
                                       dealStage: deal?.stage,
-                                      dealValue: deal?.value,
+                                      // The amount in its currency ("CHF 85’500"), not the bare digits, for the copy.
+                                      dealValue: deal && deal.amount != null ? money.formatDeal(deal) : undefined,
                                     });
                                     setShowRecipientPicker(false);
                                     setRecipientType(null);

@@ -31,8 +31,8 @@ describe('weigh', () => {
       priority: 72,
     };
     const now = new Date(2026, 5, 1, 10, 0, 0);
-    const thin = weigh(deal, [], [{ id: 'd1', name: 'Pavilion', value: '48000', probability: 20 }], now);
-    const likely = weigh(deal, [], [{ id: 'd1', name: 'Pavilion', value: '48000', probability: 80 }], now);
+    const thin = weigh(deal, [], [{ id: 'd1', name: 'Pavilion', value: '48000', amount: 48000, probability: 20 }], now);
+    const likely = weigh(deal, [], [{ id: 'd1', name: 'Pavilion', value: '48000', amount: 48000, probability: 80 }], now);
     expect(thin.weights.find((weight) => weight.name === 'Larger deal')?.points).toBe(14);
     expect(likely.weights.find((weight) => weight.name === 'Larger deal')?.points).toBe(22);
     expect(likely.score).toBeGreaterThan(thin.score);

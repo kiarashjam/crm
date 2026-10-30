@@ -80,9 +80,11 @@ import { cn } from '@/app/components/ui/utils';
 // Import extracted components and utilities
 import { DroppableStageColumn } from './pipeline/DroppableStageColumn';
 import { STAGE_COLORS_MAP } from './pipeline/config';
-import { getStageList, dealOutcome, groupDealsByStage, formatDealTotal, formatAmount, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
-import { dominantCurrencyOf } from '@/app/lib/money';
-import { DealCard, getCurrencySymbol } from './pipeline/DealCard';
+import { getStageList, dealOutcome, groupDealsByStage, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
+import { AMOUNT_HINT, amountInput, amountOf, currencyOptions, parseMoneyInput } from '@/app/lib/money';
+import { dateOnlyKey, todayKeyIn } from '@/app/lib/zonedTime';
+import { useMoney } from '@/app/hooks/useMoney';
+import { DealCard } from './pipeline/DealCard';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { getTasks, createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
@@ -98,6 +100,7 @@ import { StaggerItem } from '@/app/components/motion/Stagger';
 
 export default function Pipeline() {
   const { isReadOnly } = useOrg();
+  const money = useMoney();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
@@ -107,7 +110,7 @@ export default function Pipeline() {
   const [createForm, setCreateForm] = useState({
     name: '',
     value: '',
-    currency: 'CHF',
+    currency: '',
     stageId: '',
     pipelineId: '',
     expectedCloseDate: '',
@@ -186,49 +189,40 @@ export default function Pipeline() {
   // Calculate deal statistics
   const dealStats = useMemo(() => {
     const total = pipelineDeals.length;
-    const totalValue = pipelineDeals.reduce((acc, d) => {
-      const num = parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0;
-      return acc + num;
-    }, 0);
-    
     const won = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'won');
     const lost = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'lost');
     const active = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'open');
-    
-    const wonValue = won.reduce((acc, d) => acc + (parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0), 0);
-    const activeValue = active.reduce((acc, d) => acc + (parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0), 0);
-    
-    const winRate = (won.length + lost.length) > 0 
-      ? Math.round((won.length / (won.length + lost.length)) * 100) 
+
+    // Totalled per currency, from each deal's stored amount. The board stripped each
+    // value's text to digits and added everything up, so CHF 40,000 and EUR 30,000
+    // showed as one "CHF 70,000".
+    const activeTotals = money.totals(active);
+    const wonTotals = money.totals(won);
+
+    const winRate = (won.length + lost.length) > 0
+      ? Math.round((won.length / (won.length + lost.length)) * 100)
       : 0;
-    
-    // Overdue deals
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const overdue = active.filter(d => {
-      if (!d.expectedCloseDateUtc) return false;
-      const closeDate = new Date(d.expectedCloseDateUtc);
-      closeDate.setHours(0, 0, 0, 0);
-      return closeDate < today;
-    }).length;
-    
+
+    // Overdue: due before today on the workspace's calendar. A close date is the day
+    // that was picked, so it is compared as that day.
+    const today = todayKeyIn(money.timeZone);
+    const overdue = active.filter(d => d.expectedCloseDateUtc && dateOnlyKey(d.expectedCloseDateUtc) < today).length;
+
     // Closing this week
-    const oneWeekFromNow = new Date();
-    oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
+    const weekOut = new Date(`${today}T00:00:00Z`);
+    weekOut.setUTCDate(weekOut.getUTCDate() + 7);
+    const inAWeek = weekOut.toISOString().slice(0, 10);
     const closingThisWeek = active.filter(d => {
       if (!d.expectedCloseDateUtc) return false;
-      const closeDate = new Date(d.expectedCloseDateUtc);
-      return closeDate >= today && closeDate <= oneWeekFromNow;
+      const day = dateOnlyKey(d.expectedCloseDateUtc);
+      return day >= today && day <= inAWeek;
     }).length;
-    
-    // Average deal size
-    const avgDealSize = total > 0 ? totalValue / total : 0;
-    
-    return { 
-      total, totalValue, won: won.length, lost: lost.length, active: active.length,
-      wonValue, activeValue, winRate, overdue, closingThisWeek, avgDealSize
+
+    return {
+      total, won: won.length, lost: lost.length, active: active.length,
+      activeTotals, wonTotals, winRate, overdue, closingThisWeek,
     };
-  }, [pipelineDeals, stageList]);
+  }, [pipelineDeals, stageList, money]);
 
   // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee)
   const currentUserId = useMemo(() => getCurrentUser()?.id, []);
@@ -270,15 +264,11 @@ export default function Pipeline() {
       }
     }
     
-    // HP-10: Value range filter
-    if (filterValueMin) {
-      const min = parseFloat(filterValueMin);
-      if (!isNaN(min)) result = result.filter(d => (parseFloat(d.value.replace(/[^0-9.-]/g, '')) || 0) >= min);
-    }
-    if (filterValueMax) {
-      const max = parseFloat(filterValueMax);
-      if (!isNaN(max)) result = result.filter(d => (parseFloat(d.value.replace(/[^0-9.-]/g, '')) || 0) <= max);
-    }
+    // HP-10: Value range filter, on the stored amounts. A deal with none is outside any range.
+    const min = parseMoneyInput(filterValueMin);
+    if (min !== null) result = result.filter(d => (amountOf(d) ?? Number.NaN) >= min);
+    const max = parseMoneyInput(filterValueMax);
+    if (max !== null) result = result.filter(d => (amountOf(d) ?? Number.NaN) <= max);
 
     // HP-10: Expected close date range filter
     if (filterCloseDateFrom) {
@@ -351,7 +341,7 @@ export default function Pipeline() {
     if (editDeal) {
       setEditForm({
         name: editDeal.name,
-        value: editDeal.value,
+        value: amountInput(editDeal.amount),
         currency: editDeal.currency ?? '',
         expectedCloseDate: editDeal.expectedCloseDateUtc ? editDeal.expectedCloseDateUtc.slice(0, 10) : '',
         companyId: editDeal.companyId || '',
@@ -364,13 +354,10 @@ export default function Pipeline() {
     }
   }, [editDeal]);
 
+  // Drawn by count: a bar per stage cannot hold money in more than one currency.
   const funnelData = dealsByStage.map(({ stageName, deals: stageDeals }) => ({
     name: stageName,
     count: stageDeals.length,
-    value: stageDeals.reduce((acc, d) => {
-      const num = parseFloat(String(d.value).replace(/[^0-9.-]/g, '')) || 0;
-      return acc + num;
-    }, 0),
     fill: STAGE_COLORS_MAP[stageName]?.bar ?? '#94a3b8',
   }));
 
@@ -425,6 +412,13 @@ export default function Pipeline() {
       toast.error(messages.validation.nameAndValueRequired);
       return;
     }
+    // Read once, here, the way the server read older deals: "85'500", "1.234,56" and
+    // "CHF 12,500" are all numbers. The server took plain digits only and refused the rest.
+    const amount = parseMoneyInput(editForm.value);
+    if (amount === null) {
+      toast.error(AMOUNT_HINT);
+      return;
+    }
     setSavingEdit(true);
     try {
       const expectedCloseDateUtc = editForm.expectedCloseDate
@@ -433,7 +427,7 @@ export default function Pipeline() {
       const stageName = editStageList.find((s) => s.id === editForm.stageId)?.name ?? editForm.stageId;
       const updated = await updateDeal(editDeal.id, {
         name: editForm.name.trim(),
-        value: editForm.value.trim(),
+        amount,
         currency: editForm.currency || undefined,
         stage: stageName,
         pipelineId: editForm.pipelineId || undefined,
@@ -452,8 +446,10 @@ export default function Pipeline() {
       } else {
         toast.error(messages.errors.generic);
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      // The server says why ("A currency is a three-letter ISO code"); "Something went
+      // wrong" left people guessing which field it was.
+      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
     } finally {
       setSavingEdit(false);
     }
@@ -469,10 +465,12 @@ export default function Pipeline() {
   const openCreateDeal = () => {
     const pipelineId = selectedPipelineId ?? pipelines[0]?.id ?? '';
     const firstStage = getStageList(pipelines, pipelineId)[0];
+    // Priced in the workspace's currency unless someone picks another. The dialog
+    // opened with none picked, and a deal saved like that counted as USD.
     setCreateForm({
       name: '',
       value: '',
-      currency: '',
+      currency: money.currency,
       stageId: firstStage?.id ?? 'Qualification',
       pipelineId,
       expectedCloseDate: '',
@@ -491,6 +489,11 @@ export default function Pipeline() {
       toast.error(messages.validation.nameAndValueRequired);
       return;
     }
+    const amount = parseMoneyInput(createForm.value);
+    if (amount === null) {
+      toast.error(AMOUNT_HINT);
+      return;
+    }
     setSaving(true);
     try {
       const expectedCloseDateUtc = createForm.expectedCloseDate
@@ -499,8 +502,8 @@ export default function Pipeline() {
       const stageName = createStageList.find((s) => s.id === createForm.stageId)?.name ?? createForm.stageId;
       const created = await createDeal({
         name: createForm.name.trim(),
-        value: createForm.value.trim(),
-        currency: createForm.currency.trim() || undefined,
+        amount,
+        currency: createForm.currency.trim() || money.currency,
         stage: stageName,
         pipelineId: createForm.pipelineId || undefined,
         dealStageId: /^[0-9a-f-]{36}$/i.test(createForm.stageId) ? createForm.stageId : undefined,
@@ -517,12 +520,12 @@ export default function Pipeline() {
         setCreateOpen(false);
         const pipelineId = selectedPipelineId ?? pipelines[0]?.id ?? '';
         const firstStage = getStageList(pipelines, pipelineId)[0];
-        setCreateForm({ name: '', value: '', currency: '', stageId: firstStage?.id ?? 'Qualification', pipelineId, expectedCloseDate: '', companyId: '', contactId: '', assigneeId: '', description: '', probability: '' });
+        setCreateForm({ name: '', value: '', currency: money.currency, stageId: firstStage?.id ?? 'Qualification', pipelineId, expectedCloseDate: '', companyId: '', contactId: '', assigneeId: '', description: '', probability: '' });
       } else {
         toast.error(messages.errors.generic);
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
     } finally {
       setSaving(false);
     }
@@ -619,13 +622,14 @@ export default function Pipeline() {
     }
     return d.stage || 'Qualification';
   };
-  const activeDeals = pipelineDeals.filter((d) => dealOutcome(d, stageList) !== 'lost');
-  const totalPipelineValue = formatDealTotal(activeDeals);
-  // Bare aggregate numbers (dealStats) carry no currency of their own, so they
-  // are shown in the currency most of the pipeline is actually in rather than a
-  // hardcoded USD.
-  const boardCurrency = dominantCurrencyOf(pipelineDeals);
-  const formatBoardAmount = (n: number) => formatAmount(n, boardCurrency);
+  // The open pipeline, one figure per currency. The header badge used to count won
+  // deals in too, so it read larger than the tile beneath it.
+  const openPipeline = money.formatTotals(dealStats.activeTotals, 'never');
+  const wonText = dealStats.wonTotals.length > 0 ? money.formatTotals(dealStats.wonTotals, 'never') : null;
+  // The tile counts up one number, so it shows the currency most of the pipeline is
+  // in, and names the others beside it rather than adding them in.
+  const [mainOpen, ...otherOpen] = dealStats.activeTotals;
+  const openCurrency = mainOpen?.currency ?? money.currency;
   // How this person likes deals shown: the board, a table, a list or cards, saved for them.
   const view = useViewPreference('deals', { layouts: ['board', 'table', 'list', 'grid'] });
   const stagePill = (deal: Deal) => {
@@ -646,18 +650,10 @@ export default function Pipeline() {
       </span>
     );
   };
-  // Values are typed text and sometimes carry their own symbol ("$50,000"); read the
-  // number out of it so the symbol is never shown twice.
-  const dealValue = (deal: Deal) => {
-    const amount = Number(String(deal.value ?? '').replace(/[^0-9.-]/g, ''));
-    return (
-      <span className="font-semibold text-emerald-700">
-        {Number.isFinite(amount) && String(deal.value ?? '').trim() !== ''
-          ? formatAmount(amount, deal.currency || boardCurrency)
-          : <><span className="text-xs">{getCurrencySymbol(deal.currency)}</span>{deal.value}</>}
-      </span>
-    );
-  };
+  // The stored amount, in the deal's own currency.
+  const dealValue = (deal: Deal) => (
+    <span className="font-semibold text-emerald-700">{money.formatDeal(deal)}</span>
+  );
   const contactOf = (deal: Deal) => (deal.contactId ? contacts.find((c) => c.id === deal.contactId)?.name : undefined) ?? deal.contactName;
   const closeDate = (deal: Deal) => {
     if (!deal.expectedCloseDateUtc) return '—';
@@ -718,8 +714,12 @@ export default function Pipeline() {
   // The board's numbers, in its header. Deals Won shows the won deals.
   const dealHeroStats: PageStat[] = [
     {
-      label: 'Total Pipeline Value', value: dealStats.activeValue, icon: DollarSign, tone: 'emerald',
-      hint: `${formatBoardAmount(dealStats.wonValue)} won`, format: formatBoardAmount,
+      label: 'Total Pipeline Value', value: mainOpen?.value ?? 0, icon: DollarSign, tone: 'emerald',
+      hint: [
+        otherOpen.length > 0 ? `and ${money.formatTotals(otherOpen, 'never')}` : null,
+        wonText ? `${wonText} won` : null,
+      ].filter(Boolean).join(' · ') || undefined,
+      format: (n) => money.format(n, openCurrency, 'never'),
     },
     {
       label: 'Win Rate', value: dealStats.winRate, icon: TrendingUp, tone: 'blue',
@@ -731,7 +731,7 @@ export default function Pipeline() {
     },
     {
       label: 'Deals Won', value: dealStats.won, icon: Trophy, tone: 'orange',
-      hint: dealStats.wonValue > 0 ? formatBoardAmount(dealStats.wonValue) : undefined,
+      hint: wonText ?? undefined,
       onClick: () => setFilterStage(stageList.find((st) => st.isWon)?.name ?? 'Closed Won'),
       actionLabel: `Deals won, ${dealStats.won}. Activate to show the won deals.`,
     },
@@ -761,7 +761,7 @@ export default function Pipeline() {
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
                   <TrendingUp className="h-3 w-3" aria-hidden />
-                  {totalPipelineValue}
+                  {openPipeline}
                 </span>
               </>
             )}
@@ -1294,7 +1294,7 @@ export default function Pipeline() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Value</p>
-                    <p className="text-lg font-semibold text-emerald-700">{getCurrencySymbol(detailDeal.currency)} {detailDeal.value}</p>
+                    <p className="text-lg font-semibold text-emerald-700">{money.formatDeal(detailDeal)}</p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Stage</p>
@@ -1622,9 +1622,10 @@ export default function Pipeline() {
                 </Label>
                 <Input
                   id="deal-value"
+                  inputMode="decimal"
                   value={createForm.value}
                   onChange={(e) => setCreateForm((f) => ({ ...f, value: e.target.value }))}
-                  placeholder="e.g. $50,000"
+                  placeholder="e.g. 50'000"
                   className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all"
                   required
                 />
@@ -1632,25 +1633,21 @@ export default function Pipeline() {
               <div className="group">
                 <Label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
                   <div className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 text-slate-600">
-                    <span className="text-xs font-bold">$</span>
+                    <span className="text-xs font-bold">¤</span>
                   </div>
                   Currency
                 </Label>
                 <Select
-                  value={createForm.currency}
+                  value={createForm.currency || money.currency}
                   onValueChange={(v) => setCreateForm((f) => ({ ...f, currency: v }))}
                 >
                   <SelectTrigger aria-label="Currency" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all">
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CHF">CHF - Swiss Franc</SelectItem>
-                    <SelectItem value="EUR">EUR - Euro</SelectItem>
-                    <SelectItem value="USD">USD - US Dollar</SelectItem>
-                    <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                    <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
-                    <SelectItem value="AUD">AUD - Australian Dollar</SelectItem>
-                    <SelectItem value="JPY">JPY - Japanese Yen</SelectItem>
+                    {currencyOptions(createForm.currency || money.currency).map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.code} - {c.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1880,9 +1877,10 @@ export default function Pipeline() {
                 </Label>
                 <Input
                   id="edit-deal-value"
+                  inputMode="decimal"
                   value={editForm.value}
                   onChange={(e) => setEditForm((f) => ({ ...f, value: e.target.value }))}
-                  placeholder="e.g. $50,000"
+                  placeholder="e.g. 50'000"
                   className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all"
                   required
                 />
@@ -1890,25 +1888,22 @@ export default function Pipeline() {
               <div className="group">
                 <Label htmlFor="edit-deal-currency" className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-2">
                   <div className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 text-slate-600">
-                    <span className="text-xs font-bold">$</span>
+                    <span className="text-xs font-bold">¤</span>
                   </div>
                   Currency
                 </Label>
+                {/* What the deal is in. It said CHF for a deal with none, while the rest of the app said USD. */}
                 <Select
-                  value={editForm.currency || 'CHF'}
+                  value={editForm.currency || money.currency}
                   onValueChange={(v) => setEditForm((f) => ({ ...f, currency: v }))}
                 >
                   <SelectTrigger aria-label="Currency" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-emerald-300 focus:ring-emerald-100 transition-all">
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CHF">CHF - Swiss Franc</SelectItem>
-                    <SelectItem value="EUR">EUR - Euro</SelectItem>
-                    <SelectItem value="USD">USD - US Dollar</SelectItem>
-                    <SelectItem value="GBP">GBP - British Pound</SelectItem>
-                    <SelectItem value="CAD">CAD - Canadian Dollar</SelectItem>
-                    <SelectItem value="AUD">AUD - Australian Dollar</SelectItem>
-                    <SelectItem value="JPY">JPY - Japanese Yen</SelectItem>
+                    {currencyOptions(editForm.currency || money.currency).map((c) => (
+                      <SelectItem key={c.code} value={c.code}>{c.code} - {c.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -48,9 +48,11 @@ import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero'
 import { RecordCard } from '@/app/components/RecordCard';
 import { ActivityLogForm, ActivityRow } from '@/app/components/RecordActivity';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
-import { currencyOf, formatMoney, parseAmount } from '@/app/lib/money';
+import { currencyOf } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 
 export default function DealDetail() {
+  const money = useMoney();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [deal, setDeal] = useState<Deal | null>(null);
@@ -317,7 +319,7 @@ export default function DealDetail() {
               </>
             }
             stats={[
-              { label: 'Value', value: parseAmount(deal.value), icon: Target, tone: 'emerald', format: (n) => formatMoney(n, currencyOf(deal)), hint: deal.pipelineName ?? undefined },
+              { label: 'Value', value: deal.amount ?? '—', icon: Target, tone: 'emerald', format: (n) => money.format(n, currencyOf(deal, money.currency)), hint: deal.pipelineName ?? undefined },
               ...(deal.probability != null
                 ? [{ label: 'Win probability', value: deal.probability, icon: BarChart3, tone: 'blue' as const, format: (n: number) => `${Math.round(n)}%` }]
                 : []),
@@ -354,7 +356,7 @@ export default function DealDetail() {
                 dealId={deal.id}
                 currency={deal.currency}
                 className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
-                onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, value: String(t) } : prev))}
+                onValueSynced={(t) => setDeal((prev) => (prev ? { ...prev, amount: t, value: String(t) } : prev))}
               />
 
               <RecordCard title="Linked tasks" icon={<CheckCircle2 className="h-3.5 w-3.5" />} tone="violet" count={dealTasks.length} index={1}>

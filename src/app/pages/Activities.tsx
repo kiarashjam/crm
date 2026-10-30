@@ -56,6 +56,7 @@ import {
   RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { useMoney } from '@/app/hooks/useMoney';
 
 const ACTIVITY_TYPES = [
   { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-700', borderColor: 'border-emerald-200' },
@@ -107,6 +108,7 @@ function getDateGroup(iso: string): string {
 type ActivityFilter = 'all' | 'contact' | 'deal' | 'lead';
 
 export default function Activities() {
+  const money = useMoney();
   const navigate = useNavigate();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -887,7 +889,7 @@ export default function Activities() {
                     <SelectItem value="none">— Select deal —</SelectItem>
                     {deals.map((d) => (
                       <SelectItem key={d.id} value={d.id}>
-                        {d.name} · {d.value}
+                        {d.name} · {money.formatDeal(d)}
                       </SelectItem>
                     ))}
                   </SelectContent>

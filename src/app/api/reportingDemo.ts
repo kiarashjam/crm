@@ -16,7 +16,7 @@ import { getDeals } from './deals';
 import { getLeads } from './leads';
 import { getActivities } from './activities';
 import { getCurrentUser } from '@/app/lib/auth';
-import { tryParseAmount } from '@/app/lib/money';
+import { amountOf, DEFAULT_CURRENCY } from '@/app/lib/money';
 
 export interface DemoRecords {
   deals: Deal[];
@@ -26,10 +26,10 @@ export interface DemoRecords {
   userId: string | null;
 }
 
-/** The currency a deal is counted in: blank means USD, as on the server. */
+/** The currency a deal is counted in: blank means the workspace's, as on the server; the demo's is the default. */
 export function currencyKey(currency?: string | null): string {
   const c = (currency ?? '').trim().toUpperCase();
-  return c.length === 0 ? 'USD' : c;
+  return c.length === 0 ? DEFAULT_CURRENCY : c;
 }
 
 function time(iso?: string | null): number | null {
@@ -48,7 +48,7 @@ function figures(deals: Deal[]): DealFigures {
   for (const d of deals) {
     const currency = currencyKey(d.currency);
     const row = m.get(currency) ?? { currency, count: 0, value: 0, unreadable: 0 };
-    const amount = tryParseAmount(d.value);
+    const amount = amountOf(d);
     row.count += 1;
     if (amount === null) row.unreadable += 1;
     else row.value += amount;
@@ -59,7 +59,7 @@ function figures(deals: Deal[]): DealFigures {
 }
 
 function weightedOf(d: Deal): number {
-  const amount = tryParseAmount(d.value);
+  const amount = amountOf(d);
   return amount !== null && typeof d.probability === 'number' ? (amount * d.probability) / 100 : 0;
 }
 
@@ -69,7 +69,7 @@ function weighted(open: Deal[]): WeightedRow[] {
     const currency = currencyKey(d.currency);
     const row = m.get(currency) ?? { currency, value: 0, covered: 0, missing: 0 };
     if (typeof d.probability !== 'number') row.missing += 1;
-    else if (tryParseAmount(d.value) !== null) {
+    else if (amountOf(d) !== null) {
       row.covered += 1;
       row.value += weightedOf(d);
     }
@@ -162,7 +162,7 @@ export function summariseForDemo(records: DemoRecords, filters: ReportFilters): 
     const c = currencyKey(d.currency);
     const stageName = d.dealStageName || d.stage || 'No stage';
     const k = `${d.dealStageId ?? stageName}|${c}`;
-    const amount = tryParseAmount(d.value);
+    const amount = amountOf(d);
     const row = stages.get(k) ?? {
       pipelineId: d.pipelineId ?? null, pipelineName: d.pipelineName || 'No pipeline', stageKey: d.dealStageId ?? stageName,
       stageName, displayOrder: Number.MAX_SAFE_INTEGER, currency: c, count: 0, value: 0, weighted: 0, unreadable: 0,
@@ -188,13 +188,13 @@ export function summariseForDemo(records: DemoRecords, filters: ReportFilters): 
   for (const d of open) {
     const r = ownerRow(d);
     r.openCount += 1;
-    r.openValue += tryParseAmount(d.value) ?? 0;
+    r.openValue += amountOf(d) ?? 0;
     r.weighted += weightedOf(d);
   }
   for (const d of won) {
     const r = ownerRow(d);
     r.wonCount += 1;
-    r.wonValue += tryParseAmount(d.value) ?? 0;
+    r.wonValue += amountOf(d) ?? 0;
   }
   for (const d of lost) ownerRow(d).lostCount += 1;
 

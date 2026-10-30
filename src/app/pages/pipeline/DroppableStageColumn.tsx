@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/app/components/ui/utils';
 import type { Deal, Contact } from './types';
 import { DealCard } from './DealCard';
-import { formatDealSum } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 
 // Drag type constant for deal cards
 export const DEAL_CARD_TYPE = 'DEAL_CARD';
@@ -75,7 +75,8 @@ export function DroppableStageColumn({
 }: DroppableStageColumnProps) {
   const config = STAGE_COLORS[stageName] ?? STAGE_COLORS.Qualification;
   const StageIcon = STAGE_ICONS[stageName] ?? Briefcase;
-  const totalValue = formatDealSum(deals);
+  // Each currency's total on its own: a column of francs and euros is two figures.
+  const totalValue = useMoney().formatDeals(deals);
 
   const [{ isOver: dropIsOver }, dropRef] = useDrop(
     () => ({

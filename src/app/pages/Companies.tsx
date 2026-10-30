@@ -59,6 +59,7 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { useMoney } from '@/app/hooks/useMoney';
 
 // Common industries for filtering
 const INDUSTRIES = [
@@ -85,6 +86,7 @@ const COMPANY_SIZES = [
 ];
 
 export default function Companies() {
+  const money = useMoney();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -212,15 +214,23 @@ export default function Companies() {
     const allStats = Array.from(companyStatsMap.values());
     const withContacts = allStats.filter(s => s.contactCount > 0).length;
     const withDeals = allStats.filter(s => s.dealCount > 0).length;
-    const totalDealValue = allStats.reduce((sum, s) => sum + s.totalDealValue, 0);
-    
-    return { total, byIndustry, topIndustry, withDomain, thisWeek, withContacts, withDeals, totalDealValue };
+    // Every company's deals, added up within each currency only. One figure across
+    // them read CHF 40,000 and EUR 30,000 as "$70K".
+    const byCurrency = new Map<string, number>();
+    for (const s of allStats) {
+      for (const t of s.dealTotals) byCurrency.set(t.currency, (byCurrency.get(t.currency) ?? 0) + t.value);
+    }
+    const dealTotals = [...byCurrency.entries()]
+      .map(([currency, value]) => ({ currency, value }))
+      .sort((a, b) => b.value - a.value || a.currency.localeCompare(b.currency));
+
+    return { total, byIndustry, topIndustry, withDomain, thisWeek, withContacts, withDeals, dealTotals };
   }, [companies, companyStatsMap, totalCount]);
 
   // HP-7: Get counts from server-side stats map
   const getContactCount = useCallback((companyId: string) => companyStatsMap.get(companyId)?.contactCount ?? 0, [companyStatsMap]);
   const getDealCount = useCallback((companyId: string) => companyStatsMap.get(companyId)?.dealCount ?? 0, [companyStatsMap]);
-  const getDealValue = (companyId: string) => companyStatsMap.get(companyId)?.totalDealValue ?? 0;
+  const getDealTotals = (companyId: string) => companyStatsMap.get(companyId)?.dealTotals ?? [];
   // HP-12: Get deals for a company (still from deals array for drill-down)
   const getDealsForCompany = (companyId: string) => deals.filter(d => d.companyId === companyId);
 
@@ -398,12 +408,9 @@ export default function Companies() {
       .toUpperCase();
   };
 
-  // Format currency
-  const formatCurrency = (value: number) => {
-    if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`;
-    return `$${value.toFixed(0)}`;
-  };
+  // Each currency's total in its own currency. This wrote every total with a dollar sign.
+  const formatTotals = (totals: { currency: string; value: number }[]) => (totals.length ? money.formatTotals(totals, 'never') : '—');
+  const [mainTotal, ...otherTotals] = companyStats.dealTotals;
 
   // The page's numbers, in its header. Top Industry opens the filters with
   // that industry set, as its card did.
@@ -430,7 +437,7 @@ export default function Companies() {
     { id: 'location', label: 'Location', byDefault: false, cell: (c) => c.location || '—' },
     { id: 'contacts', label: 'Contacts', numeric: true, cell: (c) => getContactCount(c.id) || '—' },
     { id: 'deals', label: 'Deals', numeric: true, cell: (c) => getDealCount(c.id) || '—' },
-    { id: 'value', label: 'Pipeline', numeric: true, cell: (c) => (getDealValue(c.id) ? formatCurrency(getDealValue(c.id)) : '—') },
+    { id: 'value', label: 'Deal value', numeric: true, cell: (c) => formatTotals(getDealTotals(c.id)) },
   ];
 
   /** The same menu on a card, a row and a table line. */
@@ -475,7 +482,11 @@ export default function Companies() {
     { label: 'Total Companies', value: companyStats.total, icon: BarChart3, tone: 'blue' },
     { label: 'With Contacts', value: companyStats.withContacts, icon: UserCircle, tone: 'sky' },
     { label: 'With Deals', value: companyStats.withDeals, icon: Target, tone: 'emerald' },
-    { label: 'Total Pipeline', value: companyStats.totalDealValue, icon: DollarSign, tone: 'amber', format: formatCurrency },
+    {
+      label: 'Deal value', value: mainTotal?.value ?? 0, icon: DollarSign, tone: 'amber',
+      format: (n) => money.format(n, mainTotal?.currency ?? money.currency, 'never'),
+      hint: otherTotals.length > 0 ? `and ${money.formatTotals(otherTotals, 'never')}` : 'all deals',
+    },
     { label: 'This Week', value: companyStats.thisWeek, icon: Calendar, tone: 'violet', hint: 'added' },
     {
       label: 'Top Industry', value: topIndustryName || 'N/A', icon: Factory, tone: 'cyan', hint: `${topIndustryCount} ${topIndustryCount === 1 ? 'company' : 'companies'}`,
@@ -873,7 +884,7 @@ export default function Companies() {
               const gradient = getCompanyGradient(company.name);
               const contactCount = getContactCount(company.id);
               const dealCount = getDealCount(company.id);
-              const dealValue = getDealValue(company.id);
+              const dealTotals = getDealTotals(company.id);
               
               return (
                 <StaggerItem
@@ -963,14 +974,14 @@ export default function Companies() {
                         <span className="text-sm font-medium text-slate-700">{dealCount}</span>
                         <span className="text-xs text-slate-500">deals</span>
                       </div>
-                      {dealValue > 0 && (
+                      {dealTotals.length > 0 && (
                         <div
                           className="flex items-center gap-1.5 ml-auto cursor-pointer hover:text-amber-700 transition-colors"
                           onClick={(e) => { e.stopPropagation(); navigate(`/companies/${company.id}`); }}
                           title="View deal value"
                         >
                           <DollarSign className="w-4 h-4 text-amber-500" />
-                          <span className="text-sm font-bold text-amber-700">{formatCurrency(dealValue)}</span>
+                          <span className="text-sm font-bold text-amber-700">{formatTotals(dealTotals)}</span>
                         </div>
                       )}
                     </div>
@@ -987,7 +998,7 @@ export default function Companies() {
                               className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-left group/deal"
                             >
                               <span className="text-xs font-medium text-slate-700 truncate group-hover/deal:text-emerald-600 transition-colors">{deal.name}</span>
-                              <span className="text-xs text-emerald-700 font-semibold shrink-0 ml-2">{deal.currency || '$'}{deal.value}</span>
+                              <span className="text-xs text-emerald-700 font-semibold shrink-0 ml-2">{money.formatDeal(deal)}</span>
                             </button>
                           ))}
                           {dealCount > 3 && (

@@ -14,6 +14,7 @@ import { getUserSettings, saveUserSettings } from '@/app/api/settings';
 import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
 import { askAgent, type AgentAction, type AgentReply, type AgentWorld } from './brain/answer';
 import { emptyMemory, remember, rowFor, type AgentMemory } from './brain/reason';
+import { amountText } from './brain/workflows';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
 import { ActionChip, AgentBubble, AiOrb, EASE, SuggestionChips, ThinkingBubble, UserBubble } from './AgentChatParts';
@@ -424,22 +425,24 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
         : { saved: false, text: result.error ?? 'The contact was not saved.' };
     }
     if (action.kind === 'create-deal' && action.title && action.dealValue) {
+      // The proposal holds the amount as plain digits ("15000"); the deal takes the
+      // number, and without a currency is priced in the workspace's.
       const saved = await createDeal({
         name: action.title,
-        value: action.dealValue,
+        amount: Number(action.dealValue),
         currency: action.currency,
         companyId: action.companyId,
         contactId: action.contactId,
       });
-      return saved ? { saved: true, text: `Deal saved: ${saved.name}, amount ${saved.value}.` } : { saved: false, text: 'The deal was not saved.' };
+      return saved ? { saved: true, text: `Deal saved: ${saved.name}, amount ${amountText(saved)}.` } : { saved: false, text: 'The deal was not saved.' };
     }
     if (action.kind === 'update-deal' && action.dealId && (action.dealValue || action.dueDateUtc)) {
       const saved = await updateDeal(action.dealId, {
-        ...(action.dealValue ? { value: action.dealValue } : {}),
+        ...(action.dealValue ? { amount: Number(action.dealValue) } : {}),
         ...(action.dueDateUtc ? { expectedCloseDateUtc: action.dueDateUtc } : {}),
       });
       if (!saved) return { saved: false, text: 'The deal was not updated.' };
-      const amount = action.dealValue ? ` Amount ${saved.value}.` : '';
+      const amount = action.dealValue ? ` Amount ${amountText(saved)}.` : '';
       const close = action.dueDateUtc ? ` Close date ${saved.expectedCloseDateUtc?.slice(0, 10) ?? action.dueDateUtc}.` : '';
       return { saved: true, text: `Deal saved: ${saved.name}.${amount}${close}` };
     }

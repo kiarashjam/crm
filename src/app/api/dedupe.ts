@@ -20,6 +20,7 @@ import { getDeals, updateDeal, deleteDeal } from './deals';
 import { getMembers, updateMember, deleteMember, type Member } from './members';
 import type { Household } from './households';
 import type { Contact, Company, Lead, Deal } from './types';
+import { amountOf, currencyOf, formatMoney } from '@/app/lib/money';
 
 export interface DuplicateGroup<T> {
   /** Stable for the same set of records, whatever order they load in. */
@@ -426,11 +427,11 @@ export const LEAD_MERGE_FIELDS: MergeField<Lead>[] = [
   { label: 'First seen', keys: ['createdAtUtc'], rule: 'earliest', format: (l) => date(l.createdAtUtc) },
 ];
 
+// The stored amount in the deal's own currency; the text was read again with Number(),
+// which made "CHF 85,500" unreadable and showed it as typed.
 const money = (d: Deal) => {
-  if (isBlank(d.value, true)) return undefined;
-  const n = Number(d.value);
-  const amount = Number.isFinite(n) ? n.toLocaleString() : d.value;
-  return d.currency ? `${d.currency} ${amount}` : amount;
+  const amount = amountOf(d);
+  return amount === null || amount === 0 ? undefined : formatMoney(amount, currencyOf(d));
 };
 const outcome = (d: Deal) => (d.isWon === true ? 'Won' : d.isWon === false ? 'Lost' : 'Open');
 
@@ -438,7 +439,7 @@ export const DEAL_MERGE_FIELDS: MergeField<Deal>[] = [
   { label: 'Name', keys: ['name'], rule: 'keep' },
   { label: 'Stage', keys: ['dealStageId', 'dealStageName', 'stage', 'pipelineId', 'pipelineName'], rule: 'keep', format: (d) => d.dealStageName || d.stage },
   { label: 'Outcome', keys: ['isWon'], rule: 'keep', format: outcome },
-  { label: 'Value', keys: ['value', 'currency'], rule: 'fillAmount', format: money },
+  { label: 'Value', keys: ['amount', 'value', 'currency'], rule: 'fillAmount', format: money },
   { label: 'Company', keys: ['companyId', 'companyName'], rule: 'fill', format: (d) => d.companyName || (d.companyId ? 'Linked company' : undefined) },
   { label: 'Contact', keys: ['contactId', 'contactName'], rule: 'fill', format: (d) => d.contactName || (d.contactId ? 'Linked contact' : undefined) },
   { label: 'Owner', keys: ['assigneeId', 'assigneeName'], rule: 'fill', format: (d) => d.assigneeName || (d.assigneeId ? 'Assigned' : undefined) },

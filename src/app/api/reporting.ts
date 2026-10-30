@@ -10,7 +10,7 @@ import type { CurrencyTotal, DashboardStats } from './types';
 import { servesDemoData, authFetchJson } from './apiClient';
 import { getDeals } from './deals';
 import { getLeads } from './leads';
-import { currencyOf, tryParseAmount } from '@/app/lib/money';
+import { amountOf, currencyOf, DEFAULT_CURRENCY } from '@/app/lib/money';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -20,7 +20,7 @@ const EMPTY_STATS: DashboardStats = {
   activeLeadsCount: 0,
   activeDealsCount: 0,
   pipelineValue: 0,
-  pipelineCurrency: 'USD',
+  pipelineCurrency: DEFAULT_CURRENCY,
   pipelineByCurrency: [],
   unreadableValueCount: 0,
   dealsWonCount: 0,
@@ -41,12 +41,12 @@ function isOpen(d: { isWon?: boolean }): boolean {
  * silently as zero.
  */
 function totalsByCurrency(
-  deals: { value?: string; currency?: string }[],
+  deals: { amount?: number | null; currency?: string }[],
 ): { totals: CurrencyTotal[]; unreadable: number } {
   const sums = new Map<string, { value: number; dealCount: number }>();
   let unreadable = 0;
   for (const d of deals) {
-    const amount = tryParseAmount(d.value);
+    const amount = amountOf(d);
     if (amount === null) {
       unreadable += 1;
       continue;
@@ -84,7 +84,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     activeLeadsCount: (Array.isArray(leads) ? leads : []).filter((l) => !l.isConverted).length,
     activeDealsCount: open.length,
     pipelineValue: dominant?.value ?? 0,
-    pipelineCurrency: dominant?.currency ?? 'USD',
+    pipelineCurrency: dominant?.currency ?? DEFAULT_CURRENCY,
     pipelineByCurrency: totals,
     unreadableValueCount: unreadable,
     dealsWonCount: dealList.filter((d) => d.isWon === true).length,
@@ -105,14 +105,14 @@ export interface PipelineStageValue {
 export async function getPipelineValueByStage(): Promise<PipelineStageValue[]> {
   if (!servesDemoData()) {
     const list = await authFetchJson<PipelineStageValue[]>('/api/reporting/pipeline-by-stage');
-    return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || 'USD' })) : [];
+    return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || DEFAULT_CURRENCY })) : [];
   }
   await delay(150);
   const deals = await getDeals();
   const open = (Array.isArray(deals) ? deals : []).filter(isOpen);
   const groups = new Map<string, PipelineStageValue>();
   for (const d of open) {
-    const amount = tryParseAmount(d.value);
+    const amount = amountOf(d);
     if (amount === null) continue;
     const stageName = d.dealStageName || d.stage || 'Unset';
     const currency = currencyOf(d);
@@ -142,14 +142,14 @@ export interface PipelineValueByAssignee {
 export async function getPipelineValueByAssignee(): Promise<PipelineValueByAssignee[]> {
   if (!servesDemoData()) {
     const list = await authFetchJson<PipelineValueByAssignee[]>('/api/reporting/pipeline-by-assignee');
-    return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || 'USD' })) : [];
+    return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || DEFAULT_CURRENCY })) : [];
   }
   await delay(150);
   const deals = await getDeals();
   const open = (Array.isArray(deals) ? deals : []).filter(isOpen);
   const groups = new Map<string, PipelineValueByAssignee>();
   for (const d of open) {
-    const amount = tryParseAmount(d.value);
+    const amount = amountOf(d);
     if (amount === null) continue;
     const assigneeName = d.assigneeName || 'Unassigned';
     const currency = currencyOf(d);

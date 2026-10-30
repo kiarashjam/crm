@@ -60,8 +60,10 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
+import { useMoney } from '@/app/hooks/useMoney';
 
 export default function Contacts() {
+  const money = useMoney();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -1057,7 +1059,7 @@ export default function Contacts() {
                                 className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors text-left group/deal"
                               >
                                 <span className="text-xs font-medium text-slate-700 truncate group-hover/deal:text-blue-600 transition-colors">{deal.name}</span>
-                                <span className="text-xs text-emerald-700 font-semibold shrink-0 ml-2">{deal.currency || '$'}{deal.value}</span>
+                                <span className="text-xs text-emerald-700 font-semibold shrink-0 ml-2">{money.formatDeal(deal)}</span>
                               </button>
                             ))}
                             {contactDeals.length > 3 && (

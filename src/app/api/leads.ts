@@ -481,7 +481,12 @@ export interface ConvertLeadRequest {
   createContact: boolean;
   createDeal: boolean;
   dealName?: string;
+  /** The new deal's amount, to the cent. */
+  dealAmount?: number;
+  /** As text, for servers from before amounts were numbers: plain digits only. */
   dealValue?: string;
+  /** ISO code; left out, the deal is priced in the workspace's currency. */
+  dealCurrency?: string;
   dealStage?: string;
   pipelineId?: string;
   dealStageId?: string;

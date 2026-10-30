@@ -8,6 +8,12 @@ export interface Organization {
   isOwner: boolean;
   /** 0 Owner, 1 Member, 2 Manager. */
   role: number;
+  /** ISO code new deals are priced in and club amounts are shown in. Older servers send none. */
+  currency?: string;
+  /** How amounts and dates are written, e.g. "de-CH". */
+  locale?: string;
+  /** IANA zone the workspace's days and months begin in, e.g. "Europe/Zurich". */
+  timeZone?: string;
 }
 
 /** Role ids as persisted by the backend (OrgMemberRole). */
@@ -72,6 +78,21 @@ export async function createOrganization(name: string): Promise<Organization | n
   const org = await authFetchJson<Organization>('/api/organizations', {
     method: 'POST',
     body: JSON.stringify({ name: name.trim() || 'My Organization' }),
+  });
+  return org ?? null;
+}
+
+/**
+ * Set what the workspace works in (owner or manager). Fields left out keep their value.
+ * Throws with the server's reason when a code, locale or zone is not one it knows.
+ */
+export async function updateOrganizationSettings(
+  id: string,
+  settings: { currency?: string; locale?: string; timeZone?: string },
+): Promise<Organization | null> {
+  const org = await authFetchJson<Organization>(`/api/organizations/${id}/settings`, {
+    method: 'PUT',
+    body: JSON.stringify(settings),
   });
   return org ?? null;
 }

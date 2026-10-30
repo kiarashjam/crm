@@ -2,6 +2,7 @@ import type { Deal, PagedResult, PaginationParams } from './types';
 import { mockDeals } from './mockData';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
+import { DEFAULT_CURRENCY, parseMoneyInput } from '@/app/lib/money';
 
 const dealStore = createMockStore<Deal>({
   storageKey: 'crm.mock.deals.v1',
@@ -9,8 +10,22 @@ const dealStore = createMockStore<Deal>({
   idOf: (d) => d.id,
 });
 
+/**
+ * A demo deal with its amount as a number. Deals saved in this browser before amounts
+ * were numbers have only their text, so it is read once here, the way the server read
+ * its own older deals, and every page then reads the number.
+ */
+function withAmount(d: Deal): Deal {
+  return d.amount === undefined ? { ...d, amount: parseMoneyInput(d.value) } : d;
+}
+
 function getStored(): Deal[] | null {
-  return dealStore.list();
+  return dealStore.list()?.map(withAmount) ?? null;
+}
+
+/** The text older servers and integrations read, written from the number as the server writes it. */
+function valueText(amount: number): string {
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
 }
 
 function delay(ms: number): Promise<void> {
@@ -19,6 +34,7 @@ function delay(ms: number): Promise<void> {
 
 type DealRaw = {
   id: string; name: string; value: string;
+  amount?: number | null;
   currency?: string | null; stage?: string | null;
   pipelineId?: string | null; dealStageId?: string | null;
   companyId?: string | null; contactId?: string | null;
@@ -37,6 +53,8 @@ function mapDeal(d: DealRaw): Deal {
     id: d.id,
     name: d.name,
     value: d.value,
+    // A server from before amounts were numbers sends only the text.
+    amount: typeof d.amount === 'number' ? d.amount : d.amount === null ? null : parseMoneyInput(d.value),
     currency: d.currency ?? undefined,
     stage: d.stage ?? undefined,
     pipelineId: d.pipelineId ?? undefined,
@@ -106,7 +124,7 @@ export async function getDealsPaged(
   
   // Mock implementation with client-side pagination
   await delay(300);
-  let deals = getStored() ?? [...mockDeals];
+  let deals = getStored() ?? mockDeals.map(withAmount);
   
   // Apply search filter
   if (search?.trim()) {
@@ -143,7 +161,7 @@ export async function getDeals(): Promise<Deal[]> {
   }
   await delay(300);
   const stored = getStored();
-  return stored ?? [...mockDeals];
+  return stored ?? mockDeals.map(withAmount);
 }
 
 /** Search deals by name or value (non-paginated, for backward compatibility). */
@@ -175,8 +193,11 @@ export async function getDealById(id: string): Promise<Deal | null> {
   return deals.find((d) => d.id === id) ?? null;
 }
 
-/** Create a deal. */
-export async function createDeal(params: { name: string; value: string; currency?: string; stage?: string; pipelineId?: string; dealStageId?: string; companyId?: string; contactId?: string; assigneeId?: string; expectedCloseDateUtc?: string; description?: string; probability?: number }): Promise<Deal | null> {
+/**
+ * Create a deal. The amount is a number to the cent; the server writes the text older
+ * clients read from it. Without a currency the deal is priced in the workspace's.
+ */
+export async function createDeal(params: { name: string; amount: number; currency?: string; stage?: string; pipelineId?: string; dealStageId?: string; companyId?: string; contactId?: string; assigneeId?: string; expectedCloseDateUtc?: string; description?: string; probability?: number }): Promise<Deal | null> {
   if (!servesDemoData()) {
     const deal = await authFetchJson<DealRaw>('/api/deals', {
       method: 'POST',
@@ -188,8 +209,9 @@ export async function createDeal(params: { name: string; value: string; currency
   const created: Deal = {
     id: mockId('deal'),
     name: params.name,
-    value: params.value,
-    currency: params.currency,
+    amount: params.amount,
+    value: valueText(params.amount),
+    currency: params.currency ?? DEFAULT_CURRENCY,
     stage: params.stage,
     pipelineId: params.pipelineId,
     dealStageId: params.dealStageId,
@@ -204,8 +226,8 @@ export async function createDeal(params: { name: string; value: string; currency
   return dealStore.add(created);
 }
 
-/** Update a deal (stage, value, contact, expected close date, won/lost, pipeline, assignee, description, probability, close reason). */
-export async function updateDeal(id: string, params: Partial<{ name: string; value: string; currency: string; stage: string; pipelineId: string; dealStageId: string; companyId: string; contactId: string; assigneeId: string; expectedCloseDateUtc: string; isWon: boolean; description: string; probability: number; closedReason: string; isPrivate: boolean }>): Promise<Deal | null> {
+/** Update a deal (stage, amount, contact, expected close date, won/lost, pipeline, assignee, description, probability, close reason). */
+export async function updateDeal(id: string, params: Partial<{ name: string; amount: number; currency: string; stage: string; pipelineId: string; dealStageId: string; companyId: string; contactId: string; assigneeId: string; expectedCloseDateUtc: string; isWon: boolean; description: string; probability: number; closedReason: string; isPrivate: boolean }>): Promise<Deal | null> {
   if (!servesDemoData()) {
     const deal = await authFetchJson<DealRaw>(`/api/deals/${id}`, {
       method: 'PUT',
@@ -214,7 +236,9 @@ export async function updateDeal(id: string, params: Partial<{ name: string; val
     return deal ? mapDeal(deal) : null;
   }
   await delay(200);
-  return dealStore.update(id, { ...(params as Partial<Deal>), updatedAtUtc: new Date().toISOString() });
+  const money = typeof params.amount === 'number' ? { amount: params.amount, value: valueText(params.amount) } : {};
+  const updated = dealStore.update(id, { ...(params as Partial<Deal>), ...money, updatedAtUtc: new Date().toISOString() });
+  return updated ? withAmount(updated) : updated;
 }
 
 /** Delete a deal. */

@@ -101,6 +101,8 @@ import { loadLeadAssignments, saveLeadAssignments } from './leads/leadAssignment
 import { matchesLeadSearch } from './leads/leadText';
 import type { LeadForm } from './leads/types';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { useMoney } from '@/app/hooks/useMoney';
+import { AMOUNT_HINT, parseMoneyInput } from '@/app/lib/money';
 
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
 /** Session-scoped scroll position so returning from a lead detail restores it. */
@@ -138,6 +140,7 @@ function saveLeadCreatedAtMap(createdAtByLeadId: Record<string, string>) {
 }
 
 export default function Leads() {
+  const money = useMoney();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentOrgId, isReadOnly } = useOrg();
@@ -978,9 +981,19 @@ export default function Leads() {
       toast.error(messages.validation.selectContactOrDeal);
       return;
     }
+    // The amount as a number, read here: the server took plain digits only, so
+    // "10'000" or "CHF 10,000" made the whole conversion fail with "Something went wrong".
+    const { dealValue, ...request } = convertForm;
+    const dealAmount = dealValue?.trim() ? parseMoneyInput(dealValue) : 0;
+    if (convertForm.createDeal && dealAmount === null) {
+      toast.error(AMOUNT_HINT);
+      return;
+    }
     setConverting(true);
     try {
-      const result = await convertLead(convertDialogLead.id, convertForm);
+      const result = await convertLead(convertDialogLead.id, convertForm.createDeal
+        ? { ...request, dealAmount: dealAmount ?? 0, dealCurrency: money.currency }
+        : request);
       if (result) {
         const parts: string[] = [];
         if (result.companyId) parts.push('company created');
@@ -2424,7 +2437,8 @@ export default function Leads() {
                         id="convert-deal-value"
                         value={convertForm.dealValue}
                         onChange={(e) => setConvertForm((f) => ({ ...f, dealValue: e.target.value }))}
-                        placeholder="e.g. $10,000"
+                        inputMode="decimal"
+                        placeholder="e.g. 10'000"
                         className="mt-1.5 h-10 bg-white"
                       />
                     </div>
@@ -2509,7 +2523,7 @@ export default function Leads() {
                           <SelectItem key={d.id} value={d.id}>
                             <span className="flex items-center gap-2">
                               <Handshake className="w-3.5 h-3.5 text-slate-500" />
-                              {d.name} ({d.value})
+                              {d.name} ({money.formatDeal(d)})
                             </span>
                           </SelectItem>
                         ))}

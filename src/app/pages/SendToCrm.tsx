@@ -12,6 +12,7 @@ import { messages } from '@/app/api/messages';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
+import { useMoney } from '@/app/hooks/useMoney';
 
 type ObjectType = 'lead' | 'contact' | 'deal';
 
@@ -64,6 +65,7 @@ function recordPath(type: ObjectType, id: string): string {
 }
 
 export default function SendToCrm() {
+  const money = useMoney();
   const location = useLocation();
   const navigate = useNavigate();
   const incoming = readIncoming(location.state);
@@ -130,7 +132,7 @@ export default function SendToCrm() {
             .map((deal) => ({
               id: deal.id,
               name: deal.name,
-              sub: [deal.value, deal.stage].filter(Boolean).join(' · ') || 'Deal',
+              sub: [deal.amount != null ? money.formatDeal(deal) : null, deal.stage].filter(Boolean).join(' · ') || 'Deal',
             }))
         : leads
             .filter((lead) => !query || matches(query, [lead.name, lead.email, lead.status, lead.companyName]))

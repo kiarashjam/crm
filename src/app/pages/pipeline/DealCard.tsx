@@ -22,22 +22,9 @@ import {
 } from '@/app/components/ui/select';
 import { cn } from '@/app/components/ui/utils';
 import type { Deal } from './types';
+import { useMoney } from '@/app/hooks/useMoney';
 
 export const DEAL_CARD_TYPE = 'DEAL_CARD';
-
-/** Returns a currency symbol string for a given currency code. */
-export function getCurrencySymbol(code?: string): string {
-  switch (code?.toUpperCase()) {
-    case 'USD': return '$';
-    case 'EUR': return '\u20AC';
-    case 'GBP': return '\u00A3';
-    case 'CHF': return 'CHF';
-    case 'JPY': return '\u00A5';
-    case 'CAD': return 'C$';
-    case 'AUD': return 'A$';
-    default: return code || '$';
-  }
-}
 
 export const STAGE_COLORS: Record<string, { bar: string; accent: string; bg: string; border: string }> = {
   Qualification: { bar: '#3b82f6', accent: 'text-blue-600', bg: 'bg-blue-500/10', border: 'border-l-blue-500' },
@@ -133,6 +120,7 @@ export const DealCard = forwardRef(function DealCard({
   onAddTask,
   readOnly = false,
 }: DealCardProps, ref: ForwardedRef<HTMLDivElement>) {
+  const money = useMoney();
   const lastActivity = formatLastActivity(deal.lastActivityAtUtc);
   const daysToClose = getDaysUntilClose(deal.expectedCloseDateUtc);
 
@@ -198,11 +186,11 @@ export const DealCard = forwardRef(function DealCard({
               {deal.name}
             </button>
             
-            {/* Value Badge — HP-3: correct currency symbol */}
+            {/* Value Badge: the stored amount in the deal's own currency, not its text
+                behind a symbol ("$" for a deal with none) */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500/10 to-teal-500/10 dark:from-emerald-900/30 dark:to-teal-900/30 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 text-sm font-bold text-emerald-700 dark:text-emerald-400">
-                <span className="text-xs font-semibold">{getCurrencySymbol(deal.currency)}</span>
-                {deal.value}
+                {money.formatDeal(deal)}
               </span>
               {daysToClose !== null && <UrgencyBadge days={daysToClose} />}
             </div>

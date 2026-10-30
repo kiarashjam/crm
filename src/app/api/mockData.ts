@@ -15,10 +15,10 @@ export const mockCompanies: Company[] = [
 ];
 
 export const mockDeals: Deal[] = [
-  { id: '1', name: 'Acme Corp - Enterprise Plan', value: '$50,000', stage: 'Proposal', companyId: '1' },
-  { id: '2', name: 'TechStart Inc - Pro Package', value: '$25,000', stage: 'Negotiation', companyId: '2' },
-  { id: '3', name: 'Global Solutions - Custom', value: '$75,000', stage: 'Closed Won', companyId: '3' },
-  { id: '4', name: 'Acme Corp - Renewal', value: '$45,000', stage: 'Qualification', companyId: '1' },
+  { id: '1', name: 'Acme Corp - Enterprise Plan', value: '50000', amount: 50000, currency: 'CHF', stage: 'Proposal', companyId: '1' },
+  { id: '2', name: 'TechStart Inc - Pro Package', value: '25000', amount: 25000, currency: 'CHF', stage: 'Negotiation', companyId: '2' },
+  { id: '3', name: 'Global Solutions - Custom', value: '75000', amount: 75000, currency: 'CHF', stage: 'Closed Won', companyId: '3' },
+  { id: '4', name: 'Acme Corp - Renewal', value: '45000', amount: 45000, currency: 'CHF', stage: 'Qualification', companyId: '1' },
 ];
 
 export const mockLeads: Lead[] = [

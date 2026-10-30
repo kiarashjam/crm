@@ -41,8 +41,10 @@ export interface SuggestableDeal {
   closedReason?: string | null;
   assigneeId?: string | null;
   lastActivityAtUtc?: string | null;
-  /** Saved amount, when the deal carries one. The judge reads it and can move the row. */
+  /** The saved amount as text, for older servers. Read `amount`. */
   value?: string | null;
+  /** Saved amount, to the cent, when the deal carries one. The judge reads it and can move the row. */
+  amount?: number | null;
   /** ISO code the amount is in. Totals are kept per currency and never added across them. */
   currency?: string | null;
   probability?: number | null;

@@ -121,7 +121,13 @@ export interface Lead {
 export interface Deal {
   id: string;
   name: string;
+  /** The amount as text, kept for older servers and integrations. Read `amount`. */
   value: string;
+  /**
+   * The amount, to the cent, in `currency`. Null only for a deal saved before amounts
+   * were numbers whose text held none ("to be agreed").
+   */
+  amount?: number | null;
   currency?: string;
   stage?: string;
   pipelineId?: string;

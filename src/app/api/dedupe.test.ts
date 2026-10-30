@@ -5,6 +5,7 @@ import {
   LEAD_MERGE_FIELDS, DEAL_MERGE_FIELDS, MEMBER_MERGE_FIELDS,
 } from './dedupe';
 import type { Deal, Lead } from './types';
+import { formatMoney } from '@/app/lib/money';
 import type { Member } from './members';
 
 const lead = (id: string, over: Partial<Lead> = {}): Lead => ({ id, name: 'Ada Lovelace', email: '', status: 'New', ...over });
@@ -116,14 +117,21 @@ describe('what the merged record looks like', () => {
     expect(merged.createdAtUtc).toBe('2025-01-01T00:00:00Z');
   });
 
-  it('fills a deal value of zero with its currency, and a private duplicate keeps it private', () => {
+  it('fills a deal amount of zero with its currency, and a private duplicate keeps it private', () => {
     const { merged, rows } = mergeRecords(DEAL_MERGE_FIELDS,
-      { id: 'k', name: 'Renewal', value: '0' },
-      [{ id: 'd', name: 'Renewal', value: '12000', currency: 'CHF', isPrivate: true }]);
+      { id: 'k', name: 'Renewal', value: '0', amount: 0 },
+      [{ id: 'd', name: 'Renewal', value: '12000', amount: 12000, currency: 'CHF', isPrivate: true }]);
+    expect(merged.amount).toBe(12000);
     expect(merged.value).toBe('12000');
     expect(merged.currency).toBe('CHF');
     expect(merged.isPrivate).toBe(true);
-    expect(rows.find((r) => r.label === 'Value')?.result).toBe(`CHF ${(12000).toLocaleString()}`);
+    expect(rows.find((r) => r.label === 'Value')?.result).toBe(formatMoney(12000, 'CHF'));
+  });
+
+  it('reads the stored amount, not the text, which Number() could not read', () => {
+    const { rows } = mergeRecords(DEAL_MERGE_FIELDS,
+      { id: 'k', name: 'Renewal', value: 'CHF 85,500', amount: 85500, currency: 'CHF' }, []);
+    expect(rows.find((r) => r.label === 'Value')?.result).toBe(formatMoney(85500, 'CHF'));
   });
 
   it('adds up house accounts and keeps both members’ notes', () => {

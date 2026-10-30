@@ -5,9 +5,12 @@ import { describe, it, expect, onTestFinished } from 'vitest';
 import type { Activity, Deal, Lead } from './types';
 import { forecastForDemo, series, summariseForDemo, type DemoRecords } from './reportingDemo';
 import type { ReportFilters } from './reporting';
+import { parseMoneyInput } from '@/app/lib/money';
 
 const october: ReportFilters = { from: new Date(2026, 9, 1).toISOString(), to: new Date(2026, 10, 1).toISOString(), scope: 'org' };
-const deal = (p: Partial<Deal>): Deal => ({ id: Math.random().toString(36), name: 'D', value: '0', ...p });
+// A demo deal as the demo store has it: the amount read once from the text, as the
+// server read its older deals (see withAmount in deals.ts).
+const deal = (p: Partial<Deal>): Deal => ({ id: Math.random().toString(36), name: 'D', value: '0', ...p, amount: p.amount !== undefined ? p.amount : parseMoneyInput(p.value ?? '0') });
 const lead = (p: Partial<Lead>): Lead => ({ id: Math.random().toString(36), name: 'L', email: 'l@example.ch', status: 'New', ...p });
 const records = (p: Partial<DemoRecords>): DemoRecords => ({ deals: [], leads: [], activities: [], userId: 'me', ...p });
 const local = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).toISOString();
