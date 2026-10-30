@@ -97,6 +97,13 @@ public record CreateLeadRequest
     [StringLength(40)]
     public string? CompanySize { get; init; }
 
+    /// <summary>
+    /// The lead's five-phase pipeline as JSON, when it arrives with work already
+    /// recorded. Its status then follows from it, as it does on every later save.
+    /// </summary>
+    [StringLength(8000, ErrorMessage = "Pipeline state is too large")]
+    public string? PipelineState { get; init; }
+
     /// <summary>When true, a second open lead with the same email is allowed.</summary>
     public bool AllowDuplicate { get; init; }
 

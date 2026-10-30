@@ -25,6 +25,8 @@ public class ContractServiceTests
     private readonly Mock<IOrganizationRepository> _orgs = new();
     private readonly Mock<IUserRepository> _users = new();
     private readonly Mock<IEmailSender> _email = new();
+    private readonly Mock<ILeadAutomation> _automation = new();
+    private readonly StatusSyncHarness _sync = new();
     private readonly ContractService _sut;
 
     private static readonly Guid UserId = Guid.NewGuid();
@@ -80,7 +82,8 @@ public class ContractServiceTests
         _sut = new ContractService(
             _contracts.Object, _leads.Object, _orgs.Object, _users.Object, _email.Object,
             Options.Create(new EmailSettings { FrontendBaseUrl = "https://crm.example.com" }),
-            Mock.Of<ILogger<ContractService>>());
+            Mock.Of<ILogger<ContractService>>(),
+            _sync.Create(_leads.Object, _automation.Object));
     }
 
     private Lead _lead = null!;
@@ -482,6 +485,81 @@ public class ContractServiceTests
         _lead.PipelineState.Should().Be(before);
         _lead.PipelineState.Should().NotContain("\"contractSigned\":\"no\"");
         _lead.PipelineState.Should().Contain("\"contractSigned\":\"pending\"");
+    }
+
+    /* ------------------------------------------- the lead's status follows */
+
+    /// <summary>A lead in the workspace, which has the agreed statuses.</summary>
+    private void LeadInWorkspace(string status = "Contacted")
+    {
+        _sync.WithStatuses(OrgId,
+            "New", "Attempted Contact", "Contacted", "Connected",
+            "Contract Pending", "Awaiting Signature", "Signed", "Lost / Not Interested", "On Hold");
+        SetLead(new Lead
+        {
+            Id = LeadId, UserId = UserId, OrganizationId = OrgId, Name = "Jean Dupont", Email = "jean@example.com",
+            Status = status, PipelineState = """{"outreachStatus":"contacted","meetingAttended":true,"stillInterested":true}""",
+        });
+    }
+
+    [Fact]
+    public async Task SendingMovesTheLeadToAwaitingSignature()
+    {
+        // The pipeline moved here before, and the status stayed where it was until
+        // someone opened the lead in a browser.
+        LeadInWorkspace("Contract Pending");
+
+        var draft = await DraftReadyToSendAsync();
+        await _sut.SendAsync(draft.Id, UserId, OrgId, resend: false);
+
+        _lead.Status.Should().Be("Awaiting Signature");
+        _lead.LeadStatusId.Should().Be(_sync.IdOf(OrgId, "Awaiting Signature"));
+        _sync.Events.Should().ContainSingle(e => e.FromStatus == "Contract Pending" && e.ChangedByUserId == UserId);
+        _sync.Logged.Should().ContainSingle(a => a.Subject == "Status auto-updated to Awaiting Signature");
+        _sync.Dispatched.Should().ContainSingle(d => d.Trigger == "lead.status_changed" && d.Event.LeadId == LeadId);
+        _automation.Verify(a => a.RescoreAsync(_lead, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecutionMovesTheLeadToSigned()
+    {
+        LeadInWorkspace();
+        var draft = await DraftReadyToSendAsync();
+        var sent = await _sut.SendAsync(draft.Id, UserId, OrgId, resend: false);
+        await _sut.SignByTokenAsync(TokenFrom(sent.Value),
+            new SignContractRequest { SignatureName = "Jean Dupont", Agreed = true }, null, null);
+        _lead.Status.Should().Be("Awaiting Signature", "their signature alone does not execute it");
+
+        await _sut.CountersignAsync(draft.Id, UserId, OrgId,
+            new SignContractRequest { SignatureName = "Kia", Agreed = true }, null);
+
+        _lead.Status.Should().Be("Signed");
+    }
+
+    [Fact]
+    public async Task ADeclineMovesTheLeadToLostAndCreditsNobodyInTheWorkspace()
+    {
+        LeadInWorkspace();
+        var draft = await DraftReadyToSendAsync();
+        var sent = await _sut.SendAsync(draft.Id, UserId, OrgId, resend: false);
+
+        await _sut.DeclineByTokenAsync(TokenFrom(sent.Value), new DeclineContractRequest { Reason = "Too expensive" }, null, null);
+
+        _lead.Status.Should().Be("Lost / Not Interested");
+        _sync.Events.Last().ChangedByUserId.Should().BeNull("the counterparty declined; nobody here changed it");
+    }
+
+    [Fact]
+    public async Task AParkedLeadKeepsItsStatusThoughThePipelineMoves()
+    {
+        LeadInWorkspace("On Hold");
+
+        var draft = await DraftReadyToSendAsync();
+        await _sut.SendAsync(draft.Id, UserId, OrgId, resend: false);
+
+        _lead.PipelineState.Should().Contain("\"contractStatus\":\"yes\"");
+        _lead.Status.Should().Be("On Hold");
+        _sync.Events.Should().BeEmpty();
     }
 
     /* ---------------------------------------------------------- audit trail */

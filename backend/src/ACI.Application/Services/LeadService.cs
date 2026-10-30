@@ -17,6 +17,7 @@ public class LeadService : ILeadService
     private readonly IDealRepository _dealRepository;
     private readonly ILeadAutomation _automation;
     private readonly IWorkspaceRecords _records;
+    private readonly ILeadStatusSync _statusSync;
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IContactRelationshipRepository? _relationships;
@@ -29,6 +30,7 @@ public class LeadService : ILeadService
         IDealRepository dealRepository,
         ILeadAutomation automation,
         IWorkspaceRecords records,
+        ILeadStatusSync statusSync,
         ILogger<LeadService> logger,
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
@@ -40,6 +42,7 @@ public class LeadService : ILeadService
         _dealRepository = dealRepository;
         _automation = automation;
         _records = records;
+        _statusSync = statusSync;
         _logger = logger;
         _automations = automations;
         _webhooks = webhooks;
@@ -220,8 +223,14 @@ public class LeadService : ILeadService
             Industry = request.Industry?.Trim(),
             CompanySize = request.CompanySize?.Trim(),
             ReferredByContactId = request.ReferredByContactId,
+            PipelineState = request.PipelineState,
             CreatedAtUtc = DateTime.UtcNow,
         };
+
+        // A lead that arrives with recorded work (an API caller, a migration) takes
+        // the status that work implies, before routing and scoring read it.
+        if (!string.IsNullOrWhiteSpace(entity.PipelineState))
+            await _statusSync.SettleAsync(entity, ct);
 
         await _automation.PrepareNewAsync(entity, ct);
         // An imported row is someone the workspace already knows, not an inquiry
@@ -338,6 +347,15 @@ public class LeadService : ILeadService
         if (request.Industry != null) existing.Industry = request.Industry.Trim();
         if (request.CompanySize != null) existing.CompanySize = request.CompanySize.Trim();
 
+        // The pipeline decides the status, here rather than in the browser, so the
+        // answer is the same whoever sends the pipeline. A status sent alongside it is
+        // the starting point: when the pipeline implies another, the pipeline wins,
+        // unless that status is parked (do not contact) or one the rule does not know.
+        // A save without a pipeline leaves the status as sent.
+        LeadStatusDerivation.Plan? plan = null;
+        if (request.PipelineState != null)
+            plan = await _statusSync.SettleAsync(existing, ct);
+
         // Someone has worked this lead: its status left "New" (the pipeline moves it
         // when outreach is logged), or a contact date was recorded. Either one is a
         // first response. Only call/meeting/email activities used to count, so a
@@ -369,14 +387,7 @@ public class LeadService : ILeadService
 
         await _contactRepository.EnsurePersonContactAsync(updated, ct);
         if (!string.Equals(previousStatus, updated.Status, StringComparison.Ordinal))
-        {
-            await _automation.RecordStatusAsync(updated, previousStatus, updated.Status, userId, ct);
-            if (_automations != null)
-            {
-                await _automations.DispatchAsync("lead.status_changed", new AutomationEvent(
-                    organizationId, userId, $"{updated.Id}:{updated.Status}", updated.Name, LeadId: updated.Id, Email: updated.Email, AssigneeId: updated.AssignedToUserId), ct);
-            }
-        }
+            await _statusSync.AnnounceAsync(updated, previousStatus, userId, userId, plan, ct);
 
         _logger.LogInformation(
             "Lead {LeadId} updated successfully",
@@ -496,9 +507,17 @@ public class LeadService : ILeadService
     public async Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         if (keepId == dropId) return DomainErrors.Lead.NotFound;
+        var pipelineBefore = (await _repository.GetByIdAsync(keepId, userId, organizationId, ct))?.PipelineState;
         var merged = await _repository.MergeIntoAsync(keepId, dropId, userId, organizationId, ct);
         if (!merged) return DomainErrors.Lead.NotFound;
         _logger.LogInformation("Merged lead {DropId} into {KeepId}", dropId, keepId);
+
+        // A kept lead with no pipeline takes the folded-in lead's, and with it that
+        // lead's progress, so its status follows. A kept lead's own pipeline is left
+        // as it was, and so is its status.
+        var kept = await _repository.GetByIdAsync(keepId, userId, organizationId, ct);
+        if (kept != null && !string.Equals(kept.PipelineState, pipelineBefore, StringComparison.Ordinal))
+            await _statusSync.SaveAsync(kept, userId, organizationId, userId, ct);
         return Result.Success();
     }
 

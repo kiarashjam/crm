@@ -24,9 +24,10 @@ namespace ACI.Application.Services;
 /// <para>
 /// The contract flow also DRIVES the lead's five-phase pipeline rather than
 /// sitting beside it: sending satisfies the Contract phase, execution satisfies
-/// the Signature phase, and the status auto-sync already in the product carries
-/// that through to the lead's status. Without it you would get a fully executed
-/// contract next to a lead still reading "Contacted".
+/// the Signature phase, and <see cref="ILeadStatusSync"/> carries that through to
+/// the lead's status, score and automations on the server. The status used to be
+/// worked out only in the browser, so a contract signed at night left a fully
+/// executed contract next to a lead still reading "Contract Pending".
 /// </para>
 /// </remarks>
 public class ContractService : IContractService
@@ -38,6 +39,7 @@ public class ContractService : IContractService
     private readonly IEmailSender _email;
     private readonly EmailSettings _emailSettings;
     private readonly ILogger<ContractService> _logger;
+    private readonly ILeadStatusSync _statusSync;
 
     public ContractService(
         IContractRepository contracts,
@@ -46,7 +48,8 @@ public class ContractService : IContractService
         IUserRepository users,
         IEmailSender email,
         IOptions<EmailSettings> emailSettings,
-        ILogger<ContractService> logger)
+        ILogger<ContractService> logger,
+        ILeadStatusSync statusSync)
     {
         _contracts = contracts;
         _leads = leads;
@@ -55,6 +58,7 @@ public class ContractService : IContractService
         _email = email;
         _emailSettings = emailSettings.Value;
         _logger = logger;
+        _statusSync = statusSync;
     }
 
     /* ------------------------------------------------------- step 1: draft */
@@ -248,7 +252,7 @@ public class ContractService : IContractService
                 : $"Link created for {contract.CounterpartyEmail}, but the email could not be sent",
             userId, null, null, null, ct);
 
-        await ApplyPipelineEffectAsync(contract, userId, organizationId, ct);
+        await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
 
         var dto = await ToDtoAsync(contract, ct);
         return Result.Success(new SendContractResult(dto with { SigningUrl = signingUrl }, emailSent, signingUrl));
@@ -336,8 +340,9 @@ public class ContractService : IContractService
             contract.ClosedReason ?? "Declined by the counterparty",
             null, contract.CounterpartyName, ip, userAgent, ct);
 
-        // Their decision, and the pipeline has a word for it.
-        await ApplyPipelineEffectAsync(contract, contract.CreatedByUserId, contract.OrganizationId, ct);
+        // Their decision, and the pipeline has a word for it. Nobody in the workspace
+        // made the change, so the status history credits nobody.
+        await ApplyPipelineEffectAsync(contract, contract.CreatedByUserId, contract.OrganizationId, null, ct);
 
         return Result.Success(await ToPublicDtoAsync(contract, ct));
     }
@@ -391,7 +396,7 @@ public class ContractService : IContractService
         await LogEventAsync(contract.Id, "countersigned",
             $"Countersigned by {contract.CounterSignatureName}", userId, contract.CounterSignatureName, ip, null, ct);
 
-        await ApplyPipelineEffectAsync(contract, userId, organizationId, ct);
+        await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
         await SendExecutedCopiesAsync(contract, userId, ct);
 
         return Result.Success(await ToDtoAsync(contract, ct));
@@ -762,9 +767,10 @@ public class ContractService : IContractService
     /// <remarks>
     /// The pipeline is a JSON blob the frontend owns, so this merges into it by key
     /// rather than replacing it — anything else would wipe the outreach and meeting
-    /// phases the moment a contract was sent.
+    /// phases the moment a contract was sent. The lead's status then follows on the
+    /// server: often nobody has the lead open when a counterparty signs or declines.
     /// </remarks>
-    private async Task ApplyPipelineEffectAsync(Contract contract, Guid userId, Guid organizationId, CancellationToken ct)
+    private async Task ApplyPipelineEffectAsync(Contract contract, Guid userId, Guid organizationId, Guid? changedByUserId, CancellationToken ct)
     {
         if (contract.LeadId is null) return;
 
@@ -792,7 +798,7 @@ public class ContractService : IContractService
         foreach (var (key, value) in effect) state[key] = value;
 
         lead.PipelineState = state.ToJsonString();
-        await _leads.UpdateAsync(lead, userId, organizationId, ct);
+        await _statusSync.SaveAsync(lead, userId, organizationId, changedByUserId, ct);
         _logger.LogInformation(
             "Contract {ContractId} advanced lead {LeadId} pipeline: {Keys}",
             contract.Id, lead.Id, string.Join(", ", effect.Keys));

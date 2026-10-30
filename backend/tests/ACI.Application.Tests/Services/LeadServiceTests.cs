@@ -49,6 +49,7 @@ public class LeadServiceTests
             _dealRepositoryMock.Object,
             automation.Object,
             WorkspaceRecordsMock.InWorkspace().Object,
+            new StatusSyncHarness().Create(_leadRepositoryMock.Object, automation.Object),
             _loggerMock.Object);
     }
 

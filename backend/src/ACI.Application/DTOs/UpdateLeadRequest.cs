@@ -79,7 +79,9 @@ public record UpdateLeadRequest
 
     /// <summary>
     /// Serialized JSON of the lead's structured sales-lifecycle progression
-    /// (outreach → meeting → contract → signature → deposit). Owned by the client.
+    /// (outreach → meeting → contract → signature → deposit). The client owns the
+    /// shape; the server reads it to work out the status, so sending it can move
+    /// the status even when no status is sent.
     /// </summary>
     [StringLength(8000, ErrorMessage = "Pipeline state is too large")]
     public string? PipelineState { get; init; }
