@@ -76,7 +76,10 @@ beforeEach(() => {
   getPipelines.mockImplementation(async () => []);
 });
 
-const lastRequest = () => getReportSummary.mock.calls.at(-1)![0];
+const lastRequest = () => {
+  const calls = getReportSummary.mock.calls;
+  return calls[calls.length - 1]![0];
+};
 
 describe('Reports', () => {
   it('shows the server\'s figures in the open pipeline\'s currency, without downloading every record', async () => {
