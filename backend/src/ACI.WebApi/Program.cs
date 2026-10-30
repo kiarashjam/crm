@@ -1684,6 +1684,59 @@ try
             {
                 Log.Warning(indexEx, "Could not put the per-workspace contact email indexes in place; it will be retried on the next start");
             }
+
+            // Imports (see ImportService). Each run is a row in ImportBatches, and the
+            // leads, contacts and companies it creates carry its id so it can be undone.
+            // Here, after the blocks above that bring those three tables up to date, so an
+            // existing database gets the columns and a new one gets them after the
+            // migrations made the tables. The indexes are guarded and caught one by one,
+            // as above: one failure must not skip the schema work after it.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ImportBatches')
+                CREATE TABLE [ImportBatches] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [UserId] uniqueidentifier NOT NULL,
+                    [EntityType] nvarchar(16) NOT NULL,
+                    [FileName] nvarchar(260) NOT NULL,
+                    [DuplicateMode] nvarchar(16) NOT NULL,
+                    [RanAutomations] bit NOT NULL,
+                    [TotalRows] int NOT NULL,
+                    [CreatedCount] int NOT NULL,
+                    [UpdatedCount] int NOT NULL,
+                    [SkippedCount] int NOT NULL,
+                    [FailedCount] int NOT NULL,
+                    [StartedAtUtc] datetime2 NOT NULL,
+                    [FinishedAtUtc] datetime2 NULL,
+                    [UndoneAtUtc] datetime2 NULL,
+                    [UndoneByUserId] uniqueidentifier NULL,
+                    [RemovedCount] int NOT NULL
+                );
+                IF COL_LENGTH(N'dbo.Leads', N'ImportBatchId') IS NULL
+                    ALTER TABLE [Leads] ADD [ImportBatchId] uniqueidentifier NULL;
+                IF COL_LENGTH(N'dbo.Contacts', N'ImportBatchId') IS NULL
+                    ALTER TABLE [Contacts] ADD [ImportBatchId] uniqueidentifier NULL;
+                IF COL_LENGTH(N'dbo.Companies', N'ImportBatchId') IS NULL
+                    ALTER TABLE [Companies] ADD [ImportBatchId] uniqueidentifier NULL;
+            ");
+            await db.Database.ExecuteSqlRawAsync(@"
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_ImportBatches_OrganizationId_StartedAtUtc')
+                        CREATE INDEX [IX_ImportBatches_OrganizationId_StartedAtUtc] ON [ImportBatches] ([OrganizationId], [StartedAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Leads_ImportBatchId')
+                        CREATE INDEX [IX_Leads_ImportBatchId] ON [Leads] ([ImportBatchId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Contacts_ImportBatchId')
+                        CREATE INDEX [IX_Contacts_ImportBatchId] ON [Contacts] ([ImportBatchId]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Companies_ImportBatchId')
+                        CREATE INDEX [IX_Companies_ImportBatchId] ON [Companies] ([ImportBatchId]);
+                END TRY BEGIN CATCH END CATCH;
+            ");
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')

@@ -44,5 +44,7 @@ internal sealed class LeadConfiguration : IEntityTypeConfiguration<Lead>
         builder.HasIndex(e => e.ReferredByContactId);
         builder.HasIndex(e => new { e.OrganizationId, e.CreatedAtUtc });
         builder.HasIndex(e => new { e.OrganizationId, e.Status });
+        // Undoing an import finds the records it created by this.
+        builder.HasIndex(e => e.ImportBatchId);
     }
 }

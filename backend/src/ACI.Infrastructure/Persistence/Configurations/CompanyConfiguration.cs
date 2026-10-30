@@ -21,5 +21,7 @@ internal sealed class CompanyConfiguration : IEntityTypeConfiguration<Company>
         builder.HasOne(e => e.Organization).WithMany().HasForeignKey(e => e.OrganizationId).IsRequired(false);
         builder.HasOne(e => e.UpdatedByUser).WithMany().HasForeignKey(e => e.UpdatedByUserId).IsRequired(false);
         builder.HasIndex(e => e.OrganizationId);
+        // Undoing an import finds the records it created by this.
+        builder.HasIndex(e => e.ImportBatchId);
     }
 }

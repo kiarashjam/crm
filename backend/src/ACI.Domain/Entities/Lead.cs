@@ -57,6 +57,9 @@ public class Lead : Common.BaseEntity
     public Guid? ConvertedToDealId { get; set; }
     public Guid? ConvertedToCompanyId { get; set; }
 
+    /// <summary>The import that created this lead (see <see cref="ImportBatch"/>); null for one made any other way.</summary>
+    public Guid? ImportBatchId { get; set; }
+
     public User User { get; set; } = null!;
     public User? UpdatedByUser { get; set; }
     public User? AssignedToUser { get; set; }
