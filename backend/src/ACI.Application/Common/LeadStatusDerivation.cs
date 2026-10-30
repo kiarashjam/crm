@@ -309,15 +309,30 @@ public static class LeadStatusDerivation
         Stage.Qualified, Stage.MeetingHeld, Stage.MeetingScheduled, Stage.Contacted, Stage.Attempted, Stage.New,
     };
 
+    /// <summary>
+    /// What JavaScript's trim() and \s count as white space. .NET's own Trim() and \s
+    /// differ in two characters: they count U+0085 (next line) and not U+FEFF (the
+    /// zero-width no-break space a pasted label can carry). With .NET's set a status
+    /// like that was read differently here than in the browser, so the preview on
+    /// the tracker promised a move the server then did not make, or the reverse.
+    /// </summary>
+    private static readonly char[] JsWhiteSpace =
+    {
+        '\t', '\n', '\v', '\f', '\r', ' ', (char)0x00A0, (char)0x1680,
+        (char)0x2000, (char)0x2001, (char)0x2002, (char)0x2003, (char)0x2004, (char)0x2005,
+        (char)0x2006, (char)0x2007, (char)0x2008, (char)0x2009, (char)0x200A,
+        (char)0x2028, (char)0x2029, (char)0x202F, (char)0x205F, (char)0x3000, (char)0xFEFF,
+    };
+
     private static readonly Regex Separators = new("[_-]+", RegexOptions.CultureInvariant);
-    private static readonly Regex Spaces = new(@"\s+", RegexOptions.CultureInvariant);
+    private static readonly Regex Spaces = new("[" + Regex.Escape(new string(JsWhiteSpace)) + "]+", RegexOptions.CultureInvariant);
     private static readonly Regex GuidPattern = new(
         "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     /// <summary>Case, spacing and separators do not matter when matching a label.</summary>
     private static string Norm(string? s) =>
-        Spaces.Replace(Separators.Replace((s ?? "").Trim().ToLowerInvariant(), " "), " ");
+        Spaces.Replace(Separators.Replace((s ?? "").Trim(JsWhiteSpace).ToLowerInvariant(), " "), " ");
 
     private static string[] SynonymsOf(string stage) =>
         StageSynonyms.FirstOrDefault(s => s.Stage == stage).Synonyms ?? Array.Empty<string>();

@@ -168,13 +168,22 @@
       "overrides": { "new": "Nouveau", "contacted": "Contacté", "qualified": "Qualifié", "lost": "Perdu", "unqualified": "Perdu" }
     },
     {
+      "name": "invisible",
+      "statuses": [
+        { "id": "new", "name": "New" },
+        { "id": "bom-contacted", "name": "\ufeffContacted" },
+        { "id": "nel-signed", "name": "Signed\u0085" },
+        { "id": "lost", "name": "Lost / Not Interested" }
+      ]
+    },
+    {
       "name": "none",
       "statuses": []
     }
   ],
-  "extraStatuses": ["", "Do Not Contact", "Cold Outreach Q3", "  qualified ", "open deal", "Lost"],
+  "extraStatuses": ["", "Do Not Contact", "Cold Outreach Q3", "  qualified ", "open deal", "Lost", "\ufeffContacted", "Contacted\u0085"],
   "expected": {
     "derive": { "cases": 8665, "sha256": "6568238ca5914e5ed06282fa4abcc20203b57c8362dd4b35369fcd2752ed2323" },
-    "plan": { "cases": 2565, "sha256": "d5b273fbc14c9cfa237488ef3f9e0bb6da4c950f02eb0fcaa7b823bcc28ff435" }
+    "plan": { "cases": 3249, "sha256": "5daea54c4489c7d0e17eb28dff7b655a698036744bdb415b3667a4ff661ce077" }
   }
 }
