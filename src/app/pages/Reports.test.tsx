@@ -140,6 +140,16 @@ describe('Reports', () => {
     });
   });
 
+  it('counts the won deals the Won figure adds up, not the wins in other currencies', async () => {
+    getReportSummary.mockImplementation(async () => summary({
+      won: { count: 3, byCurrency: [{ currency: 'CHF', count: 1, value: 45000, unreadable: 0 }, { currency: 'EUR', count: 2, value: 9000, unreadable: 0 }] },
+    }));
+    renderPage();
+
+    expect(await screen.findByText('1 deal in CHF, 2 more in other currencies')).toBeInTheDocument();
+    expect(screen.getByText(/lifecycle report and the lead conversion table are the exceptions/)).toBeInTheDocument();
+  });
+
   it('exports the owners table as CSV, every currency in it', async () => {
     renderPage();
     await screen.findByText('Anna Keller');

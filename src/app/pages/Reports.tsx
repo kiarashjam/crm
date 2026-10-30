@@ -445,8 +445,13 @@ export default function Reports() {
                     value={cur && d.weighted.covered > 0 ? money(d.weighted.value, cur) : '—'}
                     sub={d.weighted.covered > 0 ? `from ${plural(d.weighted.covered, 'deal')} with a probability` : 'no probabilities set'}
                     icon={TrendingUp} accent="emerald" warn={d.weighted.missing > 0} />
+                  {/* The count is of the deals the value adds up: beside a CHF total, a
+                      count of every currency's wins read as CHF from more deals. */}
                   <Kpi index={3} label="Won" value={cur ? money(d.won.value, cur) : '—'}
-                    sub={`${plural(summary.won.count, 'deal')} in the period`} icon={Target} accent="teal" />
+                    sub={summary.won.count > d.won.count
+                      ? `${plural(d.won.count, 'deal')} in ${cur}, ${summary.won.count - d.won.count} more in other currencies`
+                      : `${plural(d.won.count, 'deal')} in the period`}
+                    icon={Target} accent="teal" />
                   <Kpi index={4} label="Win rate" value={pct(summary.winRate)}
                     sub={summary.winRate === null ? 'nothing closed in the period' : `${summary.won.count} won · ${summary.lost.count} lost`}
                     icon={Percent} accent="teal" />
@@ -721,7 +726,8 @@ export default function Reports() {
             <strong className="text-slate-700">How to read these numbers.</strong> Every figure is
             computed on the server from your leads, deals and activities when the page loads, for the
             period, people, pipeline and currency chosen above — there is no overnight job and no cached
-            copy to go stale. Private deals you may not see are left out. Where an input is missing, the
+            copy to go stale. The lifecycle report and the lead conversion table are the exceptions: they
+            cover every lead, whatever the filters. Private deals you may not see are left out. Where an input is missing, the
             figure shows an em dash and says what is missing rather than substituting a default. Money is
             never converted between currencies.
           </p>
