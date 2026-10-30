@@ -1043,6 +1043,7 @@ try
                 );
                 IF COL_LENGTH('Deals', 'IsPrivate') IS NULL ALTER TABLE [Deals] ADD [IsPrivate] bit NOT NULL CONSTRAINT DF_Deals_IsPrivate DEFAULT 0;
                 IF COL_LENGTH('Deals', 'TeamId') IS NULL ALTER TABLE [Deals] ADD [TeamId] uniqueidentifier NULL;
+                IF COL_LENGTH('Deals', 'Amount') IS NULL ALTER TABLE [Deals] ADD [Amount] decimal(18,2) NULL;
                 IF COL_LENGTH('TaskItems', 'Recurrence') IS NULL ALTER TABLE [TaskItems] ADD [Recurrence] nvarchar(16) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookUrl') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookUrl] nvarchar(500) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookSecret') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookSecret] nvarchar(200) NULL;
@@ -1194,6 +1195,16 @@ try
             try
             {
                 await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.KeepClubOpeningBalancesSql);
+            }
+            catch (Exception fixEx)
+            {
+                Log.Warning(fixEx, "A one-time data fix failed; it will be retried on the next start");
+            }
+            // Needs Deals.Amount, added just above. On its own, so a failure of the club
+            // fix does not hold it back.
+            try
+            {
+                await ACI.WebApi.DataFixes.FillDealAmountsAsync(db);
             }
             catch (Exception fixEx)
             {

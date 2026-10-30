@@ -9,6 +9,12 @@ public class Deal : Common.BaseEntity
     public Guid? OrganizationId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Value { get; set; } = string.Empty;
+    /// <summary>
+    /// The number in <see cref="Value"/>, read whenever the deal is saved, so reports can
+    /// add deals up in the database instead of loading every row to parse its text.
+    /// Null when Value holds no readable number.
+    /// </summary>
+    public decimal? Amount { get; set; }
     public string? Currency { get; set; }
     public string? Stage { get; set; }
     public Guid? PipelineId { get; set; }

@@ -12,6 +12,7 @@ internal sealed class DealConfiguration : IEntityTypeConfiguration<Deal>
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Name).HasMaxLength(512).IsRequired();
         builder.Property(e => e.Value).HasMaxLength(64).IsRequired();
+        builder.Property(e => e.Amount).HasPrecision(18, 2);
         builder.Property(e => e.Currency).HasMaxLength(8);
         builder.Property(e => e.Stage).HasMaxLength(128);
         builder.Property(e => e.Description).HasMaxLength(2000);
