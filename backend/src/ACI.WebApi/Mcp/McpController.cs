@@ -259,12 +259,15 @@ public sealed class McpController : ControllerBase
             || value.Contains("*/*", StringComparison.OrdinalIgnoreCase);
     }
 
-    private string? ReadApiKey()
+    private string? ReadApiKey() => ApiKeyFrom(Request);
+
+    /// <summary>The organization key from X-Api-Key or Authorization: Bearer. Shared with the integration API.</summary>
+    internal static string? ApiKeyFrom(HttpRequest request)
     {
-        if (Request.Headers.TryGetValue("X-Api-Key", out var apiKey) && !string.IsNullOrWhiteSpace(apiKey))
+        if (request.Headers.TryGetValue("X-Api-Key", out var apiKey) && !string.IsNullOrWhiteSpace(apiKey))
             return apiKey.ToString().Trim();
 
-        if (!Request.Headers.TryGetValue("Authorization", out var authorization))
+        if (!request.Headers.TryGetValue("Authorization", out var authorization))
             return null;
 
         var value = authorization.ToString().Trim();
