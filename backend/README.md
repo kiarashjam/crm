@@ -156,6 +156,19 @@ X-Organization-Id: your-org-guid
 | `DELETE` | `/api/leads/{id}` | Delete lead |
 | `POST` | `/api/leads/{id}/convert` | Convert to Contact/Company/Deal |
 
+### Imports (leads, contacts, companies)
+
+The file travels with each request, base64-encoded, up to 5 MB and 2,000 rows.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/imports/analyze` | Read a file: separator, columns, a suggested field for each |
+| `POST` | `/api/imports/preview` | Dry run: what each row would do; nothing is written |
+| `POST` | `/api/imports` | Import the file as one batch |
+| `GET` | `/api/imports?kind=lead` | The workspace's latest imports |
+| `GET` | `/api/imports/{id}/undo` | What undoing would remove, and what it keeps and why |
+| `POST` | `/api/imports/{id}/undo` | Remove what the import created that nobody has touched since |
+
 ### Tasks
 
 | Method | Endpoint | Description |
