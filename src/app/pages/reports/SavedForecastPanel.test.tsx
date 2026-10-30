@@ -78,6 +78,20 @@ describe('SavedForecastPanel', () => {
     expect(screen.getByText(/^Nothing saved for/)).toBeInTheDocument();
   });
 
+  it('keeps to the month being saved until the save comes back', async () => {
+    render(<SavedForecastPanel />);
+    await screen.findByLabelText('Save shown');
+    let saved: (s: ForecastSnapshotSet) => void = () => {};
+    saveForecastSnapshot.mockImplementationOnce(() => new Promise<ForecastSnapshotSet>((resolve) => { saved = resolve; }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save again (keeps the earlier one)' }));
+
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous month' })).toBeDisabled();
+    await act(async () => { saved(twoSaves); });
+    expect(screen.getByRole('button', { name: 'Next month' })).toBeEnabled();
+  });
+
   it('shows an earlier save when it is picked, and warns when it counted every open deal', async () => {
     render(<SavedForecastPanel />);
     const select = await screen.findByLabelText('Save shown');

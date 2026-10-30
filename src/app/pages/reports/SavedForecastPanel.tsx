@@ -139,11 +139,13 @@ export function SavedForecastPanel() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center rounded-xl border border-slate-200">
-            <button type="button" aria-label="Previous month" onClick={() => showMonth(-1)}
-              className="h-9 w-8 rounded-l-xl text-slate-500 hover:bg-slate-50"><ChevronLeft className="mx-auto h-4 w-4" /></button>
+            {/* Held while a save is on its way: its answer is the month it was saved
+                for, and arriving under another month it was shown as that one's. */}
+            <button type="button" aria-label="Previous month" onClick={() => showMonth(-1)} disabled={saving}
+              className="h-9 w-8 rounded-l-xl text-slate-500 hover:bg-slate-50 disabled:opacity-50"><ChevronLeft className="mx-auto h-4 w-4" /></button>
             <span className="min-w-[88px] px-1 text-center text-sm font-medium text-slate-700">{monthLabel(month)}</span>
-            <button type="button" aria-label="Next month" onClick={() => showMonth(1)}
-              className="h-9 w-8 rounded-r-xl text-slate-500 hover:bg-slate-50"><ChevronRight className="mx-auto h-4 w-4" /></button>
+            <button type="button" aria-label="Next month" onClick={() => showMonth(1)} disabled={saving}
+              className="h-9 w-8 rounded-r-xl text-slate-500 hover:bg-slate-50 disabled:opacity-50"><ChevronRight className="mx-auto h-4 w-4" /></button>
           </div>
           {canSave && (
             <button
