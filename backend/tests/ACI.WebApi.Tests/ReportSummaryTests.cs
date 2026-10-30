@@ -242,6 +242,29 @@ public class ReportSummaryTests
     }
 
     [Fact]
+    public async Task DealsClosingInThePeriodAreMatchedByTheirDayOnTheViewersCalendar()
+    {
+        // A close date is a day, stored as its UTC midnight. New York's October runs
+        // from 04:00 UTC on the 1st to 04:00 UTC on 1 November, so compared as instants
+        // the deal due on the 1st was left out and the one due on 1 November counted.
+        using var factory = new CustomWebApplicationFactory();
+        var org = await OrgAsync(factory);
+        await SeedAsync(org, db => db.Deals.AddRange(
+            Deal(org, "100", "CHF", closes: October),
+            Deal(org, "200", "CHF", closes: November.AddDays(-1)),
+            Deal(org, "400", "CHF", closes: November),
+            Deal(org, "800", "CHF", closes: October.AddDays(-1))));
+
+        var newYork = await GetJson(org.Owner,
+            "/api/reporting/summary?from=2026-10-01T04:00:00Z&to=2026-11-01T04:00:00Z&tz=America/New_York");
+        ValueIn(newYork.GetProperty("closingInPeriod"), "CHF").Should().Be(300m, "the deals due on 1 and 31 October");
+
+        var zurich = await GetJson(org.Owner,
+            "/api/reporting/summary?from=2026-09-30T22:00:00Z&to=2026-10-31T23:00:00Z&tz=Europe/Zurich");
+        ValueIn(zurich.GetProperty("closingInPeriod"), "CHF").Should().Be(300m);
+    }
+
+    [Fact]
     public async Task ActivityIsCountedOnTheViewersCalendarDay()
     {
         // 23:30 UTC on 10 October is half past one on the 11th in Zurich.

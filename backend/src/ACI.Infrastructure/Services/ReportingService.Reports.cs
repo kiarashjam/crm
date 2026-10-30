@@ -82,9 +82,20 @@ public partial class ReportingService
         var pipeline = await CheckPipelineAsync(organizationId, filter.PipelineId, ct);
         if (pipeline.IsFailure) return pipeline.Error;
 
-        var zone = ZoneOf(filter.TimeZone);
+        var namedZone = FindZone(filter.TimeZone);
+        var zone = namedZone ?? TimeZoneInfo.Utc;
         var span = to - from;
         var window = new Window(from, to, zone, span <= TimeSpan.FromDays(62) ? "day" : span <= TimeSpan.FromDays(400) ? "week" : "month");
+
+        // An expected close date is a day, stored as that day's UTC midnight, so it is
+        // matched to the period's days on the viewer's calendar, not to its instants.
+        // West of Greenwich a month starts hours after UTC midnight: a deal due on the
+        // 1st fell outside New York's October and one due on 1 November fell inside.
+        // Without a time zone the instants are all there is to go by.
+        var (closeFrom, closeTo) = namedZone == null
+            ? (from, to)
+            : (window.FirstDay.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                window.LastDay.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
 
         // Every currency the scope's deals are in, before the currency filter narrows
         // them, so the picker can offer each.
@@ -139,7 +150,7 @@ public partial class ReportingService
             headline,
             openFigures,
             await WeightedAsync(open, ct),
-            await FiguresAsync(open.Where(r => r.ExpectedCloseDateUtc >= from && r.ExpectedCloseDateUtc < to), ct),
+            await FiguresAsync(open.Where(r => r.ExpectedCloseDateUtc >= closeFrom && r.ExpectedCloseDateUtc < closeTo), ct),
             await FiguresAsync(facts.Where(r => r.CreatedAtUtc >= from && r.CreatedAtUtc < to), ct),
             wonFigures,
             lostFigures,
@@ -195,7 +206,8 @@ public partial class ReportingService
         return valid ? code : null;
     }
 
-    private static TimeZoneInfo ZoneOf(string? id)
+    /// <summary>The zone with this IANA (or Windows) id, or null when there is none by that name.</summary>
+    private static TimeZoneInfo? FindZone(string? id)
     {
         if (!string.IsNullOrWhiteSpace(id))
         {
@@ -210,7 +222,7 @@ public partial class ReportingService
             {
             }
         }
-        return TimeZoneInfo.Utc;
+        return null;
     }
 
     /// <summary>
