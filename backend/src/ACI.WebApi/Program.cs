@@ -298,6 +298,7 @@ try
     builder.Services.AddScoped<ILeadStatusService, LeadStatusService>();
     builder.Services.AddScoped<ILeadSourceService, LeadSourceService>();
     builder.Services.AddScoped<IGlobalSearchService, GlobalSearchService>();
+    builder.Services.AddScoped<IImportService, ImportService>();
     builder.Services.AddScoped<ACI.WebApi.Mcp.CrmMcpTools>();
 
     // Background services

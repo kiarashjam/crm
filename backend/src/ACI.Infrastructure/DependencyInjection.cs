@@ -56,6 +56,7 @@ public static class DependencyInjection
         services.AddScoped<IAutomationRepository, AutomationRepository>();
         services.AddScoped<IClubRepository, ClubRepository>();
         services.AddScoped<IClubDocumentRepository, ClubDocumentRepository>();
+        services.AddScoped<IImportRepository, ImportRepository>();
         services.AddSingleton<IAttachmentLinks, AttachmentLinkSigner>();
         services.AddSingleton<IUnsubscribeLinks, UnsubscribeLinkSigner>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
