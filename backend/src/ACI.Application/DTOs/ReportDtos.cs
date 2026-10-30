@@ -28,15 +28,15 @@ public sealed record ReportFilter
     public Guid? PipelineId { get; init; }
     /// <summary>Deals in this currency only.</summary>
     public string? Currency { get; init; }
-    /// <summary>IANA zone the day-by-day charts are counted in, e.g. "Europe/Zurich". UTC when absent or unknown.</summary>
+    /// <summary>IANA zone the day-by-day charts are counted in, e.g. "Europe/Zurich". The workspace's when absent or unknown.</summary>
     public string? TimeZone { get; init; }
 }
 
 /// <summary>The forecast window and the same narrowing as a report.</summary>
 public sealed record ForecastFilter
 {
-    /// <summary>First month shown, as its first day (UTC).</summary>
-    public DateTime FirstMonthUtc { get; init; }
+    /// <summary>First month shown, as its first day (UTC). Null means the month it is now on the workspace's calendar.</summary>
+    public DateTime? FirstMonthUtc { get; init; }
     public int Months { get; init; } = 6;
     public ReportScope Scope { get; init; } = ReportScope.Organization;
     public Guid? TeamId { get; init; }

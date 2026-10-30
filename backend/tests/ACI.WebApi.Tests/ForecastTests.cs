@@ -15,7 +15,9 @@ namespace ACI.WebApi.Tests;
 /// </summary>
 public class ForecastTests
 {
-    private static DateTime ThisMonth => new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+    // The month it is now in Zurich, the workspace's time zone, which the server counts
+    // "this month" in. UTC's month differs from it for an hour or two at every month's end.
+    private static DateTime ThisMonth => new(WorkspaceToday.Year, WorkspaceToday.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
     private static async Task<(CustomWebApplicationFactory Factory, HttpClient Owner, Guid OwnerId, Guid Org)> OrgAsync()
     {
@@ -167,6 +169,37 @@ public class ForecastTests
         actual.GetProperty("assigneeName").GetString().Should().Be("rep@example.ch");
         actual.GetProperty("wonValue").GetDecimal().Should().Be(6000m);
         saved.GetProperty("saves")[0].GetProperty("savedByName").GetString().Should().Be("owner@example.ch");
+    }
+
+    [Fact]
+    public async Task AWinCountsInTheMonthItHappenedInOnTheWorkspacesCalendar()
+    {
+        // 23:30 UTC on 31 October is half past midnight on 1 November in Zurich, and
+        // still October in London. Read in UTC it was October's everywhere.
+        var (factory, owner, ownerId, org) = await OrgAsync();
+        using var _ = factory;
+        await AddDealsAsync(factory, new Deal
+        {
+            Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, AssigneeId = ownerId, Name = "Won late", Value = "4000",
+            Currency = "CHF", IsWon = true, ClosedAtUtc = new DateTime(2026, 10, 31, 23, 30, 0, DateTimeKind.Utc),
+            CreatedAtUtc = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+        });
+        async Task<Dictionary<string, int>> WonByMonth()
+        {
+            var forecast = await Json(await owner.GetAsync("/api/reporting/forecast?from=2026-10&months=2"));
+            return forecast.GetProperty("rows").EnumerateArray()
+                .ToDictionary(r => r.GetProperty("month").GetString()!, r => r.GetProperty("wonCount").GetInt32());
+        }
+
+        (await WonByMonth()).Should().Equal(new Dictionary<string, int> { ["2026-10"] = 0, ["2026-11"] = 1 });
+        var november = await Json(await owner.GetAsync("/api/reporting/forecast-snapshots?year=2026&month=11"));
+        november.GetProperty("actual")[0].GetProperty("wonValue").GetDecimal().Should().Be(4000m);
+        var october = await Json(await owner.GetAsync("/api/reporting/forecast-snapshots?year=2026&month=10"));
+        october.GetProperty("actual").GetArrayLength().Should().Be(0);
+
+        (await owner.PutAsync($"/api/organizations/{org}/settings", Body(new { timeZone = "Europe/London" })))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await WonByMonth()).Should().Equal(new Dictionary<string, int> { ["2026-10"] = 1, ["2026-11"] = 0 });
     }
 
     [Fact]

@@ -20,10 +20,11 @@ namespace ACI.Infrastructure.Services;
 /// </para>
 /// <para>
 /// Close dates are stored as the UTC midnight of the chosen day (the browser sends
-/// the date as typed), so their month is read in UTC. The moment a deal was won is a
-/// real instant and is also read in UTC, which can put a deal won in the first hours
-/// of a month in the month before for someone east of Greenwich; there is no
-/// organisation time zone to read it in yet.
+/// the date as typed), so their month is the day's own, read as it is stored. The
+/// moment a deal was won is a real instant, and is put in the month it fell in on the
+/// workspace's calendar, in its time zone: read in UTC, a deal won in Zurich in the
+/// first hours of November counted in October. So is "this month", when nobody names
+/// one, and "today", which close dates before are overdue.
 /// </para>
 /// </remarks>
 public partial class ReportingService
@@ -38,7 +39,9 @@ public partial class ReportingService
 
     public async Task<Result<ForecastDto>> GetForecastAsync(Guid userId, Guid? organizationId, ForecastFilter filter, CancellationToken ct = default)
     {
-        if (filter.Months is < 1 or > MaxForecastMonths || !IsMonth(filter.FirstMonthUtc.Year, filter.FirstMonthUtc.Month))
+        var (fallback, zone) = await RegionOfAsync(organizationId, ct);
+        var firstMonth = filter.FirstMonthUtc ?? RegionalSettings.TodayIn(zone, DateTime.UtcNow).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        if (filter.Months is < 1 or > MaxForecastMonths || !IsMonth(firstMonth.Year, firstMonth.Month))
             return DomainErrors.Reporting.InvalidMonth;
         var currency = NormaliseFilterCurrency(filter.Currency, out var currencyValid);
         if (!currencyValid) return DomainErrors.Reporting.InvalidCurrency;
@@ -47,9 +50,9 @@ public partial class ReportingService
         var pipeline = await CheckPipelineAsync(organizationId, filter.PipelineId, ct);
         if (pipeline.IsFailure) return pipeline.Error;
 
-        var first = MonthStart(filter.FirstMonthUtc.Year, filter.FirstMonthUtc.Month);
+        var first = MonthStart(firstMonth.Year, firstMonth.Month);
         var end = first.AddMonths(filter.Months);
-        var facts = FactsOf(DealsInScope(userId, organizationId, scoping.Value, filter.PipelineId));
+        var facts =FactsOf(DealsInScope(userId, organizationId, scoping.Value, filter.PipelineId), fallback);
         if (currency != null) facts = facts.Where(r => r.Currency == currency);
         var open = facts.Where(r => r.IsWon == null);
 
@@ -69,11 +72,28 @@ public partial class ReportingService
                 Unreadable = g.Count(r => r.Amount == null),
             })
             .ToListAsync(ct);
-        var won = await facts
-            .Where(r => r.IsWon == true && r.ClosedAtUtc >= first && r.ClosedAtUtc < end)
-            .GroupBy(r => new { r.ClosedAtUtc!.Value.Year, r.ClosedAtUtc.Value.Month, r.Currency })
-            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Currency, Count = g.Count(), Value = g.Sum(r => r.Amount ?? 0m) })
+        // Wins are counted by the UTC hour they happened in, by the database, and each hour
+        // is then put in the month it is in on the workspace's calendar. A month's edges
+        // are the workspace's midnights, which fall on a UTC hour in any zone that is a
+        // whole number of hours from UTC (Zurich, all of Europe and the Americas).
+        var wonFrom = RegionalSettings.StartOfDayUtc(DateOnly.FromDateTime(first), zone);
+        var wonTo = RegionalSettings.StartOfDayUtc(DateOnly.FromDateTime(end), zone);
+        var wonHours = await facts
+            .Where(r => r.IsWon == true && r.ClosedAtUtc >= wonFrom && r.ClosedAtUtc < wonTo)
+            .GroupBy(r => new { r.ClosedAtUtc!.Value.Year, r.ClosedAtUtc.Value.Month, r.ClosedAtUtc.Value.Day, r.ClosedAtUtc.Value.Hour, r.Currency })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, g.Key.Hour, g.Key.Currency, Count = g.Count(), Value = g.Sum(r => r.Amount ?? 0m) })
             .ToListAsync(ct);
+        var won = wonHours
+            .Select(h => new
+            {
+                Local = TimeZoneInfo.ConvertTimeFromUtc(new DateTime(h.Year, h.Month, h.Day, h.Hour, 0, 0, DateTimeKind.Utc), zone),
+                h.Currency,
+                h.Count,
+                h.Value,
+            })
+            .GroupBy(h => new { h.Local.Year, h.Local.Month, h.Currency })
+            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Currency, Count = g.Sum(h => h.Count), Value = g.Sum(h => h.Value) })
+            .ToList();
 
         // One row for every month and every currency seen, empty ones included, so a
         // month with nothing expected reads as zero rather than as missing.
@@ -93,7 +113,8 @@ public partial class ReportingService
             }
         }
 
-        var today = DateTime.UtcNow.Date;
+        // A close date is a day, so what is overdue is what is due before the workspace's today.
+        var today = RegionalSettings.TodayIn(zone, DateTime.UtcNow).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         return new ForecastDto(
             MonthKey(first.Year, first.Month),
             filter.Months,
@@ -107,19 +128,21 @@ public partial class ReportingService
     public async Task<Result<ForecastSnapshotSetDto>> SaveForecastSnapshotAsync(Guid userId, Guid? organizationId, int? year, int? month, CancellationToken ct = default)
     {
         var now = DateTime.UtcNow;
-        var y = year ?? now.Year;
-        var m = month ?? now.Month;
+        var (fallback, zone) = await RegionOfAsync(organizationId, ct);
+        // "This month" is the workspace's. Read in UTC, a Zurich manager saving at 00:30 on
+        // 1 November saved October's forecast again instead of November's.
+        var today = RegionalSettings.TodayIn(zone, now);
+        var y = year ?? today.Year;
+        var m = month ?? today.Month;
         if (!IsMonth(y, m)) return DomainErrors.Reporting.InvalidMonth;
         var start = MonthStart(y, m);
         var end = start.AddMonths(1);
-        // The month is the saver's own: whoever is on the 1st already while UTC is still
-        // on the 31st may save for it. The last places to leave a month are twelve hours
-        // behind UTC, so only then is it over for everyone. Saving afterwards would be
-        // writing down a forecast once the outcome was known.
-        if (now >= end.AddHours(12)) return DomainErrors.Reporting.MonthOver;
+        // A month can be saved for until it ends on the workspace's calendar. Saving
+        // afterwards would be writing down a forecast once the outcome was known.
+        if (now >= RegionalSettings.StartOfDayUtc(DateOnly.FromDateTime(end), zone)) return DomainErrors.Reporting.MonthOver;
         if (start > now.AddMonths(12)) return DomainErrors.Reporting.MonthTooFar;
 
-        var lines = await FactsOf(ScopedDeals(userId, organizationId).Where(d => d.IsWon == null))
+        var lines = await FactsOf(ScopedDeals(userId, organizationId).Where(d => d.IsWon == null), fallback)
             .GroupBy(r => new { r.AssigneeId, r.Currency })
             .Select(g => new
             {
@@ -169,10 +192,14 @@ public partial class ReportingService
     }
 
     public async Task<Result<ForecastSnapshotSetDto>> ListForecastSnapshotsAsync(
-        Guid userId, Guid? organizationId, int year, int month, Guid? snapshotId = null, CancellationToken ct = default)
+        Guid userId, Guid? organizationId, int? year, int? month, Guid? snapshotId = null, CancellationToken ct = default)
     {
-        if (!IsMonth(year, month)) return DomainErrors.Reporting.InvalidMonth;
-        var start = MonthStart(year, month);
+        var (fallback, zone) = await RegionOfAsync(organizationId, ct);
+        var today = RegionalSettings.TodayIn(zone, DateTime.UtcNow);
+        var y = year ?? today.Year;
+        var m = month ?? today.Month;
+        if (!IsMonth(y, m)) return DomainErrors.Reporting.InvalidMonth;
+        var start = MonthStart(y, m);
         var end = start.AddMonths(1);
 
         // A month has a few saves of a few lines each, so they are read whole.
@@ -194,15 +221,18 @@ public partial class ReportingService
         var chosen = snapshotId ?? saves.FirstOrDefault()?.Id;
 
         var savers = await NamesAsync(saves.Select(s => (Guid?)s.By), ct);
-        var won = await FactsOf(ScopedDeals(userId, organizationId))
-            .Where(r => r.IsWon == true && r.ClosedAtUtc >= start && r.ClosedAtUtc < end)
+        // What was won in the month, between the workspace's midnights that begin and end it.
+        var wonFrom = RegionalSettings.StartOfDayUtc(DateOnly.FromDateTime(start), zone);
+        var wonTo = RegionalSettings.StartOfDayUtc(DateOnly.FromDateTime(end), zone);
+        var won = await FactsOf(ScopedDeals(userId, organizationId), fallback)
+            .Where(r => r.IsWon == true && r.ClosedAtUtc >= wonFrom && r.ClosedAtUtc < wonTo)
             .GroupBy(r => new { r.AssigneeId, r.Currency })
             .Select(g => new { g.Key.AssigneeId, g.Key.Currency, Count = g.Count(), Value = g.Sum(r => r.Amount ?? 0m) })
             .ToListAsync(ct);
         var owners = await NamesAsync(won.Select(w => w.AssigneeId), ct);
 
         return new ForecastSnapshotSetDto(
-            MonthKey(year, month),
+            MonthKey(y, m),
             saves.Select(s => new ForecastSaveDto(s.Id, s.SavedAt, savers.GetValueOrDefault(s.By, "Unknown"), s.ByCloseDate)).ToList(),
             chosen,
             lines.Where(l => l.SnapshotId == chosen)

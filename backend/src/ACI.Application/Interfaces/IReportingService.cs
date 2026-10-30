@@ -16,11 +16,16 @@ public interface IReportingService
     Task<Result<ForecastDto>> GetForecastAsync(Guid userId, Guid? organizationId, ForecastFilter filter, CancellationToken ct = default);
 
     /// <summary>
-    /// Saves the forecast for a month (the current UTC month when none is given), beside
-    /// any earlier saves for it, and returns the month's saves with this one selected.
+    /// Saves the forecast for a month (the month it is now on the workspace's calendar
+    /// when none is given), beside any earlier saves for it, and returns the month's saves
+    /// with this one selected.
     /// </summary>
     Task<Result<ForecastSnapshotSetDto>> SaveForecastSnapshotAsync(Guid userId, Guid? organizationId, int? year, int? month, CancellationToken ct = default);
 
-    /// <summary>A month's saves, the lines of one of them (the latest unless another is named), and what was won that month.</summary>
-    Task<Result<ForecastSnapshotSetDto>> ListForecastSnapshotsAsync(Guid userId, Guid? organizationId, int year, int month, Guid? snapshotId = null, CancellationToken ct = default);
+    /// <summary>
+    /// A month's saves, the lines of one of them (the latest unless another is named), and
+    /// what was won that month. A year or month left out is the one it is now on the
+    /// workspace's calendar.
+    /// </summary>
+    Task<Result<ForecastSnapshotSetDto>> ListForecastSnapshotsAsync(Guid userId, Guid? organizationId, int? year, int? month, Guid? snapshotId = null, CancellationToken ct = default);
 }

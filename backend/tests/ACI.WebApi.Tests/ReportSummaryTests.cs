@@ -228,7 +228,9 @@ public class ReportSummaryTests
             L("Won", October.AddDays(-40), converted: true, convertedAt: October.AddDays(4)),
             L("New", October.AddDays(-90))));
 
-        var leads = (await GetJson(org.Owner, $"/api/reporting/summary?{OctoberQuery}")).GetProperty("leads");
+        // October in UTC, counted in UTC: without a zone the workspace's (Zurich) is used,
+        // whose days do not line up with this period's edges.
+        var leads = (await GetJson(org.Owner, $"/api/reporting/summary?{OctoberQuery}&tz=UTC")).GetProperty("leads");
 
         leads.GetProperty("active").GetInt32().Should().Be(3);
         leads.GetProperty("created").GetInt32().Should().Be(3);
@@ -285,6 +287,33 @@ public class ReportSummaryTests
         days.Should().ContainKey("2026-10-01").And.ContainKey("2026-10-31");
         days["2026-10-11"].Should().Be(1);
         days["2026-10-10"].Should().Be(0);
+    }
+
+    [Fact]
+    public async Task WithNoZoneNamedTheDaysAreTheWorkspacesOwn()
+    {
+        // 23:30 UTC on 10 October is the 11th in Zurich and still the 10th in New York.
+        // With no zone in the request the days were UTC's.
+        using var factory = new CustomWebApplicationFactory();
+        var org = await OrgAsync(factory);
+        await SeedAsync(org, db => db.Activities.Add(new Activity
+        {
+            Id = Guid.NewGuid(), UserId = org.OwnerId, OrganizationId = org.Id, Type = "call",
+            CreatedAtUtc = new DateTime(2026, 10, 10, 23, 30, 0, DateTimeKind.Utc),
+        }));
+        Dictionary<string, int> Days(JsonElement summary) => summary.GetProperty("activities").GetProperty("series").EnumerateArray()
+            .ToDictionary(p => p.GetProperty("start").GetString()!, p => p.GetProperty("count").GetInt32());
+
+        var zurich = await GetJson(org.Owner, "/api/reporting/summary?from=2026-09-30T22:00:00Z&to=2026-10-31T23:00:00Z");
+        zurich.GetProperty("period").GetProperty("timeZone").GetString().Should().Be("Europe/Zurich");
+        Days(zurich).Keys.First().Should().Be("2026-10-01", "Zurich's October, not UTC's 30 September");
+        Days(zurich)["2026-10-11"].Should().Be(1);
+
+        (await org.Owner.PutAsync($"/api/organizations/{org.Id}/settings", Body(new { timeZone = "America/New_York" })))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        var newYork = await GetJson(org.Owner, "/api/reporting/summary?from=2026-10-01T04:00:00Z&to=2026-11-01T04:00:00Z");
+        newYork.GetProperty("period").GetProperty("timeZone").GetString().Should().Be("America/New_York");
+        Days(newYork)["2026-10-10"].Should().Be(1);
     }
 
     [Fact]

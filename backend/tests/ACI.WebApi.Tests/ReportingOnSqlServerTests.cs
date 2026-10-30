@@ -58,17 +58,16 @@ public class ReportingOnSqlServerTests
             var stats = await GetJson(owner, "/api/reporting/dashboard");
             stats.GetProperty("activeLeadsCount").GetInt32().Should().Be(1);
             stats.GetProperty("activeDealsCount").GetInt32().Should().Be(4);
-            stats.GetProperty("pipelineValue").GetDecimal().Should().Be(100000m);
+            stats.GetProperty("pipelineValue").GetDecimal().Should().Be(120000m);
             stats.GetProperty("unreadableValueCount").GetInt32().Should().Be(1);
-            stats.GetProperty("pipelineByCurrency").EnumerateArray()
-                .Single(r => r.GetProperty("currency").GetString() == "USD").GetProperty("value").GetDecimal()
-                .Should().Be(20000m, "a deal with no currency is counted as USD, as everywhere else");
+            stats.GetProperty("pipelineByCurrency").EnumerateArray().Select(r => r.GetProperty("currency").GetString())
+                .Should().Equal(new[] { "CHF" }, "a deal with no currency is in the workspace's, as new deals are, not in USD");
 
             var stages = await GetJson(owner, "/api/reporting/pipeline-by-stage");
             stages.EnumerateArray().Sum(r => r.GetProperty("dealCount").GetInt32()).Should().Be(4);
             var owners = await GetJson(owner, "/api/reporting/pipeline-by-assignee");
             owners.EnumerateArray().Where(r => r.GetProperty("currency").GetString() == "CHF")
-                .Sum(r => r.GetProperty("value").GetDecimal()).Should().Be(100000m);
+                .Sum(r => r.GetProperty("value").GetDecimal()).Should().Be(120000m);
         }
         finally
         {
@@ -97,7 +96,8 @@ public class ReportingOnSqlServerTests
             var (app, owner, ownerId, org) = await StartWithOrgAsync(database);
             using var _ = app;
             var now = DateTime.UtcNow;
-            var month = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            // The month it is in Zurich, the workspace's time zone, which "this month" is counted in.
+            var month = new DateTime(WorkspaceToday.Year, WorkspaceToday.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var teamId = Guid.NewGuid();
             var pipelineId = Guid.NewGuid();
             var stageId = Guid.NewGuid();

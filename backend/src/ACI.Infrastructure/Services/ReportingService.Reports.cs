@@ -42,7 +42,7 @@ public partial class ReportingService
         public DateTime CreatedAtUtc { get; set; }
         public DateTime? ClosedAtUtc { get; set; }
         public DateTime? ExpectedCloseDateUtc { get; set; }
-        public string Currency { get; set; } = "USD";
+        public string Currency { get; set; } = RegionalSettings.DefaultCurrency;
     }
 
     /// <summary>The scope after the team, if any, was worked out.</summary>
@@ -82,24 +82,24 @@ public partial class ReportingService
         var pipeline = await CheckPipelineAsync(organizationId, filter.PipelineId, ct);
         if (pipeline.IsFailure) return pipeline.Error;
 
-        var namedZone = FindZone(filter.TimeZone);
-        var zone = namedZone ?? TimeZoneInfo.Utc;
+        // The days and weeks of the charts are the workspace's, in its time zone, unless
+        // the caller names another (the weekly digest counts in its reader's). Without
+        // one they were UTC's, so a call made at 00:30 in Zurich counted on the day before.
+        var (fallback, workspaceZone) = await RegionOfAsync(organizationId, ct);
+        var zone = FindZone(filter.TimeZone) ?? workspaceZone;
         var span = to - from;
         var window = new Window(from, to, zone, span <= TimeSpan.FromDays(62) ? "day" : span <= TimeSpan.FromDays(400) ? "week" : "month");
 
         // An expected close date is a day, stored as that day's UTC midnight, so it is
-        // matched to the period's days on the viewer's calendar, not to its instants.
+        // matched to the period's days on the calendar it is read in, not to its instants.
         // West of Greenwich a month starts hours after UTC midnight: a deal due on the
         // 1st fell outside New York's October and one due on 1 November fell inside.
-        // Without a time zone the instants are all there is to go by.
-        var (closeFrom, closeTo) = namedZone == null
-            ? (from, to)
-            : (window.FirstDay.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
-                window.LastDay.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        var closeFrom = window.FirstDay.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var closeTo = window.LastDay.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
         // Every currency the scope's deals are in, before the currency filter narrows
         // them, so the picker can offer each.
-        var everyCurrency = FactsOf(DealsInScope(userId, organizationId, scoping.Value, filter.PipelineId));
+        var everyCurrency = FactsOf(DealsInScope(userId, organizationId, scoping.Value, filter.PipelineId), fallback);
         var currencyRows = await everyCurrency
             .GroupBy(r => r.Currency)
             .Select(g => new
@@ -270,7 +270,7 @@ public partial class ReportingService
         };
     }
 
-    private static IQueryable<DealFacts> FactsOf(IQueryable<Deal> deals) => deals.Select(d => new DealFacts
+    private static IQueryable<DealFacts> FactsOf(IQueryable<Deal> deals, string fallback) => deals.Select(d => new DealFacts
     {
         AssigneeId = d.AssigneeId,
         PipelineId = d.PipelineId,
@@ -282,8 +282,8 @@ public partial class ReportingService
         CreatedAtUtc = d.CreatedAtUtc,
         ClosedAtUtc = d.ClosedAtUtc,
         ExpectedCloseDateUtc = d.ExpectedCloseDateUtc,
-        // MoneyText.NormaliseCurrency, as SQL can do it: blank means USD.
-        Currency = d.Currency == null || d.Currency.Trim() == "" ? "USD" : d.Currency.Trim().ToUpper(),
+        // The code, trimmed and upper-cased; none means the workspace's (see RegionOfAsync).
+        Currency = d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper(),
     });
 
     /// <summary>A set of deals counted, and its money totalled per currency, largest first.</summary>

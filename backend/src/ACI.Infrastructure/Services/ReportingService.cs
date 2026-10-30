@@ -54,22 +54,36 @@ public partial class ReportingService : IReportingService
             : _db.Leads.AsNoTracking().Where(l => l.OrganizationId == organizationId);
 
     /// <summary>
-    /// The currency a deal is counted in, as SQL can work it out: the rule of
-    /// <see cref="MoneyText.NormaliseCurrency"/>, blank meaning USD.
+    /// The workspace's currency and time zone. A deal saved without a currency is in the
+    /// workspace's, as new deals are, where it used to count as USD; and the zone is where
+    /// the workspace's days and months begin. A personal workspace has the defaults.
     /// </summary>
-    private static readonly System.Linq.Expressions.Expression<Func<Deal, string>> CurrencyOf =
-        d => d.Currency == null || d.Currency.Trim() == "" ? "USD" : d.Currency.Trim().ToUpper();
+    private async Task<(string Currency, TimeZoneInfo Zone)> RegionOfAsync(Guid? organizationId, CancellationToken ct)
+    {
+        var org = organizationId is Guid id
+            ? await _db.Organizations.AsNoTracking().Where(o => o.Id == id).Select(o => new { o.Currency, o.TimeZone }).FirstOrDefaultAsync(ct)
+            : null;
+        var currency = RegionalSettings.TryCurrency(org?.Currency, out var code) ? code : RegionalSettings.DefaultCurrency;
+        return (currency, RegionalSettings.ZoneOf(org?.TimeZone ?? RegionalSettings.DefaultTimeZone));
+    }
+
+    /// <summary>
+    /// The currency a deal is counted in, as SQL can work it out: its code, trimmed and
+    /// upper-cased, or <paramref name="fallback"/>, the workspace's, when it has none.
+    /// </summary>
+    private static System.Linq.Expressions.Expression<Func<Deal, string>> CurrencyOf(string fallback) =>
+        d => d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper();
 
     /// <summary>
     /// Totals per currency, largest first, plus a count of the deals whose value
     /// could not be read at all. Added up by the database, over Deal.Amount.
     /// </summary>
-    private static async Task<(List<CurrencyTotalDto> Totals, int Unreadable)> TotalsByCurrencyAsync(IQueryable<Deal> deals, CancellationToken ct)
+    private static async Task<(List<CurrencyTotalDto> Totals, int Unreadable)> TotalsByCurrencyAsync(IQueryable<Deal> deals, string fallback, CancellationToken ct)
     {
         var unreadable = await deals.CountAsync(d => d.Amount == null, ct);
         var sums = await deals
             .Where(d => d.Amount != null)
-            .GroupBy(CurrencyOf)
+            .GroupBy(CurrencyOf(fallback))
             .Select(g => new { Currency = g.Key, Value = g.Sum(d => d.Amount!.Value), Count = g.Count() })
             .ToListAsync(ct);
         var totals = sums
@@ -95,14 +109,15 @@ public partial class ReportingService : IReportingService
             .ToListAsync(ct);
         int CountOf(bool? outcome) => outcomes.Where(o => o.Outcome == outcome).Sum(o => o.Count);
 
-        var (totals, unreadable) = await TotalsByCurrencyAsync(deals.Where(d => d.IsWon == null), ct);
+        var (fallback, _) = await RegionOfAsync(organizationId, ct);
+        var (totals, unreadable) = await TotalsByCurrencyAsync(deals.Where(d => d.IsWon == null), fallback, ct);
         var dominant = totals.FirstOrDefault();
 
         return new DashboardStatsDto(
             leadsCount,
             CountOf(null),
             dominant?.Value ?? 0m,
-            dominant?.Currency ?? "USD",
+            dominant?.Currency ?? fallback,
             totals,
             unreadable,
             CountOf(true),
@@ -114,13 +129,14 @@ public partial class ReportingService : IReportingService
         // Grouped by stage AND currency: a stage holding CHF and EUR deals yields
         // two rows rather than one meaningless sum. A deal with only a stage name
         // (from before stages had ids) is grouped by that name.
+        var (fallback, _) = await RegionOfAsync(organizationId, ct);
         var groups = await ScopedDeals(userId, organizationId)
             .Where(d => d.IsWon == null)
             .GroupBy(d => new
             {
                 d.DealStageId,
                 StageName = d.DealStageId == null ? d.Stage : null,
-                Currency = d.Currency == null || d.Currency.Trim() == "" ? "USD" : d.Currency.Trim().ToUpper(),
+                Currency = d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper(),
             })
             .Select(g => new
             {
@@ -153,12 +169,13 @@ public partial class ReportingService : IReportingService
 
     public async Task<IReadOnlyList<PipelineValueByAssigneeDto>> GetPipelineValueByAssigneeAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
+        var (fallback, _) = await RegionOfAsync(organizationId, ct);
         var groups = await ScopedDeals(userId, organizationId)
             .Where(d => d.IsWon == null)
             .GroupBy(d => new
             {
                 d.AssigneeId,
-                Currency = d.Currency == null || d.Currency.Trim() == "" ? "USD" : d.Currency.Trim().ToUpper(),
+                Currency = d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper(),
             })
             .Select(g => new { g.Key.AssigneeId, g.Key.Currency, Count = g.Count(), Value = g.Sum(d => d.Amount ?? 0m) })
             .ToListAsync(ct);

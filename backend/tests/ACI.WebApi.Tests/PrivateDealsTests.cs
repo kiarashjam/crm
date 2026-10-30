@@ -181,7 +181,7 @@ public class PrivateDealsTests
     {
         using var factory = new CustomWebApplicationFactory();
         var team = await TeamAsync(factory);
-        await DealAsync(team, isPrivate: true, "50000", closes: DateTime.UtcNow.Date);
+        await DealAsync(team, isPrivate: true, "50000", closes: WorkspaceToday);
 
         (await team.Rep.PostAsync("/api/reporting/forecast-snapshot", null)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var saved = await Json(await team.Owner.PostAsync("/api/reporting/forecast-snapshot", null), "owner saves");
@@ -203,7 +203,7 @@ public class PrivateDealsTests
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var today = DateTime.UtcNow.Date;
+            var today = WorkspaceToday;
             db.Deals.Add(new Deal { Id = Guid.NewGuid(), UserId = firstId, Name = "Mine", Value = "700", Currency = "CHF", Probability = 50, ExpectedCloseDateUtc = today, CreatedAtUtc = DateTime.UtcNow });
             db.Deals.Add(new Deal { Id = Guid.NewGuid(), UserId = secondId, Name = "Theirs", Value = "300", Currency = "CHF", Probability = 50, ExpectedCloseDateUtc = today, CreatedAtUtc = DateTime.UtcNow });
             await db.SaveChangesAsync();
