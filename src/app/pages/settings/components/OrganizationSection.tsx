@@ -3,6 +3,7 @@ import { Building2, UserPlus, Mail, Check, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { servesDemoData } from '@/app/api/apiClient';
 import { isOrgAdmin, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
+import { RegionalSettingsCard } from './RegionalSettingsCard';
 
 export interface OrganizationSectionProps {
   organizations: { id: string; name: string; isOwner: boolean; role?: number }[];
@@ -87,6 +88,8 @@ export function OrganizationSection({
           </Link>
         </div>
       )}
+
+      <RegionalSettingsCard />
 
       {!servesDemoData() && isOrgAdmin(currentOrg) && (
         <>
