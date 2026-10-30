@@ -111,6 +111,26 @@ public class ImportUndoTests
     }
 
     [Fact]
+    public async Task AContactThatWasHereBeforeStaysWhenTheLeadLinkedToItGoes()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await WorkspaceAsync(factory);
+        var eva = (await OkJson(await client.PostAsync("/api/contacts", Body(new { name = "Eva Graf", email = "eva@graf.example" })), "add a contact"))
+            .GetProperty("id").GetGuid();
+        var batchId = (await OkJson(await Import(client, "lead", File, Columns), "import")).GetProperty("batchId").GetGuid();
+        (await factory.Services.Read(db => db.Contacts.Single(c => c.Id == eva).ConvertedFromLeadId)).Should().NotBeNull("her lead was given her contact");
+
+        var preview = await OkJson(await client.GetAsync($"/api/imports/{batchId}/undo"), "undo preview");
+        preview.GetProperty("leads").GetInt32().Should().Be(5);
+        preview.GetProperty("contacts").GetInt32().Should().Be(4, "Eva's contact was not made by the import");
+        await OkJson(await client.PostAsync($"/api/imports/{batchId}/undo", null), "undo");
+
+        var contact = await factory.Services.Read(db => db.Contacts.Single());
+        contact.Id.Should().Be(eva);
+        contact.ConvertedFromLeadId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task OnlyWhoeverRanItOrAManagerCanUndoIt()
     {
         await using var factory = new CustomWebApplicationFactory();

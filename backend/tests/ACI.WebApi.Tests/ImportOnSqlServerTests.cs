@@ -30,6 +30,10 @@ public class ImportOnSqlServerTests
                 entityType = "lead", label = "Tier", type = "select", options = new[] { "Gold", "Silver" },
             })), "add a field")).GetProperty("key").GetString();
             await OkJson(await owner.PostAsync("/api/leads", Body(new { name = "Bruno Frei", email = "bruno.frei@bluewin.ch", status = "New" })), "add a lead");
+            // Eva is a contact already. Saving her imported lead links that contact to it,
+            // by a foreign key the removal has to let go of first.
+            var eva = (await OkJson(await owner.PostAsync("/api/contacts", Body(new { name = "Eva Graf", email = "eva@graf.example" })), "add a contact"))
+                .GetProperty("id").GetGuid();
 
             var csv = "Vorname;Nachname;E-Mail;Firma;Tier\r\n"
                 + "Alice;Keller;alice@keller.example;Acme SA;Gold\r\n"
@@ -55,8 +59,12 @@ public class ImportOnSqlServerTests
             var undoPreview = await OkJson(await owner.GetAsync($"/api/imports/{batchId}/undo"), "undo preview");
             undoPreview.GetProperty("leads").GetInt32().Should().Be(1, "Eva only; Alice has a call logged");
 
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [ConvertedFromLeadId] FROM [Contacts] WHERE [Id] = '{eva}'")).Should().NotBeNull();
+
             await OkJson(await owner.PostAsync($"/api/imports/{batchId}/undo", null), "undo");
             (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [Leads] WHERE [Email] = N'eva@graf.example'")).Should().Be(0);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [ConvertedFromLeadId] FROM [Contacts] WHERE [Id] = '{eva}'"))
+                .Should().BeNull("the contact that was here before stays, and lets go of the lead that went");
             (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [Leads] WHERE [Email] = N'alice@keller.example'")).Should().Be(1);
             (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [Companies] WHERE [Name] = N'Acme SA'")).Should().Be(1, "Alice, who stays, is at Acme");
             (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [Leads] WHERE [Email] = N'bruno.frei@bluewin.ch'")).Should().Be(1);
