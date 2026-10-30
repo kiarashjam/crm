@@ -171,6 +171,11 @@ export default function Reports() {
     ? `${new Date(period.fromUtc).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} – ${new Date(Date.parse(period.toUtc) - 1).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
     : '';
   const exportTable = <T,>(t: CsvTable<T>) => downloadCsv(csvFileName(t.name, firstDay, lastDay), t.rows, t.columns);
+  // Leads and activities have no pipeline or currency, so those filters cannot narrow
+  // them; with either picked, the sections that ignore it say so.
+  const dealsOnlyNote = filters.pipelineId || filters.currency
+    ? ' The pipeline and currency picked above narrow deals only, so this is not narrowed by them.'
+    : '';
 
   const d = useMemo(() => {
     if (!summary) return null;
@@ -600,7 +605,7 @@ export default function Reports() {
                   id="leads"
                   eyebrow="Leads"
                   title="The leads that came in, and where they are now"
-                  blurb="Leads created in the period, by their status today. For how far leads actually got, see Lifecycle below."
+                  blurb={`Leads created in the period, by their status today.${dealsOnlyNote} For how far leads actually got, see Lifecycle below.`}
                   accent="violet"
                   icon={Filter}
                 />
@@ -679,7 +684,7 @@ export default function Reports() {
                 id="activity"
                 eyebrow="Activity"
                 title="What the team has been doing"
-                blurb="Calls, meetings, emails and notes logged against any record in the period."
+                blurb={`Calls, meetings, emails and notes logged against any record in the period.${dealsOnlyNote}`}
                 accent="rose"
                 icon={ActivityIcon}
               />
@@ -725,8 +730,9 @@ export default function Reports() {
           )}>
             <strong className="text-slate-700">How to read these numbers.</strong> Every figure is
             computed on the server from your leads, deals and activities when the page loads, for the
-            period, people, pipeline and currency chosen above — there is no overnight job and no cached
-            copy to go stale. The lifecycle report and the lead conversion table are the exceptions: they
+            period and people chosen above — there is no overnight job and no cached copy to go stale.
+            The pipeline and currency narrow the deals, the only records that have them; leads and
+            activity are not narrowed by them. The lifecycle report and the lead conversion table are the exceptions: they
             cover every lead, whatever the filters. Private deals you may not see are left out. Where an input is missing, the
             figure shows an em dash and says what is missing rather than substituting a default. Money is
             never converted between currencies.

@@ -153,6 +153,18 @@ describe('Reports', () => {
     expect(screen.getByText(/lifecycle report and the lead conversion table are the exceptions/)).toBeInTheDocument();
   });
 
+  it('says the leads and activity are not narrowed by a pipeline or currency picked', async () => {
+    // Leads and activities have neither, so the server cannot narrow them by it.
+    renderPage();
+    await screen.findByText('Anna Keller');
+    expect(screen.queryByText(/narrow deals only/)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: 'EUR' } });
+
+    await waitFor(() => expect(lastRequest().currency).toBe('EUR'));
+    expect(await screen.findAllByText(/narrow deals only, so this is not narrowed by them/)).toHaveLength(2);
+  });
+
   it('exports the owners table as CSV, every currency in it', async () => {
     renderPage();
     await screen.findByText('Anna Keller');
