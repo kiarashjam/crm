@@ -173,7 +173,196 @@ export async function getPipelineValueByAssignee(): Promise<PipelineValueByAssig
   );
 }
 
-/** One line of a saved forecast: an owner's open deals in one currency, as they stood. */
+
+// ── The Reports page ─────────────────────────────────────────────────────────
+//
+// The Reports page used to download every deal, lead and activity and work its
+// figures out here, with its own money parser and its own idea of an active
+// lead, so it disagreed with the Dashboard and grew slower with every year of
+// history. The server now computes them for a period, a scope, a pipeline and a
+// currency, and this module only asks. Demo mode has no server, so it computes
+// the same shapes from the sample records (reportingDemo.ts).
+
+/** Whose records a report covers. */
+export type ReportScope = 'me' | 'team' | 'org';
+
+export interface ReportFilters {
+  /** Start of the period, an ISO instant: the viewer's own local midnight. */
+  from: string;
+  /** End of the period, exclusive. */
+  to: string;
+  scope: ReportScope;
+  /** With scope "team": which team. Omitted means the viewer's own. */
+  teamId?: string;
+  /** Deals in this pipeline only. Leads and activities belong to no pipeline. */
+  pipelineId?: string;
+  /** Deals in this currency only. */
+  currency?: string;
+  /** IANA time zone the charts count days in. */
+  timeZone?: string;
+}
+
+/** Deals in one currency. `unreadable` are counted in `count` but not in `value`. */
+export interface MoneyRow { currency: string; count: number; value: number; unreadable: number }
+/** A set of deals: the count across currencies, the money per currency. */
+export interface DealFigures { count: number; byCurrency: MoneyRow[] }
+/** Weighted value of open deals in one currency, from those with a probability. */
+export interface WeightedRow { currency: string; value: number; covered: number; missing: number }
+export interface StageRow {
+  pipelineId: string | null;
+  pipelineName: string;
+  stageKey: string;
+  stageName: string;
+  displayOrder: number;
+  currency: string;
+  count: number;
+  value: number;
+  weighted: number;
+  unreadable: number;
+}
+export interface OwnerRow {
+  ownerId: string | null;
+  ownerName: string;
+  currency: string;
+  openCount: number;
+  openValue: number;
+  weighted: number;
+  wonCount: number;
+  wonValue: number;
+  lostCount: number;
+}
+export interface CountRow { key: string; count: number }
+/** Leads created in the period with this status today, and how many were converted. */
+export interface LeadStatusRow { status: string; count: number; converted: number }
+/** One bucket of a chart: `start` is its first day, yyyy-MM-dd in the report's time zone. */
+export interface SeriesPoint { start: string; count: number }
+export interface LeadFigures {
+  /** Not yet converted, now. */
+  active: number;
+  /** Created in the period. */
+  created: number;
+  /** Of those, converted since. */
+  createdConverted: number;
+  /** Converted in the period, whenever created. */
+  converted: number;
+  convertedToDeal: number;
+  scored: number;
+  averageScore: number | null;
+  byStatus: LeadStatusRow[];
+  bySource: CountRow[];
+  createdSeries: SeriesPoint[];
+}
+export interface ActivityFigures { total: number; byType: CountRow[]; series: SeriesPoint[] }
+export interface ReportPeriod {
+  fromUtc: string;
+  toUtc: string;
+  scope: ReportScope;
+  teamId: string | null;
+  teamName: string | null;
+  pipelineId: string | null;
+  currency: string | null;
+  timeZone: string;
+  /** How the charts are grouped, chosen by the server from the period's length. */
+  bucket: 'day' | 'week' | 'month';
+}
+export interface ReportSummary {
+  period: ReportPeriod;
+  /** Every currency the scope's deals are in, whatever the currency filter. */
+  currencies: string[];
+  /** The filter's currency, or the one holding most of the OPEN pipeline. */
+  headlineCurrency: string | null;
+  /** Open now, whatever the period. */
+  open: DealFigures;
+  weighted: WeightedRow[];
+  /** Open deals expected to close in the period. */
+  closingInPeriod: DealFigures;
+  created: DealFigures;
+  won: DealFigures;
+  lost: DealFigures;
+  /** Won ÷ (won + lost) among deals closed in the period; null when none closed. */
+  winRate: number | null;
+  averageSalesCycleDays: number | null;
+  byStage: StageRow[];
+  byOwner: OwnerRow[];
+  leads: LeadFigures;
+  activities: ActivityFigures;
+}
+
+function query(params: Record<string, string | number | undefined | null>): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+  }
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+/** Every figure on the Reports page for these filters. Throws when the server refuses. */
+export async function getReportSummary(filters: ReportFilters): Promise<ReportSummary> {
+  if (servesDemoData()) {
+    const { demoReportSummary } = await import('./reportingDemo');
+    return demoReportSummary(filters);
+  }
+  const res = await authFetchJson<ReportSummary>(`/api/reporting/summary${query({
+    from: filters.from,
+    to: filters.to,
+    scope: filters.scope,
+    teamId: filters.scope === 'team' ? filters.teamId : undefined,
+    pipelineId: filters.pipelineId,
+    currency: filters.currency,
+    tz: filters.timeZone,
+  })}`);
+  if (!res) throw new Error('The reports could not be loaded.');
+  return res;
+}
+
+/** Open deals expected to close in one month, in one currency, beside what was won that month. */
+export interface ForecastMonthRow {
+  /** yyyy-MM */
+  month: string;
+  currency: string;
+  count: number;
+  value: number;
+  weighted: number;
+  covered: number;
+  missing: number;
+  unreadable: number;
+  wonCount: number;
+  wonValue: number;
+}
+export interface Forecast {
+  firstMonth: string;
+  months: number;
+  scope: ReportScope;
+  teamId: string | null;
+  rows: ForecastMonthRow[];
+  /** Open deals past their expected close date. */
+  overdue: MoneyRow[];
+  /** Open deals with no expected close date, so in no month. */
+  noCloseDate: MoneyRow[];
+}
+
+/** The forecast by expected close month, from `firstMonth` (yyyy-MM) for `months` months. */
+export async function getForecast(
+  filters: Pick<ReportFilters, 'scope' | 'teamId' | 'pipelineId' | 'currency'> & { firstMonth: string; months: number },
+): Promise<Forecast> {
+  if (servesDemoData()) {
+    const { demoForecast } = await import('./reportingDemo');
+    return demoForecast(filters);
+  }
+  const res = await authFetchJson<Forecast>(`/api/reporting/forecast${query({
+    from: filters.firstMonth,
+    months: filters.months,
+    scope: filters.scope,
+    teamId: filters.scope === 'team' ? filters.teamId : undefined,
+    pipelineId: filters.pipelineId,
+    currency: filters.currency,
+  })}`);
+  if (!res) throw new Error('The forecast could not be loaded.');
+  return res;
+}
+
+/** One line of a saved forecast: an owner's deals expected that month, in one currency, as they stood. */
 export interface ForecastSnapshotRow {
   id: string;
   /** "2026-10" */
@@ -186,21 +375,57 @@ export interface ForecastSnapshotRow {
   covered: number;
   missing: number;
   savedAtUtc: string;
+  snapshotId: string;
+  /** False for saves made before forecasts went by close date: those counted every open deal. */
+  byCloseDate: boolean;
+  /** Open deals expected before the month, not in the figures above. */
+  overdueCount: number;
+  overdueValue: number;
+  noCloseDateCount: number;
+  unreadableCount: number;
 }
+
+/** One save of a month's forecast. Saves are kept; saving again adds another. */
+export interface ForecastSave { snapshotId: string; savedAtUtc: string; savedByName: string; byCloseDate: boolean }
+/** What an owner won in the month, in one currency. */
+export interface ForecastActual { assigneeName: string; currency: string; wonCount: number; wonValue: number }
+export interface ForecastSnapshotSet {
+  month: string;
+  /** Newest first. */
+  saves: ForecastSave[];
+  /** The save `rows` belong to. */
+  snapshotId: string | null;
+  rows: ForecastSnapshotRow[];
+  actual: ForecastActual[];
+}
+
+const EMPTY_SET = (month: string): ForecastSnapshotSet => ({ month, saves: [], snapshotId: null, rows: [], actual: [] });
 
 /**
- * Save this month's forecast on the server, so later edits to deals don't rewrite it.
- * In an organization only the owner or a manager may: a saved forecast counts private
- * deals. The server's refusal comes through as the error's message.
+ * Save a month's forecast on the server, so later edits to deals don't rewrite it.
+ * Earlier saves for the month are kept. In an organization only the owner or a
+ * manager may: a saved forecast counts private deals. The month is the viewer's
+ * own, which can differ from UTC's around midnight on the 1st.
  */
-export async function saveForecastSnapshot(): Promise<ForecastSnapshotRow[]> {
-  const rows = await authFetchJson<ForecastSnapshotRow[]>('/api/reporting/forecast-snapshot', { method: 'POST' });
-  return Array.isArray(rows) ? rows : [];
+export async function saveForecastSnapshot(year: number, month: number): Promise<ForecastSnapshotSet> {
+  const res = await authFetchJson<ForecastSnapshotSet>(
+    `/api/reporting/forecast-snapshot${query({ year, month })}`, { method: 'POST' });
+  return res ?? EMPTY_SET(`${year}-${String(month).padStart(2, '0')}`);
 }
 
-/** This month's saved forecast, or the given month's. Empty when none was saved. */
-export async function getForecastSnapshot(year?: number, month?: number): Promise<ForecastSnapshotRow[]> {
-  const query = year && month ? `?year=${year}&month=${month}` : '';
-  const rows = await authFetchJson<ForecastSnapshotRow[]>(`/api/reporting/forecast-snapshot${query}`);
-  return Array.isArray(rows) ? rows : [];
+/** A month's saves, the lines of one (the latest unless another is named), and what was won. */
+export async function getForecastSnapshots(year: number, month: number, snapshotId?: string): Promise<ForecastSnapshotSet> {
+  const res = await authFetchJson<ForecastSnapshotSet>(
+    `/api/reporting/forecast-snapshots${query({ year, month, snapshotId })}`);
+  return res ?? EMPTY_SET(`${year}-${String(month).padStart(2, '0')}`);
+}
+
+/** A sales team in the workspace, for the "My team" scope. */
+export interface SalesTeam { id: string; name: string; memberUserIds: string[] }
+
+/** The workspace's sales teams. None in demo mode or a personal workspace. */
+export async function getSalesTeams(): Promise<SalesTeam[]> {
+  if (servesDemoData()) return [];
+  const list = await authFetchJson<SalesTeam[]>('/api/teams');
+  return Array.isArray(list) ? list : [];
 }
