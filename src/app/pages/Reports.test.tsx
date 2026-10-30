@@ -74,6 +74,7 @@ beforeEach(() => {
   downloadCsv.mockClear();
   getSalesTeams.mockImplementation(async () => []);
   getPipelines.mockImplementation(async () => []);
+  getForecast.mockImplementation(async () => forecast);
 });
 
 const lastRequest = () => {
@@ -163,6 +164,23 @@ describe('Reports', () => {
 
     await waitFor(() => expect(lastRequest().currency).toBe('EUR'));
     expect(await screen.findAllByText(/narrow deals only, so this is not narrowed by them/)).toHaveLength(2);
+  });
+
+  it('says that this month\'s deals past their date are in its forecast row and in the overdue count', async () => {
+    // The server puts a deal in its close month even once the date has passed, and
+    // counts every open deal past its date below the table, so the two overlap for
+    // this month. The hint said overdue deals were in no month, inviting a reader
+    // to add them on top of this month's row.
+    getForecast.mockImplementation(async () => ({
+      ...forecast,
+      rows: [{ month: '2026-10', currency: 'CHF', count: 1, value: 20000, weighted: 10000, covered: 1, missing: 0, unreadable: 0, wonCount: 0, wonValue: 0 }],
+      overdue: [{ currency: 'CHF', count: 1, value: 20000, unreadable: 0 }],
+    }));
+    renderPage();
+    await screen.findByText('Anna Keller');
+
+    expect(screen.getByText(/this month's are in its row as well, earlier months' in none/)).toBeInTheDocument();
+    expect(screen.getByText(/1 open deal past its close date/)).toBeInTheDocument();
   });
 
   it('exports the owners table as CSV, every currency in it', async () => {

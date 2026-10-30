@@ -554,7 +554,7 @@ export default function Reports() {
                   icon={TrendingUp}
                 />
                 <Panel index={1} title="Forecast by close month" subtitle={`Next six months, in ${cur ?? '—'}`}
-                  hint="A deal counts in the month its expected close date falls in. Deals past that date and still open, and deals with no close date, are in no month; they are counted below the table."
+                  hint="A deal counts in the month its expected close date falls in, also once that date has passed. Below the table are the open deals past their close date (this month's are in its row as well, earlier months' in none) and the deals with no close date, which are in no month."
                   actions={forecast && <CsvButton what="the forecast" disabled={forecast.rows.length === 0} onClick={() => exportTable(forecastTable(forecast.rows))} />}>
                   {forecastError && <p className="text-sm text-rose-700">The forecast could not be loaded.</p>}
                   {forecast && !forecastError && (forecastRows.length === 0 ? (
