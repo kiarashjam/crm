@@ -137,8 +137,9 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
     setSaving(true);
     try {
       const row = salesExtrasToTrackedRow(extras);
-      // One PUT for the pipeline and any status it now implies. The hook owns
-      // the toast, so a status change is announced with its Undo affordance.
+      // The PUT carries the pipeline alone; the server works out the status
+      // from it. The hook owns the toast, so a status change the server made
+      // is announced with the step that caused it.
       const pipeline = trackedRowToPipeline(row, parsePipeline(lead.pipelineState));
       const outcome = await statusSync.save(lead, pipeline, {
         onApplied: (updated) => onSaved?.(updated),
