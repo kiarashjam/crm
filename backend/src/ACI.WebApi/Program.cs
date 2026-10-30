@@ -1063,6 +1063,12 @@ try
                 IF COL_LENGTH('TaskItems', 'Recurrence') IS NULL ALTER TABLE [TaskItems] ADD [Recurrence] nvarchar(16) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookUrl') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookUrl] nvarchar(500) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookSecret') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookSecret] nvarchar(200) NULL;
+                -- What a workspace works in (see RegionalSettings). The defaults, a Swiss
+                -- club's, fill the organisations already there; until now their months
+                -- began at UTC midnight and a deal with no currency counted as dollars.
+                IF COL_LENGTH('Organizations', 'Currency') IS NULL ALTER TABLE [Organizations] ADD [Currency] nvarchar(3) NOT NULL CONSTRAINT DF_Organizations_Currency DEFAULT N'CHF';
+                IF COL_LENGTH('Organizations', 'Locale') IS NULL ALTER TABLE [Organizations] ADD [Locale] nvarchar(35) NOT NULL CONSTRAINT DF_Organizations_Locale DEFAULT N'de-CH';
+                IF COL_LENGTH('Organizations', 'TimeZone') IS NULL ALTER TABLE [Organizations] ADD [TimeZone] nvarchar(64) NOT NULL CONSTRAINT DF_Organizations_TimeZone DEFAULT N'Europe/Zurich';
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SalesTeams')
                 CREATE TABLE [SalesTeams] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,

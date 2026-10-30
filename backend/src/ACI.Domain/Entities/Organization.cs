@@ -28,6 +28,15 @@ public class Organization : Common.BaseEntity
     /// <summary>Where Cadence posts lead and deal events. Empty means it posts nowhere.</summary>
     public string? OutboundWebhookUrl { get; set; }
     public string? OutboundWebhookSecret { get; set; }
+    /// <summary>
+    /// ISO 4217 code new deals are priced in unless they say otherwise, and club amounts
+    /// are shown in. A label only: changing it converts nothing.
+    /// </summary>
+    public string Currency { get; set; } = "CHF";
+    /// <summary>How amounts and dates are written for this workspace, as a BCP 47 name ("de-CH").</summary>
+    public string Locale { get; set; } = "de-CH";
+    /// <summary>IANA time zone the workspace's days and months begin in, for reports and forecasts.</summary>
+    public string TimeZone { get; set; } = "Europe/Zurich";
 
     public User OwnerUser { get; set; } = null!;
     public ICollection<OrganizationMember> Members { get; set; } = new List<OrganizationMember>();

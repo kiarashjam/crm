@@ -94,6 +94,34 @@ public class OrganizationsController : ControllerBase
     }
 
     /// <summary>
+    /// Sets the currency, locale and time zone the workspace works in.
+    /// </summary>
+    /// <remarks>
+    /// New deals are priced in the currency unless they name another; existing deals keep
+    /// theirs, and nothing is converted. The time zone is where the workspace's days and
+    /// months begin for reports and forecasts. Owner or manager only. A field left out
+    /// keeps its value.
+    /// </remarks>
+    /// <response code="200">The workspace with its new settings.</response>
+    /// <response code="400">Not a three-letter currency code, a known locale or an IANA time zone.</response>
+    /// <response code="403">The caller is not the owner or a manager.</response>
+    /// <response code="404">Organization not found.</response>
+    [HttpPut("{id:guid}/settings")]
+    [ProducesResponseType(typeof(OrganizationDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrganizationDto>> UpdateSettings(Guid id, [FromBody] UpdateOrganizationSettingsRequest request, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+
+        var result = await _organizationService.UpdateSettingsAsync(id, userId.Value, request, ct);
+        return result.ToActionResult();
+    }
+
+    /// <summary>
     /// Gets all members of an organization.
     /// </summary>
     /// <param name="id">The organization ID.</param>

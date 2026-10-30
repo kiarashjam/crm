@@ -92,7 +92,14 @@ public interface IOrganizationService
     /// </summary>
     Task<Result> UpdateWebhookPasswordAsync(Guid organizationId, Guid userId, string? newPassword, CancellationToken ct = default);
     Task<Result> UpdateOutboundWebhookAsync(Guid organizationId, Guid userId, string? url, string? secret, CancellationToken ct = default);
-    
+
+    /// <summary>
+    /// Sets the workspace's currency, locale and time zone (owner or manager). A field
+    /// left null keeps its value; one that is not a code, a locale or a zone this host
+    /// knows is refused and nothing is changed.
+    /// </summary>
+    Task<Result<OrganizationDto>> UpdateSettingsAsync(Guid organizationId, Guid userId, UpdateOrganizationSettingsRequest request, CancellationToken ct = default);
+
     /// <summary>
     /// Generates a new webhook API key (owner/manager only). Returned once; only its hash is kept.
     /// </summary>

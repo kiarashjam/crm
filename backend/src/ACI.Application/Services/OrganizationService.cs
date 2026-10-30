@@ -43,7 +43,7 @@ public sealed class OrganizationService : IOrganizationService
         foreach (var o in orgs)
         {
             var role = await _organizationRepository.GetMemberRoleAsync(userId, o.Id, ct) ?? OrgMemberRole.Member;
-            result.Add(new OrganizationDto(o.Id, o.Name, o.OwnerUserId, o.OwnerUserId == userId, (int)role));
+            result.Add(ToDto(o, userId, role));
         }
 
         _logger.LogDebug("Found {Count} organizations for user {UserId}", result.Count, userId);
@@ -70,7 +70,7 @@ public sealed class OrganizationService : IOrganizationService
 
         var role = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct) ?? OrgMemberRole.Member;
         _logger.LogDebug("Successfully retrieved organization {OrganizationId}", organizationId);
-        return new OrganizationDto(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)role);
+        return ToDto(org, userId, role);
     }
 
     public async Task<Result<OrganizationDto>> CreateOrganizationAsync(Guid userId, CreateOrganizationRequest request, CancellationToken ct = default)
@@ -127,7 +127,7 @@ public sealed class OrganizationService : IOrganizationService
             }
             
             _logger.LogInformation("Successfully created organization {OrganizationId} for user {UserId}", org.Id, userId);
-            return new OrganizationDto(org.Id, org.Name, org.OwnerUserId, true, (int)OrgMemberRole.Owner);
+            return ToDto(org, userId, OrgMemberRole.Owner);
         }
         catch (Exception ex)
         {
@@ -398,6 +398,36 @@ public sealed class OrganizationService : IOrganizationService
         return Result.Success();
     }
 
+    public async Task<Result<OrganizationDto>> UpdateSettingsAsync(Guid organizationId, Guid userId, UpdateOrganizationSettingsRequest request, CancellationToken ct = default)
+    {
+        // The currency prices every new deal and labels every club amount, and the zone
+        // moves where each report's months begin, for the whole team. So it is a
+        // manager's decision, like the pipelines.
+        var role = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
+        if (role == null) return DomainErrors.Organization.NotMember;
+        if (role != OrgMemberRole.Owner && role != OrgMemberRole.Manager)
+            return DomainErrors.Organization.NotOwnerOrManager;
+        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+        if (org == null) return DomainErrors.Organization.NotFound;
+
+        string? currency = null, locale = null, zone = null;
+        if (request.Currency != null && !RegionalSettings.TryCurrency(request.Currency, out currency))
+            return DomainErrors.Organization.InvalidCurrency;
+        if (request.Locale != null && !RegionalSettings.TryLocale(request.Locale, out locale))
+            return DomainErrors.Organization.InvalidLocale;
+        if (request.TimeZone != null && !RegionalSettings.TryTimeZone(request.TimeZone, out zone))
+            return DomainErrors.Organization.InvalidTimeZone;
+
+        // Deals keep the currency they were priced in. Only new ones take the new one.
+        if (currency != null) org.Currency = currency;
+        if (locale != null) org.Locale = locale;
+        if (zone != null) org.TimeZone = zone;
+        await _organizationRepository.UpdateAsync(org, ct);
+        _logger.LogInformation("Regional settings of organization {OrganizationId} set to {Currency}, {Locale}, {TimeZone} by {UserId}",
+            organizationId, org.Currency, org.Locale, org.TimeZone, userId);
+        return ToDto(org, userId, role.Value);
+    }
+
     public async Task<Result<string>> GenerateWebhookApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
         _logger.LogInformation("Generating webhook API key for organization {OrganizationId} by user {UserId}", organizationId, userId);
@@ -469,4 +499,7 @@ public sealed class OrganizationService : IOrganizationService
     /// </summary>
     public static string HashApiKey(string apiKey) =>
         Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(apiKey))).ToLowerInvariant();
+
+    private static OrganizationDto ToDto(Organization org, Guid userId, OrgMemberRole role) =>
+        new(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)role, org.Currency, org.Locale, org.TimeZone);
 }

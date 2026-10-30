@@ -546,6 +546,15 @@ public static class DomainErrors
 
         public static readonly Error WebhookPasswordTooLong = new(
             "Organization.WebhookPasswordTooLong", "Webhook password cannot exceed 256 characters");
+
+        public static readonly Error InvalidCurrency = new(
+            "Organization.InvalidCurrency", "A currency is a three-letter ISO code, such as CHF or EUR.");
+
+        public static readonly Error InvalidLocale = new(
+            "Organization.InvalidLocale", "A locale is a language with an optional region, such as de-CH or fr-CH.");
+
+        public static readonly Error InvalidTimeZone = new(
+            "Organization.InvalidTimeZone", "A time zone is an IANA name, such as Europe/Zurich.");
     }
 
     /// <summary>
