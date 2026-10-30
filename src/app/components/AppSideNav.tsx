@@ -97,8 +97,12 @@ const GROUPS: NavGroup[] = [
     bar: 'bg-emerald-500',
     chip: 'bg-emerald-100 text-emerald-700',
     items: [
-      { path: '/contacts', label: 'Contacts', icon: UserCircle },
-      { path: '/companies', label: 'Companies', icon: Building2 },
+      { path: '/contacts', label: 'Contacts', icon: UserCircle, children: [
+        { path: '/contacts/import', label: 'Import contacts', icon: FileUp },
+      ] },
+      { path: '/companies', label: 'Companies', icon: Building2, children: [
+        { path: '/companies/import', label: 'Import companies', icon: FileUp },
+      ] },
       { path: '/team', label: 'Team', icon: UsersRound },
     ],
   },
@@ -171,6 +175,9 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
+/** Pages under a list that have their own entry, so the list's entry is not lit for them too. */
+const SUB_PAGES = ['/leads/import', '/leads/webhook', '/members/import', '/contacts/import', '/companies/import'];
+
 function pathOnly(path: string): string {
   return path.split('?')[0] ?? path;
 }
@@ -182,7 +189,7 @@ function matchesPath(pathname: string, search: string, path: string): boolean {
 
   if (tab) return pathname === target && currentTab === tab;
   if (pathname === target) return !(target === '/settings' && currentTab === 'claude');
-  if (pathname === '/leads/import' || pathname === '/leads/webhook' || pathname === '/members/import') return false;
+  if (SUB_PAGES.includes(pathname)) return false;
   return pathname.startsWith(`${target}/`);
 }
 

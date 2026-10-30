@@ -50,6 +50,8 @@ const LISTS: { prefix: string; list: Extract<PageScope, { mode: 'list' }>['list'
 export const NOT_RECORDS: Readonly<Record<string, readonly string[]>> = {
   '/leads': ['import', 'routing', 'webhook'],
   '/members': ['import'],
+  '/contacts': ['import'],
+  '/companies': ['import'],
 };
 
 /**

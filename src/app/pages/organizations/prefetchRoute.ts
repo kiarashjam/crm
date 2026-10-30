@@ -31,6 +31,8 @@ export function routeChunkKey(path: string): string | null {
   const exact = clean.replace(/\/+$/, '') || '/';
   if (exact === '/leads/import') return 'leads/import';
   if (exact === '/leads/webhook') return 'leads/webhook';
+  if (exact === '/contacts/import') return 'contacts/import';
+  if (exact === '/companies/import') return 'companies/import';
   if (exact === '/mcp') return 'settings';
 
   const detail = DETAIL.exec(exact);
@@ -53,8 +55,10 @@ const LOADERS: Record<string, () => Promise<unknown>> = {
   'tasks/detail': () => import('@/app/pages/TaskDetail'),
   contacts: () => import('@/app/pages/Contacts'),
   'contacts/detail': () => import('@/app/pages/ContactDetail'),
+  'contacts/import': () => import('@/app/pages/ContactImport'),
   companies: () => import('@/app/pages/Companies'),
   'companies/detail': () => import('@/app/pages/CompanyDetail'),
+  'companies/import': () => import('@/app/pages/CompanyImport'),
   reports: () => import('@/app/pages/Reports'),
   activities: () => import('@/app/pages/Activities'),
   sequences: () => import('@/app/pages/Sequences'),

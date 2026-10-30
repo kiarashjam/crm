@@ -36,6 +36,8 @@ const Leads = lazy(() => import('@/app/pages/Leads'));
 const LeadDetailPage = lazy(() => import('@/app/pages/LeadDetailPage'));
 const LeadWebhook = lazy(() => import('@/app/pages/LeadWebhook'));
 const LeadImport = lazy(() => import('@/app/pages/LeadImport'));
+const ContactImport = lazy(() => import('@/app/pages/ContactImport'));
+const CompanyImport = lazy(() => import('@/app/pages/CompanyImport'));
 const LeadRouting = lazy(() => import('@/app/pages/LeadRouting'));
 const PublicCapture = lazy(() => import('@/app/pages/PublicCapture'));
 const Unsubscribe = lazy(() => import('@/app/pages/Unsubscribe'));
@@ -190,8 +192,10 @@ export default function App() {
                     <Route path="/duplicates" element={<Duplicates />} />
                     <Route path="/audit" element={<AuditLog />} />
                     <Route path="/contacts" element={<Contacts />} />
+                    <Route path="/contacts/import" element={<ContactImport />} />
                     <Route path="/contacts/:id" element={<ContactDetail />} />
                     <Route path="/companies" element={<Companies />} />
+                    <Route path="/companies/import" element={<CompanyImport />} />
                     <Route path="/companies/:id" element={<CompanyDetail />} />
                     <Route path="/team" element={<Team />} />
                     <Route path="/members" element={<Members />} />

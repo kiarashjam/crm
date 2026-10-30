@@ -33,6 +33,14 @@ describe('which writes count as a record change', () => {
     expect(changesRecords('DELETE', '/api/lead-ops/assignment/1')).toBe(false);
     expect(changesRecords('POST', '/api/lead-ops/bulk')).toBe(true);
   });
+
+  it("an import's reading of its file and its dry run do not, but the import and its undo do", () => {
+    // Both carry the file, so they are POSTs, and they write nothing.
+    expect(changesRecords('POST', '/api/imports/analyze')).toBe(false);
+    expect(changesRecords('POST', '/api/imports/preview')).toBe(false);
+    expect(changesRecords('POST', '/api/imports')).toBe(true);
+    expect(changesRecords('POST', '/api/imports/0b1c/undo')).toBe(true);
+  });
 });
 
 describe('the signal', () => {

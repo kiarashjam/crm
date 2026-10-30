@@ -28,12 +28,17 @@ export function onDataChanged(listener: () => void): () => void {
 
 /**
  * Writes that change no CRM record: signing in and security, notification
- * read-marks, the AI writer's drafts, personal settings, and lead routing setup
+ * read-marks, the AI writer's drafts, personal settings, lead routing setup
  * (rules, queues, territories, deadline, forms — they shape future leads, not
- * today's). Announcing them would make every listener re-read for nothing — the
- * Settings page, for one, POSTs to /api/auth/2fa/setup every time it opens.
+ * today's), and an import's reading of its file and dry run, which are POSTs only
+ * because they carry the file. Announcing them would make every listener re-read
+ * for nothing — the Settings page, for one, POSTs to /api/auth/2fa/setup every time
+ * it opens.
  */
-const NOT_RECORD_WRITES = ['/api/auth/', '/api/notifications', '/api/copy', '/api/settings', '/api/lead-ops/'];
+const NOT_RECORD_WRITES = [
+  '/api/auth/', '/api/notifications', '/api/copy', '/api/settings', '/api/lead-ops/',
+  '/api/imports/analyze', '/api/imports/preview',
+];
 
 /** …except these, under an excluded prefix, which do change records. */
 const RECORD_WRITES_UNDER_EXCLUDED = ['/api/lead-ops/bulk'];
