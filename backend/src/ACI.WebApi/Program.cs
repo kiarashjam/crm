@@ -309,6 +309,7 @@ try
             client => client.Timeout = TimeSpan.FromSeconds(5))
         .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.OutboundWebhookPublisher.PublicOnlyHandler);
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
@@ -736,6 +737,20 @@ try
                     ALTER TABLE [UserSettings] ADD [InAppSoundEnabled] bit NOT NULL DEFAULT 1;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'BrowserNotificationsEnabled')
                     ALTER TABLE [UserSettings] ADD [BrowserNotificationsEnabled] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'WeeklyDigestEnabled')
+                    ALTER TABLE [UserSettings] ADD [WeeklyDigestEnabled] bit NOT NULL DEFAULT 0;
+                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'WeeklyDigestSentAtUtc')
+                    ALTER TABLE [UserSettings] ADD [WeeklyDigestSentAtUtc] datetime2 NULL;
+                -- The first migration made an EmailDigestFrequency column, NOT NULL with no
+                -- default, that the model has not had since. On a database it created, the
+                -- first settings save of anyone without settings yet failed on it, the
+                -- weekly digest switch included. A default lets the insert through; the
+                -- column and anything in it are left alone.
+                IF COL_LENGTH('UserSettings', 'EmailDigestFrequency') IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM sys.default_constraints
+                        WHERE parent_object_id = OBJECT_ID('UserSettings')
+                          AND parent_column_id = COLUMNPROPERTY(OBJECT_ID('UserSettings'), 'EmailDigestFrequency', 'ColumnId'))
+                    ALTER TABLE [UserSettings] ADD CONSTRAINT [DF_UserSettings_EmailDigestFrequency] DEFAULT 0 FOR [EmailDigestFrequency];
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultPipelineId')
                     ALTER TABLE [UserSettings] ADD [DefaultPipelineId] nvarchar(64) NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('UserSettings') AND name = 'DefaultLeadStatusId')
@@ -1044,6 +1059,7 @@ try
                 );
                 IF COL_LENGTH('Deals', 'IsPrivate') IS NULL ALTER TABLE [Deals] ADD [IsPrivate] bit NOT NULL CONSTRAINT DF_Deals_IsPrivate DEFAULT 0;
                 IF COL_LENGTH('Deals', 'TeamId') IS NULL ALTER TABLE [Deals] ADD [TeamId] uniqueidentifier NULL;
+                IF COL_LENGTH('Deals', 'Amount') IS NULL ALTER TABLE [Deals] ADD [Amount] decimal(18,2) NULL;
                 IF COL_LENGTH('TaskItems', 'Recurrence') IS NULL ALTER TABLE [TaskItems] ADD [Recurrence] nvarchar(16) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookUrl') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookUrl] nvarchar(500) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookSecret') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookSecret] nvarchar(200) NULL;
@@ -1190,11 +1206,64 @@ try
                 );
             ");
 
+            // Saved forecasts are kept rather than replaced, each save's lines sharing a
+            // SnapshotId. Before this, a month held one save at most (saving again deleted
+            // the last), so the lines already there are grouped by when and by whom they
+            // were saved, inside the same transaction that adds the column. The default
+            // covers a row written by an instance still running the previous code during a
+            // deploy. ByCloseDate marks lines counted by close date; the ones already there
+            // counted every open deal, and get 0.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH('ForecastSnapshots', 'SnapshotId') IS NULL
+                BEGIN
+                BEGIN TRY
+                    BEGIN TRANSACTION;
+                    ALTER TABLE [ForecastSnapshots] ADD [SnapshotId] uniqueidentifier NULL;
+                    EXEC(N'
+                        DECLARE @saves TABLE ([OrganizationId] uniqueidentifier NULL, [SavedByUserId] uniqueidentifier NOT NULL,
+                            [MonthUtc] datetime2 NOT NULL, [SavedAtUtc] datetime2 NOT NULL, [SnapshotId] uniqueidentifier NOT NULL);
+                        INSERT INTO @saves SELECT [OrganizationId], [SavedByUserId], [MonthUtc], [SavedAtUtc], NEWID()
+                            FROM [ForecastSnapshots] GROUP BY [OrganizationId], [SavedByUserId], [MonthUtc], [SavedAtUtc];
+                        UPDATE f SET [SnapshotId] = s.[SnapshotId]
+                            FROM [ForecastSnapshots] f JOIN @saves s
+                              ON (f.[OrganizationId] = s.[OrganizationId] OR (f.[OrganizationId] IS NULL AND s.[OrganizationId] IS NULL))
+                             AND f.[SavedByUserId] = s.[SavedByUserId] AND f.[MonthUtc] = s.[MonthUtc] AND f.[SavedAtUtc] = s.[SavedAtUtc];
+                        ALTER TABLE [ForecastSnapshots] ALTER COLUMN [SnapshotId] uniqueidentifier NOT NULL;
+                        ALTER TABLE [ForecastSnapshots] ADD CONSTRAINT [DF_ForecastSnapshots_SnapshotId] DEFAULT NEWID() FOR [SnapshotId];');
+                    COMMIT TRANSACTION;
+                END TRY
+                BEGIN CATCH
+                    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+                    THROW;
+                END CATCH;
+                END
+                IF COL_LENGTH('ForecastSnapshots', 'ByCloseDate') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [ByCloseDate] bit NOT NULL CONSTRAINT [DF_ForecastSnapshots_ByCloseDate] DEFAULT 0;
+                IF COL_LENGTH('ForecastSnapshots', 'OverdueCount') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [OverdueCount] int NOT NULL CONSTRAINT [DF_ForecastSnapshots_OverdueCount] DEFAULT 0;
+                IF COL_LENGTH('ForecastSnapshots', 'OverdueValue') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [OverdueValue] decimal(18,2) NOT NULL CONSTRAINT [DF_ForecastSnapshots_OverdueValue] DEFAULT 0;
+                IF COL_LENGTH('ForecastSnapshots', 'NoCloseDateCount') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [NoCloseDateCount] int NOT NULL CONSTRAINT [DF_ForecastSnapshots_NoCloseDateCount] DEFAULT 0;
+                IF COL_LENGTH('ForecastSnapshots', 'UnreadableCount') IS NULL
+                    ALTER TABLE [ForecastSnapshots] ADD [UnreadableCount] int NOT NULL CONSTRAINT [DF_ForecastSnapshots_UnreadableCount] DEFAULT 0;
+            ");
+
             // Needs ClubMembers.ManualBalance, added just above (see DataFixes). Like the
             // fixes before it, a failure is logged and retried on the next start.
             try
             {
                 await db.Database.ExecuteSqlRawAsync(ACI.WebApi.DataFixes.KeepClubOpeningBalancesSql);
+            }
+            catch (Exception fixEx)
+            {
+                Log.Warning(fixEx, "A one-time data fix failed; it will be retried on the next start");
+            }
+            // Needs Deals.Amount, added just above. On its own, so a failure of the club
+            // fix does not hold it back.
+            try
+            {
+                await ACI.WebApi.DataFixes.FillDealAmountsAsync(db);
             }
             catch (Exception fixEx)
             {

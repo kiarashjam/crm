@@ -100,6 +100,25 @@ public static class MoneyText
         return true;
     }
 
+    /// <summary>The largest amount a decimal(18,2) column holds.</summary>
+    private const decimal MaxStoredAmount = 9_999_999_999_999_999.99m;
+
+    /// <summary>
+    /// A deal value as the number stored next to it in <c>Deal.Amount</c>: rounded to
+    /// cents, or null when the text holds no readable number.
+    /// </summary>
+    /// <remarks>
+    /// The column is decimal(18,2). A value typed with more digits than that would make
+    /// the whole save fail on SQL Server, so it is treated as unreadable instead, which
+    /// is how reports already disclose a value they could not read.
+    /// </remarks>
+    public static decimal? StoredAmount(string? raw)
+    {
+        if (!TryParseAmount(raw, out var value)) return null;
+        var cents = Math.Round(value, 2, MidpointRounding.AwayFromZero);
+        return Math.Abs(cents) > MaxStoredAmount ? null : cents;
+    }
+
     /// <summary>
     /// The currency to attribute an amount to. Never guesses from the text: an
     /// unset currency is reported as USD, which is what the rest of the system

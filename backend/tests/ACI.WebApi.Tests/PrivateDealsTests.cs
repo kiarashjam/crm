@@ -30,7 +30,7 @@ public class PrivateDealsTests
         return new Team(factory, owner, ownerId, rep, repId, org);
     }
 
-    private static async Task<Guid> DealAsync(Team team, bool isPrivate, string value, Guid? companyId = null)
+    private static async Task<Guid> DealAsync(Team team, bool isPrivate, string value, Guid? companyId = null, DateTime? closes = null)
     {
         using var scope = team.Factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -38,6 +38,7 @@ public class PrivateDealsTests
         {
             Id = Guid.NewGuid(), UserId = team.OwnerId, OrganizationId = team.Org, AssigneeId = team.OwnerId, Name = isPrivate ? "Secret" : "Open",
             Value = value, Currency = "CHF", Probability = 50, IsPrivate = isPrivate, CompanyId = companyId, CreatedAtUtc = DateTime.UtcNow,
+            ExpectedCloseDateUtc = closes,
         };
         db.Deals.Add(deal);
         await db.SaveChangesAsync();
@@ -180,11 +181,12 @@ public class PrivateDealsTests
     {
         using var factory = new CustomWebApplicationFactory();
         var team = await TeamAsync(factory);
-        await DealAsync(team, isPrivate: true, "50000");
+        await DealAsync(team, isPrivate: true, "50000", closes: DateTime.UtcNow.Date);
 
         (await team.Rep.PostAsync("/api/reporting/forecast-snapshot", null)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var saved = await Json(await team.Owner.PostAsync("/api/reporting/forecast-snapshot", null), "owner saves");
-        saved[0].GetProperty("openValue").GetDecimal().Should().Be(50000);
+        saved.GetProperty("rows")[0].GetProperty("openValue").GetDecimal().Should().Be(50000);
+        (await team.Rep.GetAsync("/api/reporting/forecast-snapshots")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var refused = await team.Rep.GetAsync("/api/reporting/forecast-snapshot");
         refused.StatusCode.Should().Be(HttpStatusCode.Forbidden, "the saved rows carry the private deal's amount and owner");
         (await refused.Content.ReadAsStringAsync()).Should().Contain("Only the owner or a manager can see saved forecasts.");
@@ -197,19 +199,24 @@ public class PrivateDealsTests
         // person's forecast deleted every other personal user's for the month.
         using var factory = new CustomWebApplicationFactory();
         var (first, firstId) = await SignInAsync(factory, "first@example.ch");
-        var (second, _) = await SignInAsync(factory, "second@example.ch");
+        var (second, secondId) = await SignInAsync(factory, "second@example.ch");
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Deals.Add(new Deal { Id = Guid.NewGuid(), UserId = firstId, Name = "Mine", Value = "700", Currency = "CHF", Probability = 50, CreatedAtUtc = DateTime.UtcNow });
+            var today = DateTime.UtcNow.Date;
+            db.Deals.Add(new Deal { Id = Guid.NewGuid(), UserId = firstId, Name = "Mine", Value = "700", Currency = "CHF", Probability = 50, ExpectedCloseDateUtc = today, CreatedAtUtc = DateTime.UtcNow });
+            db.Deals.Add(new Deal { Id = Guid.NewGuid(), UserId = secondId, Name = "Theirs", Value = "300", Currency = "CHF", Probability = 50, ExpectedCloseDateUtc = today, CreatedAtUtc = DateTime.UtcNow });
             await db.SaveChangesAsync();
         }
 
         await Json(await first.PostAsync("/api/reporting/forecast-snapshot", null), "first saves");
         await Json(await second.PostAsync("/api/reporting/forecast-snapshot", null), "second saves");
 
-        (await Json(await first.GetAsync("/api/reporting/forecast-snapshot"), "first reads"))[0]
-            .GetProperty("openValue").GetDecimal().Should().Be(700);
-        (await Json(await second.GetAsync("/api/reporting/forecast-snapshot"), "second reads")).GetArrayLength().Should().Be(0);
+        var firsts = await Json(await first.GetAsync("/api/reporting/forecast-snapshot"), "first reads");
+        firsts.GetArrayLength().Should().Be(1);
+        firsts[0].GetProperty("openValue").GetDecimal().Should().Be(700);
+        var seconds = await Json(await second.GetAsync("/api/reporting/forecast-snapshot"), "second reads");
+        seconds.GetArrayLength().Should().Be(1);
+        seconds[0].GetProperty("openValue").GetDecimal().Should().Be(300);
     }
 }

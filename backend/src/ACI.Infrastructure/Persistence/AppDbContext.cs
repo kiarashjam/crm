@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -100,6 +101,7 @@ public class AppDbContext : DbContext
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         StampClubDocumentVersions();
+        StampDealAmounts();
         await RecordDependents.RemoveAsync(this, cancellationToken);
         var events = RecordsAuditTrail ? await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -118,6 +120,7 @@ public class AppDbContext : DbContext
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         StampClubDocumentVersions();
+        StampDealAmounts();
         RecordDependents.Remove(this);
         var events = RecordsAuditTrail ? AuditTrail.Capture(this, _currentUser) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -139,6 +142,18 @@ public class AppDbContext : DbContext
         foreach (var entry in ChangeTracker.Entries<ClubDocument>())
             if (entry.State is EntityState.Added or EntityState.Modified)
                 entry.Entity.Version = Guid.NewGuid();
+    }
+
+    // Reports add deal values up in SQL, which cannot read the free-text Value. Every
+    // writer (the API, lead conversion, a merge, the cloner) saves through here, so the
+    // number follows the text whoever changes it. Recomputed on every save of a deal
+    // rather than only when Value changes, so a row saved before Amount existed is
+    // put right the next time anyone touches it.
+    private void StampDealAmounts()
+    {
+        foreach (var entry in ChangeTracker.Entries<Deal>())
+            if (entry.State is EntityState.Added or EntityState.Modified)
+                entry.Entity.Amount = MoneyText.StoredAmount(entry.Entity.Value);
     }
 
     // A failed save must not leave its audit lines queued, or a retry would record them twice.

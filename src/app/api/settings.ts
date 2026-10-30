@@ -45,6 +45,7 @@ const defaults: UserSettings = {
   inAppNotificationsEnabled: true,
   inAppSoundEnabled: true,
   browserNotificationsEnabled: false,
+  weeklyDigestEnabled: false,
 
   // Defaults
   defaultFollowUpDays: 3,

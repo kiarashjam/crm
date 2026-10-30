@@ -1,3 +1,7 @@
+using ACI.Application.Common;
+using ACI.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
+
 namespace ACI.WebApi;
 
 /// <summary>
@@ -115,4 +119,71 @@ public static class DataFixes
             IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
             THROW;
         END CATCH;";
+
+    public const string FillDealAmountsName = "2026-10 fill deal amounts";
+
+    /// <summary>Records <see cref="FillDealAmountsName"/> as applied, once however many instances get here.</summary>
+    public const string RecordDealAmountsFilledSql = @"
+        BEGIN TRY
+            BEGIN TRANSACTION;
+            IF NOT EXISTS (SELECT 1 FROM [AppliedDataFixes] WITH (UPDLOCK, HOLDLOCK) WHERE [Name] = N'" + FillDealAmountsName + @"')
+                INSERT INTO [AppliedDataFixes] ([Name], [AppliedAtUtc]) VALUES (N'" + FillDealAmountsName + @"', SYSUTCDATETIME());
+            COMMIT TRANSACTION;
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+            THROW;
+        END CATCH;";
+
+    /// <summary>
+    /// Give every existing deal the number its Value holds (see Deal.Amount).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// New and edited deals get it as they are saved (AppDbContext). Rows from before
+    /// the column existed are read here, with the parser the rest of the app uses,
+    /// MoneyText, which T-SQL cannot run: TRY_CAST reads "1.234" as one point two
+    /// where the app reads twelve hundred, and "CHF 85,500" not at all.
+    /// </para>
+    /// <para>
+    /// Only rows whose Amount is still empty are touched, so a second instance starting
+    /// at the same moment writes the same numbers, and the ledger line stops later starts
+    /// from re-reading the values that hold no number. It writes with ExecuteUpdate, past
+    /// the audit trail, because nobody changed the deals' values.
+    /// </para>
+    /// </remarks>
+    /// <returns>How many deals were given an amount.</returns>
+    public static async Task<int> FillDealAmountsAsync(AppDbContext db, CancellationToken ct = default)
+    {
+        var applied = await db.Database
+            .SqlQueryRaw<int>("SELECT COUNT(*) AS [Value] FROM [AppliedDataFixes] WHERE [Name] = N'" + FillDealAmountsName + "'")
+            .SingleAsync(ct);
+        if (applied > 0) return 0;
+
+        // Every row at once: a Guid and at most 64 characters each, read once ever.
+        var rows = await db.Deals.AsNoTracking()
+            .Where(d => d.Amount == null)
+            .Select(d => new { d.Id, d.Value })
+            .ToListAsync(ct);
+
+        var filled = 0;
+        // One UPDATE per distinct amount, so a thousand deals worth 0 or 5000 are a
+        // handful of statements rather than a thousand.
+        foreach (var byAmount in rows
+            .Select(r => (r.Id, Amount: MoneyText.StoredAmount(r.Value)))
+            .Where(r => r.Amount != null)
+            .GroupBy(r => r.Amount!.Value))
+        {
+            decimal? amount = byAmount.Key;
+            foreach (var chunk in byAmount.Select(r => r.Id).Chunk(500))
+            {
+                filled += await db.Deals
+                    .Where(d => chunk.Contains(d.Id) && d.Amount == null)
+                    .ExecuteUpdateAsync(set => set.SetProperty(d => d.Amount, amount), ct);
+            }
+        }
+
+        await db.Database.ExecuteSqlRawAsync(RecordDealAmountsFilledSql, ct);
+        return filled;
+    }
 }

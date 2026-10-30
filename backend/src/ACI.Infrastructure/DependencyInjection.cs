@@ -61,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<ICopyHistoryRepository, CopyHistoryRepository>();
         services.AddScoped<IReportingService, ReportingService>();
+        services.AddScoped<WeeklyDigestService>();
         services.AddScoped<IOutboundWebhookPublisher, OutboundWebhookPublisher>();
         
         // Application services

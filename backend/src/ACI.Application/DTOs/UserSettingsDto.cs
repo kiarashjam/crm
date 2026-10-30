@@ -36,6 +36,8 @@ public record UserSettingsDto
     public bool InAppNotificationsEnabled { get; init; } = true;
     public bool InAppSoundEnabled { get; init; } = true;
     public bool BrowserNotificationsEnabled { get; init; } = false;
+    /// <summary>A weekly email of the figures for the workspaces this person owns or manages.</summary>
+    public bool WeeklyDigestEnabled { get; init; }
 
     // Defaults
     public string? DefaultPipelineId { get; init; }
@@ -120,6 +122,7 @@ public record UpdateUserSettingsRequest
     public bool? InAppNotificationsEnabled { get; init; }
     public bool? InAppSoundEnabled { get; init; }
     public bool? BrowserNotificationsEnabled { get; init; }
+    public bool? WeeklyDigestEnabled { get; init; }
 
     // Defaults
     [StringLength(100, ErrorMessage = "Default pipeline ID cannot exceed 100 characters")]

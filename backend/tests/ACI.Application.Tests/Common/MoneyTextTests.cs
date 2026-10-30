@@ -132,4 +132,27 @@ public class MoneyTextTests
         MoneyText.TryParseAmount("€50,000", out var value).Should().BeTrue();
         value.Should().Be(50000m);
     }
+
+    // ── the number stored beside the text, for reports ───────────────────────
+
+    [Theory]
+    [InlineData("CHF 85,500", 85500)]
+    [InlineData("1.234", 1234)]
+    [InlineData("1234.567", 1234.57)]
+    [InlineData("-2500", -2500)]
+    public void StoresTheSameNumberTheReportsRead(string raw, decimal expected)
+    {
+        MoneyText.StoredAmount(raw).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("tbd")]
+    [InlineData(null)]
+    // More digits than decimal(18,2) holds: stored, it would fail the whole save.
+    [InlineData("99999999999999999999")]
+    public void StoresNothingForAValueWithoutAUsableNumber(string? raw)
+    {
+        MoneyText.StoredAmount(raw).Should().BeNull();
+    }
 }

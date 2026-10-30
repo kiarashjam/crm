@@ -784,6 +784,42 @@ public static class DomainErrors
     }
 
     /// <summary>
+    /// Reports and forecasts.
+    /// </summary>
+    public static class Reporting
+    {
+        public static readonly Error InvalidPeriod = new(
+            "Reporting.InvalidPeriod", "A report's period has to start before it ends and cover at most five years.");
+
+        public static readonly Error InvalidScope = new(
+            "Reporting.InvalidScope", "A report's scope is me, team or org.");
+
+        public static readonly Error TeamNotFound = new(
+            "Team.NotFound", "That team is not one of this workspace's.");
+
+        public static readonly Error NoTeam = new(
+            "Reporting.NoTeam", "You are in no sales team here. Pick a team, or ask a manager to add you to one.");
+
+        public static readonly Error InvalidMonth = new(
+            "Reporting.InvalidMonth", "A forecast month is a year and a month from 1 to 12, for at most 24 months.");
+
+        public static readonly Error MonthOver = new(
+            "Reporting.MonthOver", "That month is over. A forecast is saved before or during the month it is for, not after.");
+
+        public static readonly Error MonthTooFar = new(
+            "Reporting.MonthTooFar", "A forecast can be saved for at most twelve months ahead.");
+
+        public static readonly Error InvalidCurrency = new(
+            "Reporting.InvalidCurrency", "A currency is a code of at most eight letters, such as CHF.");
+
+        public static readonly Error SnapshotNotFound = new(
+            "ForecastSnapshot.NotFound", "That saved forecast is not one of this month's.");
+
+        public static readonly Error NothingToSave = new(
+            "Reporting.NothingToSave", "There are no open deals, so there is no forecast to save.");
+    }
+
+    /// <summary>
     /// General/shared errors.
     /// </summary>
     public static class General
