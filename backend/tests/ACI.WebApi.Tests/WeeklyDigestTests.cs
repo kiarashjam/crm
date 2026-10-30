@@ -87,6 +87,24 @@ public class WeeklyDigestTests
     }
 
     [Fact]
+    public void AWeekStartingAtAMidnightTheClocksSkipStartsWhenTheyLand()
+    {
+        // A zone whose clocks jump from 00:00 to 01:00 on the first Monday of March:
+        // that Monday has no midnight, and converting it threw, stopping every digest.
+        var rule = TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(
+            DateTime.MinValue.Date, DateTime.MaxValue.Date, TimeSpan.FromHours(1),
+            TimeZoneInfo.TransitionTime.CreateFloatingDateRule(new DateTime(1, 1, 1, 0, 0, 0), 3, 1, DayOfWeek.Monday),
+            TimeZoneInfo.TransitionTime.CreateFloatingDateRule(new DateTime(1, 1, 1, 1, 0, 0), 10, 5, DayOfWeek.Sunday));
+        var zone = TimeZoneInfo.CreateCustomTimeZone("Test/MondayJump", TimeSpan.Zero, "Monday jump", "Standard", "Summer", new[] { rule });
+
+        // Monday 8 March 2027, 08:00 there: the week of Monday 1 March is due.
+        var week = WeeklyDigestService.WeekFor(new DateTime(2027, 3, 8, 7, 0, 0, DateTimeKind.Utc), zone);
+
+        week.FirstDay.Should().Be(new DateOnly(2027, 3, 1));
+        week.WeekStartUtc.Should().Be(new DateTime(2027, 3, 1, 0, 0, 0, DateTimeKind.Utc), "01:00 summer time, when that Monday began");
+    }
+
+    [Fact]
     public async Task AnOwnerWhoOptedInGetsLastWeeksFiguresOnceAWeek()
     {
         using var factory = new CustomWebApplicationFactory();
@@ -158,6 +176,29 @@ public class WeeklyDigestTests
         (await SendDueAsync(factory.Services, outbox, MondayMorning)).Should().Be(0);
         outbox.Accepts = true;
         (await SendDueAsync(factory.Services, outbox, MondayMorning.AddHours(1))).Should().Be(1, "the week was given back when the send failed");
+    }
+
+    [Fact]
+    public async Task AWeekWhoseFiguresCouldNotBeWorkedOutIsGivenBackToo()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (_, ownerId) = await SignInAsync(factory, "owner@example.ch");
+        await CreateAsync(factory, ownerId, "Pavillon46");
+        await OptInAsync(factory.Services, ownerId);
+        var outbox = new Outbox();
+        var failing = new Mock<IReportingService>();
+        failing.Setup(r => r.GetSummaryAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<ACI.Application.DTOs.ReportFilter>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("the database went away"));
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var broken = new WeeklyDigestService(db, failing.Object, outbox.Sender(),
+                Options.Create(new EmailSettings { SmtpHost = "smtp.example.ch" }), NullLogger<WeeklyDigestService>.Instance);
+            (await broken.SendDueAsync(MondayMorning)).Should().Be(0);
+        }
+
+        (await SendDueAsync(factory.Services, outbox, MondayMorning.AddHours(1))).Should().Be(1, "the claim was released when the figures failed");
     }
 
     [Fact]

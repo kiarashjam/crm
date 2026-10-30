@@ -57,7 +57,14 @@ public sealed class WeeklyDigestService
         var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), zone);
         var monday = local.Date.AddDays(-(((int)local.DayOfWeek + 6) % 7));
         if (local < monday.AddHours(7)) monday = monday.AddDays(-7);
-        DateTime Utc(DateTime localTime) => TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localTime, DateTimeKind.Unspecified), zone);
+        // A zone whose clocks jump at midnight skips that midnight; the moment they
+        // jump to is when that day starts there.
+        DateTime Utc(DateTime localTime)
+        {
+            var at = DateTime.SpecifyKind(localTime, DateTimeKind.Unspecified);
+            while (zone.IsInvalidTime(at)) at = at.AddMinutes(30);
+            return TimeZoneInfo.ConvertTimeToUtc(at, zone);
+        }
         return (Utc(monday.AddHours(7)), Utc(monday.AddDays(-7)), Utc(monday),
             DateOnly.FromDateTime(monday.AddDays(-7)), DateOnly.FromDateTime(monday.AddDays(-1)));
     }
@@ -77,11 +84,12 @@ public sealed class WeeklyDigestService
         var sent = 0;
         foreach (var subscriber in subscribers)
         {
-            var zone = ZoneOf(subscriber.Timezone);
-            var week = WeekFor(nowUtc, zone);
-            if (subscriber.WeeklyDigestSentAtUtc >= week.DueUtc) continue;
+            // One person's digest failing, however, never holds up anyone else's.
             try
             {
+                var zone = ZoneOf(subscriber.Timezone);
+                var week = WeekFor(nowUtc, zone);
+                if (subscriber.WeeklyDigestSentAtUtc >= week.DueUtc) continue;
                 if (await SendOneAsync(subscriber.UserId, subscriber.WeeklyDigestSentAtUtc, zone, week, nowUtc, ct)) sent++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -112,37 +120,45 @@ public sealed class WeeklyDigestService
 
         if (!await ClaimAsync(userId, previous, week.DueUtc, nowUtc, ct)) return false;
 
-        // The forecast is for the month the digest arrives in: the Monday after the week.
-        var arrives = week.LastDay.AddDays(1);
-        var month = new DateTime(arrives.Year, arrives.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var sections = new List<DigestSection>();
-        foreach (var workspace in workspaces)
+        var delivered = false;
+        try
         {
-            var summary = await _reporting.GetSummaryAsync(userId, workspace.Id, new ReportFilter
+            // The forecast is for the month the digest arrives in: the Monday after the week.
+            var arrives = week.LastDay.AddDays(1);
+            var month = new DateTime(arrives.Year, arrives.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var sections = new List<DigestSection>();
+            foreach (var workspace in workspaces)
             {
-                FromUtc = week.WeekStartUtc,
-                ToUtc = week.WeekEndUtc,
-                Scope = ReportScope.Organization,
-                TimeZone = zone.Id,
-            }, ct);
-            var forecast = await _reporting.GetForecastAsync(userId, workspace.Id, new ForecastFilter
-            {
-                FirstMonthUtc = month,
-                Months = 1,
-                Scope = ReportScope.Organization,
-            }, ct);
-            if (summary.IsFailure || forecast.IsFailure) continue;
-            sections.Add(new DigestSection(workspace.Name, summary.Value, forecast.Value));
-        }
+                var summary = await _reporting.GetSummaryAsync(userId, workspace.Id, new ReportFilter
+                {
+                    FromUtc = week.WeekStartUtc,
+                    ToUtc = week.WeekEndUtc,
+                    Scope = ReportScope.Organization,
+                    TimeZone = zone.Id,
+                }, ct);
+                var forecast = await _reporting.GetForecastAsync(userId, workspace.Id, new ForecastFilter
+                {
+                    FirstMonthUtc = month,
+                    Months = 1,
+                    Scope = ReportScope.Organization,
+                }, ct);
+                if (summary.IsFailure || forecast.IsFailure) continue;
+                sections.Add(new DigestSection(workspace.Name, summary.Value, forecast.Value));
+            }
 
-        var baseUrl = (_emailSettings.FrontendBaseUrl ?? string.Empty).Trim().TrimEnd('/');
-        var (subject, body) = Compose(user.Name, week.FirstDay, week.LastDay, sections, $"{baseUrl}/reports");
-        var delivered = sections.Count > 0 && await _email.SendMessageAsync(user.Email, user.Name, subject, body, ct);
-        if (!delivered)
+            var baseUrl = (_emailSettings.FrontendBaseUrl ?? string.Empty).Trim().TrimEnd('/');
+            var (subject, body) = Compose(user.Name, week.FirstDay, week.LastDay, sections, $"{baseUrl}/reports");
+            delivered = sections.Count > 0 && await _email.SendMessageAsync(user.Email, user.Name, subject, body, ct);
+        }
+        finally
         {
-            // Give the week back, so the next pass tries again.
-            await ReleaseAsync(userId, previous, nowUtc, ct);
-            _logger.LogWarning("The weekly digest for user {UserId} was not delivered; it will be tried again", userId);
+            if (!delivered)
+            {
+                // Give the week back, so the next pass tries again, also when working
+                // out the figures threw or the app is stopping.
+                await ReleaseAsync(userId, previous, nowUtc, CancellationToken.None);
+                _logger.LogWarning("The weekly digest for user {UserId} was not delivered; it will be tried again", userId);
+            }
         }
         return delivered;
     }
