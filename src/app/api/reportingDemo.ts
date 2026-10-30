@@ -89,6 +89,12 @@ function dayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** An expected close date is a day, stored as its UTC midnight: that day, as yyyy-MM-dd. */
+function closeDay(iso?: string | null): string | null {
+  const t = time(iso);
+  return t === null ? null : new Date(t).toISOString().slice(0, 10);
+}
+
 /** The chart grouping the server picks for a period of this length. */
 export function bucketFor(from: number, to: number): 'day' | 'week' | 'month' {
   const days = (to - from) / 86_400_000;
@@ -214,6 +220,15 @@ export function summariseForDemo(records: DemoRecords, filters: ReportFilters): 
     .filter((a) => (a.type || '').toLowerCase() !== 'system' && inRange(a.createdAt, from, to))
     .filter((a) => filters.scope !== 'me' || !a.createdByUserId || a.createdByUserId === me);
   const bucket = bucketFor(from, to);
+  // As on the server: a close date is matched to the period's days on this
+  // browser's calendar. Compared with the period's instants, a deal due on the 1st
+  // fell outside a month that starts after UTC midnight, as it does west of Greenwich.
+  const firstDay = dayKey(localDay(from));
+  const lastDay = dayKey(localDay(to - 1));
+  const closesInPeriod = (d: Deal) => {
+    const day = closeDay(d.expectedCloseDateUtc);
+    return day !== null && day >= firstDay && day <= lastDay;
+  };
 
   return {
     period: {
@@ -224,7 +239,7 @@ export function summariseForDemo(records: DemoRecords, filters: ReportFilters): 
     headlineCurrency: headline,
     open: figures(open),
     weighted: weighted(open),
-    closingInPeriod: figures(open.filter((d) => inRange(d.expectedCloseDateUtc, from, to))),
+    closingInPeriod: figures(open.filter(closesInPeriod)),
     created: figures(deals.filter((d) => inRange(d.createdAtUtc, from, to))),
     won: figures(won),
     lost: figures(lost),

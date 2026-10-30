@@ -1,7 +1,7 @@
 // The demo's Reports figures follow the server's rules (ReportSummaryTests.cs and
 // ForecastTests.cs hold the same cases for the server).
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, onTestFinished } from 'vitest';
 import type { Activity, Deal, Lead } from './types';
 import { forecastForDemo, series, summariseForDemo, type DemoRecords } from './reportingDemo';
 import type { ReportFilters } from './reporting';
@@ -81,6 +81,27 @@ describe('summariseForDemo', () => {
     expect(s.activities.byType).toEqual([{ key: 'call', count: 1 }]);
     expect(s.activities.series).toHaveLength(31);
     expect(s.activities.series.find((p) => p.start === '2026-10-10')!.count).toBe(1);
+  });
+
+  it('matches deals closing in the period by their day on this browser\'s calendar', () => {
+    // Pinned to New York, whose October starts at 04:00 UTC: compared as instants,
+    // the deal due on the 1st was left out and the one due on 1 November counted.
+    const tz = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    onTestFinished(() => {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    });
+    const s = summariseForDemo(records({
+      deals: [
+        deal({ value: '100', currency: 'CHF', expectedCloseDateUtc: '2026-10-01T00:00:00.000Z' }),
+        deal({ value: '200', currency: 'CHF', expectedCloseDateUtc: '2026-10-31T00:00:00.000Z' }),
+        deal({ value: '400', currency: 'CHF', expectedCloseDateUtc: '2026-11-01T00:00:00.000Z' }),
+        deal({ value: '800', currency: 'CHF', expectedCloseDateUtc: '2026-09-30T00:00:00.000Z' }),
+      ],
+    }), { from: new Date(2026, 9, 1).toISOString(), to: new Date(2026, 10, 1).toISOString(), scope: 'org' });
+
+    expect(s.closingInPeriod.byCurrency).toEqual([{ currency: 'CHF', count: 2, value: 300, unreadable: 0 }]);
   });
 
   it('narrows to the viewer\'s own deals for "me"', () => {
