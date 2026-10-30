@@ -36,7 +36,7 @@ public interface ICompanyRepository
     /// </summary>
     Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
-    // HP-7: Server-side stats (contact count, deal count, deal value per company)
-    Task<IReadOnlyList<(Guid CompanyId, int ContactCount, int DealCount, decimal TotalDealValue)>> GetStatsAsync(
+    // HP-7: Server-side stats (contact count, deal count, deal value per company and currency)
+    Task<IReadOnlyList<(Guid CompanyId, int ContactCount, int DealCount, IReadOnlyList<DTOs.CurrencyTotalDto> DealTotals)>> GetStatsAsync(
         Guid userId, Guid? organizationId, CancellationToken ct = default);
 }

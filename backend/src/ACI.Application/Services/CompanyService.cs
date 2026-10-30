@@ -233,7 +233,7 @@ public class CompanyService : ICompanyService
     {
         _logger.LogDebug("Getting company stats for user {UserId}, org {OrganizationId}", userId, organizationId);
         var raw = await _repository.GetStatsAsync(userId, organizationId, ct);
-        return raw.Select(r => new CompanyStatsItemDto(r.CompanyId, r.ContactCount, r.DealCount, r.TotalDealValue)).ToList();
+        return raw.Select(r => new CompanyStatsItemDto(r.CompanyId, r.ContactCount, r.DealCount, r.DealTotals)).ToList();
     }
 
     /// <inheritdoc />

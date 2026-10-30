@@ -1,3 +1,5 @@
+using ACI.Application.Common;
+using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
@@ -117,7 +119,7 @@ public sealed class CompanyRepository : ICompanyRepository
     }
 
     // HP-7: Server-side stats per company using efficient SQL aggregations
-    public async Task<IReadOnlyList<(Guid CompanyId, int ContactCount, int DealCount, decimal TotalDealValue)>> GetStatsAsync(
+    public async Task<IReadOnlyList<(Guid CompanyId, int ContactCount, int DealCount, IReadOnlyList<CurrencyTotalDto> DealTotals)>> GetStatsAsync(
         Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         var companyIds = await FilterByUserAndOrg(_db.Companies, userId, organizationId)
@@ -125,7 +127,7 @@ public sealed class CompanyRepository : ICompanyRepository
             .ToListAsync(ct);
 
         if (companyIds.Count == 0)
-            return Array.Empty<(Guid, int, int, decimal)>();
+            return Array.Empty<(Guid, int, int, IReadOnlyList<CurrencyTotalDto>)>();
 
         // Contact counts via SQL GROUP BY — exclude archived contacts so dashboard counts match the visible list.
         var contactCounts = await _db.Contacts
@@ -134,25 +136,47 @@ public sealed class CompanyRepository : ICompanyRepository
             .Select(g => new { CompanyId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.CompanyId, x => x.Count, ct);
 
-        // Deal counts and values — Deal.Value is a string, so we fetch and parse in C#
-        var dealRows = await _db.Deals.VisibleTo(_db, userId, organizationId)
+        // Deal counts and values, added up by the database from Deal.Amount, per company
+        // AND currency. Each value's text used to be stripped to digits and dots and summed
+        // here, so francs and euros went into one figure and "1.234,56" counted as 1.23. A
+        // deal with no readable amount is counted as a deal but adds nothing, and one with
+        // no currency is in its workspace's, as new deals are.
+        var workspaceCurrency = organizationId is Guid org
+            ? await _db.Organizations.AsNoTracking().Where(o => o.Id == org).Select(o => o.Currency).FirstOrDefaultAsync(ct)
+            : null;
+        var fallback = RegionalSettings.TryCurrency(workspaceCurrency, out var code) ? code : RegionalSettings.DefaultCurrency;
+        var dealGroups = await _db.Deals.VisibleTo(_db, userId, organizationId)
             .Where(d => d.CompanyId != null && companyIds.Contains(d.CompanyId.Value))
-            .Select(d => new { d.CompanyId, d.Value })
+            .GroupBy(d => new
+            {
+                CompanyId = d.CompanyId!.Value,
+                Currency = d.Currency == null || d.Currency.Trim() == "" ? fallback : d.Currency.Trim().ToUpper(),
+            })
+            .Select(g => new
+            {
+                g.Key.CompanyId,
+                g.Key.Currency,
+                Count = g.Count(),
+                Priced = g.Count(d => d.Amount != null),
+                Value = g.Sum(d => d.Amount ?? 0m),
+            })
             .ToListAsync(ct);
 
-        var dealStats = dealRows
-            .GroupBy(d => d.CompanyId!.Value)
+        var dealStats = dealGroups
+            .GroupBy(g => g.CompanyId)
             .ToDictionary(
                 g => g.Key,
-                g => (Count: g.Count(), TotalValue: g.Sum(d => decimal.TryParse(
-                    System.Text.RegularExpressions.Regex.Replace(d.Value ?? "0", @"[^0-9.\-]", ""),
-                    out var v) ? v : 0m)));
+                g => (Count: g.Sum(x => x.Count), Totals: (IReadOnlyList<CurrencyTotalDto>)g
+                    .Where(x => x.Priced > 0)
+                    .Select(x => new CurrencyTotalDto(x.Currency, x.Value, x.Priced))
+                    .OrderByDescending(t => t.Value).ThenBy(t => t.Currency, StringComparer.Ordinal)
+                    .ToList()));
 
         return companyIds.Select(id =>
         {
             var contacts = contactCounts.GetValueOrDefault(id, 0);
             var hasDealStats = dealStats.TryGetValue(id, out var ds);
-            return (id, contacts, hasDealStats ? ds.Count : 0, hasDealStats ? ds.TotalValue : 0m);
+            return (id, contacts, hasDealStats ? ds.Count : 0, hasDealStats ? ds.Totals : Array.Empty<CurrencyTotalDto>());
         }).ToList();
     }
 
