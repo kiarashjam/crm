@@ -21,6 +21,7 @@ public class LeadService : ILeadService
     private readonly IAutomationEngine? _automations;
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IContactRelationshipRepository? _relationships;
+    private readonly IOrganizationRepository? _organizations;
     private readonly ILogger<LeadService> _logger;
 
     public LeadService(
@@ -34,7 +35,8 @@ public class LeadService : ILeadService
         ILogger<LeadService> logger,
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
-        IContactRelationshipRepository? relationships = null)
+        IContactRelationshipRepository? relationships = null,
+        IOrganizationRepository? organizations = null)
     {
         _repository = repository;
         _companyRepository = companyRepository;
@@ -47,6 +49,7 @@ public class LeadService : ILeadService
         _automations = automations;
         _webhooks = webhooks;
         _relationships = relationships;
+        _organizations = organizations;
     }
 
     /// <inheritdoc />
@@ -559,7 +562,10 @@ public class LeadService : ILeadService
             return new Error("Lead.ConversionRequired", "At least one conversion action must be specified");
         }
 
-        // Before anything is created, so a refused pipeline or stage leaves no half-converted lead.
+        // Before anything is created, so a refused pipeline, stage, amount or currency
+        // leaves no half-converted lead.
+        decimal dealAmount = 0m;
+        string dealCurrency = RegionalSettings.DefaultCurrency;
         if (request.CreateDeal && !request.ExistingDealId.HasValue)
         {
             var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
@@ -568,6 +574,15 @@ public class LeadService : ILeadService
                 DealStageId = request.DealStageId,
             }, ct);
             if (links.IsFailure) return links.Error;
+
+            var amount = DealMoney.AmountOf(request.DealAmount, request.DealValue);
+            if (amount.IsFailure) return amount.Error;
+            dealAmount = amount.Value ?? 0m;
+            // The workspace's currency unless the conversion names another: a converted
+            // deal used to have none, and was counted and shown as USD.
+            var currency = DealMoney.CurrencyOf(request.DealCurrency, await _organizations.WorkspaceCurrencyAsync(organizationId, ct));
+            if (currency.IsFailure) return currency.Error;
+            dealCurrency = currency.Value;
         }
 
         // A deal to convert into must be one this workspace has. Asked together with
@@ -696,7 +711,7 @@ public class LeadService : ILeadService
                 UserId = userId,
                 OrganizationId = organizationId,
                 Name = string.IsNullOrWhiteSpace(request.DealName) ? lead.Name : request.DealName.Trim(),
-                Value = string.IsNullOrWhiteSpace(request.DealValue) ? "0" : request.DealValue.Trim(),
+                Currency = dealCurrency,
                 Stage = request.DealStage?.Trim(),
                 PipelineId = request.PipelineId,
                 DealStageId = request.DealStageId,
@@ -704,6 +719,7 @@ public class LeadService : ILeadService
                 ContactId = contactId,
                 CreatedAtUtc = DateTime.UtcNow,
             };
+            DealMoney.SetAmount(deal, dealAmount);
             await _dealRepository.AddAsync(deal, ct);
             dealId = deal.Id;
             

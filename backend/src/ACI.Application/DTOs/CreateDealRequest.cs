@@ -15,15 +15,20 @@ public record CreateDealRequest
     public required string Name { get; init; }
 
     /// <summary>
-    /// Deal value/amount.
+    /// The deal's amount, in <see cref="Currency"/>. Rounded to cents. Either this or
+    /// <see cref="Value"/> is required; when both are sent this one counts.
     /// </summary>
-    [Required(ErrorMessage = "Value is required")]
-    [StringLength(50, ErrorMessage = "Value cannot exceed 50 characters")]
-    [RegularExpression(@"^-?\d+(\.\d{1,2})?$", ErrorMessage = "Value must be a valid number (e.g., 1000 or 1000.50)")]
-    public required string Value { get; init; }
+    public decimal? Amount { get; init; }
 
     /// <summary>
-    /// Currency code (e.g., USD, EUR, CHF).
+    /// The amount as text, for clients from before <see cref="Amount"/>. Plain digits only.
+    /// </summary>
+    [StringLength(50, ErrorMessage = "Value cannot exceed 50 characters")]
+    [RegularExpression(@"^-?\d+(\.\d{1,2})?$", ErrorMessage = "Value must be a valid number (e.g., 1000 or 1000.50)")]
+    public string? Value { get; init; }
+
+    /// <summary>
+    /// ISO 4217 code (e.g. CHF, EUR). Left out, the deal is priced in the workspace's currency.
     /// </summary>
     [StringLength(10, ErrorMessage = "Currency cannot exceed 10 characters")]
     public string? Currency { get; init; }

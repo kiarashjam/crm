@@ -30,7 +30,10 @@ public record DealDto(
     string? ClosedReasonCategory,
     DateTime? ClosedAtUtc,
     bool IsPrivate = false,
-    Guid? TeamId = null);
+    Guid? TeamId = null,
+    // The amount as a number, in Currency. Null only for a deal saved before amounts
+    // were typed whose text holds no number; Value is the same amount as text.
+    decimal? Amount = null);
 
 /// <summary>The deal to fold into the one named in the route.</summary>
 public record MergeDealsRequest(Guid OtherDealId);

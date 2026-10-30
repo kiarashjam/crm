@@ -155,4 +155,29 @@ public class MoneyTextTests
     {
         MoneyText.StoredAmount(raw).Should().BeNull();
     }
+
+    // ── the text written from a typed amount ─────────────────────────────────
+
+    [Theory]
+    [InlineData("85500", "85500")]
+    [InlineData("85500.00", "85500")]
+    [InlineData("99.4", "99.40")]
+    [InlineData("-2500", "-2500")]
+    [InlineData("0", "0")]
+    public void WritesTheTextEveryParserReadsTheSame(string amount, string expected)
+    {
+        var value = decimal.Parse(amount, System.Globalization.CultureInfo.InvariantCulture);
+        MoneyText.ValueText(value).Should().Be(expected);
+        // Read back by the reports' parser, the text is the same number.
+        MoneyText.StoredAmount(MoneyText.ValueText(value)).Should().Be(value);
+    }
+
+    [Fact]
+    public void ATypedAmountIsKeptToTheCentOrNotAtAll()
+    {
+        // A line-item total in floating point, and a half cent.
+        MoneyText.StoredAmount(99.39999999999999m).Should().Be(99.40m);
+        MoneyText.StoredAmount(29.985m).Should().Be(29.99m);
+        MoneyText.StoredAmount(99999999999999999999m).Should().BeNull("decimal(18,2) cannot hold it");
+    }
 }

@@ -144,16 +144,26 @@ public class AppDbContext : DbContext
                 entry.Entity.Version = Guid.NewGuid();
     }
 
-    // Reports add deal values up in SQL, which cannot read the free-text Value. Every
-    // writer (the API, lead conversion, a merge, the cloner) saves through here, so the
-    // number follows the text whoever changes it. Recomputed on every save of a deal
-    // rather than only when Value changes, so a row saved before Amount existed is
-    // put right the next time anyone touches it.
+    // Amount is a deal's money and Value the same number as text, kept for older clients
+    // and integrations. Every writer saves through here, so the two cannot disagree: a
+    // writer that set the number (the API, lead conversion, a merge, the cloner) gets the
+    // text written from it, and one that set only the text (a tool, a test) gets the
+    // number read from it. A save that touches neither re-reads the text, so a row from
+    // before Amount existed is put right when anyone edits it.
     private void StampDealAmounts()
     {
         foreach (var entry in ChangeTracker.Entries<Deal>())
-            if (entry.State is EntityState.Added or EntityState.Modified)
-                entry.Entity.Amount = MoneyText.StoredAmount(entry.Entity.Value);
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified)) continue;
+            var deal = entry.Entity;
+            var numberSet = entry.State == EntityState.Added
+                ? deal.Amount != null
+                : entry.Property(d => d.Amount).IsModified;
+            if (numberSet && deal.Amount is decimal amount)
+                deal.Value = MoneyText.ValueText(amount);
+            else
+                deal.Amount = MoneyText.StoredAmount(deal.Value);
+        }
     }
 
     // A failed save must not leave its audit lines queued, or a retry would record them twice.

@@ -162,11 +162,15 @@ public class DealService : IDealService
             return DomainErrors.Deal.NameRequired;
         }
 
-        if (string.IsNullOrWhiteSpace(request.Value))
+        var amount = DealMoney.AmountOf(request.Amount, request.Value);
+        if (amount.IsFailure) return amount.Error;
+        if (amount.Value is not decimal dealAmount)
         {
             _logger.LogWarning("Deal creation failed: Value is required");
             return DomainErrors.Deal.ValueRequired;
         }
+        var currency = DealMoney.CurrencyOf(request.Currency, await _organizations.WorkspaceCurrencyAsync(organizationId, ct));
+        if (currency.IsFailure) return currency.Error;
 
         var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks
         {
@@ -184,8 +188,7 @@ public class DealService : IDealService
             UserId = userId,
             OrganizationId = organizationId,
             Name = request.Name.Trim(),
-            Value = request.Value.Trim(),
-            Currency = request.Currency?.Trim(),
+            Currency = currency.Value,
             Stage = request.Stage?.Trim(),
             PipelineId = request.PipelineId,
             DealStageId = request.DealStageId,
@@ -197,6 +200,7 @@ public class DealService : IDealService
             Probability = request.Probability,
             CreatedAtUtc = DateTime.UtcNow,
         };
+        DealMoney.SetAmount(entity, dealAmount);
 
         entity = await _repository.AddAsync(entity, ct);
 
@@ -254,10 +258,19 @@ public class DealService : IDealService
         }, ct);
         if (links.IsFailure) return links.Error;
 
+        var amount = DealMoney.AmountOf(request.Amount, request.Value);
+        if (amount.IsFailure) return amount.Error;
+        string? currency = null;
+        if (!string.IsNullOrWhiteSpace(request.Currency))
+        {
+            if (!RegionalSettings.TryCurrency(request.Currency, out var code)) return DomainErrors.Deal.InvalidCurrency;
+            currency = code;
+        }
+
         // Apply partial updates
         if (request.Name != null) existing.Name = request.Name.Trim();
-        if (request.Value != null) existing.Value = request.Value.Trim();
-        if (request.Currency != null) existing.Currency = request.Currency.Trim();
+        if (amount.Value is decimal newAmount) DealMoney.SetAmount(existing, newAmount);
+        if (currency != null) existing.Currency = currency;
         if (request.Stage != null) existing.Stage = request.Stage.Trim();
         if (request.PipelineId != null) existing.PipelineId = request.PipelineId;
         if (request.DealStageId != null) existing.DealStageId = request.DealStageId;
@@ -443,5 +456,6 @@ public class DealService : IDealService
             e.ClosedReasonCategory,
             e.ClosedAtUtc,
             e.IsPrivate,
-            e.TeamId);
+            e.TeamId,
+            e.Amount);
 }

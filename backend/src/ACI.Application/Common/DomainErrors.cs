@@ -392,7 +392,13 @@ public static class DomainErrors
         
         public static readonly Error ValueInvalid = new(
             "Deal.ValueInvalid", "The deal value must be a valid number");
-        
+
+        public static readonly Error AmountOutOfRange = new(
+            "Deal.AmountOutOfRange", "The amount is too large: a deal holds at most 16 digits before the decimal point.");
+
+        public static readonly Error InvalidCurrency = new(
+            "Deal.InvalidCurrency", "A currency is a three-letter ISO code, such as CHF or EUR.");
+
         public static readonly Error InvalidStage = new(
             "Deal.InvalidStage", "That stage is not one of this workspace's pipeline stages, or not in the pipeline chosen");
         

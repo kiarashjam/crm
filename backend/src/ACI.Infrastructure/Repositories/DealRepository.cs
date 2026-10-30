@@ -106,6 +106,7 @@ public sealed class DealRepository : IDealRepository
         if (existing == null) return null;
         existing.Name = deal.Name;
         existing.Value = deal.Value;
+        existing.Amount = deal.Amount;
         existing.Currency = deal.Currency;
         existing.Stage = deal.Stage;
         existing.PipelineId = deal.PipelineId;
@@ -168,9 +169,10 @@ public sealed class DealRepository : IDealRepository
             await RecordMerge.MoveDependentsAsync(_db, RecordTypes.Deal, keepId, dropId, ct);
 
             // The kept deal's own values stay — its name, stage and outcome among them;
-            // what it is missing is filled in.
-            if (IsBlankValue(keep.Value) && !IsBlankValue(drop.Value))
+            // what it is missing is filled in. An amount of zero, or none at all, is missing.
+            if (IsBlankAmount(keep) && !IsBlankAmount(drop))
             {
+                keep.Amount = drop.Amount;
                 keep.Value = drop.Value;
                 keep.Currency = drop.Currency ?? keep.Currency;
             }
@@ -195,9 +197,10 @@ public sealed class DealRepository : IDealRepository
             return true;
         }, ct);
 
-    private static bool IsBlankValue(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-        || (decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var amount) && amount == 0);
+    // Read from the stored amount, not by parsing the text again: the text of an older deal
+    // can be in any notation, and "1.234,56" read as invariant text is not 1234.56.
+    private static bool IsBlankAmount(Deal deal) =>
+        deal.Amount == 0m || (deal.Amount == null && string.IsNullOrWhiteSpace(deal.Value));
 
     /// <summary>HP-11: Record a deal stage change.</summary>
     public async Task AddStageChangeAsync(DealStageChange change, CancellationToken ct = default)

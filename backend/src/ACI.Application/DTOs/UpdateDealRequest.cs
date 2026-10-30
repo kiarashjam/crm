@@ -14,14 +14,20 @@ public record UpdateDealRequest
     public string? Name { get; init; }
 
     /// <summary>
-    /// Deal value/amount.
+    /// The deal's new amount, rounded to cents. When both this and <see cref="Value"/> are
+    /// sent, this one counts.
+    /// </summary>
+    public decimal? Amount { get; init; }
+
+    /// <summary>
+    /// The new amount as text, for clients from before <see cref="Amount"/>. Plain digits only.
     /// </summary>
     [StringLength(50, ErrorMessage = "Value cannot exceed 50 characters")]
     [RegularExpression(@"^-?\d+(\.\d{1,2})?$", ErrorMessage = "Value must be a valid number (e.g., 1000 or 1000.50)")]
     public string? Value { get; init; }
 
     /// <summary>
-    /// Currency code (e.g., USD, EUR, CHF).
+    /// ISO 4217 code (e.g. CHF, EUR). Changing it relabels the amount; nothing is converted.
     /// </summary>
     [StringLength(10, ErrorMessage = "Currency cannot exceed 10 characters")]
     public string? Currency { get; init; }

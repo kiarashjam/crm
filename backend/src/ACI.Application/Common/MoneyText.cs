@@ -115,9 +115,29 @@ public static class MoneyText
     public static decimal? StoredAmount(string? raw)
     {
         if (!TryParseAmount(raw, out var value)) return null;
+        return StoredAmount(value);
+    }
+
+    /// <summary>
+    /// An amount as <c>Deal.Amount</c> holds it: rounded to cents, or null when it has more
+    /// digits than decimal(18,2) holds. Line items add up to totals like 99.39999999999999,
+    /// which the column cannot store and nobody meant.
+    /// </summary>
+    public static decimal? StoredAmount(decimal value)
+    {
         var cents = Math.Round(value, 2, MidpointRounding.AwayFromZero);
         return Math.Abs(cents) > MaxStoredAmount ? null : cents;
     }
+
+    /// <summary>
+    /// The text <c>Deal.Value</c> keeps for an amount: plain digits, a point and cents only
+    /// when there are any ("85500", "99.40"). Older clients, the MCP tools and outbound
+    /// webhooks still read the text, and this is the one shape every parser agrees on.
+    /// </summary>
+    public static string ValueText(decimal amount) =>
+        amount == decimal.Truncate(amount)
+            ? decimal.Truncate(amount).ToString("0", CultureInfo.InvariantCulture)
+            : amount.ToString("0.00", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// The currency to attribute an amount to. Never guesses from the text: an
