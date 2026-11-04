@@ -94,7 +94,7 @@ describe('the queue', () => {
     localStorage.setItem('cadence.nextActions.panelOpen', 'false');
     const user = userEvent.setup();
     at('/dashboard');
-    await user.click(await screen.findByRole('button', { name: 'Ask Cadence AI' }));
+    await user.click(await screen.findByRole('button', { name: 'Ask CadenceE' }));
     expect(await screen.findByLabelText('Ask the agent')).toBeInTheDocument();
     expect(document.activeElement).toBe(screen.getByLabelText('Ask the agent'));
   });
@@ -134,7 +134,7 @@ describe('the queue', () => {
     at('/contacts');
     expect(await screen.findByText('Nothing on this page is waiting.')).toBeInTheDocument();
     expect(screen.queryByLabelText('Ask the agent')).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Ask Cadence AI' }));
+    await user.click(screen.getByRole('button', { name: 'Ask CadenceE' }));
     expect(await screen.findByLabelText('Ask the agent')).toBeInTheDocument();
     expect(document.activeElement).toBe(screen.getByLabelText('Ask the agent'));
   });
@@ -145,7 +145,7 @@ describe('the queue', () => {
     at('/dashboard');
     await screen.findByRole('link', { name: 'Ada' });
     expect(screen.queryByLabelText('Ask the agent')).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Ask Cadence AI' }));
+    await user.click(screen.getByRole('button', { name: 'Ask CadenceE' }));
     expect(await screen.findByLabelText('Ask the agent')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ada' })).toBeInTheDocument();
   });

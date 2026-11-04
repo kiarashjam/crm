@@ -19,7 +19,7 @@ public sealed class EmailSettings
 
     public string FromAddress { get; set; } = "";
 
-    public string FromName { get; set; } = "Cadence";
+    public string FromName { get; set; } = "CadenceE";
 
     /// <summary>
     /// Absolute origin of the SPA (http or https, with host), no trailing slash. Required for password reset links;

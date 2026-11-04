@@ -7,9 +7,9 @@ import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 
 const TOC = [
-  { href: '#what-heading', label: 'What Cadence does' },
+  { href: '#what-heading', label: 'What CadenceE does' },
   { href: '#generate-heading', label: 'Generating copy (4 steps)' },
-  { href: '#crm-heading', label: 'Your data in Cadence' },
+  { href: '#crm-heading', label: 'Your data in CadenceE' },
   { href: '#privacy-help-heading', label: 'Data & privacy' },
   { href: '#support-heading', label: 'Contact support' },
 ];
@@ -18,7 +18,7 @@ const STEPS = [
   { title: 'Pick what you’re writing', body: 'Sales email, follow-up, CRM note, deal message, or workflow copy. You can also start from a template.' },
   { title: 'Set the goal', body: 'Choose an outcome—e.g. schedule a meeting, follow up after a demo, close the deal—and add any extra context. We use your company name and brand tone from Settings.' },
   { title: 'Generate and tweak', body: 'Hit generate, then review the draft. Use the controls to make it shorter, friendlier, or more persuasive—then copy it or send it on.' },
-  { title: 'Attach it to a record', body: 'Open Attach copy, pick a lead, contact, or deal, and save. The writing stays in Cadence and in History. Nothing is emailed.' },
+  { title: 'Attach it to a record', body: 'Open Attach copy, pick a lead, contact, or deal, and save. The writing stays in CadenceE and in History. Nothing is emailed.' },
 ];
 
 export default function Help() {
@@ -32,7 +32,7 @@ export default function Help() {
             icon={HelpCircle}
             tone="orange"
             title="How It Works"
-            subtitle="A quick guide to getting the most out of Cadence"
+            subtitle="A quick guide to getting the most out of CadenceE"
           >
             <nav className="flex flex-wrap items-center gap-x-2 gap-y-1.5" aria-label="Table of contents">
               <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">On this page</h2>
@@ -59,14 +59,14 @@ export default function Help() {
               <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center">
                 <HelpCircle className="w-6 h-6 text-teal-600" />
               </div>
-              <h2 id="what-heading" className="text-2xl font-bold text-slate-900">What Cadence Does</h2>
+              <h2 id="what-heading" className="text-2xl font-bold text-slate-900">What CadenceE Does</h2>
             </div>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
               <p className="text-slate-700 mb-4">
-                Cadence drafts sales copy for you—emails, follow-ups, CRM notes, deal messages—in your brand voice. You pick the type and goal; we generate the text. No blank screen, no hopping between apps.
+                CadenceE drafts sales copy for you—emails, follow-ups, CRM notes, deal messages—in your brand voice. You pick the type and goal; we generate the text. No blank screen, no hopping between apps.
               </p>
               <p className="text-slate-700">
-                Everything stays inside Cadence until you send it. When you’re ready, you push the copy to the right contact or deal in your CRM. Fast, consistent, and on-brand.
+                Everything stays inside CadenceE until you send it. When you’re ready, you push the copy to the right contact or deal in your CRM. Fast, consistent, and on-brand.
               </p>
             </div>
           </section>
@@ -96,13 +96,13 @@ export default function Help() {
 
           {/* Your data in Cadence */}
           <section className="mb-12">
-            <h2 id="crm-heading" className="text-2xl font-bold text-slate-900 mb-6">Your Data in Cadence</h2>
+            <h2 id="crm-heading" className="text-2xl font-bold text-slate-900 mb-6">Your Data in CadenceE</h2>
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
               <p className="text-slate-700 mb-4">
-                <strong>Cadence is the only CRM you need.</strong> All your data — contacts, deals, leads, copy history — stays in Cadence. No external CRM is required.
+                <strong>CadenceE is the only CRM you need.</strong> All your data — contacts, deals, leads, copy history — stays in CadenceE. No external CRM is required.
               </p>
               <p className="text-slate-700">
-                Attach copy saves writing on a lead, contact, or deal <strong>in Cadence</strong>. Nothing is emailed and nothing is sent to another system.
+                Attach copy saves writing on a lead, contact, or deal <strong>in CadenceE</strong>. Nothing is emailed and nothing is sent to another system.
               </p>
             </div>
           </section>

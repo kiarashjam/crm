@@ -275,7 +275,7 @@ export default function LeadWebhook() {
                 </Button>
               </div>
               <p className="text-sm font-medium text-slate-900 mb-4">
-                Copy it now. Cadence keeps only a fingerprint of the key and cannot show it again.
+                Copy it now. CadenceE keeps only a fingerprint of the key and cannot show it again.
               </p>
               <Button
                 variant="outline"

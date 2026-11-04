@@ -58,8 +58,8 @@ export function OrganizationSection({
       </div>
 
       <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-        <p className="font-medium text-emerald-800">Cadence is your CRM</p>
-        <p className="text-sm text-emerald-700 mt-1">All data stays in Cadence — no external CRM required</p>
+        <p className="font-medium text-emerald-800">CadenceE is your CRM</p>
+        <p className="text-sm text-emerald-700 mt-1">All data stays in CadenceE — no external CRM required</p>
       </div>
 
       {!servesDemoData() && organizations.length > 0 && (

@@ -59,6 +59,7 @@ import {
   ParticleExplosion,
   ChevronDown,
 } from './homepage/animations';
+import { BrandName } from '@/app/components/BrandName';
 
 // ============================================
 // MAIN COMPONENT
@@ -112,9 +113,9 @@ export default function Homepage() {
             </div>
           </div>
           <div>
-            <span className="text-xl font-bold text-slate-900 block leading-none">Cadence</span>
+            <BrandName className="text-xl font-bold text-slate-900 block leading-none" />
             <span className="text-[10px] font-semibold text-orange-700 uppercase tracking-wider">
-              <WaveText text="CRM Platform" />
+              <WaveText text="Cadence Engine" />
             </span>
           </div>
         </Link>
@@ -1396,7 +1397,7 @@ export default function Homepage() {
                           </div>
                         </ShakeOnHover>
                         <div>
-                          <h3 className="text-2xl font-bold">The Cadence Way</h3>
+                          <h3 className="text-2xl font-bold">The CadenceE Way</h3>
                           <p className="text-white/80">Unified & powerful</p>
                         </div>
                       </div>
@@ -2001,7 +2002,7 @@ export default function Homepage() {
                   </span>
                 </h2>
                 <p className="text-lg text-slate-600 mb-8">
-                  Everything you need to know about Cadence CRM. Can't find what you're looking for?
+                  Everything you need to know about CadenceE. Can't find what you're looking for?
                 </p>
                 <Link 
                   to="/help" 
@@ -2421,7 +2422,7 @@ export default function Homepage() {
                 Ready to <GlitchText>transform</GlitchText> your sales?
               </h2>
               <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto">
-                Join <span className="font-bold">10,000+</span> sales teams using Cadence to close more deals, faster.
+                Join <span className="font-bold">10,000+</span> sales teams using CadenceE to close more deals, faster.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <MagneticButton>
@@ -2467,9 +2468,9 @@ export default function Homepage() {
                   <Sparkles className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <span className="text-xl font-bold text-white block">Cadence</span>
+                  <BrandName className="text-xl font-bold text-white block" />
                   <span className="text-[10px] font-semibold text-orange-500 uppercase tracking-wider">
-                    <WaveText text="CRM Platform" />
+                    <WaveText text="Cadence Engine" />
                   </span>
                 </div>
               </Link>
@@ -2517,7 +2518,7 @@ export default function Homepage() {
           </div>
 
           <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p>&copy; 2026 Cadence. All rights reserved.</p>
+            <p>&copy; 2026 CadenceE. All rights reserved.</p>
             <p className="flex items-center gap-2 text-sm">
               Made with <Heart className="w-4 h-4 text-red-500 animate-pulse" /> for sales teams everywhere
             </p>

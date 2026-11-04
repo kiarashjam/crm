@@ -219,7 +219,7 @@ export default function HospitalitySettings() {
               <Info className="h-4 w-4 shrink-0 text-amber-700" aria-hidden /> Only the club currency is applied today.
             </p>
             <p className="mt-1">
-              The tiers, dues, loyalty rates and venue points below are saved, but nothing in Cadence reads them yet.
+              The tiers, dues, loyalty rates and venue points below are saved, but nothing in CadenceE reads them yet.
               Closing a tab, checking a member in and an event check-in still award the built-in points, and each
               member&apos;s dues are the ones set on that member.
             </p>

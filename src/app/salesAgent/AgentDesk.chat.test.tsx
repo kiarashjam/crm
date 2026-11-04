@@ -137,7 +137,7 @@ describe('the ask box as a chat', () => {
   it('starts closed, as a bar that opens the chat, and closes again to that bar', async () => {
     open({ initialOpen: false, thinkingMs: 0 });
     expect(screen.queryByLabelText('Ask the agent')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Ask Cadence AI/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Ask CadenceE/ }));
     // The bar animates out first, then the chat opens with the cursor in its box.
     expect(await screen.findByLabelText('Ask the agent')).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByLabelText('Ask the agent'));

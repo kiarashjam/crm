@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import DemoBanner from '@/app/components/DemoBanner';
+import { BrandName } from '@/app/components/BrandName';
 
 export default function Privacy() {
   return (
@@ -12,11 +13,11 @@ export default function Privacy() {
             <ArrowLeft className="w-5 h-5" aria-hidden />
             Back to Home
           </Link>
-          <Link to="/" className="flex items-center gap-2" aria-label="Cadence home">
+          <Link to="/" className="flex items-center gap-2" aria-label="CadenceE home">
             <div className="w-10 h-10 bg-orange-600 rounded-lg flex items-center justify-center" aria-hidden>
               <Sparkles className="w-6 h-6 text-white" />
             </div>
-            <span className="text-xl font-bold text-slate-900">Cadence</span>
+            <BrandName className="text-xl font-bold text-slate-900" />
           </Link>
         </div>
       </header>
@@ -32,7 +33,7 @@ export default function Privacy() {
               <section className="mb-8">
                 <h2 className="text-2xl font-bold text-slate-900 mb-4">Introduction</h2>
                 <p className="text-slate-700 mb-4">
-                  Welcome to Cadence. We respect your privacy and are committed to protecting your personal data. This privacy policy explains how we collect, use, and safeguard your information when you use our service.
+                  Welcome to CadenceE. We respect your privacy and are committed to protecting your personal data. This privacy policy explains how we collect, use, and safeguard your information when you use our service.
                 </p>
               </section>
 
@@ -100,9 +101,9 @@ export default function Privacy() {
               </section>
 
               <section className="mb-8">
-                <h2 className="text-2xl font-bold text-slate-900 mb-4">Cadence as your CRM</h2>
+                <h2 className="text-2xl font-bold text-slate-900 mb-4">CadenceE as your CRM</h2>
                 <p className="text-slate-700 mb-4">
-                  Cadence is the only CRM you need for this app. All your data stays in Cadence; no external CRM is required. If we add an optional integration in the future (e.g. sync with another tool), we would use secure protocols and you could disconnect at any time from Settings.
+                  CadenceE is the only CRM you need for this app. All your data stays in CadenceE; no external CRM is required. If we add an optional integration in the future (e.g. sync with another tool), we would use secure protocols and you could disconnect at any time from Settings.
                 </p>
               </section>
 
