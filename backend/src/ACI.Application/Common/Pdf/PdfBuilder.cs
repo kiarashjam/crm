@@ -165,7 +165,7 @@ public sealed class PdfBuilder
         if (Title.Length > 0) sb.Append($"/Title {TextString(Title)} ");
         if (Author.Length > 0) sb.Append($"/Author {TextString(Author)} ");
         if (Subject.Length > 0) sb.Append($"/Subject {TextString(Subject)} ");
-        sb.Append("/Producer (Cadence CRM) ");
+        sb.Append("/Producer (CadenceE) ");
         if (CreatedUtc is { } at)
         {
             // PDF's own date syntax. The trailing Z is what says UTC rather than

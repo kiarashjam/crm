@@ -179,7 +179,7 @@ export default function Communications() {
         subject: form.subject.trim(),
         preview: form.preview.trim() || form.subject.trim(),
       });
-      toast.success('Message logged. Cadence did not deliver it.');
+      toast.success('Message logged. CadenceE did not deliver it.');
       setDialogOpen(false);
       await load();
     } catch {
@@ -458,7 +458,7 @@ export default function Communications() {
           <DialogHeader>
             <DialogTitle>Log a message</DialogTitle>
             <DialogDescription>
-              Record an email, SMS or push you sent a member. Cadence does not deliver it: send it yourself
+              Record an email, SMS or push you sent a member. CadenceE does not deliver it: send it yourself
               first.
             </DialogDescription>
           </DialogHeader>

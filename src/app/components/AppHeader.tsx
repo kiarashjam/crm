@@ -37,6 +37,7 @@ import LocalOnlyNotice from './LocalOnlyNotice';
 import LocalDataUploadDialog from './LocalDataUploadDialog';
 import { AppSideNav } from './AppSideNav';
 import { NextActions } from '@/app/salesAgent/NextActions';
+import { BrandName } from '@/app/components/BrandName';
 
 // HP-9: Global search bar component
 function GlobalSearchBar() {
@@ -348,7 +349,7 @@ export default function AppHeader() {
                 <Sparkles className="h-5 w-5 text-white drop-shadow-sm" />
               </div>
               <span className="hidden text-lg font-semibold tracking-tight text-slate-800 dark:text-white sm:inline">
-                Cadence
+                <BrandName />
               </span>
             </Link>
           </div>

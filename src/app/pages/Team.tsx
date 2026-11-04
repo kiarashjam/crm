@@ -1186,7 +1186,7 @@ export default function Team() {
           <DialogTitle>Add an existing user</DialogTitle>
           <p className="text-sm text-slate-500">
             Adds someone straight to this organization — no invitation email, and nothing for them
-            to accept. They must already have a Cadence account with this email address.
+            to accept. They must already have a CadenceE account with this email address.
           </p>
           <form onSubmit={handleAddExisting} className="mt-3 space-y-4">
             <div>
