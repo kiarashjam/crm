@@ -144,19 +144,26 @@ public sealed class ImportRepository : IImportRepository
         var leadIds = leads.Select(l => l.Id);
         var contactIds = contacts.Select(c => c.Id);
         var companyIds = companies.Select(c => c.Id);
-        // Custom field values the import wrote are its own. One it never finished is judged
-        // by when it started, so values written while it ran count as changes and are kept.
-        var since = batch.FinishedAtUtc ?? batch.StartedAtUtc;
 
         var leadRows = await leads
-            .Select(l => new { l.Id, l.Name, l.IsConverted, Edited = l.UpdatedAtUtc != null || l.ScoreIsManual })
+            .Select(l => new { l.Id, l.Name, l.IsConverted, Edited = l.UpdatedAtUtc != null || l.ScoreIsManual, l.CreatedAtUtc })
             .ToListAsync(ct);
         var contactRows = await contacts
-            .Select(c => new { c.Id, c.Name, c.ConvertedFromLeadId, c.IsArchived, Edited = c.UpdatedAtUtc != null })
+            .Select(c => new { c.Id, c.Name, c.ConvertedFromLeadId, c.IsArchived, Edited = c.UpdatedAtUtc != null, c.CreatedAtUtc })
             .ToListAsync(ct);
         var companyRows = await companies
-            .Select(c => new { c.Id, c.Name, Edited = c.UpdatedAtUtc != null })
+            .Select(c => new { c.Id, c.Name, Edited = c.UpdatedAtUtc != null, c.CreatedAtUtc })
             .ToListAsync(ct);
+
+        // Custom field values the import wrote are its own; one filled in later is a change.
+        // An import the server stopped part way has no finishing time, so its last record
+        // stands in, with a minute for the values of the row it was on.
+        var lastRecord = leadRows.Select(l => l.CreatedAtUtc)
+            .Concat(contactRows.Select(c => c.CreatedAtUtc))
+            .Concat(companyRows.Select(c => c.CreatedAtUtc))
+            .DefaultIfEmpty(batch.StartedAtUtc)
+            .Max();
+        var since = batch.FinishedAtUtc ?? lastRecord.AddMinutes(1);
 
         // Why each record stays; one with no reason is removed. The first reason found is the one given.
         var keep = new Dictionary<Guid, string>();

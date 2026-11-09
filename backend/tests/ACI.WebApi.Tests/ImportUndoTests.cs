@@ -182,6 +182,28 @@ public class ImportUndoTests
     }
 
     [Fact]
+    public async Task AnImportTheServerStoppedPartWayCanBeUndoneWithoutCountingItsOwnValuesAsChanges()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, userId, orgId) = await WorkspaceAsync(factory);
+        // Person 0's custom values were written by the import with the lead; Person 1's half
+        // an hour later, by someone filling them in.
+        var (batchId, leads) = await UnfinishedAsync(factory, userId, orgId, DateTime.UtcNow.AddHours(-2),
+            TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(30));
+
+        var listed = (await OkJson(await client.GetAsync("/api/imports"), "imports")).EnumerateArray().Single();
+        listed.GetProperty("running").GetBoolean().Should().BeFalse("it started two hours ago and stopped");
+        listed.GetProperty("canUndo").GetBoolean().Should().BeTrue();
+
+        var preview = await OkJson(await client.GetAsync($"/api/imports/{batchId}/undo"), "undo preview");
+
+        preview.GetProperty("leads").GetInt32().Should().Be(1);
+        var kept = preview.GetProperty("kept").EnumerateArray().Single();
+        kept.GetProperty("id").GetGuid().Should().Be(leads[1]);
+        kept.GetProperty("reason").GetString().Should().Be("has custom fields filled in after the import");
+    }
+
+    [Fact]
     public async Task OnlyWhoeverRanItOrAManagerCanUndoIt()
     {
         await using var factory = new CustomWebApplicationFactory();
