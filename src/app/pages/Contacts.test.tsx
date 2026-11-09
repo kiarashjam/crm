@@ -33,6 +33,10 @@ vi.mock('@/app/api/tasks', async () => ({
   getTasks: async () => [],
 }));
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
+// The figures above the list count up to their value, and the number shown while they
+// count sits beside the final one screen readers get ("201" + "640"). With reduced
+// motion each figure is shown at once, so no number caught mid-count can read as twenty.
+vi.mock('@/app/hooks/useMotionPreference', () => ({ useMotionPreference: () => true }));
 vi.mock('@/app/components/duplicates', () => ({ DuplicateMerge: () => null, CONTACT_DUPLICATES: {} }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), message: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
