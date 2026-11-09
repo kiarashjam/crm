@@ -109,13 +109,19 @@ export function factsPayload(type: string | undefined, draft: ActivityFactsDraft
   return payload;
 }
 
-/** What to send when editing: the same, plus clearing whatever the form emptied. */
-export function factsUpdatePayload(type: string | undefined, draft: ActivityFactsDraft): ActivityFactsPayload & {
+/**
+ * What to send when editing: the same, plus clearing whatever the form emptied. The
+ * time goes only when the edit changed it from `saved`, the draft the form opened with:
+ * the form holds it to the minute, and sent back with every edit it dropped the seconds
+ * of when a call was made each time only its subject was corrected.
+ */
+export function factsUpdatePayload(type: string | undefined, draft: ActivityFactsDraft, saved: ActivityFactsDraft): ActivityFactsPayload & {
   clearOutcome?: boolean;
   clearDuration?: boolean;
   clearDirection?: boolean;
 } {
-  const payload = factsPayload(type, draft);
+  const { occurredAtUtc, ...rest } = factsPayload(type, draft);
+  const payload: ActivityFactsPayload = occurredAtUtc && draft.when !== saved.when ? { ...rest, occurredAtUtc } : rest;
   return {
     ...payload,
     ...(payload.outcome === undefined && { clearOutcome: true }),

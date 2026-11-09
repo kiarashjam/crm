@@ -2,7 +2,7 @@
 // before the server would refuse it.
 import { describe, expect, it } from 'vitest';
 import {
-  activityFactsLine, activityTime, factsPayload, factsProblem, factsUpdatePayload, isOurResponse, outcomesFor, EMPTY_FACTS,
+  activityFactsLine, activityTime, factsDraftOf, factsPayload, factsProblem, factsUpdatePayload, isOurResponse, outcomesFor, EMPTY_FACTS,
 } from './activityFacts';
 import { toLocalInputValue } from './dateInputs';
 
@@ -31,9 +31,20 @@ describe('factsPayload', () => {
 
 describe('factsUpdatePayload', () => {
   it('clears what the form emptied, so an edit can take an outcome away', () => {
-    expect(factsUpdatePayload('call', { ...EMPTY_FACTS, outcome: 'busy' })).toEqual({
+    expect(factsUpdatePayload('call', { ...EMPTY_FACTS, outcome: 'busy' }, EMPTY_FACTS)).toEqual({
       outcome: 'busy', clearDuration: true, clearDirection: true,
     });
+  });
+
+  it('leaves the time out when the edit did not change it, so it stays as saved', () => {
+    // The form holds the time to the minute: sent back with every edit, a call made at
+    // 08:30:42 became 08:30:00 when only its subject was changed.
+    const saved = factsDraftOf({ occurredAt: '2026-11-09T08:30:42Z', createdAt: '2026-11-09T09:00:00Z' });
+
+    expect(factsUpdatePayload('note', saved, saved)).not.toHaveProperty('occurredAtUtc');
+
+    const moved = { ...saved, when: toLocalInputValue('2026-11-09T07:15:00Z') };
+    expect(factsUpdatePayload('note', moved, saved).occurredAtUtc).toBe('2026-11-09T07:15:00.000Z');
   });
 });
 

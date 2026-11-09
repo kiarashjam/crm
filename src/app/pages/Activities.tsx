@@ -331,7 +331,7 @@ export default function Activities() {
           subject: form.subject.trim() || undefined,
           body: form.body.trim() || undefined,
           participants: form.participants.trim() || undefined,
-          ...factsUpdatePayload(form.type, form.facts),
+          ...factsUpdatePayload(form.type, form.facts, factsDraftOf(editingActivity)),
         });
         if (updated) {
           setActivities((prev) => prev.map((a) => a.id === updated.id ? updated : a));
