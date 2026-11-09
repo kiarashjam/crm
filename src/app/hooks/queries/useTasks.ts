@@ -28,7 +28,7 @@ export function useTasks(options?: GetTasksOptions) {
 export function useTaskStats() {
   return useQuery({
     queryKey: [...queryKeys.tasks.all, 'stats'],
-    queryFn: getTaskStats,
+    queryFn: () => getTaskStats(),
   });
 }
 

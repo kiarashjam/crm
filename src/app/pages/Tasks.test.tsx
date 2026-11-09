@@ -137,3 +137,26 @@ describe('a refused change on a task', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 });
+
+describe('whose tasks', () => {
+  it("opens on my tasks and their figures, and shows the team's on the switch, remembered", async () => {
+    localStorage.clear();
+    const { unmount } = show();
+    await screen.findByRole('article', { name: 'Card Send the offer' });
+
+    expect(api.getTasks).toHaveBeenCalledWith({ scope: 'mine' });
+    expect(api.getTaskStats).toHaveBeenCalledWith('mine');
+    expect(screen.getByRole('button', { name: 'My tasks' })).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Team' }));
+
+    await waitFor(() => expect(api.getTasks).toHaveBeenLastCalledWith({ scope: 'team' }));
+    expect(api.getTaskStats).toHaveBeenLastCalledWith('team');
+    unmount();
+
+    api.getTasks.mockClear();
+    show();
+    await screen.findByRole('article', { name: 'Card Send the offer' });
+    expect(api.getTasks).toHaveBeenCalledWith({ scope: 'team' });
+  });
+});
