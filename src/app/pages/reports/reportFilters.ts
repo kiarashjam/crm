@@ -124,7 +124,7 @@ export function addMonths(month: string, by: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-/** "2026-10" as "Oct 2026" in `locale`. */
+/** "2026-10" as "Oct 2026", in `locale` or else the viewer's language. */
 export function monthLabel(month: string, locale?: string): string {
   const [y, m] = month.split('-').map(Number);
   if (!y || !m) return month;

@@ -57,7 +57,7 @@ export function SavedForecastPanel() {
   // The month a save is for is the workspace's, as the server counts it: in a browser
   // behind the club's clock, the 1st there was still last month here.
   const money = useMoney();
-  const { locale, timeZone } = money;
+  const { timeZone } = money;
   const amount = (value: number, currency: string) => money.format(value, currency, 'never');
   const thisMonth = monthOf(new Date(), timeZone);
   const [month, setMonth] = useState(thisMonth);
@@ -136,7 +136,7 @@ export function SavedForecastPanel() {
                 for, and arriving under another month it was shown as that one's. */}
             <button type="button" aria-label="Previous month" onClick={() => showMonth(-1)} disabled={saving}
               className="h-9 w-8 rounded-l-xl text-slate-500 hover:bg-slate-50 disabled:opacity-50"><ChevronLeft className="mx-auto h-4 w-4" /></button>
-            <span className="min-w-[88px] px-1 text-center text-sm font-medium text-slate-700">{monthLabel(month, locale)}</span>
+            <span className="min-w-[88px] px-1 text-center text-sm font-medium text-slate-700">{monthLabel(month)}</span>
             <button type="button" aria-label="Next month" onClick={() => showMonth(1)} disabled={saving}
               className="h-9 w-8 rounded-r-xl text-slate-500 hover:bg-slate-50 disabled:opacity-50"><ChevronRight className="mx-auto h-4 w-4" /></button>
           </div>
@@ -147,7 +147,7 @@ export function SavedForecastPanel() {
               onClick={save}
               className="h-9 rounded-xl bg-slate-900 px-3 text-sm font-medium text-white disabled:opacity-60"
             >
-              {saving ? 'Saving…' : set && set.saves.length > 0 ? 'Save again (keeps the earlier one)' : `Save ${monthLabel(month, locale)}’s forecast`}
+              {saving ? 'Saving…' : set && set.saves.length > 0 ? 'Save again (keeps the earlier one)' : `Save ${monthLabel(month)}’s forecast`}
             </button>
           )}
         </div>
@@ -161,7 +161,7 @@ export function SavedForecastPanel() {
 
       {set && set.saves.length === 0 && !failed && (
         <p className="mt-3 text-[12px] text-slate-500">
-          Nothing saved for {monthLabel(month, locale)}.{canSave ? ' Saving keeps the forecast as it stands now, to compare with what closes.' : ''}
+          Nothing saved for {monthLabel(month)}.{canSave ? ' Saving keeps the forecast as it stands now, to compare with what closes.' : ''}
         </p>
       )}
 
@@ -177,7 +177,7 @@ export function SavedForecastPanel() {
             >
               {set.saves.map((s, i) => (
                 <option key={s.snapshotId} value={s.snapshotId}>
-                  {new Date(s.savedAtUtc).toLocaleString(locale, { timeZone, dateStyle: 'medium', timeStyle: 'short' })} by {s.savedByName}{i === set.saves.length - 1 ? ' (first)' : ''}
+                  {new Date(s.savedAtUtc).toLocaleString(undefined, { timeZone, dateStyle: 'medium', timeStyle: 'short' })} by {s.savedByName}{i === set.saves.length - 1 ? ' (first)' : ''}
                 </option>
               ))}
             </select>
@@ -201,7 +201,7 @@ export function SavedForecastPanel() {
                   <th className="py-1.5 pr-3 font-semibold">Owner</th>
                   <th className="py-1.5 pr-3 text-right font-semibold">Forecast (weighted)</th>
                   <th className="py-1.5 pr-3 text-right font-semibold">Expected value</th>
-                  <th className="py-1.5 text-right font-semibold">Won in {monthLabel(month, locale)}</th>
+                  <th className="py-1.5 text-right font-semibold">Won in {monthLabel(month)}</th>
                 </tr>
               </thead>
               <tbody>

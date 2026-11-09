@@ -8,9 +8,9 @@ export interface Organization {
   isOwner: boolean;
   /** 0 Owner, 1 Member, 2 Manager. */
   role: number;
-  /** ISO code new deals are priced in and club amounts are shown in. Older servers send none. */
+  /** ISO code new deals are priced in. Older servers send none. Club pages keep their own (hospitality settings). */
   currency?: string;
-  /** How amounts and dates are written, e.g. "de-CH". */
+  /** How amounts are written (the number format), e.g. "de-CH". Dates stay in the viewer's language. */
   locale?: string;
   /** IANA zone the workspace's days and months begin in, e.g. "Europe/Zurich". */
   timeZone?: string;

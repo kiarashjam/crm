@@ -41,20 +41,20 @@ beforeEach(() => {
   toast.error.mockReset();
 });
 
-describe('the workspace currency, locale and time zone', () => {
+describe('the workspace currency, number format and time zone', () => {
   it('lets a manager change them, saves what was chosen and reads the workspace again', async () => {
     state.org = workspace({ isOwner: false, role: 2 });
     const user = userEvent.setup();
     render(<RegionalSettingsCard />);
 
     expect(screen.getByLabelText('Currency')).toHaveValue('CHF');
-    expect(screen.getByLabelText('Language and format')).toHaveValue('de-CH');
+    expect(screen.getByLabelText('Number format')).toHaveValue('de-CH');
     expect(screen.getByLabelText('Time zone')).toHaveValue('Europe/Zurich');
     // Nothing to save until something changes.
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 
     await user.selectOptions(screen.getByLabelText('Currency'), 'EUR');
-    await user.selectOptions(screen.getByLabelText('Language and format'), 'fr-CH');
+    await user.selectOptions(screen.getByLabelText('Number format'), 'fr-CH');
     await user.selectOptions(screen.getByLabelText('Time zone'), 'Europe/Paris');
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -94,7 +94,7 @@ describe('the workspace currency, locale and time zone', () => {
     render(<RegionalSettingsCard />);
 
     expect(screen.getByLabelText('Currency')).toHaveValue('SEK');
-    expect(screen.getByLabelText('Language and format')).toHaveValue('sv-SE');
+    expect(screen.getByLabelText('Number format')).toHaveValue('sv-SE');
     expect(screen.getByLabelText('Time zone')).toHaveValue('Europe/Stockholm');
   });
 

@@ -193,6 +193,23 @@ describe('Reports', () => {
     expect(screen.getByText(/1 open deal past its close date/)).toBeInTheDocument();
   });
 
+  it("writes months in the viewer's language and amounts in the workspace's number format", async () => {
+    // The rest of the app is in English. With the club's de-CH, month names came out
+    // in German ("Okt. 2026") between English headings.
+    workspace.current = { id: 'o', name: 'Pavillon 46', currency: 'CHF', locale: 'de-CH', timeZone: 'Europe/Zurich' };
+    getForecast.mockImplementation(async () => ({
+      ...forecast,
+      rows: [{ month: '2026-10', currency: 'CHF', count: 1, value: 20000, weighted: 10000, covered: 1, missing: 0, unreadable: 0, wonCount: 0, wonValue: 0 }],
+    }));
+    renderPage();
+    await screen.findByText('Anna Keller');
+
+    const viewers = new Date(Date.UTC(2026, 9, 1)).toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    expect(screen.getByText(viewers)).toBeInTheDocument();
+    expect(screen.queryByText(/Okt/)).toBeNull();
+    expect(screen.getAllByText(new RegExp(swiss(10000))).length).toBeGreaterThan(0);
+  });
+
   it('exports the owners table as CSV, every currency in it', async () => {
     renderPage();
     await screen.findByText('Anna Keller');

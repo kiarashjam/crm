@@ -1,8 +1,8 @@
 namespace ACI.Application.DTOs;
 
 /// <summary>
-/// A workspace as one of its members sees it, with the currency, locale and time zone
-/// the app formats its amounts and dates in.
+/// A workspace as one of its members sees it, with the currency new deals are priced in,
+/// the locale its amounts are written in, and the time zone its days and months begin in.
 /// </summary>
 public record OrganizationDto(
     Guid Id,

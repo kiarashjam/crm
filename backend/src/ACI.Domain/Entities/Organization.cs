@@ -29,11 +29,15 @@ public class Organization : Common.BaseEntity
     public string? OutboundWebhookUrl { get; set; }
     public string? OutboundWebhookSecret { get; set; }
     /// <summary>
-    /// ISO 4217 code new deals are priced in unless they say otherwise, and club amounts
-    /// are shown in. A label only: changing it converts nothing.
+    /// ISO 4217 code new deals are priced in unless they say otherwise. A label only:
+    /// changing it converts nothing. Club pages keep their own currency in the hospitality
+    /// settings.
     /// </summary>
     public string Currency { get; set; } = "CHF";
-    /// <summary>How amounts and dates are written for this workspace, as a BCP 47 name ("de-CH").</summary>
+    /// <summary>
+    /// How amounts are written for this workspace (its number format), as a BCP 47 name
+    /// ("de-CH"). Month and day names stay in each viewer's language, as the app is in English.
+    /// </summary>
     public string Locale { get; set; } = "de-CH";
     /// <summary>IANA time zone the workspace's days and months begin in, for reports and forecasts.</summary>
     public string TimeZone { get; set; } = "Europe/Zurich";

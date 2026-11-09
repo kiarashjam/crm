@@ -38,9 +38,9 @@ export function currencyOptions(current?: string | null): { code: string; name: 
 
 /** What a workspace works in. */
 export interface Regional {
-  /** ISO 4217 code new deals are priced in and club amounts are shown in. */
+  /** ISO 4217 code new deals are priced in. */
   currency: string;
-  /** BCP 47 name amounts and dates are written for ("de-CH"). */
+  /** BCP 47 name amounts are written for ("de-CH"): the number format. Dates stay in the viewer's language. */
   locale: string;
   /** IANA zone the workspace's days and months begin in ("Europe/Zurich"). */
   timeZone: string;

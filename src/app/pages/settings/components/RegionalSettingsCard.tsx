@@ -1,6 +1,6 @@
-// What the workspace works in: the currency new deals are priced in, how amounts and
-// dates are written, and the time zone its days and months begin in for reports and
-// forecasts.
+// What the workspace works in: the currency new deals are priced in, how amounts are
+// written, and the time zone its days and months begin in for reports, forecasts and
+// the day-by-day lists.
 //
 // These were missing altogether, so a Swiss club's deals without a currency showed as
 // dollars and its months began at UTC midnight. They belong to the workspace, not to
@@ -14,7 +14,11 @@ import { isOrgAdmin, updateOrganizationSettings } from '@/app/api/organizations'
 import { servesDemoData } from '@/app/api/apiClient';
 import { currencyOptions, formatMoney, regionalOf, type Regional } from '@/app/lib/money';
 
-/** The locales offered: the club's own languages first. A workspace in another keeps it. */
+/**
+ * The number formats offered, by the locale that writes them: the club's own first. A
+ * workspace in another keeps it. Month and day names stay in each viewer's language,
+ * as the rest of the app is in English.
+ */
 const LOCALES: { code: string; name: string }[] = [
   { code: 'de-CH', name: 'German (Switzerland)' },
   { code: 'fr-CH', name: 'French (Switzerland)' },
@@ -44,11 +48,20 @@ function timeZones(current: string): string[] {
 function preview(r: Regional): { money: string; date: string } {
   let date: string;
   try {
-    date = new Date().toLocaleString(r.locale, { timeZone: r.timeZone, dateStyle: 'full', timeStyle: 'short' });
+    date = new Date().toLocaleString(undefined, { timeZone: r.timeZone, dateStyle: 'full', timeStyle: 'short' });
   } catch {
     date = '';
   }
   return { money: formatMoney(85500.5, r.currency, { locale: r.locale }), date };
+}
+
+/** 85500.5 as a locale writes it, to tell the formats apart in the list. */
+function sample(locale: string): string {
+  try {
+    return new Intl.NumberFormat(locale, { minimumFractionDigits: 2 }).format(85500.5);
+  } catch {
+    return '';
+  }
 }
 
 const field = 'w-full h-11 px-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none disabled:bg-slate-50 disabled:text-slate-600';
@@ -77,7 +90,7 @@ export function RegionalSettingsCard() {
     try {
       await updateOrganizationSettings(currentOrg.id, form);
       await refreshOrgs();
-      toast.success('Workspace currency, language and time zone saved.');
+      toast.success('Workspace currency, number format and time zone saved.');
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : 'The settings were not saved.');
     } finally {
@@ -89,11 +102,13 @@ export function RegionalSettingsCard() {
     <section aria-labelledby="regional-settings" className="pt-6 border-t border-slate-200">
       <h3 id="regional-settings" className="font-semibold text-slate-900 mb-1 flex items-center gap-2">
         <Globe2 className="w-4 h-4" aria-hidden />
-        Currency, language and time zone
+        Currency, number format and time zone
       </h3>
       <p className="text-sm text-slate-600 mb-4">
         New deals are priced in this currency unless someone picks another. Deals keep the currency they were
-        priced in: changing it converts nothing. Reports and forecasts count days and months in the time zone.
+        priced in: changing it converts nothing. Amounts are written in the number format, and reports,
+        forecasts and lists by day count days and months in the time zone. Club pages keep the club currency
+        set in Hospitality settings.
       </p>
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="block text-sm font-medium text-slate-700">
@@ -110,14 +125,14 @@ export function RegionalSettingsCard() {
           </select>
         </label>
         <label className="block text-sm font-medium text-slate-700">
-          Language and format
+          Number format
           <select
             className={`${field} mt-1.5`}
             value={form.locale}
             disabled={!canEdit || saving}
             onChange={(e) => setForm((f) => ({ ...f, locale: e.target.value }))}
           >
-            {locales.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}
+            {locales.map((l) => <option key={l.code} value={l.code}>{l.name} · {sample(l.code)}</option>)}
           </select>
         </label>
         <label className="block text-sm font-medium text-slate-700">

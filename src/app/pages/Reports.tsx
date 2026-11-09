@@ -74,10 +74,11 @@ export default function Reports() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [teams, setTeams] = useState<SalesTeam[]>([]);
   usePageLoading(loading);
-  // Every figure is written in the workspace's format, and its periods and months
-  // begin at the workspace's midnight, not at this browser's.
+  // Every amount is written in the workspace's number format, and its periods and
+  // months begin at the workspace's midnight, not at this browser's. Month and day
+  // names stay in the viewer's language, like the rest of the page.
   const regional = useMoney();
-  const { timeZone, locale } = regional;
+  const { timeZone } = regional;
   const money = (n: number, currency: string) => regional.format(n, currency, 'never');
   const orgs = useOrgOptional();
   const org = orgs?.currentOrg ?? null;
@@ -159,7 +160,7 @@ export default function Reports() {
   const firstDay = period ? dateInputValue(new Date(period.fromUtc), timeZone) : '';
   const lastDay = period ? lastDayOf(period.toUtc, timeZone) : '';
   const periodText = period
-    ? `${new Date(period.fromUtc).toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone })} – ${new Date(Date.parse(period.toUtc) - 1).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric', timeZone })}`
+    ? `${new Date(period.fromUtc).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone })} – ${new Date(Date.parse(period.toUtc) - 1).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone })}`
     : '';
   const exportTable = <T,>(t: CsvTable<T>) => downloadCsv(csvFileName(t.name, firstDay, lastDay), t.rows, t.columns);
   // Leads and activities have no pipeline or currency, so those filters cannot narrow
@@ -200,8 +201,8 @@ export default function Reports() {
     ? topNWithOther(groupSum(summary.leads.bySource, (r) => humanise(r.key), (r) => r.count), 6)
     : []), [summary]);
   const bucket = period?.bucket ?? 'day';
-  const leadSeries = useMemo(() => (summary?.leads.createdSeries ?? []).map((p) => ({ name: bucketLabel(p.start, bucket, locale), value: p.count })), [summary, bucket, locale]);
-  const activitySeries = useMemo(() => (summary?.activities.series ?? []).map((p) => ({ name: bucketLabel(p.start, bucket, locale), value: p.count })), [summary, bucket, locale]);
+  const leadSeries = useMemo(() => (summary?.leads.createdSeries ?? []).map((p) => ({ name: bucketLabel(p.start, bucket), value: p.count })), [summary, bucket]);
+  const activitySeries = useMemo(() => (summary?.activities.series ?? []).map((p) => ({ name: bucketLabel(p.start, bucket), value: p.count })), [summary, bucket]);
   const forecastRows = useMemo(() => (forecast && cur ? forecast.rows.filter((r) => r.currency === cur) : []), [forecast, cur]);
 
   /**
@@ -565,7 +566,7 @@ export default function Reports() {
                         <tbody>
                           {forecastRows.map((r) => (
                             <tr key={r.month} className="border-t border-slate-100">
-                              <td className="py-1.5 pr-3 text-slate-700">{monthLabel(r.month, locale)}</td>
+                              <td className="py-1.5 pr-3 text-slate-700">{monthLabel(r.month)}</td>
                               <td className="py-1.5 pr-3 text-right text-slate-900">{money(r.value, r.currency)}<span className="text-slate-400"> · {r.count}</span></td>
                               <td className="py-1.5 pr-3 text-right font-medium text-slate-900">{money(r.weighted, r.currency)}</td>
                               <td className="py-1.5 pr-3 text-right text-slate-500">{r.missing}</td>
