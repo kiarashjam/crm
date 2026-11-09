@@ -1,10 +1,8 @@
 using ACI.Application.Common;
-using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Services;
 
@@ -34,17 +32,20 @@ public interface ISequenceService
 /// is the one on their record today.
 /// </para>
 /// <para>
-/// A step only advances once it has actually happened. A send that fails is tried
-/// again later rather than recorded as sent, and an email is only logged against
-/// the lead when it really went.
+/// An email step hands its email to the outbox, which fills it, checks the
+/// suppression list again, retries a send that fails and writes it on the timeline
+/// once it has gone. The next step waits until it has: a sequence never overtakes its
+/// own email, and one the outbox gives up on stops the enrollment.
 /// </para>
 /// </remarks>
 public sealed class SequenceService : ISequenceService
 {
     /// <summary>How long a claimed step is held before another instance may retry it.</summary>
     internal static readonly TimeSpan ClaimFor = TimeSpan.FromMinutes(15);
-    /// <summary>When a send fails, try again after this long.</summary>
+    /// <summary>When a step could not be done (a task not saved), try again after this long.</summary>
     internal static readonly TimeSpan RetryAfter = TimeSpan.FromHours(1);
+    /// <summary>How often to look again while the last step's email is still in the outbox.</summary>
+    internal static readonly TimeSpan HoldFor = TimeSpan.FromMinutes(15);
 
     /// <summary>The two states a person can set. The rest belong to the runner.</summary>
     private static readonly HashSet<string> SettableStatuses = new(StringComparer.OrdinalIgnoreCase) { "active", "paused" };
@@ -59,28 +60,22 @@ public sealed class SequenceService : ISequenceService
     };
 
     private readonly ISequenceRepository _sequences;
-    private readonly IEmailSender _email;
-    private readonly IOutreachMail _outreach;
+    private readonly IOutbox _outbox;
     private readonly IActivityService _activities;
     private readonly ITaskService _tasks;
-    private readonly EmailSettings _emailSettings;
     private readonly ILogger<SequenceService> _logger;
 
     public SequenceService(
         ISequenceRepository sequences,
-        IEmailSender email,
-        IOutreachMail outreach,
+        IOutbox outbox,
         IActivityService activities,
         ITaskService tasks,
-        IOptions<EmailSettings> emailSettings,
         ILogger<SequenceService> logger)
     {
         _sequences = sequences;
-        _email = email;
-        _outreach = outreach;
+        _outbox = outbox;
         _activities = activities;
         _tasks = tasks;
-        _emailSettings = emailSettings.Value;
         _logger = logger;
     }
 
@@ -247,6 +242,16 @@ public sealed class SequenceService : ISequenceService
             return;
         }
 
+        // The last step's email is still waiting in the outbox (the mail server did not
+        // take it yet). The next step waits for it, so the sequence never overtakes its
+        // own email; one the outbox gives up on stops the enrollment.
+        if (await _outbox.HasQueuedAsync(enrollment.Id, ct))
+        {
+            enrollment.NextActionAtUtc = now.Add(HoldFor);
+            await _sequences.SaveEnrollmentAsync(enrollment, ct);
+            return;
+        }
+
         var target = await _sequences.TargetStateAsync(enrollment.TargetType, enrollment.TargetId, enrollment.OrganizationId, ct);
         if (StopReason(target) is { } reason)
         {
@@ -255,7 +260,7 @@ public sealed class SequenceService : ISequenceService
         }
 
         var step = steps[enrollment.CurrentStep];
-        var outcome = await ExecuteStepAsync(sequence, enrollment, step, target, ct);
+        var (outcome, why) = await ExecuteStepAsync(sequence, enrollment, step, target, ct);
         if (outcome == StepOutcome.Retry)
         {
             enrollment.NextActionAtUtc = now.Add(RetryAfter);
@@ -264,7 +269,7 @@ public sealed class SequenceService : ISequenceService
         }
         if (outcome == StepOutcome.Stop)
         {
-            await StopAsync(enrollment, "there is no email address to send to", ct);
+            await StopAsync(enrollment, why ?? "the step could not be done", ct);
             return;
         }
 
@@ -279,6 +284,8 @@ public sealed class SequenceService : ISequenceService
     {
         if (!target.Exists) return "they are no longer in this workspace";
         if (target.DoNotContact) return "they are marked do not contact";
+        if (target.SuppressedAs == EmailSuppressionReasons.SpamReport) return "they marked the workspace's email as spam";
+        if (target.SuppressedAs != null) return "their email address bounced";
         if (target.IsArchived) return "they are archived";
         if (target.IsConverted) return "they have been converted";
         if (target.Status is { } status && FinishedStatuses.Contains(status.Trim())) return $"their status is {status.Trim()}";
@@ -287,34 +294,39 @@ public sealed class SequenceService : ISequenceService
 
     private enum StepOutcome { Done, Retry, Stop }
 
-    private async Task<StepOutcome> ExecuteStepAsync(
+    private async Task<(StepOutcome Outcome, string? Why)> ExecuteStepAsync(
         OutreachSequence sequence, OutreachEnrollment enrollment, OutreachStep step, SequenceTargetState target, CancellationToken ct)
     {
         var type = step.Type.Trim().ToLowerInvariant();
-        if (type == "wait") return StepOutcome.Done;
+        if (type == "wait") return (StepOutcome.Done, null);
 
         if (type == "email")
         {
             var to = target.Email?.Trim();
-            if (string.IsNullOrWhiteSpace(to)) return StepOutcome.Stop;
+            if (string.IsNullOrWhiteSpace(to)) return (StepOutcome.Stop, "there is no email address to send to");
+            if (enrollment.OrganizationId is not Guid organizationId) return (StepOutcome.Stop, "it has no workspace to send from");
 
-            var name = target.Name ?? enrollment.TargetName;
-            var subject = Fill(string.IsNullOrWhiteSpace(step.Subject) ? sequence.Name : step.Subject, name, target.CompanyName);
-            var text = Fill(step.Body ?? "", name, target.CompanyName);
-            // Under the workspace's name, and a reply reaches whoever works the lead,
-            // or else whoever enrolled them. The footer says how to stop it.
-            var sender = await _outreach.SenderAsync(enrollment.OrganizationId, target.OwnerUserId ?? enrollment.EnrolledByUserId, ct);
-            var mail = _outreach.Body(enrollment.OrganizationId, sender.WorkspaceName, text, [to],
-                enrollment.TargetType == "lead" ? TrackingUrl(enrollment.TargetId) : null);
-
-            if (!await _email.SendOutreachAsync(
-                    new OutreachEmail(to, name, subject, mail.Text, mail.Html, sender.WorkspaceName, sender.ReplyTo, mail.UnsubscribeUrl), ct))
+            // The outbox fills the placeholders, sends it under the workspace's name with
+            // replies to whoever works the lead (or else whoever enrolled them), retries it
+            // when the mail server does not take it, and puts it on the timeline once it
+            // has gone. The address is the record's own, as it is today.
+            var queued = await _outbox.QueueEmailAsync(new OutboundEmailRequest
             {
-                _logger.LogWarning("Sequence email for enrollment {EnrollmentId} was not delivered; retrying later", enrollment.Id);
-                return StepOutcome.Retry;
-            }
-            await LogAsync(enrollment, "email", subject, text, ct);
-            return StepOutcome.Done;
+                OrganizationId = organizationId,
+                Source = OutboundSources.Sequence,
+                SourceId = enrollment.Id,
+                To = [to],
+                RecipientName = target.Name ?? enrollment.TargetName,
+                Subject = string.IsNullOrWhiteSpace(step.Subject) ? sequence.Name : step.Subject,
+                Body = step.Body ?? "",
+                CreatedByUserId = enrollment.EnrolledByUserId,
+                ReplyToUserId = target.OwnerUserId ?? enrollment.EnrolledByUserId,
+                LeadId = enrollment.TargetType == "lead" ? enrollment.TargetId : null,
+                ContactId = enrollment.TargetType == "contact" ? enrollment.TargetId : null,
+                TrackOpens = enrollment.TargetType == "lead",
+            }, ct);
+            // Refused: someone at that address is on the suppression list.
+            return queued.IsSuccess ? (StepOutcome.Done, null) : (StepOutcome.Stop, queued.Error.Description);
         }
 
         if (type is "task" or "call")
@@ -331,11 +343,11 @@ public sealed class SequenceService : ISequenceService
                 ContactId = enrollment.TargetType == "contact" ? enrollment.TargetId : null,
                 AssigneeId = target.OwnerUserId,
             }, ct);
-            return created.IsSuccess ? StepOutcome.Done : StepOutcome.Retry;
+            return (created.IsSuccess ? StepOutcome.Done : StepOutcome.Retry, null);
         }
 
         await LogAsync(enrollment, "note", step.Subject ?? step.TaskTitle ?? sequence.Name, step.Body, ct);
-        return StepOutcome.Done;
+        return (StepOutcome.Done, null);
     }
 
     /// <summary>Record what the sequence did, as automated — it is not a person responding.</summary>
@@ -364,35 +376,6 @@ public sealed class SequenceService : ISequenceService
     {
         enrollment.Status = "completed";
         enrollment.NextActionAtUtc = null;
-    }
-
-    /// <summary>
-    /// Fills {{firstName}}, {{name}} and {{company}}. Only {{firstName}} used to be
-    /// filled, and only in the body: "{{company}}" — which the editor suggests — and
-    /// any placeholder in a subject went out to the prospect literally.
-    /// </summary>
-    internal static string Fill(string template, string? name, string? company) =>
-        template
-            .Replace("{{firstName}}", FirstName(name ?? ""), StringComparison.OrdinalIgnoreCase)
-            .Replace("{{name}}", (name ?? "").Trim(), StringComparison.OrdinalIgnoreCase)
-            .Replace("{{company}}", (company ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>The email-open pixel URL, or null when this API has no public address to give.</summary>
-    internal string? TrackingUrl(Guid leadId)
-    {
-        // The setting defaults to http://localhost:5160, and nothing in production
-        // sets it. A pixel pointing there can never be fetched by a recipient, so it
-        // is left out rather than shipped broken.
-        if (!Uri.TryCreate((_emailSettings.ApiBaseUrl ?? "").Trim(), UriKind.Absolute, out var api)) return null;
-        if (api.IsLoopback || api.Scheme != Uri.UriSchemeHttps) return null;
-        return $"{api.GetLeftPart(UriPartial.Authority)}{api.AbsolutePath.TrimEnd('/')}/api/public/track/{leadId}";
-    }
-
-    private static string FirstName(string name)
-    {
-        var trimmed = name.Trim();
-        var space = trimmed.IndexOf(' ');
-        return space < 0 ? trimmed : trimmed[..space];
     }
 
     private static List<OutreachStep> Steps(Guid sequenceId, IReadOnlyList<SequenceStepDto>? steps) =>

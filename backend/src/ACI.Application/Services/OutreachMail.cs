@@ -7,9 +7,14 @@ using Microsoft.Extensions.Options;
 namespace ACI.Application.Services;
 
 /// <summary>Who a workspace's email goes out as, and who a reply reaches.</summary>
-/// <param name="WorkspaceName">Shown beside the configured sender address. Null when there is no workspace.</param>
+/// <param name="WorkspaceName">Shown beside the sender address. Null when there is no workspace.</param>
 /// <param name="ReplyTo">The address replies go to, or null when nobody suitable has one.</param>
-public sealed record OutreachSender(string? WorkspaceName, string? ReplyTo);
+/// <param name="ReplyToName">The name of the person <paramref name="ReplyTo"/> belongs to.</param>
+/// <param name="FromAddress">
+/// The workspace's own sender address, when its domain is one the mail service has
+/// verified; null means the configured shared address.
+/// </param>
+public sealed record OutreachSender(string? WorkspaceName, string? ReplyTo, string? ReplyToName = null, string? FromAddress = null);
 
 /// <summary>The two parts of a workspace's email as they go out, footer included.</summary>
 /// <param name="UnsubscribeUrl">
@@ -19,8 +24,8 @@ public sealed record OutreachSender(string? WorkspaceName, string? ReplyTo);
 public sealed record OutreachBody(string Text, string Html, string? UnsubscribeUrl);
 
 /// <summary>
-/// The sending side of email that leaves on a workspace's behalf: the composer,
-/// sequences and automations.
+/// The sending side of email that leaves on a workspace's behalf, which the outbox
+/// uses for every message: who it is from, who a reply reaches, and the footer.
 /// </summary>
 public interface IOutreachMail
 {
@@ -37,6 +42,9 @@ public interface IOutreachMail
     /// part when one is given.
     /// </summary>
     OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null);
+
+    /// <summary>The email-open image for a lead, or null when this API has no public address to give.</summary>
+    string? TrackingUrl(Guid leadId);
 }
 
 /// <remarks>
@@ -71,16 +79,40 @@ public sealed class OutreachMail : IOutreachMail
     public async Task<OutreachSender> SenderAsync(Guid? organizationId, Guid? replyToUserId, CancellationToken ct = default)
     {
         var workspace = organizationId is Guid id ? await _organizations.GetByIdAsync(id, ct) : null;
+        var from = VerifiedSendingAddress(workspace?.SendingAddress);
         foreach (var candidate in new[] { replyToUserId, workspace?.OwnerUserId }.Distinct())
         {
             if (candidate is not Guid userId) continue;
             // Someone who has left no longer answers for this workspace.
             if (organizationId is Guid org && await _organizations.GetMemberRoleAsync(userId, org, ct) == null) continue;
-            var email = (await _users.GetByIdAsync(userId, ct))?.Email?.Trim();
+            var user = await _users.GetByIdAsync(userId, ct);
+            var email = user?.Email?.Trim();
             if (!string.IsNullOrEmpty(email) && ValidationHelper.IsValidEmail(email))
-                return new OutreachSender(workspace?.Name, email);
+                return new OutreachSender(workspace?.Name, email, user!.Name?.Trim(), from);
         }
-        return new OutreachSender(workspace?.Name, null);
+        return new OutreachSender(workspace?.Name, null, null, from);
+    }
+
+    /// <summary>
+    /// The workspace's own address, only while the mail service has verified its domain.
+    /// The relay refuses mail from a domain it has not verified, so until then the
+    /// configured shared address is used, which it accepts.
+    /// </summary>
+    private string? VerifiedSendingAddress(string? sendingAddress)
+    {
+        var address = (sendingAddress ?? "").Trim();
+        if (address.Length == 0 || !ValidationHelper.IsValidEmail(address)) return null;
+        return _settings.IsVerifiedSendingDomain(address[(address.LastIndexOf('@') + 1)..]) ? address : null;
+    }
+
+    public string? TrackingUrl(Guid leadId)
+    {
+        // The setting defaults to http://localhost:5160, and nothing in production
+        // sets it. An image pointing there can never be fetched by a recipient, so it
+        // is left out rather than shipped broken.
+        if (!Uri.TryCreate((_settings.ApiBaseUrl ?? "").Trim(), UriKind.Absolute, out var api)) return null;
+        if (api.IsLoopback || api.Scheme != Uri.UriSchemeHttps) return null;
+        return $"{api.GetLeftPart(UriPartial.Authority)}{api.AbsolutePath.TrimEnd('/')}/api/public/track/{leadId}";
     }
 
     public OutreachBody Body(Guid? organizationId, string? workspaceName, string text, IReadOnlyList<string> addresses, string? trackingUrl = null)

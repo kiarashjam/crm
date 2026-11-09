@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text.Json;
-using ACI.Application.Interfaces;
+using ACI.WebApi.Tests.Helpers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,22 +22,14 @@ public class DoNotContactTests
     /// <summary>The app with a mail server that takes everything and remembers who it went to.</summary>
     private sealed class WithMailServer : CustomWebApplicationFactory
     {
-        public readonly List<string> SentTo = new();
+        public readonly MailServer Mail = new();
+
+        public IReadOnlyList<string> SentTo => Mail.SentTo;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             base.ConfigureWebHost(builder);
-            builder.ConfigureTestServices(services =>
-            {
-                var sender = new Mock<IEmailSender>();
-                sender.Setup(s => s.SendComposedAsync(It.IsAny<ComposedEmail>(), It.IsAny<CancellationToken>()))
-                    .Callback((ComposedEmail email, CancellationToken _) => SentTo.AddRange(email.To.Concat(email.Cc).Concat(email.Bcc)))
-                    .ReturnsAsync(ComposedEmailOutcome.Sent);
-                sender.Setup(s => s.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
-                    .Callback((OutreachEmail email, CancellationToken _) => SentTo.Add(email.To))
-                    .ReturnsAsync(true);
-                services.AddSingleton(sender.Object);
-            });
+            builder.ConfigureTestServices(services => services.AddSingleton(Mail.Mock.Object));
         }
     }
 
@@ -147,6 +139,7 @@ public class DoNotContactTests
 
         await Json(await client.PostAsync("/api/leads", Body(new { name = "Eva Muster", email = "eva@example.ch", status = "New" })), "lead arrives");
         await Json(await client.PostAsync("/api/leads", Body(new { name = "Anne Meier", email = "anne@example.ch", status = "New" })), "another lead arrives");
+        await factory.DispatchOutboxAsync();
 
         factory.SentTo.Should().Equal("anne@example.ch");
     }

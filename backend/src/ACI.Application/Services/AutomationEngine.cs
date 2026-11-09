@@ -44,8 +44,7 @@ public sealed class AutomationEngine : IAutomationEngine
     private readonly INotificationService _notifications;
     private readonly ILeadRepository _leads;
     private readonly IDealRepository _deals;
-    private readonly IEmailSender _email;
-    private readonly IOutreachMail _outreach;
+    private readonly IOutbox _outbox;
     private readonly ISequenceService _sequences;
     private readonly ISequenceRepository _targets;
     private readonly IOrganizationRepository _organizations;
@@ -57,8 +56,7 @@ public sealed class AutomationEngine : IAutomationEngine
         INotificationService notifications,
         ILeadRepository leads,
         IDealRepository deals,
-        IEmailSender email,
-        IOutreachMail outreach,
+        IOutbox outbox,
         ISequenceService sequences,
         ISequenceRepository targets,
         IOrganizationRepository organizations,
@@ -69,8 +67,7 @@ public sealed class AutomationEngine : IAutomationEngine
         _notifications = notifications;
         _leads = leads;
         _deals = deals;
-        _email = email;
-        _outreach = outreach;
+        _outbox = outbox;
         _sequences = sequences;
         _targets = targets;
         _organizations = organizations;
@@ -132,7 +129,7 @@ public sealed class AutomationEngine : IAutomationEngine
                     await AssignAsync(config, evt, ct);
                     break;
                 case "send_email":
-                    await SendAsync(config, evt, ct);
+                    await SendAsync(rule, config, evt, ct);
                     break;
                 case "add_to_sequence":
                     await EnrollAsync(config, evt, ct);
@@ -213,25 +210,36 @@ public sealed class AutomationEngine : IAutomationEngine
         }
     }
 
-    private async Task SendAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    private async Task SendAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
-        if (evt.LeadId is not Guid leadId) return;
+        if (evt.LeadId is not Guid leadId || evt.OrganizationId is not Guid organizationId) return;
         var subject = Value(config, "subject");
         var body = Value(config, "body");
         if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body)) return;
         // The lead as it is now, read the way sequences read their targets: one that is
-        // gone gets nothing, and the address is the record's own, so the same do-not-contact
-        // rules apply here as there.
+        // gone gets nothing, and the address is the record's own.
         var target = await _targets.TargetStateAsync("lead", leadId, evt.OrganizationId, ct);
-        if (!target.Exists || target.DoNotContact || string.IsNullOrWhiteSpace(target.Email)) return;
-        body = body.Replace("{{firstName}}", FirstName(target.Name ?? evt.RecordName), StringComparison.OrdinalIgnoreCase);
-        // Under the workspace's name, not the product's, and a reply reaches whoever
-        // works the lead (or whoever set the rule off) rather than the shared inbox.
-        var sender = await _outreach.SenderAsync(evt.OrganizationId, await OwnerAsync(evt, ct) ?? evt.ActorUserId, ct);
-        var mail = _outreach.Body(evt.OrganizationId, sender.WorkspaceName, body, [target.Email]);
-        await _email.SendOutreachAsync(new OutreachEmail(
-            target.Email, target.Name ?? evt.RecordName ?? "", subject, mail.Text, mail.Html,
-            sender.WorkspaceName, sender.ReplyTo, mail.UnsubscribeUrl), ct);
+        if (!target.Exists || string.IsNullOrWhiteSpace(target.Email)) return;
+        // Queued, not sent: the mail server is no longer waited on inside the save that set
+        // the rule off (a public form, a webhook lead), and a send that fails is retried
+        // instead of lost. The outbox fills every placeholder, in the subject too, refuses
+        // anyone on the suppression list, sends it under the workspace's name with replies
+        // to whoever works the lead (or whoever set the rule off), and puts it on the timeline.
+        var queued = await _outbox.QueueEmailAsync(new OutboundEmailRequest
+        {
+            OrganizationId = organizationId,
+            Source = OutboundSources.Automation,
+            SourceId = rule.Id,
+            To = [target.Email],
+            RecipientName = target.Name ?? evt.RecordName,
+            Subject = subject,
+            Body = body,
+            CreatedByUserId = evt.ActorUserId,
+            ReplyToUserId = await OwnerAsync(evt, ct) ?? evt.ActorUserId,
+            LeadId = leadId,
+        }, ct);
+        if (queued.IsFailure)
+            _logger.LogInformation("Automation {RuleId} sent no email for {Source}: {Reason}", rule.Id, evt.SourceKey, queued.Error.Description);
     }
 
     private async Task EnrollAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
@@ -244,13 +252,6 @@ public sealed class AutomationEngine : IAutomationEngine
 
     private static string? Value(IReadOnlyDictionary<string, string> config, string key) =>
         config.TryGetValue(key, out var value) ? value : null;
-
-    private static string FirstName(string? name)
-    {
-        var trimmed = (name ?? "").Trim();
-        var space = trimmed.IndexOf(' ');
-        return space < 0 ? trimmed : trimmed[..space];
-    }
 
     private sealed class StoredAction
     {

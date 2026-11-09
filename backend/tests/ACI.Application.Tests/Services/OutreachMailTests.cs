@@ -18,9 +18,40 @@ public class OutreachMailTests
     public OutreachMailTests() =>
         _links.Setup(l => l.CreateToken(It.IsAny<Guid>(), It.IsAny<string>())).Returns((Guid _, string email) => $"tok-{email.Split('@')[0]}");
 
-    private OutreachMail Mail(string frontendBaseUrl = "https://crm.example.ch/") => new(
+    private OutreachMail Mail(string frontendBaseUrl = "https://crm.example.ch/", string apiBaseUrl = "http://localhost:5160") => new(
         new Mock<IOrganizationRepository>().Object, new Mock<IUserRepository>().Object, _links.Object,
-        Options.Create(new EmailSettings { FrontendBaseUrl = frontendBaseUrl }), NullLogger<OutreachMail>.Instance);
+        Options.Create(new EmailSettings { FrontendBaseUrl = frontendBaseUrl, ApiBaseUrl = apiBaseUrl }), NullLogger<OutreachMail>.Instance);
+
+    [Fact]
+    public void TheTrackingImageIsOnlyAddedWhereItCanWork()
+    {
+        Mail(apiBaseUrl: "http://localhost:5160").TrackingUrl(Guid.NewGuid()).Should().BeNull("a recipient can never fetch localhost");
+        Mail(apiBaseUrl: "http://api.example.ch").TrackingUrl(Guid.NewGuid()).Should().BeNull("plain http is blocked by most mail clients");
+        var lead = Guid.NewGuid();
+        Mail(apiBaseUrl: "https://api.example.ch/").TrackingUrl(lead).Should().Be($"https://api.example.ch/api/public/track/{lead}");
+
+        ACI.Application.Common.PlainTextEmail.ToHtml("Hi", "https://api.example.ch/api/public/track/x").Should().Contain("<img src=\"https://api.example.ch/api/public/track/x\"");
+        ACI.Application.Common.PlainTextEmail.ToHtml("Hi", null).Should().NotContain("<img");
+    }
+
+    [Fact]
+    public async Task TheSenderNamesThePersonAndUsesTheWorkspacesAddressOnlyWhenItsDomainIsVerified()
+    {
+        var owner = Guid.NewGuid();
+        var organizations = new Mock<IOrganizationRepository>();
+        organizations.Setup(o => o.GetByIdAsync(Org, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ACI.Domain.Entities.Organization { Id = Org, Name = "Acme", OwnerUserId = owner, SendingAddress = "Hello@Acme.Example" });
+        organizations.Setup(o => o.GetMemberRoleAsync(owner, Org, It.IsAny<CancellationToken>())).ReturnsAsync(ACI.Domain.Enums.OrgMemberRole.Owner);
+        var users = new Mock<IUserRepository>();
+        users.Setup(u => u.GetByIdAsync(owner, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ACI.Domain.Entities.User { Id = owner, Email = "olga@acme.example", Name = "Olga" });
+        OutreachMail With(string verified) => new(organizations.Object, users.Object, _links.Object,
+            Options.Create(new EmailSettings { VerifiedSendingDomains = verified }), NullLogger<OutreachMail>.Instance);
+
+        var unverified = await With("").SenderAsync(Org, null);
+        unverified.Should().Be(new OutreachSender("Acme", "olga@acme.example", "Olga", null));
+        (await With("club.example, ACME.example").SenderAsync(Org, null)).FromAddress.Should().Be("Hello@Acme.Example");
+    }
 
     [Fact]
     public void OneRecipientGetsOneLink_InBothParts_AndForTheHeader()

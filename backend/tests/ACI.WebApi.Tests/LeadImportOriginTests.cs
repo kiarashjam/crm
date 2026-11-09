@@ -32,7 +32,7 @@ public class LeadImportOriginTests
             builder.ConfigureTestServices(services =>
             {
                 var webhooks = new Mock<IOutboundWebhookPublisher>();
-                webhooks.Setup(w => w.PublishAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
+                webhooks.Setup(w => w.QueueAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<object>(), It.IsAny<CancellationToken>()))
                     .Callback((Guid? _, string name, object _, CancellationToken _) => Published.Add(name))
                     .Returns(Task.CompletedTask);
                 services.AddScoped(_ => webhooks.Object);

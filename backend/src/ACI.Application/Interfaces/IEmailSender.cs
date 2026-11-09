@@ -9,57 +9,76 @@ namespace ACI.Application.Interfaces;
 /// <param name="Content">The bytes.</param>
 public sealed record EmailAttachment(string FileName, string ContentType, byte[] Content);
 
-/// <summary>A message someone wrote in the CRM's composer, already checked.</summary>
+/// <summary>
+/// One email from the outbox, exactly as it is to go out: who it is from, where a
+/// reply goes, both parts, and the headers that let a reply or a delivery report be
+/// matched to it later.
+/// </summary>
 /// <param name="FromName">
 /// The name shown beside the sender address — the workspace's, so a lead sees
 /// "Pavillon 46", not the product's name. Null falls back to Email:FromName.
 /// </param>
-/// <param name="ReplyTo">
-/// Where a reply goes: the person who wrote it. Every workspace sends from the one
-/// configured address, so without this a prospect's reply landed in that shared
-/// inbox — another company's, for every workspace but the one that owns it.
+/// <param name="FromAddress">
+/// The workspace's own address on a domain the mail service has verified. Null: the
+/// configured Email:FromAddress, the only one the relay accepts otherwise.
 /// </param>
-public sealed record ComposedEmail(
+/// <param name="ReplyTo">
+/// Where a reply goes: the person behind the message, and the reply-capture address
+/// when replies come back into the CRM. Every workspace sends from one configured
+/// address, so without it a prospect's reply landed in that shared inbox.
+/// </param>
+/// <param name="RecipientName">The name to show beside a single To address.</param>
+/// <param name="MessageId">The Message-ID header, angle brackets included.</param>
+/// <param name="UnsubscribeUrl">
+/// The page that stops this workspace emailing the recipient, sent as the
+/// List-Unsubscribe header so mail apps can offer it next to the sender. The same link
+/// is in the footer of both parts.
+/// </param>
+/// <param name="OutboundMessageId">The outbox's id for it, which the mail service's reports carry back.</param>
+public sealed record OutboxEmail(
+    string? FromName,
+    string? FromAddress,
+    IReadOnlyList<string> ReplyTo,
     IReadOnlyList<string> To,
     IReadOnlyList<string> Cc,
     IReadOnlyList<string> Bcc,
+    string? RecipientName,
     string Subject,
     string TextBody,
     string HtmlBody,
-    string? FromName = null,
-    string? ReplyTo = null);
+    string MessageId,
+    string? UnsubscribeUrl,
+    Guid OutboundMessageId);
 
-/// <summary>
-/// Outreach a workspace sends to one lead or contact without a person pressing
-/// Send: a sequence step, or an automation's email.
-/// </summary>
-/// <param name="TextBody">The plain-text part, complete on its own.</param>
-/// <param name="HtmlBody">The same words as HTML, plus anything that only works there (a tracking image).</param>
-/// <param name="FromName">The workspace's name, shown beside the configured address. Null falls back to Email:FromName.</param>
-/// <param name="ReplyTo">Who a reply should reach: the person who works this lead.</param>
-/// <param name="UnsubscribeUrl">
-/// The page that stops this workspace emailing the recipient, sent as the
-/// List-Unsubscribe header so mail apps can offer it next to the sender. The same
-/// link is in the footer of both parts.
-/// </param>
-public sealed record OutreachEmail(
-    string To,
-    string RecipientName,
-    string Subject,
-    string TextBody,
-    string HtmlBody,
-    string? FromName = null,
-    string? ReplyTo = null,
-    string? UnsubscribeUrl = null);
-
-/// <summary>What happened to a composed message.</summary>
-public enum ComposedEmailOutcome
+/// <summary>What the outbox puts on a message for the mail service to report back.</summary>
+public static class OutboxEmailTags
 {
+    /// <summary>
+    /// The custom argument holding the outbox's id for a message. SendGrid copies it from
+    /// the X-SMTPAPI header into every event it reports about that message.
+    /// </summary>
+    public const string MessageIdArg = "cadence_message_id";
+}
+
+/// <summary>What happened to one attempt at sending an outbox email.</summary>
+public enum OutboxSendOutcome
+{
+    /// <summary>The mail server took it.</summary>
     Sent,
     /// <summary>No mail server is set up, so nothing was attempted.</summary>
     NotConfigured,
-    /// <summary>The mail server was tried and did not take the message.</summary>
-    Failed,
+    /// <summary>It did not go, for a reason that may pass: the server was unreachable, busy or refused us for now.</summary>
+    Retry,
+    /// <summary>The mail server refused this message for good: a recipient it will not take, say. Trying again cannot help.</summary>
+    Rejected,
+}
+
+/// <param name="Error">Why it did not go, in a form fit to show the person who sent it.</param>
+/// <param name="Code">The mail server's reply code, when it gave one.</param>
+public sealed record OutboxSendResult(OutboxSendOutcome Outcome, string? Error = null, int? Code = null)
+{
+    public static readonly OutboxSendResult Sent = new(OutboxSendOutcome.Sent);
+    public static readonly OutboxSendResult NotConfigured = new(OutboxSendOutcome.NotConfigured, "No mail server is set up.");
 }
 
 public interface IEmailSender
@@ -167,18 +186,10 @@ public interface IEmailSender
     Task<bool> SendMessageAsync(string toEmail, string recipientName, string subject, string body, CancellationToken ct = default);
 
     /// <summary>
-    /// Sends outreach for a workspace: under its name, with replies going to its
-    /// person, in both a plain-text and an HTML part. Anything that only makes sense
-    /// as HTML — a tracking image, say — belongs in the HTML part alone: a plain-text
-    /// part shows markup literally, as raw tags in the email. Returns false (never
-    /// throws) when the message could not be delivered.
+    /// Sends one email from the outbox — composer, assistant, sequence and automation
+    /// mail all come this way. Says whether it went and, when it did not, whether
+    /// trying again could help. Never throws for a delivery problem: the outbox decides
+    /// what happens next.
     /// </summary>
-    Task<bool> SendOutreachAsync(OutreachEmail email, CancellationToken ct = default);
-
-    /// <summary>
-    /// Sends a message someone wrote in the CRM, from the configured sender address.
-    /// Says whether it went, and when it did not, whether a mail server was set up
-    /// at all — never reporting a send that did not happen. Never throws.
-    /// </summary>
-    Task<ComposedEmailOutcome> SendComposedAsync(ComposedEmail email, CancellationToken ct = default);
+    Task<OutboxSendResult> SendOutboxAsync(OutboxEmail email, CancellationToken ct = default);
 }

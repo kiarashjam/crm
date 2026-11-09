@@ -1,45 +1,41 @@
 using ACI.Application.Common;
-using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace ACI.Application.Tests.Services;
 
 /// <summary>
 /// The sequence runner writes to real people unattended. Each test pins a way it
-/// used to get that wrong.
+/// used to get that wrong. What happens to an email after a step queues it (filling,
+/// sending, retrying, the timeline) is the outbox's, in OutboxServiceTests.
 /// </summary>
 public class SequenceServiceTests
 {
     private static readonly Guid Org = Guid.NewGuid();
     private static readonly Guid Owner = Guid.NewGuid();
+    private static readonly Guid Rep = Guid.NewGuid();
 
     private readonly Mock<ISequenceRepository> _repo = new();
-    private readonly Mock<IEmailSender> _email = new();
+    private readonly Mock<IOutbox> _outbox = new();
     private readonly Mock<IActivityService> _activities = new();
     private readonly Mock<ITaskService> _tasks = new();
-    private readonly Mock<IOutreachMail> _outreach = new();
-    private readonly EmailSettings _settings = new() { ApiBaseUrl = "http://localhost:5160" };
+    private readonly List<OutboundEmailRequest> _queued = new();
 
     public SequenceServiceTests()
     {
-        _outreach.Setup(o => o.SenderAsync(It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid? _, Guid? user, CancellationToken _) => new OutreachSender("Club Nautique", user == Rep ? "rep@club.ch" : "owner@club.ch"));
-        // The footer itself is OutreachMail's (see OutreachMailTests); here the words pass through.
-        _outreach.Setup(o => o.Body(It.IsAny<Guid?>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<string?>()))
-            .Returns((Guid? _, string? _, string text, IReadOnlyList<string> _, string? tracking) =>
-                new OutreachBody(text, PlainTextEmail.ToHtml(text, tracking), "https://crm.example.ch/unsubscribe/t"));
+        _outbox.Setup(o => o.QueueEmailAsync(It.IsAny<OutboundEmailRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OutboundEmailRequest request, CancellationToken _) =>
+            {
+                _queued.Add(request);
+                return Result.Success(new OutboundMessage { Id = Guid.NewGuid(), OrganizationId = Org });
+            });
     }
 
-    private static readonly Guid Rep = Guid.NewGuid();
-
     private SequenceService Service() => new(
-        _repo.Object, _email.Object, _outreach.Object, _activities.Object, _tasks.Object,
-        Options.Create(_settings), NullLogger<SequenceService>.Instance);
+        _repo.Object, _outbox.Object, _activities.Object, _tasks.Object, NullLogger<SequenceService>.Instance);
 
     private static OutreachSequence Sequence(params OutreachStep[] steps)
     {
@@ -83,72 +79,59 @@ public class SequenceServiceTests
     private static readonly SequenceTargetState Reachable =
         new(true, "Jean-Michel Dupont", "jean-michel@example.ch", "Club Nautique");
 
-    // ── what reaches the inbox ───────────────────────────────────────────────
+    // ── what a step queues ───────────────────────────────────────────────────
 
     [Fact]
-    public async Task TheEmailHasNoRawMarkupInIt()
+    public async Task AStepQueuesItsEmailForTheAddressOnTheRecordToday()
     {
-        // Every sequence email to a lead used to end with
-        //   <img src="http://localhost:5160/api/public/track/…" width="1" …/>
-        // because the pixel was appended to a body sent as plain text only.
         var sequence = Sequence(EmailStep(0, "Hello {{firstName}}", "Hi {{firstName}},\nWe would love to show you {{company}}."));
         var enrollment = Due(sequence);
         Ready(sequence, enrollment, Reachable);
-        string? text = null, html = null, subject = null, to = null;
-        _email.Setup(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
-            .Callback<OutreachEmail, CancellationToken>((m, _) => { to = m.To; subject = m.Subject; text = m.TextBody; html = m.HtmlBody; })
-            .ReturnsAsync(true);
 
         await Service().RunDueAsync();
 
-        text.Should().NotContain("<img").And.NotContain("localhost");
-        // Placeholders filled in the subject and for {{company}} too — both went out literally.
-        subject.Should().Be("Hello Jean-Michel");
-        text.Should().Be("Hi Jean-Michel,\nWe would love to show you Club Nautique.");
-        // The HTML part is the same words, escaped, with line breaks kept.
-        html.Should().Contain("Hi Jean-Michel,<br>");
+        var email = _queued.Single();
         // Sent to the address on the record today, not the one copied at enrollment.
-        to.Should().Be("jean-michel@example.ch");
+        email.To.Should().Equal("jean-michel@example.ch");
+        // The words as written: the outbox fills the placeholders, in the subject too.
+        email.Subject.Should().Be("Hello {{firstName}}");
+        email.Body.Should().Be("Hi {{firstName}},\nWe would love to show you {{company}}.");
+        email.RecipientName.Should().Be("Jean-Michel Dupont");
+        email.Source.Should().Be(OutboundSources.Sequence);
+        email.SourceId.Should().Be(enrollment.Id);
+        email.LeadId.Should().Be(enrollment.TargetId);
+        email.TrackOpens.Should().BeTrue("the open image is for leads");
+        email.CountsAsResponse.Should().BeFalse("a sequence's email is not somebody answering the lead");
+        email.PersonWaiting.Should().BeFalse();
+        email.CreatedByUserId.Should().Be(Owner);
     }
 
     [Theory]
-    [InlineData(true, "rep@club.ch")]
-    [InlineData(false, "owner@club.ch")]
-    public async Task TheEmailIsTheWorkspacesAndAReplyReachesWhoeverWorksTheLead(bool routedToRep, string replyTo)
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AReplyReachesWhoeverWorksTheLead_OrElseWhoeverEnrolledThem(bool routedToRep)
     {
         // It went out as "Cadence" with no Reply-To, so an answer landed in the shared
         // sender inbox. With nobody working the lead, the enroller gets the reply.
         var sequence = Sequence(EmailStep(0, "Hello", "Hi"));
         var enrollment = Due(sequence);
         Ready(sequence, enrollment, Reachable with { OwnerUserId = routedToRep ? Rep : null });
-        OutreachEmail? sent = null;
-        _email.Setup(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
-            .Callback<OutreachEmail, CancellationToken>((m, _) => sent = m)
-            .ReturnsAsync(true);
 
         await Service().RunDueAsync();
 
-        sent!.FromName.Should().Be("Club Nautique");
-        sent.ReplyTo.Should().Be(replyTo);
-        // The footer and header come from the workspace's outreach mail, for the one address it went to.
-        sent.UnsubscribeUrl.Should().Be("https://crm.example.ch/unsubscribe/t");
-        _outreach.Verify(o => o.Body(Org, "Club Nautique", "Hi", It.Is<IReadOnlyList<string>>(a => a.SequenceEqual(new[] { "jean-michel@example.ch" })), It.IsAny<string?>()));
-        _outreach.Verify(o => o.SenderAsync(Org, routedToRep ? Rep : Owner, It.IsAny<CancellationToken>()));
+        _queued.Single().ReplyToUserId.Should().Be(routedToRep ? Rep : Owner);
     }
 
     [Fact]
-    public void TheTrackingPixelIsOnlyAddedWhereItCanWork()
+    public async Task AnEmptySubjectTakesTheSequencesName()
     {
-        _settings.ApiBaseUrl = "http://localhost:5160";
-        Service().TrackingUrl(Guid.NewGuid()).Should().BeNull("a recipient can never fetch localhost");
-        _settings.ApiBaseUrl = "http://api.example.ch";
-        Service().TrackingUrl(Guid.NewGuid()).Should().BeNull("plain http is blocked by most mail clients");
-        _settings.ApiBaseUrl = "https://api.example.ch/";
-        var lead = Guid.NewGuid();
-        Service().TrackingUrl(lead).Should().Be($"https://api.example.ch/api/public/track/{lead}");
+        var sequence = Sequence(EmailStep(0, "  ", "Hi"));
+        var enrollment = Due(sequence);
+        Ready(sequence, enrollment, Reachable);
 
-        PlainTextEmail.ToHtml("Hi", "https://api.example.ch/api/public/track/x").Should().Contain("<img src=\"https://api.example.ch/api/public/track/x\"");
-        PlainTextEmail.ToHtml("Hi", null).Should().NotContain("<img");
+        await Service().RunDueAsync();
+
+        _queued.Single().Subject.Should().Be("Welcome");
     }
 
     [Fact]
@@ -159,44 +142,54 @@ public class SequenceServiceTests
             .And.NotContain("<script>");
     }
 
-    // ── a step only advances once it has happened ────────────────────────────
+    // ── a step and its email ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task AFailedSendIsRetriedLaterAndNotLoggedAsSent()
+    public async Task AQueuedEmailAdvancesTheStep_AndTheRunnerDoesNotLogItAsWell()
     {
-        // The send result was ignored: the step advanced and an "email" activity
-        // was logged even when nothing went out.
+        // The outbox writes the email on the timeline once it has gone. A second entry
+        // from the runner would show it twice, and once before it had gone.
         var sequence = Sequence(EmailStep(0, "Hi", "Body"), EmailStep(1, "Again", "Body"));
         var enrollment = Due(sequence);
         Ready(sequence, enrollment, Reachable);
-        _email.Setup(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
-
-        await Service().RunDueAsync();
-
-        enrollment.CurrentStep.Should().Be(0, "nothing was sent, so the step has not happened");
-        enrollment.Status.Should().Be("active");
-        enrollment.NextActionAtUtc.Should().BeCloseTo(DateTime.UtcNow.Add(SequenceService.RetryAfter), TimeSpan.FromMinutes(1));
-        _activities.Verify(a => a.CreateAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CreateActivityRequest>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task ASentEmailAdvancesAndIsLoggedAsAutomated()
-    {
-        // Logged as automated so it does not count as a person's first response —
-        // an automated day-0 email used to clear the response-time alert.
-        var sequence = Sequence(EmailStep(0, "Hi", "Body"), EmailStep(1, "Again", "Body"));
-        var enrollment = Due(sequence);
-        Ready(sequence, enrollment, Reachable);
-        _email.Setup(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
 
         await Service().RunDueAsync();
 
         enrollment.CurrentStep.Should().Be(1);
-        _activities.Verify(a => a.CreateAsync(Owner, Org,
-            It.Is<CreateActivityRequest>(r => r.Type == "email" && r.IsAutomated && r.LeadId == enrollment.TargetId),
-            It.IsAny<CancellationToken>()), Times.Once);
+        enrollment.NextActionAtUtc.Should().BeCloseTo(DateTime.UtcNow.AddDays(2), TimeSpan.FromMinutes(1));
+        _activities.Verify(a => a.CreateAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CreateActivityRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TheNextStepWaitsWhileTheLastEmailIsStillInTheOutbox()
+    {
+        var sequence = Sequence(EmailStep(0, "Hi", "Body"), EmailStep(1, "Again", "Body"));
+        var enrollment = Due(sequence);
+        enrollment.CurrentStep = 1;
+        Ready(sequence, enrollment, Reachable);
+        _outbox.Setup(o => o.HasQueuedAsync(enrollment.Id, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        await Service().RunDueAsync();
+
+        _queued.Should().BeEmpty();
+        enrollment.CurrentStep.Should().Be(1, "the step has not happened");
+        enrollment.Status.Should().Be("active");
+        enrollment.NextActionAtUtc.Should().BeCloseTo(DateTime.UtcNow.Add(SequenceService.HoldFor), TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
+    public async Task AnEmailTheOutboxRefusesStopsTheEnrollment()
+    {
+        var sequence = Sequence(EmailStep(0, "Hi", "Body"));
+        var enrollment = Due(sequence);
+        Ready(sequence, enrollment, Reachable);
+        _outbox.Setup(o => o.QueueEmailAsync(It.IsAny<OutboundEmailRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Result.Failure<OutboundMessage>(new Error("Email.Suppressed", "jean-michel@example.ch bounced on 3 Nov 2026, so email to it is suppressed and nothing was sent.")));
+
+        await Service().RunDueAsync();
+
+        enrollment.Status.Should().Be("stopped");
+        enrollment.NextActionAtUtc.Should().BeNull();
     }
 
     [Fact]
@@ -209,7 +202,7 @@ public class SequenceServiceTests
 
         await Service().RunDueAsync();
 
-        _email.Verify(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()), Times.Never);
+        _queued.Should().BeEmpty();
         _repo.Verify(r => r.SaveEnrollmentAsync(It.IsAny<OutreachEnrollment>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -219,6 +212,8 @@ public class SequenceServiceTests
     {
         { SequenceTargetState.Missing, "no longer in this workspace" },
         { Reachable with { DoNotContact = true }, "do not contact" },
+        { Reachable with { SuppressedAs = EmailSuppressionReasons.Bounced }, "bounced" },
+        { Reachable with { SuppressedAs = EmailSuppressionReasons.SpamReport }, "spam" },
         { Reachable with { IsArchived = true }, "archived" },
         { Reachable with { IsConverted = true }, "converted" },
         { Reachable with { Status = "Lost / Not Interested" }, "Lost / Not Interested" },
@@ -232,7 +227,7 @@ public class SequenceServiceTests
     {
         // The runner never looked: a do-not-contact contact, a deleted lead (after
         // an erasure request, say), a converted or lost lead all kept receiving
-        // the remaining emails.
+        // the remaining emails. A bounced address or a spam complaint now stops it too.
         SequenceService.StopReason(target).Should().Contain(because);
 
         var sequence = Sequence(EmailStep(0, "Hi", "Body"));
@@ -242,7 +237,7 @@ public class SequenceServiceTests
 
         enrollment.Status.Should().Be("stopped");
         enrollment.NextActionAtUtc.Should().BeNull();
-        _email.Verify(e => e.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()), Times.Never);
+        _queued.Should().BeEmpty();
     }
 
     [Fact]

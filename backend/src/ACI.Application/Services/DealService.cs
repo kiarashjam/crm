@@ -385,13 +385,13 @@ public class DealService : IDealService
                     organizationId, userId, $"{id}:{existing.DealStageId?.ToString() ?? existing.Stage}", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
             }
             if (_webhooks != null)
-                await _webhooks.PublishAsync(organizationId, "deal.stage_changed", new { id, existing.Name, stageId = existing.DealStageId, stage = existing.Stage }, ct);
+                await _webhooks.QueueAsync(organizationId, "deal.stage_changed", new { id, existing.Name, stageId = existing.DealStageId, stage = existing.Stage }, ct);
         }
 
         if (_automations != null && existing.IsWon == true && previousWon != true)
             await _automations.DispatchAsync("deal.won", new AutomationEvent(organizationId, userId, $"{id}:won", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
         if (_webhooks != null && existing.IsWon == true && previousWon != true)
-            await _webhooks.PublishAsync(organizationId, "deal.won", new { id, existing.Name }, ct);
+            await _webhooks.QueueAsync(organizationId, "deal.won", new { id, existing.Name }, ct);
         if (_automations != null && existing.IsWon == false && previousWon != false)
             await _automations.DispatchAsync("deal.lost", new AutomationEvent(organizationId, userId, $"{id}:lost", existing.Name, DealId: id, AssigneeId: existing.AssigneeId), ct);
 

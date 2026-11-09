@@ -35,4 +35,58 @@ public sealed class EmailSettings
     /// Disable in production when real SMTP is required.
     /// </summary>
     public bool LogResetLinksWhenSmtpNotConfigured { get; set; }
+
+    /// <summary>
+    /// Domains the mail service has authenticated (SendGrid → Sender Authentication →
+    /// Authenticate Your Domain), comma separated, e.g. "acme.ch, club.example". A
+    /// workspace's own sending address is used as From only when its domain is listed
+    /// here; otherwise its email goes out from <see cref="FromAddress"/>, which the relay
+    /// accepts. Listing a domain the relay has not verified makes that workspace's email
+    /// fail, so add one here only after the mail service shows it as verified.
+    /// </summary>
+    public string VerifiedSendingDomains { get; set; } = "";
+
+    /// <summary>
+    /// The domain whose mail SendGrid Inbound Parse receives (its MX record points at
+    /// mx.sendgrid.net), e.g. "reply.cadence.example". When set, every workspace email
+    /// also names reply+token@this-domain in Reply-To, so a reply comes back into the CRM
+    /// as well as reaching the person who sent it. Empty: replies go to that person only.
+    /// </summary>
+    public string InboundReplyDomain { get; set; } = "";
+
+    /// <summary>
+    /// The secret in the Inbound Parse address SendGrid posts to:
+    /// /api/public/email/inbound/{secret}. Empty: that endpoint answers 404.
+    /// </summary>
+    public string InboundParseSecret { get; set; } = "";
+
+    /// <summary>
+    /// The secret in the Event Webhook address SendGrid posts delivery reports to:
+    /// /api/public/email/events/{secret}.
+    /// </summary>
+    public string EventWebhookSecret { get; set; } = "";
+
+    /// <summary>
+    /// The verification key SendGrid shows for a signed Event Webhook (base64, an ECDSA
+    /// public key). When set, a report must carry a valid signature as well. With neither
+    /// this nor <see cref="EventWebhookSecret"/>, the events endpoint answers 404.
+    /// </summary>
+    public string EventWebhookVerificationKey { get; set; } = "";
+
+    /// <summary>Whether the mail service has verified <paramref name="domain"/> for sending.</summary>
+    public bool IsVerifiedSendingDomain(string? domain)
+    {
+        var wanted = (domain ?? "").Trim().TrimEnd('.');
+        if (wanted.Length == 0) return false;
+        return (VerifiedSendingDomains ?? "")
+            .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(d => string.Equals(d.TrimEnd('.'), wanted, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>The reply-capture domain, or null when replies are not captured.</summary>
+    public string? ReplyDomain()
+    {
+        var domain = (InboundReplyDomain ?? "").Trim().Trim('@').TrimEnd('.');
+        return domain.Length == 0 ? null : domain.ToLowerInvariant();
+    }
 }

@@ -272,6 +272,13 @@ try
     builder.Services.AddScoped<IOutreachMail, OutreachMail>();
     builder.Services.AddScoped<IUnsubscribeService, UnsubscribeService>();
     builder.Services.AddScoped<IComposedEmailService, ComposedEmailService>();
+    // One outbox for every email and webhook a workspace sends (see OutboxService).
+    builder.Services.AddScoped<OutboxService>();
+    builder.Services.AddScoped<IOutbox>(sp => sp.GetRequiredService<OutboxService>());
+    builder.Services.AddScoped<IOutboundWebhookPublisher>(sp => sp.GetRequiredService<OutboxService>());
+    builder.Services.AddSingleton<OutboxSignal>();
+    builder.Services.AddSingleton<IOutboxSignal>(sp => sp.GetRequiredService<OutboxSignal>());
+    builder.Services.AddSingleton<OutboxDispatcher>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();
     builder.Services.AddScoped<IDuplicateService, DuplicateService>();
@@ -307,11 +314,12 @@ try
     // Background services
     builder.Services.AddHostedService<ACI.WebApi.Services.TaskReminderBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ContractReminderBackgroundService>();
-    // Posted while a lead or deal is saved, so a slow receiver may hold that save up
-    // for this long at most, and the handler dials public addresses only.
-    builder.Services.AddHttpClient(nameof(ACI.Infrastructure.Services.OutboundWebhookPublisher),
-            client => client.Timeout = TimeSpan.FromSeconds(5))
-        .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.OutboundWebhookPublisher.PublicOnlyHandler);
+    // Posted by the outbox, not while a lead or deal is saved, so a receiver gets a little
+    // longer to answer than a save could wait; the handler dials public addresses only.
+    builder.Services.AddHttpClient(ACI.Infrastructure.Services.WebhookTransport.ClientName,
+            client => client.Timeout = TimeSpan.FromSeconds(10))
+        .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.WebhookTransport.PublicOnlyHandler);
+    builder.Services.AddHostedService<ACI.WebApi.Services.OutboxDispatcherBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
@@ -1071,6 +1079,8 @@ try
                 IF COL_LENGTH('TaskItems', 'Recurrence') IS NULL ALTER TABLE [TaskItems] ADD [Recurrence] nvarchar(16) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookUrl') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookUrl] nvarchar(500) NULL;
                 IF COL_LENGTH('Organizations', 'OutboundWebhookSecret') IS NULL ALTER TABLE [Organizations] ADD [OutboundWebhookSecret] nvarchar(200) NULL;
+                -- The workspace's own sender address, used only once its domain is verified (see Organization.SendingAddress).
+                IF COL_LENGTH('Organizations', 'SendingAddress') IS NULL ALTER TABLE [Organizations] ADD [SendingAddress] nvarchar(256) NULL;
                 -- What a workspace works in (see RegionalSettings). The defaults, a Swiss
                 -- club's, fill the organisations already there; until now their months
                 -- began at UTC midnight and a deal with no currency counted as dollars.
@@ -1823,6 +1833,117 @@ try
             {
                 Log.Warning(keysEx, "Could not give older contacts their duplicate-matching keys; it will be retried on the next start");
             }
+
+            // The outbox (see OutboxService): every email and integration event a workspace
+            // sends, the addresses the mail service reported as bounced or complaining, and
+            // the replies matched back to what was sent. New tables, so an existing database
+            // and a new one get them the same way; the indexes follow in their own batch,
+            // each guarded and caught on its own as above.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'OutboundMessages')
+                CREATE TABLE [OutboundMessages] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NULL,
+                    [Channel] nvarchar(16) NOT NULL,
+                    [Source] nvarchar(16) NOT NULL,
+                    [SourceId] uniqueidentifier NULL,
+                    [Status] nvarchar(16) NOT NULL,
+                    [Attempts] int NOT NULL,
+                    [NextAttemptAtUtc] datetime2 NULL,
+                    [ClaimedUntilUtc] datetime2 NULL,
+                    [LastError] nvarchar(1000) NULL,
+                    [LastStatusCode] int NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL,
+                    [SentAtUtc] datetime2 NULL,
+                    [CreatedByUserId] uniqueidentifier NULL,
+                    [FromName] nvarchar(200) NULL,
+                    [FromAddress] nvarchar(256) NULL,
+                    [ReplyTo] nvarchar(600) NULL,
+                    [To] nvarchar(max) NULL,
+                    [Cc] nvarchar(max) NULL,
+                    [Bcc] nvarchar(max) NULL,
+                    [RecipientName] nvarchar(200) NULL,
+                    [Subject] nvarchar(300) NULL,
+                    [Body] nvarchar(max) NULL,
+                    [TextBody] nvarchar(max) NULL,
+                    [HtmlBody] nvarchar(max) NULL,
+                    [UnsubscribeUrl] nvarchar(1000) NULL,
+                    [MessageIdHeader] nvarchar(255) NULL,
+                    [ReplyToken] nvarchar(64) NULL,
+                    [CountsAsResponse] bit NOT NULL,
+                    [LeadId] uniqueidentifier NULL,
+                    [ContactId] uniqueidentifier NULL,
+                    [DealId] uniqueidentifier NULL,
+                    [MemberId] uniqueidentifier NULL,
+                    [ActivityId] uniqueidentifier NULL,
+                    [DeliveryStatus] nvarchar(32) NULL,
+                    [DeliveryDetail] nvarchar(500) NULL,
+                    [DeliveryUpdatedAtUtc] datetime2 NULL,
+                    [OpenedAtUtc] datetime2 NULL,
+                    [RepliedAtUtc] datetime2 NULL,
+                    [EventName] nvarchar(64) NULL,
+                    [PayloadJson] nvarchar(max) NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'EmailSuppressions')
+                CREATE TABLE [EmailSuppressions] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NOT NULL,
+                    [Email] nvarchar(256) NOT NULL,
+                    [Reason] nvarchar(32) NOT NULL,
+                    [Detail] nvarchar(500) NULL,
+                    [OutboundMessageId] uniqueidentifier NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL
+                );
+                IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'InboundEmails')
+                CREATE TABLE [InboundEmails] (
+                    [Id] uniqueidentifier NOT NULL PRIMARY KEY,
+                    [OrganizationId] uniqueidentifier NOT NULL,
+                    [OutboundMessageId] uniqueidentifier NOT NULL,
+                    [MessageIdHeader] nvarchar(255) NULL,
+                    [FromAddress] nvarchar(256) NOT NULL,
+                    [Subject] nvarchar(300) NULL,
+                    [MatchedBy] nvarchar(16) NOT NULL,
+                    [ActivityId] uniqueidentifier NULL,
+                    [ReceivedAtUtc] datetime2 NOT NULL
+                );
+            ");
+            await db.Database.ExecuteSqlRawAsync(@"
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_Status_NextAttemptAtUtc')
+                        CREATE INDEX [IX_OutboundMessages_Status_NextAttemptAtUtc] ON [OutboundMessages] ([Status], [NextAttemptAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_OrganizationId_CreatedAtUtc')
+                        CREATE INDEX [IX_OutboundMessages_OrganizationId_CreatedAtUtc] ON [OutboundMessages] ([OrganizationId], [CreatedAtUtc]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_SourceId_Status')
+                        CREATE INDEX [IX_OutboundMessages_SourceId_Status] ON [OutboundMessages] ([SourceId], [Status]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_MessageIdHeader')
+                        CREATE UNIQUE INDEX [IX_OutboundMessages_MessageIdHeader] ON [OutboundMessages] ([MessageIdHeader])
+                            WHERE [MessageIdHeader] IS NOT NULL;
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutboundMessages_ReplyToken')
+                        CREATE UNIQUE INDEX [IX_OutboundMessages_ReplyToken] ON [OutboundMessages] ([ReplyToken])
+                            WHERE [ReplyToken] IS NOT NULL;
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_EmailSuppressions_OrganizationId_Email')
+                        CREATE UNIQUE INDEX [IX_EmailSuppressions_OrganizationId_Email] ON [EmailSuppressions] ([OrganizationId], [Email]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_InboundEmails_OrganizationId_MessageIdHeader')
+                        CREATE UNIQUE INDEX [IX_InboundEmails_OrganizationId_MessageIdHeader] ON [InboundEmails] ([OrganizationId], [MessageIdHeader])
+                            WHERE [MessageIdHeader] IS NOT NULL;
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_InboundEmails_OutboundMessageId')
+                        CREATE INDEX [IX_InboundEmails_OutboundMessageId] ON [InboundEmails] ([OutboundMessageId]);
+                END TRY BEGIN CATCH END CATCH;
+            ");
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')

@@ -1,17 +1,19 @@
 // Outbound email.
 //
 // `sendEmail` is the single integration point for email written in the CRM.
-// Against the real backend it POSTs to `/api/email/send`, which sends it through
-// the configured relay (SendGrid in production) from the workspace's address. In
-// demo mode it simulates a successful send.
+// Against the real backend it POSTs to `/api/email/send`, which hands it to the
+// server's outbox: it goes through the configured relay (SendGrid in production)
+// under the workspace's name, and the server writes it on the record's timeline
+// once it has gone. In demo mode it simulates a successful send.
 //
 // A live send never pretends. It used to fall back to the demo store when the
 // server had no such endpoint: the composer said "Email sent", logged it on the
 // timeline, and nothing left the building. Now a send the server did not make
 // fails with the server's reason, and the composer offers the person's own
-// email app (`mailtoHref`) instead.
+// email app (`mailtoHref`) instead. When the relay did not take it yet, the answer
+// is `status: 'queued'`: the server keeps trying, and `cancelEmail` takes it back.
 
-import { ApiError, authFetchJson, servesDemoData } from './apiClient';
+import { ApiError, authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 const SEND_PATH = '/api/email/send';
@@ -41,8 +43,11 @@ export interface SendEmailRequest {
   leadId?: string;
   contactId?: string;
   dealId?: string;
+  /** Who wrote it: the composer (the default) or the sales assistant. */
+  source?: 'composer' | 'assistant';
 }
 
+/** `queued`: the mail server did not take it yet, and the server keeps trying. */
 export type EmailStatus = 'sent' | 'queued' | 'failed';
 
 export interface EmailMessage {
@@ -98,4 +103,15 @@ export async function sendEmail(req: SendEmailRequest): Promise<EmailMessage | n
     contactId: req.contactId,
     dealId: req.dealId,
   });
+}
+
+/**
+ * Takes back a queued email before it goes: whoever sent it, or a manager. The
+ * server answers 409 once it has gone, or while it is going out at that moment,
+ * and the error says which.
+ */
+export async function cancelEmail(id: string): Promise<void> {
+  if (servesDemoData()) return; // a simulated send is never queued
+  const res = await authFetch(`/api/email/${encodeURIComponent(id)}/cancel`, { method: 'POST' });
+  await ensureOk(res);
 }

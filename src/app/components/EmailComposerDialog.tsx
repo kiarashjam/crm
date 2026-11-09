@@ -8,8 +8,11 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Label } from '@/app/components/ui/label';
-import { sendEmail, createActivity, generateCopy, servesDemoData, mailtoHref } from '@/app/api';
+import { sendEmail, cancelEmail, createActivity, generateCopy, servesDemoData, mailtoHref } from '@/app/api';
 import { ApiError } from '@/app/api/apiClient';
+
+/** Refusals that are the answer, not a fault to work around in the person's own email app. */
+const REFUSALS = new Set(['Contact.DoNotContact', 'Email.Suppressed']);
 
 export interface EmailComposerContext {
   leadId?: string;
@@ -33,14 +36,15 @@ interface EmailComposerDialogProps {
 }
 
 /**
- * Reusable composer that sends through the `sendEmail` API — the server sends it
- * from the workspace's address; demo mode simulates — and logs an `email`
- * activity against the related record so it lands on the timeline.
+ * Reusable composer that sends through the `sendEmail` API — the server's outbox
+ * sends it under the workspace's name and writes it on the record's timeline once
+ * it has gone; demo mode simulates, and logs the `email` activity here.
  *
  * It says "Email sent" only when the server sent it (it used to say so with
- * nothing sent at all). When a send fails, the toast gives the server's reason
- * and offers to open the message in the person's own email app instead — except
- * when the recipient is marked do not contact.
+ * nothing sent at all). When the mail server did not take it yet, it says the
+ * email is queued and offers to cancel it. When a send fails, the toast gives the
+ * server's reason and offers to open the message in the person's own email app
+ * instead — except when the recipient asked not to be emailed or their address bounced.
  */
 export default function EmailComposerDialog({
   open, onOpenChange, to, defaultSubject = '', defaultBody = '', context, aiContext, onSent,
@@ -100,24 +104,44 @@ export default function EmailComposerDialog({
         dealId: context?.dealId,
       });
       if (!sent) { toast.error('Failed to send email'); return; }
-      // Mirror onto the activity timeline.
-      createActivity({
-        type: 'email',
-        subject: `Email: ${subject.trim()}`,
-        body,
-        leadId: context?.leadId,
-        contactId: context?.contactId,
-        dealId: context?.dealId,
-      }).catch(() => { /* non-fatal */ });
-      toast.success(!servesDemoData() ? 'Email sent' : 'Email sent (simulated in demo mode)');
+      if (servesDemoData()) {
+        // Demo mode has no server to keep the timeline, so it is mirrored here.
+        createActivity({
+          type: 'email',
+          subject: `Email: ${subject.trim()}`,
+          body,
+          leadId: context?.leadId,
+          contactId: context?.contactId,
+          dealId: context?.dealId,
+        }).catch(() => { /* non-fatal */ });
+        toast.success('Email sent (simulated in demo mode)');
+      } else if (sent.status === 'queued') {
+        // Not sent yet, and not lost: the server tries again, and puts it on the
+        // timeline once it has gone. No email-app way out here, which would send it twice.
+        const queuedId = sent.id;
+        toast.info('Not sent yet: the mail server did not take it. Cadence keeps trying, and it shows on the timeline once it has gone.', {
+          duration: 15_000,
+          action: {
+            label: 'Cancel sending',
+            onClick: () => {
+              cancelEmail(queuedId)
+                .then(() => toast.success('Cancelled. It will not be sent.'))
+                .catch((error: unknown) => toast.error(error instanceof Error && error.message ? error.message : 'It could not be cancelled.'));
+            },
+          },
+        });
+      } else {
+        // The server writes it on the timeline; writing it here as well showed it twice.
+        toast.success('Email sent');
+      }
       onOpenChange(false);
       onSent?.();
     } catch (err) {
       const reason = err instanceof Error && err.message ? err.message : 'Failed to send email';
-      // A "do not contact" refusal is the answer, not a fault to work around: the
-      // email-app button sent the same message from the rep's own mailbox and
-      // noted it on the timeline.
-      if (err instanceof ApiError && err.code === 'Contact.DoNotContact') {
+      // A "do not contact" or bounced-address refusal is the answer, not a fault to
+      // work around: the email-app button sent the same message from the rep's own
+      // mailbox and noted it on the timeline.
+      if (err instanceof ApiError && err.code && REFUSALS.has(err.code)) {
         toast.error(reason, { duration: 12_000 });
         return;
       }

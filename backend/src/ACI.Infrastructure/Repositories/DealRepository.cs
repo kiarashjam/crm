@@ -161,6 +161,8 @@ public sealed class DealRepository : IDealRepository
                 item.DealId = keepId;
             foreach (var message in await _db.SentMessages.Where(m => m.DealId == dropId).ToListAsync(ct))
                 message.DealId = keepId;
+            foreach (var message in await _db.OutboundMessages.Where(m => m.DealId == dropId).ToListAsync(ct))
+                message.DealId = keepId;
             foreach (var contract in await _db.Contracts.Where(c => c.DealId == dropId).ToListAsync(ct))
                 contract.DealId = keepId;
             foreach (var lead in await _db.Leads.Where(l => l.ConvertedToDealId == dropId).ToListAsync(ct))

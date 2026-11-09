@@ -112,6 +112,13 @@ public class OrganizationCloneTests
         };
         var definition = new CustomFieldDefinition { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, EntityType = "deal", Key = "board_seat", Label = "Board seat", Type = "checkbox", CreatedAtUtc = now };
         var spouse = new Contact { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Marie Dupont", Email = $"marie@{name}.ch", CreatedAtUtc = now };
+        var sentEmailId = Guid.NewGuid();
+        var sentEmail = new OutboundMessage
+        {
+            Id = sentEmailId, OrganizationId = org.Id, Channel = OutboundChannels.Email, Source = OutboundSources.Composer, Status = OutboundStatuses.Sent,
+            Attempts = 1, CreatedAtUtc = now, SentAtUtc = now, CreatedByUserId = rep, To = $"jean@{name}.ch", Subject = "Welcome", Body = "Hello",
+            LeadId = lead.Id, MessageIdHeader = $"<{sentEmailId:N}@pavillon46.ch>", ReplyToken = $"tok{sentEmailId:N}"[..21],
+        };
         db.AddRange(task, contract, sequence, territory, queue, member, team, rule, definition, spouse);
         db.ContactRelationships.Add(new ContactRelationship { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, ContactId = contact.Id, RelatedContactId = spouse.Id, Type = ContactRelationshipTypes.Spouse, CreatedAtUtc = now });
         // The couple look alike to the duplicate rules; someone said they are two people.
@@ -137,6 +144,14 @@ public class OrganizationCloneTests
             new Product { Id = Guid.NewGuid(), OrganizationId = org.Id, OwnerUserId = owner, Name = "Gold membership", UnitPrice = 2400, CreatedAtUtc = now },
             new ForecastSnapshot { Id = Guid.NewGuid(), OrganizationId = org.Id, SavedByUserId = owner, AssigneeId = rep, AssigneeName = "Rep", MonthUtc = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc), SavedAtUtc = now },
             new SentMessage { Id = Guid.NewGuid(), OrganizationId = org.Id, SentByUserId = owner, To = $"jean@{name}.ch", Subject = "Welcome", Body = "Hello", LeadId = lead.Id, SentAtUtc = now },
+            sentEmail,
+            new OutboundMessage
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Channel = OutboundChannels.Webhook, Source = OutboundSources.Webhook, Status = OutboundStatuses.Queued,
+                NextAttemptAtUtc = now, CreatedAtUtc = now, EventName = "lead.created", PayloadJson = $$"""{"Id":"{{lead.Id}}"}""",
+            },
+            new EmailSuppression { Id = Guid.NewGuid(), OrganizationId = org.Id, Email = $"bounced@{name}.ch", Reason = EmailSuppressionReasons.Bounced, OutboundMessageId = sentEmail.Id, CreatedAtUtc = now },
+            new InboundEmail { Id = Guid.NewGuid(), OrganizationId = org.Id, OutboundMessageId = sentEmail.Id, MessageIdHeader = $"<reply-{name}@example.ch>", FromAddress = $"jean@{name}.ch", MatchedBy = "token", ReceivedAtUtc = now },
             new ClubVisit { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", MemberTier = "Gold", Venue = "Lounge", VisitedAtUtc = now },
             new LoyaltyLedgerEntry { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Points = 450, CreatedAtUtc = now },
             new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org.Id, Kind = "tabs", UpdatedAtUtc = now, Payload = JsonSerializer.Serialize(new { memberId = member.Id.ToString().ToUpperInvariant(), venue = "Bar" }) },
@@ -323,6 +338,14 @@ public class OrganizationCloneTests
         (await db.TaskItems.SingleAsync(t => t.OrganizationId == report.CopyId)).ReminderSentAtUtc.Should().NotBeNull();
         (await db.LeadCaptureForms.Where(f => f.OrganizationId != null).Select(f => f.PublicToken).ToListAsync()).Should().OnlyHaveUniqueItems();
         (await db.Notifications.Where(n => n.OrganizationId == report.CopyId).Select(n => n.SourceKey).ToListAsync()).Should().Contain((string?)null);
+        // An event still queued in the original is posted once, from the original; replies
+        // and delivery reports name the original's Message-ID and reply address.
+        var copiedMessages = await db.OutboundMessages.Where(m => m.OrganizationId == report.CopyId).ToListAsync();
+        copiedMessages.Single(m => m.Channel == OutboundChannels.Webhook).Status.Should().Be(OutboundStatuses.Cancelled);
+        var copiedEmail = copiedMessages.Single(m => m.Channel == OutboundChannels.Email);
+        copiedEmail.MessageIdHeader.Should().Be($"<{copiedEmail.Id:N}@pavillon46.ch>");
+        copiedEmail.ReplyToken.Should().BeNull();
+        (await db.OutboundMessages.CountAsync(m => m.OrganizationId == original.Org && m.Status == OutboundStatuses.Queued)).Should().Be(1);
 
         // The original is exactly as it was.
         var after = await db.Organizations.AsNoTracking().SingleAsync(o => o.Id == original.Org);

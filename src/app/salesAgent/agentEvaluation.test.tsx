@@ -32,6 +32,7 @@ vi.mock('@/app/lib/auth', () => ({
 }));
 
 import { createContact } from '@/app/api/contacts';
+import { sendEmail } from '@/app/api/email';
 import { createTask } from '@/app/api/tasks';
 import { getUserSettings } from '@/app/api/settings';
 import { getCurrentOrganizationId } from '@/app/lib/auth';
@@ -439,6 +440,29 @@ describe('agent evaluation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create task for Ada Lovelace' }));
     expect(await screen.findByText(/That could not be saved\. The due date is not a real date\./)).toBeTruthy();
     expect(vi.mocked(createTask)).toHaveBeenCalledWith(expect.objectContaining({ title: 'Call about the renewal', leadId: 'a1' }));
+  });
+
+  it('sends a confirmed email as the assistant, and says when it is only queued', async () => {
+    // The server's outbox puts the email on the lead's timeline. It used to leave no
+    // trace there, and a queued email must not read as sent.
+    vi.mocked(sendEmail).mockResolvedValueOnce({
+      id: 'e1', to: 'ada@northwind.test', subject: 'Following up', body: 'Thanks for today.',
+      status: 'queued', direction: 'outbound', sentAtUtc: NOW.toISOString(),
+    });
+    render(
+      <MemoryRouter>
+        <AgentDesk thinkingMs={0} initialOpen world={world()} readOnly={false} accountKey="user-1:org-a" />
+      </MemoryRouter>,
+    );
+    const input = screen.getByLabelText('Ask the agent');
+    fireEvent.change(input, { target: { value: 'send Ada Lovelace: "Thanks for today."' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    fireEvent.click(screen.getByRole('button', { name: 'Send to Ada Lovelace' }));
+
+    expect(await screen.findByText(/Queued for ada@northwind\.test: the mail server did not take it yet/)).toBeTruthy();
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'ada@northwind.test', body: 'Thanks for today.', leadId: 'a1', source: 'assistant',
+    }));
   });
 
   it('listens for answers before the first one, and reads saved turns from the server once', () => {

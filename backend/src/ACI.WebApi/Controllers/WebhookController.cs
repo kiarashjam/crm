@@ -335,6 +335,23 @@ public class WebhookController : ControllerBase
         return result.ToNoContentResult();
     }
 
+    /// <summary>
+    /// The latest events posted, or still to be posted, to the workspace's address, with
+    /// what the receiver answered (owner/manager only). Delivery used to be one post with
+    /// no record; a failure was a log line and the event was gone.
+    /// </summary>
+    [HttpGet("organizations/{organizationId:guid}/deliveries")]
+    [Authorize]
+    public async Task<ActionResult<IReadOnlyList<WebhookDeliveryDto>>> Deliveries(
+        Guid organizationId,
+        [FromServices] IOutbox outbox,
+        CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await outbox.WebhookDeliveriesAsync(organizationId, userId.Value, ct)).ToActionResult();
+    }
+
     /// <summary>Where Cadence posts lead.created, deal.stage_changed, and deal.won. An empty URL turns it off.</summary>
     [HttpPut("organizations/{organizationId:guid}/outbound")]
     [Authorize]
