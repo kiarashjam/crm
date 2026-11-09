@@ -52,7 +52,7 @@ public partial class ReportingService
 
         var first = MonthStart(firstMonth.Year, firstMonth.Month);
         var end = first.AddMonths(filter.Months);
-        var facts =FactsOf(DealsInScope(userId, organizationId, scoping.Value, filter.PipelineId), fallback);
+        var facts = FactsOf(DealsInScope(userId, organizationId, scoping.Value, filter.PipelineId), fallback);
         if (currency != null) facts = facts.Where(r => r.Currency == currency);
         var open = facts.Where(r => r.IsWon == null);
 
@@ -72,21 +72,31 @@ public partial class ReportingService
                 Unreadable = g.Count(r => r.Amount == null),
             })
             .ToListAsync(ct);
-        // Wins are counted by the UTC hour they happened in, by the database, and each hour
-        // is then put in the month it is in on the workspace's calendar. A month's edges
-        // are the workspace's midnights, which fall on a UTC hour in any zone that is a
-        // whole number of hours from UTC (Zurich, all of Europe and the Americas).
+        // Wins are counted by the UTC minute they happened in, by the database, and each
+        // minute is then put in the month it is in on the workspace's calendar. A month's
+        // edges are the workspace's midnights, which fall on a whole UTC minute in every
+        // zone, those half an hour off UTC (India, Newfoundland) included; counted by the
+        // hour, a win in the first half hour of a month there fell in the month before.
+        // There is at most one row per won deal, so this stays small.
         var wonFrom = RegionalSettings.StartOfDayUtc(DateOnly.FromDateTime(first), zone);
         var wonTo = RegionalSettings.StartOfDayUtc(DateOnly.FromDateTime(end), zone);
-        var wonHours = await facts
+        var wonMinutes = await facts
             .Where(r => r.IsWon == true && r.ClosedAtUtc >= wonFrom && r.ClosedAtUtc < wonTo)
-            .GroupBy(r => new { r.ClosedAtUtc!.Value.Year, r.ClosedAtUtc.Value.Month, r.ClosedAtUtc.Value.Day, r.ClosedAtUtc.Value.Hour, r.Currency })
-            .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, g.Key.Hour, g.Key.Currency, Count = g.Count(), Value = g.Sum(r => r.Amount ?? 0m) })
+            .GroupBy(r => new
+            {
+                r.ClosedAtUtc!.Value.Year, r.ClosedAtUtc.Value.Month, r.ClosedAtUtc.Value.Day,
+                r.ClosedAtUtc.Value.Hour, r.ClosedAtUtc.Value.Minute, r.Currency,
+            })
+            .Select(g => new
+            {
+                g.Key.Year, g.Key.Month, g.Key.Day, g.Key.Hour, g.Key.Minute, g.Key.Currency,
+                Count = g.Count(), Value = g.Sum(r => r.Amount ?? 0m),
+            })
             .ToListAsync(ct);
-        var won = wonHours
+        var won = wonMinutes
             .Select(h => new
             {
-                Local = TimeZoneInfo.ConvertTimeFromUtc(new DateTime(h.Year, h.Month, h.Day, h.Hour, 0, 0, DateTimeKind.Utc), zone),
+                Local = TimeZoneInfo.ConvertTimeFromUtc(new DateTime(h.Year, h.Month, h.Day, h.Hour, h.Minute, 0, DateTimeKind.Utc), zone),
                 h.Currency,
                 h.Count,
                 h.Value,

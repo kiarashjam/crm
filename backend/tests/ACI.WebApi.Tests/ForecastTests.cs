@@ -203,6 +203,32 @@ public class ForecastTests
     }
 
     [Fact]
+    public async Task AWinJustAfterMidnightCountsInItsMonthInAZoneHalfAnHourOffUtc()
+    {
+        // India is five and a half hours ahead of UTC: 18:40 UTC on 31 October is ten past
+        // midnight on 1 November there. Counted by the UTC hour, 18:00 to 19:00, the win was
+        // put in the month of 23:30 local time, October.
+        var (factory, owner, ownerId, org) = await OrgAsync();
+        using var _ = factory;
+        (await owner.PutAsync($"/api/organizations/{org}/settings", Body(new { timeZone = "Asia/Kolkata" })))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        Deal Won(DateTime at, string value) => new()
+        {
+            Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, AssigneeId = ownerId, Name = "Won", Value = value,
+            Currency = "CHF", IsWon = true, ClosedAtUtc = at, CreatedAtUtc = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+        };
+        await AddDealsAsync(factory,
+            Won(new DateTime(2026, 10, 31, 18, 40, 0, DateTimeKind.Utc), "4000"),
+            // 23:50 on 31 October in India, in the same UTC hour: still October's.
+            Won(new DateTime(2026, 10, 31, 18, 20, 0, DateTimeKind.Utc), "1000"));
+
+        var forecast = await Json(await owner.GetAsync("/api/reporting/forecast?from=2026-10&months=2"));
+        var won = forecast.GetProperty("rows").EnumerateArray()
+            .ToDictionary(r => r.GetProperty("month").GetString()!, r => r.GetProperty("wonValue").GetDecimal());
+        won.Should().Equal(new Dictionary<string, decimal> { ["2026-10"] = 1000m, ["2026-11"] = 4000m });
+    }
+
+    [Fact]
     public async Task ThereIsNothingToSaveWithNoOpenDeals()
     {
         var (factory, owner, _, _) = await OrgAsync();
