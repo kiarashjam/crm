@@ -40,14 +40,15 @@ public class TaskService : ITaskService
 
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(
-            userId, 
-            organizationId, 
-            skip, 
-            pageSize, 
-            search, 
-            filters?.Status, 
-            filters?.Priority, 
-            filters?.OverdueOnly, 
+            userId,
+            organizationId,
+            skip,
+            pageSize,
+            search,
+            filters?.Status,
+            filters?.Priority,
+            filters?.OverdueOnly,
+            WorkScope.IsMine(filters?.Scope),
             ct);
 
         _logger.LogDebug("Retrieved {Count} of {Total} tasks for user {UserId}", items.Count, totalCount, userId);
@@ -70,7 +71,9 @@ public class TaskService : ITaskService
         
         // Guard against null filters
         filters ??= new TaskFilterParams();
-        
+        // "My work": the caller's tasks, as WorkScope reads them, rather than the team's.
+        var mine = WorkScope.IsMine(filters.Scope);
+
         IReadOnlyList<TaskItem> list;
         
         // Filter by lead if specified
@@ -93,6 +96,16 @@ public class TaskService : ITaskService
         {
             list = await _repository.GetByAssigneeIdAsync(assigneeGuid, userId, organizationId, ct);
         }
+        // Only the caller's work: read as such, then narrowed like the team's below.
+        else if (mine)
+        {
+            list = await _repository.GetMineAsync(userId, organizationId, ct);
+            if (!string.IsNullOrEmpty(filters.Status) && TryParseStatus(filters.Status, out var myStatus))
+                list = list.Where(t => t.Status == myStatus).ToList();
+            else if (filters.OverdueOnly == true)
+                list = list.Where(t => t.Status != Domain.Enums.TaskStatus.Completed && t.Status != Domain.Enums.TaskStatus.Cancelled
+                    && t.DueDateUtc != null && t.DueDateUtc < DateTime.UtcNow).ToList();
+        }
         // Filter by status if specified
         else if (!string.IsNullOrEmpty(filters.Status) && TryParseStatus(filters.Status, out var taskStatus))
         {
@@ -104,6 +117,12 @@ public class TaskService : ITaskService
             list = filters.OverdueOnly == true
                 ? await _repository.GetByUserIdAsync(userId, organizationId, true, ct)
                 : await _repository.GetByUserIdAsync(userId, organizationId, ct);
+        }
+        // A record's tasks asked for as "mine" are only the caller's among them.
+        if (mine)
+        {
+            var isMine = WorkScope.TaskOf(userId).Compile();
+            list = list.Where(isMine).ToList();
         }
         
         // Apply priority filter if specified
@@ -618,14 +637,27 @@ public class TaskService : ITaskService
     }
 
     /// <inheritdoc />
+    public async Task<(IReadOnlyList<TaskDto> Items, bool More)> GetOpenWorkAsync(
+        Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        // One more than asked for says whether the list was cut short.
+        var tasks = await _repository.GetOpenAsync(userId, organizationId, mineOnly, take + 1, ct);
+        return (tasks.Take(take).Select(Map).ToList(), tasks.Count > take);
+    }
+
+    /// <inheritdoc />
     public async Task<TaskStatsDto> GetStatsAsync(
-        Guid userId, 
-        Guid? organizationId, 
+        Guid userId,
+        Guid? organizationId,
+        string? scope = null,
         CancellationToken ct = default)
     {
         _logger.LogDebug("Getting task stats for user {UserId}", userId);
-        
-        var tasks = await _repository.GetByUserIdAsync(userId, organizationId, ct);
+
+        // The figures above the list count what the list shows: my tasks, or the team's.
+        var tasks = WorkScope.IsMine(scope)
+            ? await _repository.GetMineAsync(userId, organizationId, ct)
+            : await _repository.GetByUserIdAsync(userId, organizationId, ct);
         var now = DateTime.UtcNow;
         var today = now.Date;
         

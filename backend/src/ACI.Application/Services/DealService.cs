@@ -100,6 +100,22 @@ public class DealService : IDealService
     }
 
     /// <inheritdoc />
+    public async Task<(IReadOnlyList<DealDto> Items, bool More)> GetOpenWorkAsync(
+        Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        var list = await _repository.GetOpenAsync(userId, organizationId, mineOnly, take + 1, ct);
+        var deals = list.Take(take).ToList();
+        // Read as the deal list reads them: last activity, time in stage and the stale flag.
+        var lastByDeal = await _activityRepository.GetLastActivityByDealIdsAsync(userId, organizationId, deals.Select(d => d.Id), ct);
+        var pace = await _repository.GetPaceAsync(userId, organizationId, deals.Select(d => d.Id), ct);
+        var staleDays = await WorkspaceStaleDaysAsync(organizationId, ct);
+        var now = DateTime.UtcNow;
+        var items = deals.Select(d => Map(d, lastByDeal.TryGetValue(d.Id, out var last) ? last : null,
+            pace.GetValueOrDefault(d.Id), staleDays, now)).ToList();
+        return (items, list.Count > take);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<DealDto>> SearchAsync(
         Guid userId, 
         Guid? organizationId, 

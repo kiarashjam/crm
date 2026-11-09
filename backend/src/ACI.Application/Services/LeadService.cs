@@ -107,6 +107,16 @@ public class LeadService : ILeadService
     }
 
     /// <inheritdoc />
+    public async Task<(IReadOnlyList<LeadDto> Items, bool More)> GetOpenWorkAsync(
+        Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        // One more than asked for says whether the list was cut short.
+        var leads = await _repository.GetOpenAsync(userId, organizationId, mineOnly, take + 1, ct);
+        var items = await MapWithRelationshipsAsync(leads.Take(take).ToList(), userId, organizationId, ct);
+        return (items, leads.Count > take);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<LeadDto>> SearchAsync(
         Guid userId, 
         Guid? organizationId, 

@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
@@ -62,6 +63,18 @@ public sealed class DealRepository : IDealRepository
         var query = FilterByUserAndOrg(_db.Deals, userId, organizationId);
         query = ApplySearch(query, search);
         return await query.CountAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Deal>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        // A lost deal with no reason still owes one: "record why it was lost" is a step.
+        var query = FilterByUserAndOrg(_db.Deals.AsNoTracking(), userId, organizationId)
+            .Where(d => d.IsWon == null || (d.IsWon == false && (d.ClosedReason == null || d.ClosedReason.Trim() == "")));
+        if (mineOnly) query = query.Where(WorkScope.DealOf(userId));
+        return await IncludeRelated(query)
+            .OrderBy(d => d.ExpectedCloseDateUtc ?? DateTime.MaxValue).ThenBy(d => d.Name).ThenBy(d => d.Id)
+            .Take(take)
+            .ToListAsync(ct);
     }
 
     public async Task<IReadOnlyList<Deal>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>

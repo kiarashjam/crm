@@ -341,7 +341,7 @@ public sealed class CrmMcpTools
     private async Task<string> SnapshotAsync(Organization organization, CancellationToken ct)
     {
         var leads = await _leads.GetStatsAsync(organization.OwnerUserId, organization.Id, ct);
-        var tasks = await _tasks.GetStatsAsync(organization.OwnerUserId, organization.Id, ct);
+        var tasks = await _tasks.GetStatsAsync(organization.OwnerUserId, organization.Id, ct: ct);
         return string.Join('\n',
         [
             $"Calculated counts for {organization.Name}. These are not suggestions.",

@@ -150,6 +150,15 @@ public sealed class LeadRepository : ILeadRepository
         return await query.CountAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Lead>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId).Where(l => !l.IsConverted);
+        if (mineOnly) query = query.Where(WorkScope.LeadOf(userId));
+        // The ones touched most lately first, so a cut-off list keeps the live ones.
+        return await MaterializeListAsync(
+            query.OrderByDescending(l => l.UpdatedAtUtc ?? l.CreatedAtUtc).ThenBy(l => l.Id).Take(take), ct);
+    }
+
     public async Task<IReadOnlyList<Lead>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await MaterializeListAsync(
             ApplySort(

@@ -14,8 +14,13 @@ public interface ITaskRepository
         string? status = null,
         string? priority = null,
         bool? overdueOnly = null,
+        bool mineOnly = false,
         CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <summary>The tasks that are this person's work (see WorkScope), whatever their status.</summary>
+    Task<IReadOnlyList<TaskItem>> GetMineAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <summary>Open tasks, the person's own or the whole team's, soonest due first: at most <paramref name="take"/>.</summary>
+    Task<IReadOnlyList<TaskItem>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByUserIdAsync(Guid userId, Guid? organizationId, bool? overdueOnly, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByAssigneeIdAsync(Guid assigneeId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByStatusAsync(Guid userId, Guid? organizationId, ACI.Domain.Enums.TaskStatus status, CancellationToken ct = default);

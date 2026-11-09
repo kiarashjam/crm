@@ -21,6 +21,11 @@ public interface ILeadRepository
     
     // Non-paginated methods (for backward compatibility)
     Task<IReadOnlyList<Lead>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <summary>
+    /// Leads not converted yet, the person's own (see WorkScope) or the whole team's,
+    /// the ones touched most lately first: at most <paramref name="take"/>.
+    /// </summary>
+    Task<IReadOnlyList<Lead>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default);
     Task<IReadOnlyList<Lead>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null);
     
     // Single item methods
