@@ -102,7 +102,7 @@ import { matchesLeadSearch } from './leads/leadText';
 import type { LeadForm } from './leads/types';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { useMoney } from '@/app/hooks/useMoney';
-import { AMOUNT_HINT, parseMoneyInput } from '@/app/lib/money';
+import { AMOUNT_HINT, currencyOptions, parseMoneyInput } from '@/app/lib/money';
 
 const LEAD_CREATED_AT_STORAGE_KEY = 'crm.leadCreatedAt.v1';
 /** Session-scoped scroll position so returning from a lead detail restores it. */
@@ -951,6 +951,8 @@ export default function Leads() {
       createDeal: false,
       dealName: lead.name,
       dealValue: '',
+      // Priced in the workspace's currency unless someone picks another, as a new deal is.
+      dealCurrency: money.currency,
       dealStage: 'Qualification',
       pipelineId: undefined,
       dealStageId: undefined,
@@ -992,8 +994,8 @@ export default function Leads() {
     setConverting(true);
     try {
       const result = await convertLead(convertDialogLead.id, convertForm.createDeal
-        ? { ...request, dealAmount: dealAmount ?? 0, dealCurrency: money.currency }
-        : request);
+        ? { ...request, dealAmount: dealAmount ?? 0, dealCurrency: convertForm.dealCurrency || money.currency }
+        : { ...request, dealCurrency: undefined });
       if (result) {
         const parts: string[] = [];
         if (result.companyId) parts.push('company created');
@@ -1005,8 +1007,10 @@ export default function Leads() {
       } else {
         toast.error(messages.errors.generic);
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      // The server says why ("A currency is a three-letter ISO code"); "Something went
+      // wrong" left people guessing which field it was.
+      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
     } finally {
       setConverting(false);
     }
@@ -2433,14 +2437,30 @@ export default function Leads() {
                     </div>
                     <div>
                       <Label htmlFor="convert-deal-value" className="text-sm text-slate-600">Deal value</Label>
-                      <Input
-                        id="convert-deal-value"
-                        value={convertForm.dealValue}
-                        onChange={(e) => setConvertForm((f) => ({ ...f, dealValue: e.target.value }))}
-                        inputMode="decimal"
-                        placeholder="e.g. 10'000"
-                        className="mt-1.5 h-10 bg-white"
-                      />
+                      <div className="mt-1.5 flex gap-2">
+                        <Input
+                          id="convert-deal-value"
+                          value={convertForm.dealValue}
+                          onChange={(e) => setConvertForm((f) => ({ ...f, dealValue: e.target.value }))}
+                          inputMode="decimal"
+                          placeholder="e.g. 10'000"
+                          className="h-10 flex-1 bg-white"
+                        />
+                        {/* The currency the new deal is priced in: the workspace's unless another is picked. */}
+                        <Select
+                          value={convertForm.dealCurrency || money.currency}
+                          onValueChange={(v) => setConvertForm((f) => ({ ...f, dealCurrency: v }))}
+                        >
+                          <SelectTrigger aria-label="Deal currency" className="h-10 w-28 bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {currencyOptions(convertForm.dealCurrency || money.currency).map((c) => (
+                              <SelectItem key={c.code} value={c.code}>{c.code}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     {convertOptions.pipelines.length > 0 && (
                       <div>
