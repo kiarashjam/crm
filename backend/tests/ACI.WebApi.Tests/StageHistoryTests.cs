@@ -143,6 +143,7 @@ public class StageHistoryTests
         closed.GetProperty("dealStageId").GetGuid().Should().Be(won ? board.Won : board.Lost,
             "the board shows the deal where the reports count it");
         closed.GetProperty("isWon").GetBoolean().Should().Be(won);
+        closed.GetProperty("dealStageName").GetString().Should().Be(won ? "Signed" : "No budget", "the deal page shows the stage it is in now");
         var history = await HistoryAsync(board.Owner, deal);
         history[0].GetProperty("fromStageName").GetString().Should().Be("Proposal");
         history[0].GetProperty("toStageName").GetString().Should().Be(won ? "Signed" : "No budget");
