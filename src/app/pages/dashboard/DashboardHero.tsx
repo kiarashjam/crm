@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/app/components/ui/button';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
-import { formatMoney } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 import type { DashboardStats } from './types';
 
 interface DashboardHeroProps {
@@ -39,6 +39,8 @@ function figure(value: number | undefined, loaded: boolean): number | string {
 
 export function DashboardHero({ displayName, stats, loaded, failed }: DashboardHeroProps) {
   const navigate = useNavigate();
+  // In the workspace's number format, like every other amount in the app.
+  const money = useMoney();
   const others = (stats?.pipelineByCurrency ?? []).slice(1);
   const unreadable = stats?.unreadableValueCount ?? 0;
   const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -52,7 +54,7 @@ export function DashboardHero({ displayName, stats, loaded, failed }: DashboardH
       icon: TrendingUp,
       tone: 'orange',
       hint: loaded && stats ? `in ${stats.pipelineCurrency}` : undefined,
-      format: stats ? (n) => formatMoney(n, stats.pipelineCurrency) : undefined,
+      format: stats ? (n) => money.format(n, stats.pipelineCurrency) : undefined,
     },
     {
       label: 'Active Leads',
@@ -129,7 +131,7 @@ export function DashboardHero({ displayName, stats, loaded, failed }: DashboardH
               there is no exchange rate in this system to fold them with. */}
           {(others.length > 0 || unreadable > 0) && (
             <p className="text-xs text-slate-500">
-              {others.length > 0 && <>Open pipeline also has {others.map((c) => formatMoney(c.value, c.currency)).join(' and ')}.</>}
+              {others.length > 0 && <>Open pipeline also has {others.map((c) => money.format(c.value, c.currency)).join(' and ')}.</>}
               {others.length > 0 && unreadable > 0 && ' '}
               {unreadable > 0 && (
                 <span className="font-medium text-slate-600">

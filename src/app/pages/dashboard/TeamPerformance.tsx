@@ -1,5 +1,5 @@
 import { Users, TriangleAlert } from 'lucide-react';
-import { formatMoney } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 import type { PipelineValueByAssignee } from '@/app/api/reporting';
 
 interface TeamPerformanceProps {
@@ -26,6 +26,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 export function TeamPerformance({ members, loaded, failed }: TeamPerformanceProps) {
+  // In the workspace's number format, like every other amount in the app.
+  const money = useMoney();
   // Until the scope fix in ReportingService this panel could only ever show the
   // signed-in user's own deals, because the query filtered on UserId even inside
   // an organisation. It is now genuinely the team.
@@ -91,7 +93,7 @@ export function TeamPerformance({ members, loaded, failed }: TeamPerformanceProp
               </p>
             </div>
             <p className="text-sm font-bold text-emerald-700">
-              {formatMoney(member.value, member.currency)}
+              {money.format(member.value, member.currency)}
             </p>
           </div>
         ))}

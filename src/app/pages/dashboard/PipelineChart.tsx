@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { BarChart3, ArrowRight, TriangleAlert } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
-import { formatMoney } from '@/app/lib/money';
+import { useMoney } from '@/app/hooks/useMoney';
 import type { PipelineStage } from './types';
 
 interface PipelineChartProps {
@@ -43,6 +43,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 export function PipelineChart({ stages, loaded, failed }: PipelineChartProps) {
+  // In the workspace's number format, like every other amount in the app.
+  const money = useMoney();
   // This used to `return null` whenever the list was empty, so a failed request
   // made the whole section vanish — indistinguishable from having no deals, and
   // leaving a hole in the layout with nothing to explain it.
@@ -133,7 +135,7 @@ export function PipelineChart({ stages, loaded, failed }: PipelineChartProps) {
                           {/* Share of this currency's total, not of a mixed one. */}
                           <span className="text-xs text-slate-500">{share.toFixed(1)}%</span>
                           <span className="text-sm font-semibold text-slate-900">
-                            {formatMoney(stage.value, stage.currency)}
+                            {money.format(stage.value, stage.currency)}
                           </span>
                         </div>
                       </div>
@@ -155,7 +157,7 @@ export function PipelineChart({ stages, loaded, failed }: PipelineChartProps) {
                   Total{showCurrencyHeadings ? ` in ${block.currency}` : ' pipeline'}
                 </span>
                 <span className="text-lg font-bold text-slate-900">
-                  {formatMoney(block.total, block.currency)}
+                  {money.format(block.total, block.currency)}
                 </span>
               </div>
             </div>
