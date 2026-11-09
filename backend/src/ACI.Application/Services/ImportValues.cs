@@ -125,7 +125,7 @@ internal static class ImportValues
             return true;
 
         var parts = t.Split('/');
-        if (parts.Length == 3 && int.TryParse(parts[0], out var a) && int.TryParse(parts[1], out var b) && int.TryParse(parts[2], out var y) && y >= 1000)
+        if (parts.Length == 3 && int.TryParse(parts[0], out var a) && int.TryParse(parts[1], out var b) && int.TryParse(parts[2], out var y) && y is >= 1000 and <= 9999)
         {
             // Day first (31/12/2025) or month first (12/31/2025), whichever is the only one that can be.
             if (a > 12 && b <= 12) return TryMake(y, b, a, out date);

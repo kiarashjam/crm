@@ -98,6 +98,8 @@ public class ImportValuesTests
     [InlineData("03/04/2025")]
     [InlineData("31.02.2025")]
     [InlineData("soon")]
+    // A typo with a fifth digit in the year is a bad cell, not a failed import.
+    [InlineData("31/12/20255")]
     public void ADateThatCouldBeTwoDaysOrNoneIsRefused(string written)
     {
         ImportValues.Custom(Field(CustomFieldTypes.Date), written).Error.Should().Contain("must be a date");
