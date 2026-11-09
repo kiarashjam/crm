@@ -70,9 +70,21 @@ public static class ActivityFacts
     /// </summary>
     public static Result Check(string type, DateTime occurredAtUtc, string? outcome, int? durationMinutes, string? direction, DateTime nowUtc)
     {
+        var time = CheckTime(occurredAtUtc, nowUtc);
+        return time.IsFailure ? time : CheckFacts(type, outcome, durationMinutes, direction);
+    }
+
+    /// <summary>Whether this can be when something happened: not ahead of now, not before 2000.</summary>
+    public static Result CheckTime(DateTime occurredAtUtc, DateTime nowUtc)
+    {
         if (occurredAtUtc > nowUtc + ClockSkew) return DomainErrors.Activity.OccurredAhead;
         if (occurredAtUtc < Earliest) return DomainErrors.Activity.OccurredTooEarly;
+        return Result.Success();
+    }
 
+    /// <summary>Whether this kind of activity can carry this outcome, duration and direction.</summary>
+    public static Result CheckFacts(string type, string? outcome, int? durationMinutes, string? direction)
+    {
         if (outcome != null)
         {
             var allowed = OutcomesFor(type);

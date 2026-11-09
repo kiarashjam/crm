@@ -314,7 +314,10 @@ public class ActivityService : IActivityService
                 if (request.DurationMinutes == null && !ActivityFacts.HasDuration(activityType)) duration = null;
                 if (ActivityFacts.Word(request.Direction) == null && !ActivityFacts.HasDirection(activityType)) direction = null;
             }
-            var facts = ActivityFacts.Check(activityType, occurredAt, outcome, duration, direction, DateTime.UtcNow);
+            // The time is checked when the edit changes it; one already saved stands.
+            var facts = request.OccurredAtUtc != null
+                ? ActivityFacts.Check(activityType, occurredAt, outcome, duration, direction, DateTime.UtcNow)
+                : ActivityFacts.CheckFacts(activityType, outcome, duration, direction);
             if (facts.IsFailure) return facts.Error;
 
             existing.Type = activityType;
