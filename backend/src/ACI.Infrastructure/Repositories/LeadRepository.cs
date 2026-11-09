@@ -335,6 +335,8 @@ public sealed class LeadRepository : ILeadRepository
                 change.LeadId = keepId;
             foreach (var message in await _db.SentMessages.Where(m => m.LeadId == dropId).ToListAsync(ct))
                 message.LeadId = keepId;
+            foreach (var message in await _db.OutboundMessages.Where(m => m.LeadId == dropId).ToListAsync(ct))
+                message.LeadId = keepId;
             foreach (var contract in await _db.Contracts.Where(c => c.LeadId == dropId).ToListAsync(ct))
                 contract.LeadId = keepId;
 

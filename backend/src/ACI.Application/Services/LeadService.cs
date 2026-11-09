@@ -265,7 +265,7 @@ public class LeadService : ILeadService
                 organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId), ct);
         }
         if (_webhooks != null && !request.IsImport)
-            await _webhooks.PublishAsync(organizationId, "lead.created", new { entity.Id, entity.Name, entity.Email }, ct);
+            await _webhooks.QueueAsync(organizationId, "lead.created", new { entity.Id, entity.Name, entity.Email }, ct);
 
         return Map(entity);
     }

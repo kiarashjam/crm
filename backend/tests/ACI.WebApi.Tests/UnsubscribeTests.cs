@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Infrastructure.Services;
+using ACI.WebApi.Tests.Helpers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,8 +26,13 @@ public class UnsubscribeTests
     /// <summary>The app with a mail server that remembers everything, and due steps run by the test.</summary>
     private sealed class App : CustomWebApplicationFactory
     {
-        public readonly List<OutreachEmail> Outreach = new();
-        public readonly List<ComposedEmail> Composed = new();
+        public readonly MailServer Mail = new();
+
+        /// <summary>What sequences and automations sent (each test sends only one kind).</summary>
+        public IReadOnlyList<OutboxEmail> Outreach => Mail.Sent;
+
+        /// <summary>What the composer sent.</summary>
+        public IReadOnlyList<OutboxEmail> Composed => Mail.Sent;
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -34,21 +40,16 @@ public class UnsubscribeTests
             builder.ConfigureTestServices(services =>
             {
                 services.Remove(services.Single(d => d.ImplementationType == typeof(ACI.WebApi.Services.LeadFollowUpBackgroundService)));
-                var sender = new Mock<IEmailSender>();
-                sender.Setup(s => s.SendOutreachAsync(It.IsAny<OutreachEmail>(), It.IsAny<CancellationToken>()))
-                    .Callback((OutreachEmail email, CancellationToken _) => Outreach.Add(email))
-                    .ReturnsAsync(true);
-                sender.Setup(s => s.SendComposedAsync(It.IsAny<ComposedEmail>(), It.IsAny<CancellationToken>()))
-                    .Callback((ComposedEmail email, CancellationToken _) => Composed.Add(email))
-                    .ReturnsAsync(ComposedEmailOutcome.Sent);
-                services.AddSingleton(sender.Object);
+                services.AddSingleton(Mail.Mock.Object);
             });
         }
 
+        /// <summary>Runs the due steps, then sends what they queued, as the two background jobs would.</summary>
         public async Task RunDueStepsAsync()
         {
-            using var scope = Services.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<ISequenceService>().RunDueAsync();
+            using (var scope = Services.CreateScope())
+                await scope.ServiceProvider.GetRequiredService<ISequenceService>().RunDueAsync();
+            await this.DispatchOutboxAsync();
         }
     }
 
@@ -137,6 +138,7 @@ public class UnsubscribeTests
         })), "add rule");
 
         await Json(await owner.PostAsync("/api/leads", Body(new { name = "Jean Dupont", email = "jean@example.ch", status = "New" })), "lead arrives");
+        await app.DispatchOutboxAsync();
 
         var email = app.Outreach.Should().ContainSingle().Subject;
         email.UnsubscribeUrl.Should().NotBeNull();
@@ -197,8 +199,9 @@ public class UnsubscribeTests
     [Fact]
     public void TheMessageAsksMailAppsToOfferUnsubscribe()
     {
-        var message = SmtpEmailSender.BuildOutreachMessage(
-            new OutreachEmail("jean@example.ch", "Jean", "Hello", "Hi", "<p>Hi</p>", "Pavillon46", null, "https://crm.example.ch/unsubscribe/tok"),
+        var message = SmtpEmailSender.BuildOutboxMessage(
+            new OutboxEmail("Pavillon46", null, [], ["jean@example.ch"], [], [], "Jean", "Hello", "Hi", "<p>Hi</p>",
+                "<a@pavillon46.ch>", "https://crm.example.ch/unsubscribe/tok", Guid.NewGuid()),
             "Cadence", "info@pavillon46.ch");
 
         message.Headers["List-Unsubscribe"].Should().Be("<https://crm.example.ch/unsubscribe/tok>");

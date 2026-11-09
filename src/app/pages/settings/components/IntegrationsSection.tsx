@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link2, Copy, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { getWebhookInfo, updateOutboundWebhook, updateWebhookPassword, type WebhookInfo } from '@/app/api/webhook';
+import { getWebhookDeliveries, getWebhookInfo, updateOutboundWebhook, updateWebhookPassword, type WebhookDelivery, type WebhookInfo } from '@/app/api/webhook';
 import { servesDemoData } from '@/app/api/apiClient';
-import type { Organization } from '@/app/api/organizations';
+import { isOrgAdmin, type Organization } from '@/app/api/organizations';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
@@ -18,6 +18,23 @@ const EXAMPLE_JSON = `{
   "webhookPassword": "the password you saved below"
 }`;
 
+/** One delivery in words: how it went, and what the receiver said. */
+export function deliveryText(d: WebhookDelivery): string {
+  const answer = d.lastStatusCode ? `answered ${d.lastStatusCode}` : d.lastError ?? '';
+  switch (d.status) {
+    case 'sent':
+      return d.attempts > 1 ? `Delivered on try ${d.attempts}` : 'Delivered';
+    case 'queued':
+      return d.attempts === 0
+        ? 'Waiting to be posted'
+        : `Not taken yet (${answer}); trying again${d.nextAttemptAtUtc ? ` at ${new Date(d.nextAttemptAtUtc).toLocaleTimeString()}` : ''}`;
+    case 'cancelled':
+      return 'Not posted: the address was removed first';
+    default:
+      return `Given up after ${d.attempts} ${d.attempts === 1 ? 'try' : 'tries'}${answer ? ` (${answer})` : ''}`;
+  }
+}
+
 export function IntegrationsSection({ currentOrg }: { currentOrg: Organization | null }) {
   const [info, setInfo] = useState<WebhookInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,11 +44,33 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
   const [outboundUrl, setOutboundUrl] = useState('');
   const [outboundSecret, setOutboundSecret] = useState('');
   const [savingOutbound, setSavingOutbound] = useState(false);
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[] | null>(null);
+  const seesDeliveries = isOrgAdmin(currentOrg);
 
   useEffect(() => {
     setOutboundUrl(info?.outboundWebhookUrl ?? '');
     setOutboundSecret('');
   }, [info]);
+
+  // What was posted and what the receiver answered: the owner and managers only, as the
+  // server allows. Delivery used to leave no record, so a wrong address went unnoticed.
+  const orgId = currentOrg?.id;
+  const loadDeliveries = useCallback(async () => {
+    if (!orgId || !seesDeliveries) return;
+    try {
+      setDeliveries(await getWebhookDeliveries(orgId));
+    } catch {
+      setDeliveries(null);
+    }
+  }, [orgId, seesDeliveries]);
+
+  useEffect(() => {
+    if (!info?.outboundWebhookUrl || !seesDeliveries || servesDemoData()) {
+      setDeliveries(null);
+      return;
+    }
+    void loadDeliveries();
+  }, [info?.outboundWebhookUrl, seesDeliveries, loadDeliveries]);
 
   const saveOutbound = async (url: string) => {
     if (!currentOrg?.id) return;
@@ -231,6 +270,12 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
           secret, each post carries <code className="bg-slate-100 text-slate-800 px-1 rounded">X-Cadence-Signature</code>,
           the hex HMAC-SHA256 of the body, so your side can check it came from here.
         </p>
+        <p className="text-sm text-slate-600 mb-3">
+          Events are posted from a queue, so saving a lead never waits for your side. When it does not answer with a
+          2xx, the event is tried again for about two days (gone for good on a 410). Each event keeps one id on every
+          try, in <code className="bg-slate-100 text-slate-800 px-1 rounded">X-Cadence-Event-Id</code> and the body&apos;s{' '}
+          <code className="bg-slate-100 text-slate-800 px-1 rounded">id</code>, so a repeat can be dropped.
+        </p>
         <div className="space-y-3 max-w-md">
           <Input
             type="url"
@@ -259,6 +304,29 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
             )}
           </div>
         </div>
+        {deliveries && (
+          <div className="mt-6">
+            <div className="flex items-center justify-between max-w-2xl">
+              <h4 className="font-medium text-slate-900">Recent deliveries</h4>
+              <Button type="button" variant="outline" size="sm" onClick={() => void loadDeliveries()}>Refresh</Button>
+            </div>
+            {deliveries.length === 0 ? (
+              <p className="text-sm text-slate-500 mt-2">Nothing has been posted yet.</p>
+            ) : (
+              <ul className="mt-2 max-w-2xl divide-y divide-slate-100 border border-slate-200 rounded-xl text-sm" aria-label="Recent deliveries">
+                {deliveries.map((d) => (
+                  <li key={d.id} className="px-3 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                    <span className="font-mono text-xs text-slate-700">{d.eventName}</span>
+                    <span className="text-slate-500 text-xs">{new Date(d.createdAtUtc).toLocaleString()}</span>
+                    <span className={d.status === 'sent' ? 'text-emerald-700' : d.status === 'queued' ? 'text-amber-700' : 'text-red-700'}>
+                      {deliveryText(d)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       <div>

@@ -61,6 +61,9 @@ public class AppDbContext : DbContext
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ForecastSnapshot> ForecastSnapshots => Set<ForecastSnapshot>();
     public DbSet<SentMessage> SentMessages => Set<SentMessage>();
+    public DbSet<OutboundMessage> OutboundMessages => Set<OutboundMessage>();
+    public DbSet<EmailSuppression> EmailSuppressions => Set<EmailSuppression>();
+    public DbSet<InboundEmail> InboundEmails => Set<InboundEmail>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<AutomationFire> AutomationFires => Set<AutomationFire>();
     public DbSet<ClubMember> ClubMembers => Set<ClubMember>();

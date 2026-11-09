@@ -12,15 +12,22 @@ public interface IComposedEmailService
 }
 
 /// <summary>
-/// Sends what someone wrote in the email composer, from the workspace's sender
-/// address (Email:FromAddress — info@pavillon46.ch in production).
+/// Sends what someone wrote in the email composer, or what the sales assistant drafted
+/// and they confirmed, through the outbox.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The composer used to post to an endpoint that did not exist, and on the 404 the
-/// app saved the message in the browser and said "Email sent". This is that
-/// endpoint. It answers "sent" only when the mail server took the message, and
-/// otherwise says which of two things went wrong: no mail server is set up, or the
-/// one that is did not accept it.
+/// app saved the message in the browser and said "Email sent". This answers "sent"
+/// only when the mail server took the message. When it did not but may yet, the
+/// message is queued and retried, and the answer says so ("queued"), so nobody sends
+/// it a second way. When no mail server is set up, or the server refused it for good,
+/// it says which, and the message will never go.
+/// </para>
+/// <para>
+/// The outbox writes the email on the record's timeline once it has gone. The browser
+/// used to write that entry itself, and the assistant wrote none at all.
+/// </para>
 /// </remarks>
 public sealed class ComposedEmailService : IComposedEmailService
 {
@@ -29,24 +36,15 @@ public sealed class ComposedEmailService : IComposedEmailService
     public const int MaxSubjectLength = 300;
     public const int MaxBodyLength = 50_000;
 
-    private readonly IEmailSender _sender;
-    private readonly IOutreachMail _outreach;
-    private readonly IContactRepository _contacts;
-    private readonly ISentMessageRepository? _messages;
+    private readonly IOutbox _outbox;
+    private readonly IWorkspaceRecords _records;
     private readonly ILogger<ComposedEmailService> _logger;
 
-    public ComposedEmailService(
-        IEmailSender sender,
-        IOutreachMail outreach,
-        IContactRepository contacts,
-        ILogger<ComposedEmailService> logger,
-        ISentMessageRepository? messages = null)
+    public ComposedEmailService(IOutbox outbox, IWorkspaceRecords records, ILogger<ComposedEmailService> logger)
     {
-        _sender = sender;
-        _outreach = outreach;
-        _contacts = contacts;
+        _outbox = outbox;
+        _records = records;
         _logger = logger;
-        _messages = messages;
     }
 
     public async Task<Result<SentEmailDto>> SendAsync(Guid organizationId, SendEmailRequest request, Guid sentByUserId = default, CancellationToken ct = default)
@@ -65,7 +63,7 @@ public sealed class ComposedEmailService : IComposedEmailService
 
         // A line break in a subject would start a new header line; MimeKit encodes
         // it safely, but a subject is one line, so keep it one.
-        var subject = string.Join(' ', (request.Subject ?? "").Split('\r', '\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)).Trim();
+        var subject = OutboxService.OneLine(request.Subject);
         if (subject.Length == 0)
             return new Error("Email.NoSubject", "Add a subject.");
         if (subject.Length > MaxSubjectLength)
@@ -75,83 +73,69 @@ public sealed class ComposedEmailService : IComposedEmailService
         if (body.Length > MaxBodyLength)
             return new Error("Email.BodyTooLong", $"The message can be at most {MaxBodyLength:N0} characters.");
 
-        // Do not contact is checked here, on the server. The composer only hid its
-        // button on a contact's page, so the lead page, a typed address or the sales
-        // assistant could still email someone who had asked to be left alone.
-        var everyone = to.Concat(cc).Concat(bcc).ToList();
-        if (await _contacts.FindDoNotContactAddressAsync(organizationId, everyone, ct) is { } stopped)
-            return new Error(DomainErrors.Contact.DoNotContact.Code, $"{stopped} is marked do not contact, so nothing was sent.");
-        if (await _contacts.IsDoNotContactAsync(organizationId, request.LeadId, request.ContactId, ct))
-            return new Error(DomainErrors.Contact.DoNotContact.Code, "This person is marked do not contact, so nothing was sent.");
+        // The record it is about fills the placeholders and gets the timeline entry, so it
+        // has to be one of this workspace's that the sender can open (a private deal too).
+        var links = await _records.CheckLinksAsync(sentByUserId, organizationId,
+            new RecordLinks { LeadId = request.LeadId, ContactId = request.ContactId, DealId = request.DealId }, ct);
+        if (links.IsFailure) return links.Error;
 
-        // Sent under the workspace's name: the configured Email:FromName is the
-        // product's ("Cadence"), which means nothing to the person reading it. A reply
-        // goes to whoever wrote it, not to the shared sender address.
-        var sender = await _outreach.SenderAsync(organizationId, sentByUserId == default ? null : sentByUserId, ct);
-        // A link at the foot for each person it is visibly addressed to, to stop this
-        // workspace's email. Not for Bcc: naming them would show everyone who else got it.
-        var mail = _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList());
-        var outcome = await _sender.SendComposedAsync(
-            new ComposedEmail(to, cc, bcc, subject, mail.Text, mail.Html, sender.WorkspaceName, sender.ReplyTo), ct);
-
-        switch (outcome)
+        // Do not contact, unsubscribes and bounces are checked by the outbox, on the
+        // server. The composer only hid its button on a contact's page, so the lead page,
+        // a typed address or the sales assistant could still email someone who had
+        // asked to be left alone.
+        var queued = await _outbox.QueueEmailAsync(new OutboundEmailRequest
         {
-            case ComposedEmailOutcome.NotConfigured:
+            OrganizationId = organizationId,
+            Source = string.Equals(request.Source?.Trim(), OutboundSources.Assistant, StringComparison.OrdinalIgnoreCase)
+                ? OutboundSources.Assistant
+                : OutboundSources.Composer,
+            To = to,
+            Cc = cc,
+            Bcc = bcc,
+            Subject = subject,
+            Body = body,
+            CreatedByUserId = sentByUserId == default ? null : sentByUserId,
+            // A reply goes to whoever wrote it, not to the shared sender address.
+            ReplyToUserId = sentByUserId == default ? null : sentByUserId,
+            LeadId = request.LeadId,
+            ContactId = request.ContactId,
+            DealId = request.DealId,
+            CountsAsResponse = true,
+            PersonWaiting = true,
+        }, ct);
+        if (queued.IsFailure) return queued.Error;
+        var message = queued.Value;
+
+        // Not the request's token: once the mail server has the message, a browser that
+        // hangs up must not cut the attempt off halfway and leave it unknown whether it went.
+        var attempt = await _outbox.SendNowAsync(message, CancellationToken.None);
+        switch (attempt.Result)
+        {
+            case OutboxAttemptResult.NotConfigured:
                 return new Error("Email.NotConfigured", "Sending email is not set up on the server yet.");
-            case ComposedEmailOutcome.Failed:
-                return new Error("Email.SendFailed", "The email could not be sent. Please try again in a moment.");
+            case OutboxAttemptResult.Suppressed:
+                return new Error(attempt.Code ?? "Email.Suppressed", attempt.Error ?? "Someone it was for asked not to be emailed, so nothing was sent.");
+            case OutboxAttemptResult.Failed:
+                return new Error("Email.SendFailed", $"The email was not sent. {attempt.Error ?? "The mail server refused it."}");
         }
 
-        var id = Guid.NewGuid();
-        var sentAt = DateTime.UtcNow;
-        // The mail has already gone. A failure to keep a copy is logged, not reported:
-        // an error here read as "not sent", and sending again mailed everyone twice.
-        if (_messages != null)
-        {
-            try
-            {
-                await _messages.AddAsync(new SentMessage
-                {
-                    Id = id,
-                    OrganizationId = organizationId,
-                    SentByUserId = sentByUserId,
-                    To = string.Join(", ", to),
-                    Cc = cc.Count == 0 ? null : string.Join(", ", cc),
-                    Bcc = bcc.Count == 0 ? null : string.Join(", ", bcc),
-                    Subject = subject,
-                    Body = body,
-                    LeadId = request.LeadId,
-                    ContactId = request.ContactId,
-                    DealId = request.DealId,
-                    SentAtUtc = sentAt,
-                }, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "A composed email was sent, but its copy could not be saved");
-            }
-        }
-
-        _logger.LogInformation("Sent a composed email to {Count} recipient(s)", to.Count + cc.Count + bcc.Count);
+        var status = attempt.Result == OutboxAttemptResult.Sent ? "sent" : "queued";
+        _logger.LogInformation("A composed email to {Count} recipient(s) is {Status}", to.Count + cc.Count + bcc.Count, status);
         return new SentEmailDto(
-            id,
-            string.Join(", ", to),
-            cc.Count == 0 ? null : string.Join(", ", cc),
-            bcc.Count == 0 ? null : string.Join(", ", bcc),
-            subject,
-            body,
-            "sent",
+            message.Id,
+            message.To ?? "",
+            message.Cc,
+            message.Bcc,
+            message.Subject ?? subject,
+            message.Body ?? body,
+            status,
             "outbound",
-            sentAt,
+            message.SentAtUtc ?? message.CreatedAtUtc,
             request.LeadId,
             request.ContactId,
             request.DealId);
     }
 
     /// <summary>"a@x.ch, b@y.ch; c@z.ch" → three addresses, each once.</summary>
-    internal static List<string> Addresses(string? list) =>
-        (list ?? "")
-            .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+    internal static List<string> Addresses(string? list) => OutboxService.Addresses(list == null ? null : [list]);
 }

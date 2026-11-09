@@ -530,6 +530,8 @@ public sealed class ContactRepository : IContactRepository
                 activity.ContactId = keepId;
             foreach (var message in await _db.SentMessages.Where(m => m.ContactId == dropId).ToListAsync(ct))
                 message.ContactId = keepId;
+            foreach (var message in await _db.OutboundMessages.Where(m => m.ContactId == dropId).ToListAsync(ct))
+                message.ContactId = keepId;
             foreach (var lead in await _db.Leads.Where(l => l.ConvertedToContactId == dropId).ToListAsync(ct))
                 lead.ConvertedToContactId = keepId;
             // The people the dropped record referred were referred by the person kept.

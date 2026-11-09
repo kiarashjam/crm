@@ -207,6 +207,32 @@ An import still running cannot be undone: both undo calls answer 409 until it ha
 | `GET` | `/api/activities/deal/{id}` | Activities for a deal |
 | `POST` | `/api/activities` | Log an activity |
 
+### Email and the outbox
+
+Every email and webhook event a workspace sends goes through one outbox
+(`OutboundMessages`, `OutboxService`): the composer, the sales assistant, sequence steps,
+automation emails and outbound webhooks. A background dispatcher sends it, retrying what
+did not go after 1, 5 and 15 minutes, then 1, 3, 6, 12 and 24 hours. Each email is checked
+against the suppression list (do not contact, unsubscribes, and addresses the mail service
+reported as bounced or complaining) when it is queued and again when it goes, has its
+placeholders filled (`{{firstName}}`, `{{lastName}}`, `{{name}}`, `{{email}}`, `{{company}}`,
+`{{senderName}}`, `{{workspace}}`, each with an optional `{{name|fallback}}`), carries its
+own Message-ID, and is written once on the record's timeline when it has gone. The lead,
+contact or deal an email is about must be one of the workspace's that the sender can open;
+an email whose lead or contact is deleted while it waits is cancelled, not sent.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/email/send` | Send from the composer (or `source: "assistant"`): 200 `sent` when the relay took it, 202 `queued` when it did not yet and the outbox keeps trying |
+| `POST` | `/api/email/{id}/cancel` | Take back a queued email before it goes (whoever sent it, or a manager); 409 once it has gone |
+| `GET` | `/api/organizations/{id}/email` | Who the workspace's email goes out from: its own address, whether its domain is verified, the shared address, whether replies come back |
+| `PUT` | `/api/organizations/{id}/email` | `{ sendingAddress }`: set or clear the workspace's own sending address (owner or manager) |
+| `GET` | `/api/organizations/{id}/email/suppressions` | Addresses the workspace does not email because the mail service reported them (bounced, invalid, spam report, unsubscribed) |
+| `DELETE` | `/api/organizations/{id}/email/suppressions/{suppressionId}` | Take an address off that list so the workspace may email it again (owner or manager) |
+| `GET` | `/api/webhook/organizations/{id}/deliveries` | The latest outbound webhook deliveries and what the receiver answered (owner or manager) |
+| `POST` | `/api/public/email/inbound/{secret}` | SendGrid Inbound Parse: a reply, matched to its message by reply+token address or In-Reply-To/References, written on the timeline; the person's sequences stop (not for an automatic reply such as an out-of-office). 404 without `Email:InboundParseSecret` |
+| `POST` | `/api/public/email/events/{secret}` | SendGrid Event Webhook (or `/events` with a signature checked against `Email:EventWebhookVerificationKey`): bounces, drops, spam reports and unsubscribes suppress the address and stop sequences; deliveries and opens are recorded |
+
 ### Organizations & Team
 
 | Method | Endpoint | Description |

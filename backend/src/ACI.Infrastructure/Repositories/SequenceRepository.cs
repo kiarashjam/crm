@@ -165,7 +165,8 @@ public sealed class SequenceRepository : ISequenceRepository
             if (contact == null) return SequenceTargetState.Missing;
             var contactStopped = contact.DoNotContact || await DoNotContactRules.AddressAsync(_db, organizationId, contact.Email, ct);
             return new SequenceTargetState(true, contact.Name, contact.Email, contact.Company,
-                DoNotContact: contactStopped, IsArchived: contact.IsArchived);
+                DoNotContact: contactStopped, IsArchived: contact.IsArchived,
+                SuppressedAs: await SuppressedAsAsync(organizationId, contact.Email, ct));
         }
 
         var lead = await _db.Leads.AsNoTracking()
@@ -182,6 +183,43 @@ public sealed class SequenceRepository : ISequenceRepository
         // This was never read, so DoNotContact was always false for every lead.
         var leadStopped = await DoNotContactRules.LeadAsync(_db, organizationId, targetId, lead.ConvertedToContactId, lead.Email, ct);
         return new SequenceTargetState(true, lead.Name, lead.Email, lead.Company, IsConverted: lead.IsConverted, Status: lead.Status,
-            DoNotContact: leadStopped, OwnerUserId: owner);
+            DoNotContact: leadStopped, OwnerUserId: owner, SuppressedAs: await SuppressedAsAsync(organizationId, lead.Email, ct));
+    }
+
+    /// <summary>Why the mail service put this address on the workspace's suppression list, if it did.</summary>
+    private async Task<string?> SuppressedAsAsync(Guid? organizationId, string? email, CancellationToken ct)
+    {
+        var address = DoNotContactRules.Normalize(email);
+        if (organizationId is not Guid org || address.Length == 0) return null;
+        return await _db.EmailSuppressions.AsNoTracking()
+            .Where(s => s.OrganizationId == org && s.Email == address)
+            .Select(s => s.Reason)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<int> StopOpenForAddressAsync(Guid organizationId, string email, CancellationToken ct = default)
+    {
+        var address = DoNotContactRules.Normalize(email);
+        if (address.Length == 0) return 0;
+        var leadIds = await _db.Leads.AsNoTracking()
+            .Where(l => l.OrganizationId == organizationId && l.Email.Trim().ToLower() == address)
+            .Select(l => l.Id).ToListAsync(ct);
+        var contactIds = await _db.Contacts.AsNoTracking()
+            .Where(c => c.OrganizationId == organizationId && c.Email.Trim().ToLower() == address)
+            .Select(c => c.Id).ToListAsync(ct);
+        var open = await _db.OutreachEnrollments
+            .Where(e => e.OrganizationId == organizationId
+                && (e.Status == "active" || e.Status == "paused")
+                && ((e.TargetType == "lead" && leadIds.Contains(e.TargetId))
+                    || (e.TargetType == "contact" && contactIds.Contains(e.TargetId))))
+            .ToListAsync(ct);
+        if (open.Count == 0) return 0;
+        foreach (var row in open)
+        {
+            row.Status = "stopped";
+            row.NextActionAtUtc = null;
+        }
+        await _db.SaveChangesAsync(ct);
+        return open.Count;
     }
 }

@@ -9,6 +9,7 @@ namespace ACI.Infrastructure.Repositories;
 public sealed class ImportRepository : IImportRepository
 {
     private const string Edited = "was changed after the import";
+    private const string WaitingEmail = "has an email waiting to go";
 
     private readonly AppDbContext _db;
 
@@ -180,6 +181,10 @@ public sealed class ImportRepository : IImportRepository
         Keep(await _db.TaskItems.Where(t => t.LeadId != null && leadIds.Contains(t.LeadId.Value)).Select(t => t.LeadId!.Value).Distinct().ToListAsync(ct), "has tasks");
         Keep(await _db.Contracts.Where(c => c.LeadId != null && leadIds.Contains(c.LeadId.Value)).Select(c => c.LeadId!.Value).Distinct().ToListAsync(ct), "has a contract");
         Keep(await _db.SentMessages.Where(m => m.LeadId != null && leadIds.Contains(m.LeadId.Value)).Select(m => m.LeadId!.Value).Distinct().ToListAsync(ct), "has been emailed");
+        // Only what went or is still going: a message that failed, was cancelled or was held
+        // back never reached anyone, and the outbox drops a queued one whose lead is gone.
+        Keep(await _db.OutboundMessages.Where(m => m.LeadId != null && leadIds.Contains(m.LeadId.Value) && m.Status == OutboundStatuses.Sent).Select(m => m.LeadId!.Value).Distinct().ToListAsync(ct), "has been emailed");
+        Keep(await _db.OutboundMessages.Where(m => m.LeadId != null && leadIds.Contains(m.LeadId.Value) && m.Status == OutboundStatuses.Queued).Select(m => m.LeadId!.Value).Distinct().ToListAsync(ct), WaitingEmail);
         Keep(await _db.OutreachEnrollments.Where(e => e.TargetType == "lead" && leadIds.Contains(e.TargetId)).Select(e => e.TargetId).Distinct().ToListAsync(ct), "is in a sequence");
         Keep(await AttachedAsync(RecordTypes.Lead, leadIds, ct), "has files attached");
         Keep(await CustomFieldsSinceAsync(RecordTypes.Lead, leadIds, since, ct), "has custom fields filled in after the import");
@@ -191,6 +196,8 @@ public sealed class ImportRepository : IImportRepository
         Keep(await _db.Activities.Where(a => a.ContactId != null && contactIds.Contains(a.ContactId.Value)).Select(a => a.ContactId!.Value).Distinct().ToListAsync(ct), "has activities logged");
         Keep(await _db.TaskItems.Where(t => t.ContactId != null && contactIds.Contains(t.ContactId.Value)).Select(t => t.ContactId!.Value).Distinct().ToListAsync(ct), "has tasks");
         Keep(await _db.SentMessages.Where(m => m.ContactId != null && contactIds.Contains(m.ContactId.Value)).Select(m => m.ContactId!.Value).Distinct().ToListAsync(ct), "has been emailed");
+        Keep(await _db.OutboundMessages.Where(m => m.ContactId != null && contactIds.Contains(m.ContactId.Value) && m.Status == OutboundStatuses.Sent).Select(m => m.ContactId!.Value).Distinct().ToListAsync(ct), "has been emailed");
+        Keep(await _db.OutboundMessages.Where(m => m.ContactId != null && contactIds.Contains(m.ContactId.Value) && m.Status == OutboundStatuses.Queued).Select(m => m.ContactId!.Value).Distinct().ToListAsync(ct), WaitingEmail);
         Keep(await _db.OutreachEnrollments.Where(e => e.TargetType == "contact" && contactIds.Contains(e.TargetId)).Select(e => e.TargetId).Distinct().ToListAsync(ct), "is in a sequence");
         Keep(await _db.ContactRelationships.Where(r => contactIds.Contains(r.ContactId)).Select(r => r.ContactId).Distinct().ToListAsync(ct), "has family or other relationships recorded");
         Keep(await _db.ContactRelationships.Where(r => contactIds.Contains(r.RelatedContactId)).Select(r => r.RelatedContactId).Distinct().ToListAsync(ct), "has family or other relationships recorded");

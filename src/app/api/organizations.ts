@@ -99,6 +99,52 @@ export async function updateOrganizationSettings(
   return org ?? null;
 }
 
+/** Who the workspace's email goes out from. */
+export interface EmailSending {
+  /** The workspace's own sender address, as saved; null when none is. */
+  sendingAddress: string | null;
+  /** Whether the mail service has verified its domain. Until it has, email goes out from `sharedAddress`. */
+  verified: boolean;
+  /** The configured address every workspace without a verified one sends from. */
+  sharedAddress: string | null;
+  /** Whether replies come back onto the record's timeline as well as reaching the sender. */
+  repliesCaptured: boolean;
+}
+
+/** The workspace's sender, or null in demo mode, which sends nothing. */
+export async function getEmailSending(orgId: string): Promise<EmailSending | null> {
+  if (servesDemoData()) return null;
+  return authFetchJson<EmailSending>(`/api/organizations/${orgId}/email`);
+}
+
+/** Sets the workspace's own sending address, or clears it with an empty string. Owner or manager only. */
+export async function updateEmailSending(orgId: string, sendingAddress: string): Promise<EmailSending> {
+  return authFetchJson<EmailSending>(`/api/organizations/${orgId}/email`, {
+    method: 'PUT',
+    body: JSON.stringify({ sendingAddress }),
+  });
+}
+
+/** An address the workspace does not email because the mail service reported it. */
+export interface EmailSuppression {
+  id: string;
+  email: string;
+  reason: 'bounced' | 'spam_report' | 'invalid' | 'unsubscribed';
+  /** What the mail service said, e.g. "550 5.1.1 The email account does not exist". */
+  detail: string | null;
+  createdAtUtc: string;
+}
+
+export async function getEmailSuppressions(orgId: string): Promise<EmailSuppression[]> {
+  if (servesDemoData()) return [];
+  return authFetchJson<EmailSuppression[]>(`/api/organizations/${orgId}/email/suppressions`);
+}
+
+/** Takes an address off the list, so the workspace may email it again. Owner or manager only. */
+export async function liftEmailSuppression(orgId: string, suppressionId: string): Promise<void> {
+  await authFetchJson<void>(`/api/organizations/${orgId}/email/suppressions/${suppressionId}`, { method: 'DELETE' });
+}
+
 export async function listMyPendingInvites(): Promise<InviteDto[]> {
   if (servesDemoData()) return [];
   const list = await authFetchJson<InviteDto[]>('/api/invites/pending');

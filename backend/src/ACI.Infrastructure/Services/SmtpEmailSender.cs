@@ -161,55 +161,6 @@ public sealed class SmtpEmailSender : IEmailSender
         SendAsync(toEmail, recipientName, subject, body, ct);
 
     /// <summary>
-    /// Outreach for a workspace. Sent from the configured address — the one the relay
-    /// has verified — but under the workspace's name, with Reply-To set to its
-    /// person. It used to go out as "Cadence", and every reply went to the shared
-    /// sender inbox.
-    /// </summary>
-    public async Task<bool> SendOutreachAsync(OutreachEmail email, CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(_options.SmtpHost) || string.IsNullOrWhiteSpace(_options.FromAddress))
-        {
-            _logger.LogWarning("Email:SmtpHost or Email:FromAddress is not set, so outreach \"{Subject}\" was NOT sent", email.Subject);
-            return false;
-        }
-
-        try
-        {
-            await TransmitAsync(BuildOutreachMessage(email, _options.FromName, _options.FromAddress), ct);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send outreach \"{Subject}\" to {Email}", email.Subject, email.To);
-            return false;
-        }
-    }
-
-    /// <summary>The MIME message for one piece of outreach.</summary>
-    public static MimeMessage BuildOutreachMessage(OutreachEmail email, string defaultFromName, string fromAddress)
-    {
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(string.IsNullOrWhiteSpace(email.FromName) ? defaultFromName : email.FromName.Trim(), fromAddress));
-        AddReplyTo(message, email.ReplyTo);
-        message.To.Add(new MailboxAddress(string.IsNullOrWhiteSpace(email.RecipientName) ? email.To : email.RecipientName, email.To));
-        message.Subject = email.Subject;
-        // The page, not a one-click POST endpoint (RFC 8058): the link opens the
-        // confirmation page, which is what a mail app's "Unsubscribe" does with it.
-        if (!string.IsNullOrWhiteSpace(email.UnsubscribeUrl))
-            message.Headers.Add("List-Unsubscribe", $"<{email.UnsubscribeUrl.Trim()}>");
-        message.Body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody }.ToMessageBody();
-        return message;
-    }
-
-    /// <summary>Replies go to this address, when it is one.</summary>
-    private static void AddReplyTo(MimeMessage message, string? replyTo)
-    {
-        if (!string.IsNullOrWhiteSpace(replyTo) && MailboxAddress.TryParse(replyTo.Trim(), out var address))
-            message.ReplyTo.Add(address);
-    }
-
-    /// <summary>
     /// Builds and delivers one plain-text message. Returns false (never throws) so a
     /// delivery problem cannot fail the caller's operation.
     /// </summary>
@@ -264,7 +215,7 @@ public sealed class SmtpEmailSender : IEmailSender
     /// <summary>Hands one message to the configured SMTP relay. Throws on failure.</summary>
     private async Task TransmitAsync(MimeMessage message, CancellationToken ct)
     {
-        using var client = new SmtpClient();
+        using var client = new SmtpClient { Timeout = SmtpTimeoutMs };
         var secure = !_options.UseSsl
             ? SecureSocketOptions.Auto
             : _options.SmtpPort == 465
@@ -279,45 +230,95 @@ public sealed class SmtpEmailSender : IEmailSender
         await client.DisconnectAsync(true, ct);
     }
 
-    // ── Composed in the CRM ──────────────────────────────────────────────────
+    // ── The outbox ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Sends a message someone wrote in the composer. Unlike the reminders above,
-    /// an unset SmtpHost is NOT treated as success — the composer would tell the
-    /// person their email went when it did not — and the answer says which way it
-    /// failed, so the composer can say whether trying again could help.
+    /// How long one SMTP exchange may take. MailKit's own default is two minutes, which
+    /// a person waiting on the composer would sit through.
     /// </summary>
-    public async Task<ComposedEmailOutcome> SendComposedAsync(ComposedEmail email, CancellationToken ct = default)
+    private const int SmtpTimeoutMs = 30_000;
+
+    /// <summary>
+    /// Sends one outbox email. Unlike the reminders above, an unset SmtpHost is NOT
+    /// treated as success: the composer would tell the person their email went when it
+    /// did not. A refusal the mail server means for good (a recipient, or the message
+    /// itself, that it will not take) is told apart from one that may pass, so the
+    /// outbox retries only what trying again can fix.
+    /// </summary>
+    public async Task<OutboxSendResult> SendOutboxAsync(OutboxEmail email, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_options.SmtpHost) || string.IsNullOrWhiteSpace(_options.FromAddress))
         {
-            _logger.LogWarning("Email:SmtpHost or Email:FromAddress is not set, so a composed email was NOT sent");
-            return ComposedEmailOutcome.NotConfigured;
+            _logger.LogWarning("Email:SmtpHost or Email:FromAddress is not set, so outbox email {MessageId} was NOT sent", email.OutboundMessageId);
+            return OutboxSendResult.NotConfigured;
         }
 
         try
         {
-            var fromName = string.IsNullOrWhiteSpace(email.FromName) ? _options.FromName : email.FromName.Trim();
-            await TransmitAsync(BuildComposedMessage(email, fromName, _options.FromAddress), ct);
-            return ComposedEmailOutcome.Sent;
+            await TransmitAsync(BuildOutboxMessage(email, _options.FromName, _options.FromAddress, TagsForSendGrid), ct);
+            return OutboxSendResult.Sent;
+        }
+        catch (SmtpCommandException ex) when ((int)ex.StatusCode >= 500
+            && ex.ErrorCode is SmtpErrorCode.RecipientNotAccepted or SmtpErrorCode.MessageNotAccepted)
+        {
+            // A 5xx about a recipient or about the message: the server has decided, and
+            // it will refuse the same message the same way however often it is sent. A
+            // 5xx about our sender or our login is ours to fix, so it is retried below.
+            _logger.LogWarning(ex, "The mail server refused outbox email {MessageId} for good", email.OutboundMessageId);
+            var who = ex.Mailbox is { } mailbox ? $"{mailbox.Address}: " : "";
+            return new OutboxSendResult(OutboxSendOutcome.Rejected,
+                $"The mail server refused it. {who}{(int)ex.StatusCode} {ex.Message}".Trim(), (int)ex.StatusCode);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send composed email \"{Subject}\"", email.Subject);
-            return ComposedEmailOutcome.Failed;
+            _logger.LogWarning(ex, "Outbox email {MessageId} was not delivered this time", email.OutboundMessageId);
+            var code = ex is SmtpCommandException command ? (int)command.StatusCode : (int?)null;
+            return new OutboxSendResult(OutboxSendOutcome.Retry, $"The mail server could not be reached or did not take it: {ex.Message}", code);
         }
     }
 
-    /// <summary>The MIME message for a composed email: every recipient, both parts.</summary>
-    public static MimeMessage BuildComposedMessage(ComposedEmail email, string fromName, string fromAddress)
+    /// <summary>SendGrid reads X-SMTPAPI and strips it; another relay would pass it on to the recipient.</summary>
+    private bool TagsForSendGrid => _options.SmtpHost.Trim().EndsWith("sendgrid.net", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The MIME message for one outbox email: every recipient, both parts, and the
+    /// headers that bring a reply or a delivery report back to it.
+    /// </summary>
+    public static MimeMessage BuildOutboxMessage(OutboxEmail email, string defaultFromName, string defaultFromAddress, bool tagForSendGrid = false)
     {
         var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(fromName, fromAddress));
-        AddReplyTo(message, email.ReplyTo);
-        message.To.AddRange(email.To.Select(MailboxAddress.Parse));
+        message.From.Add(new MailboxAddress(
+            string.IsNullOrWhiteSpace(email.FromName) ? defaultFromName : email.FromName.Trim(),
+            string.IsNullOrWhiteSpace(email.FromAddress) ? defaultFromAddress : email.FromAddress.Trim()));
+        foreach (var replyTo in email.ReplyTo)
+        {
+            if (!string.IsNullOrWhiteSpace(replyTo) && MailboxAddress.TryParse(replyTo.Trim(), out var address))
+                message.ReplyTo.Add(address);
+        }
+        if (email.To.Count == 1 && !string.IsNullOrWhiteSpace(email.RecipientName))
+            message.To.Add(new MailboxAddress(email.RecipientName.Trim(), email.To[0]));
+        else
+            message.To.AddRange(email.To.Select(MailboxAddress.Parse));
         message.Cc.AddRange(email.Cc.Select(MailboxAddress.Parse));
         message.Bcc.AddRange(email.Bcc.Select(MailboxAddress.Parse));
         message.Subject = email.Subject;
+        // MimeKit writes the angle brackets itself.
+        message.MessageId = email.MessageId.Trim().TrimStart('<').TrimEnd('>');
+        // The page, not a one-click POST endpoint (RFC 8058): the link opens the
+        // confirmation page, which is what a mail app's "Unsubscribe" does with it.
+        if (!string.IsNullOrWhiteSpace(email.UnsubscribeUrl))
+            message.Headers.Add("List-Unsubscribe", $"<{email.UnsubscribeUrl.Trim()}>");
+        // SendGrid copies these into every event it reports about the message (delivered,
+        // bounced, marked as spam), which is how a report finds its way back to it.
+        if (tagForSendGrid)
+            message.Headers.Add("X-SMTPAPI", System.Text.Json.JsonSerializer.Serialize(new
+            {
+                unique_args = new Dictionary<string, string> { [OutboxEmailTags.MessageIdArg] = email.OutboundMessageId.ToString("D") },
+            }));
         message.Body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody }.ToMessageBody();
         return message;
     }

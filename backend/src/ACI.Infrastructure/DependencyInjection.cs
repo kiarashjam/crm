@@ -53,7 +53,7 @@ public static class DependencyInjection
         services.AddScoped<IWorkspaceRecords, WorkspaceRecords>();
         services.AddScoped<IDealLineItemRepository, DealLineItemRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
-        services.AddScoped<ISentMessageRepository, SentMessageRepository>();
+        services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IAutomationRepository, AutomationRepository>();
         services.AddScoped<IClubRepository, ClubRepository>();
         services.AddScoped<IClubDocumentRepository, ClubDocumentRepository>();
@@ -65,7 +65,7 @@ public static class DependencyInjection
         services.AddScoped<IReportingService, ReportingService>();
         services.AddScoped<IDealBoardService, DealBoardService>();
         services.AddScoped<WeeklyDigestService>();
-        services.AddScoped<IOutboundWebhookPublisher, OutboundWebhookPublisher>();
+        services.AddScoped<IWebhookTransport, WebhookTransport>();
         
         // Application services
         services.AddScoped<ITemplateService, TemplateService>();

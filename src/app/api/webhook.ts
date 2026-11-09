@@ -74,11 +74,34 @@ export async function updateWebhookPassword(orgId: string, password: string | nu
   }
 }
 
+/** One event posted, or still to be posted, to the workspace's address. */
+export interface WebhookDelivery {
+  id: string;
+  eventName: string;
+  /** queued (it is tried again at nextAttemptAtUtc), sent, failed (given up on) or cancelled. */
+  status: 'queued' | 'sent' | 'failed' | 'cancelled';
+  attempts: number;
+  /** What the receiver last answered, when it answered. */
+  lastStatusCode: number | null;
+  lastError: string | null;
+  createdAtUtc: string;
+  sentAtUtc: string | null;
+  nextAttemptAtUtc: string | null;
+}
+
+/** The latest events and what the receiver answered. Owner or manager only; none in demo mode. */
+export async function getWebhookDeliveries(orgId: string): Promise<WebhookDelivery[]> {
+  if (servesDemoData()) return [];
+  return authFetchJson<WebhookDelivery[]>(`/api/webhook/organizations/${orgId}/deliveries`);
+}
+
 /**
  * Where Cadence posts lead.created, deal.stage_changed and deal.won, as JSON. An empty
  * URL turns it off. A secret signs each body (X-Cadence-Signature, hex HMAC-SHA256);
  * leave it undefined to keep the saved one. Owner or manager only; the address must be
- * public https, and the server's reason comes back as the error's message.
+ * public https, and the server's reason comes back as the error's message. Events are
+ * queued and posted by the server, which tries again for about two days when the
+ * receiver does not take one.
  */
 export async function updateOutboundWebhook(orgId: string, url: string, secret?: string): Promise<void> {
   if (servesDemoData()) return; // no-op in demo

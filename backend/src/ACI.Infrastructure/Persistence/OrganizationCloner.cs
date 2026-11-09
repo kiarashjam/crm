@@ -479,6 +479,22 @@ public sealed class OrganizationCloner
                 i.TokenHash = ACI.Application.Common.PasswordResetCrypto.HashRawToken(
                     ACI.Application.Common.PasswordResetCrypto.CreateRawToken());
                 return "Pending invitations get their own link";
+            case OutboundMessage m:
+                // The copy keeps the history, but an email or event still queued in the
+                // original goes out once, from the original. Replies and the mail service's
+                // reports name the original's Message-ID and reply address, so the copy's
+                // messages get their own id and no reply address.
+                if (m.Status == OutboundStatuses.Queued)
+                {
+                    m.Status = OutboundStatuses.Cancelled;
+                    m.NextAttemptAtUtc = null;
+                    m.ClaimedUntilUtc = null;
+                    m.LastError = "Copied with its organization while still queued; the original sends it.";
+                }
+                if (m.MessageIdHeader is { } header)
+                    m.MessageIdHeader = $"<{m.Id:N}{header[(header.IndexOf('@') is var at and >= 0 ? at : header.Length - 1)..]}";
+                m.ReplyToken = null;
+                return "Outbox messages still queued are sent from the original only, and copies get their own Message-ID";
             case Notification n when n.SourceKey != null && n.SourceKey == ((Notification)source).SourceKey:
                 // The key stops a person being told the same thing twice, and is unique per
                 // person. One with no copied record's id in it would be the original's exactly.

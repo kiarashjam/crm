@@ -13,6 +13,11 @@ namespace ACI.Application.Interfaces;
 /// Who works this record: a lead's assignee, while they are still a member of the
 /// workspace. Null when nobody is, and for contacts, which have no assignee.
 /// </param>
+/// <param name="SuppressedAs">
+/// Why their address is on the workspace's suppression list (<see cref="ACI.Domain.Entities.EmailSuppressionReasons"/>),
+/// or null when it is not: the mail service reported it bounced, or that they marked
+/// the workspace's email as spam.
+/// </param>
 public sealed record SequenceTargetState(
     bool Exists,
     string? Name,
@@ -22,7 +27,8 @@ public sealed record SequenceTargetState(
     string? Status = null,
     bool DoNotContact = false,
     bool IsArchived = false,
-    Guid? OwnerUserId = null)
+    Guid? OwnerUserId = null,
+    string? SuppressedAs = null)
 {
     public static readonly SequenceTargetState Missing = new(false, null, null, null);
 }
@@ -54,6 +60,13 @@ public interface ISequenceRepository
     /// real reply, so the next scheduled email does not go out after they answered.
     /// </summary>
     Task<int> StopOpenForTargetAsync(Guid? organizationId, string targetType, Guid targetId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stop active and paused enrollments of every lead and contact in the workspace with
+    /// this address. Used when the mail service reports that it bounced, or that the
+    /// person marked the email as spam.
+    /// </summary>
+    Task<int> StopOpenForAddressAsync(Guid organizationId, string email, CancellationToken ct = default);
 
     Task<IReadOnlyList<OutreachEnrollment>> DueAsync(DateTime utcNow, int take, CancellationToken ct = default);
 

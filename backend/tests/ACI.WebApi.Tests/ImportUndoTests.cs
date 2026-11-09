@@ -297,4 +297,44 @@ public class ImportUndoTests
         (await factory.Services.Read(db => db.Contacts.Select(c => c.Name).OrderBy(n => n).ToList())).Should().Equal("Lea Dubois", "Marc Dubois");
         (await factory.Services.Read(db => db.Companies.Select(c => c.Name).ToList())).Should().Equal("Dubois Vins");
     }
+
+    [Fact]
+    public async Task AContactAnEmailWentToOrIsGoingToStays_OneWhoseEmailNeverWentDoesNot()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, _, orgId) = await WorkspaceAsync(factory);
+        var csv = "name,email\nAnna Sent,anna@sent.example\nBen Waiting,ben@waiting.example\nCleo Failed,cleo@failed.example\n";
+        var batchId = (await OkJson(await Import(client, "contact", csv, new string?[] { "name", "email" }), "import")).GetProperty("batchId").GetGuid();
+        var ids = await factory.Services.Read(db => db.Contacts.ToDictionary(c => c.Name, c => c.Id));
+
+        // Straight into the outbox, without the timeline entry a sent email also leaves,
+        // so the message alone decides.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            OutboundMessage Email(string name, string status) => new()
+            {
+                Id = Guid.NewGuid(), OrganizationId = orgId, Channel = OutboundChannels.Email, Source = OutboundSources.Automation,
+                Status = status, To = "x@example.ch", Subject = "Hello", Body = "Hello", ContactId = ids[name],
+                CreatedAtUtc = DateTime.UtcNow, NextAttemptAtUtc = DateTime.UtcNow,
+            };
+            db.OutboundMessages.AddRange(
+                Email("Anna Sent", OutboundStatuses.Sent),
+                Email("Ben Waiting", OutboundStatuses.Queued),
+                Email("Cleo Failed", OutboundStatuses.Failed),
+                Email("Cleo Failed", OutboundStatuses.Suppressed),
+                Email("Cleo Failed", OutboundStatuses.Cancelled));
+            await db.SaveChangesAsync();
+        }
+
+        var preview = await OkJson(await client.GetAsync($"/api/imports/{batchId}/undo"), "undo preview");
+        var kept = preview.GetProperty("kept").EnumerateArray()
+            .ToDictionary(k => k.GetProperty("label").GetString()!, k => k.GetProperty("reason").GetString());
+        kept.Should().Contain("Anna Sent", "has been emailed");
+        kept.Should().Contain("Ben Waiting", "has an email waiting to go");
+        kept.Should().NotContainKey("Cleo Failed", "no email of hers ever reached her");
+
+        await OkJson(await client.PostAsync($"/api/imports/{batchId}/undo", null), "undo");
+        (await factory.Services.Read(db => db.Contacts.Select(c => c.Name).OrderBy(n => n).ToList())).Should().Equal("Anna Sent", "Ben Waiting");
+    }
 }

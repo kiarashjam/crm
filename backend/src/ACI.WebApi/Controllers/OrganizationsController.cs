@@ -1,5 +1,6 @@
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -119,6 +120,47 @@ public class OrganizationsController : ControllerBase
 
         var result = await _organizationService.UpdateSettingsAsync(id, userId.Value, request, ct);
         return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Who the workspace's email goes out from: its own address, whether the mail service
+    /// has verified its domain (until then the shared address is used), and whether
+    /// replies come back into the CRM.
+    /// </summary>
+    [HttpGet("{id:guid}/email")]
+    public async Task<ActionResult<EmailSendingDto>> GetEmailSending(Guid id, [FromServices] IEmailSendingService email, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await email.GetAsync(id, userId.Value, ct)).ToActionResult();
+    }
+
+    /// <summary>Sets or clears the workspace's own sending address (owner or manager).</summary>
+    [HttpPut("{id:guid}/email")]
+    public async Task<ActionResult<EmailSendingDto>> UpdateEmailSending(
+        Guid id, [FromBody] UpdateEmailSendingRequest request, [FromServices] IEmailSendingService email, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await email.UpdateAsync(id, userId.Value, request, ct)).ToActionResult();
+    }
+
+    /// <summary>Addresses the workspace does not email because the mail service reported them: bounced, invalid, complained, unsubscribed.</summary>
+    [HttpGet("{id:guid}/email/suppressions")]
+    public async Task<ActionResult<IReadOnlyList<EmailSuppressionDto>>> EmailSuppressions(Guid id, [FromServices] IEmailSendingService email, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await email.SuppressionsAsync(id, userId.Value, ct)).ToActionResult();
+    }
+
+    /// <summary>Takes an address off that list (owner or manager), so the workspace may email it again.</summary>
+    [HttpDelete("{id:guid}/email/suppressions/{suppressionId:guid}")]
+    public async Task<ActionResult> LiftEmailSuppression(Guid id, Guid suppressionId, [FromServices] IEmailSendingService email, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await email.LiftSuppressionAsync(id, userId.Value, suppressionId, ct)).ToNoContentResult();
     }
 
     /// <summary>

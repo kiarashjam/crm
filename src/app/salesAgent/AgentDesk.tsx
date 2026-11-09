@@ -373,6 +373,8 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
       return created ? { saved: true, text: 'Comment saved on the task.' } : { saved: false, text: 'The comment was not saved.' };
     }
     if (action.kind === 'send' && action.to && action.body) {
+      // The server's outbox sends it and writes it on the record's timeline once it has
+      // gone, as for the composer; the assistant's emails used to leave no trace there.
       const sent = await sendEmail({
         to: action.to,
         subject: action.title || 'Following up',
@@ -380,8 +382,12 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
         leadId: action.leadId,
         dealId: action.dealId,
         contactId: action.contactId,
+        source: 'assistant',
       });
-      return sent ? { saved: true, text: `Sent to ${action.to}.` } : { saved: false, text: 'The message was not sent.' };
+      if (!sent) return { saved: false, text: 'The message was not sent.' };
+      return sent.status === 'queued'
+        ? { saved: true, text: `Queued for ${action.to}: the mail server did not take it yet. Cadence keeps trying, and it shows on the timeline once it has gone.` }
+        : { saved: true, text: `Sent to ${action.to}.` };
     }
     if (action.kind === 'assign' && action.leadId) {
       const user = getCurrentUser();

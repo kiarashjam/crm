@@ -55,6 +55,20 @@ public class SecretPathRedactionTests
     }
 
     [Theory]
+    // The mail service posts replies and delivery reports to addresses whose secret is
+    // the whole permission to write onto every workspace's timelines.
+    [InlineData("/api/public/email/inbound/SUPERSECRETTOKEN123abcXYZ", "/api/public/email/inbound/[redacted]")]
+    [InlineData("/api/public/email/events/SUPERSECRETTOKEN123abcXYZ", "/api/public/email/events/[redacted]")]
+    [InlineData("/API/Public/Email/Events/SUPERSECRETTOKEN123abcXYZ", "/API/Public/Email/Events/[redacted]")]
+    public void RemovesTheSecretFromTheMailServicesAddresses(string path, string expected)
+    {
+        var redacted = SecretPathRedactionMiddleware.RedactPath(path);
+        redacted.Should().Be(expected);
+        redacted.Should().NotContain(Token);
+        SecretPathRedactionMiddleware.RedactPath("/api/public/email/events").Should().BeNull("no secret, nothing to hide");
+    }
+
+    [Theory]
     // The CRM's own routes carry ids, not credentials. Redacting them would throw
     // away the only thing that makes a log line useful.
     [InlineData("/api/contracts/3f9a21c0-0000-0000-0000-000000000000")]

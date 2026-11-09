@@ -29,6 +29,13 @@ public class Organization : Common.BaseEntity
     public string? OutboundWebhookUrl { get; set; }
     public string? OutboundWebhookSecret { get; set; }
     /// <summary>
+    /// The workspace's own sender address, e.g. hello@acme.ch. Its email goes out from
+    /// it only while its domain is one the mail service has verified for this workspace
+    /// (Email:VerifiedSendingDomains); until then it goes out from the configured shared
+    /// address, as before.
+    /// </summary>
+    public string? SendingAddress { get; set; }
+    /// <summary>
     /// ISO 4217 code new deals are priced in unless they say otherwise. A label only:
     /// changing it converts nothing. Club pages keep their own currency in the hospitality
     /// settings.
