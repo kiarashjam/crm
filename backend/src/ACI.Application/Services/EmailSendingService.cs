@@ -45,8 +45,9 @@ public interface IEmailSendingService
 /// <remarks>
 /// Verification is the mail service's (SendGrid domain authentication, DNS records on
 /// the workspace's domain). Whoever runs Cadence lists each verified domain in
-/// Email:VerifiedSendingDomains; the address saved here does nothing until then, and
-/// Settings says so rather than claiming email goes out from it.
+/// Email:VerifiedSendingDomains together with the workspace it was verified for; the
+/// address saved here does nothing until then, and Settings says so rather than claiming
+/// email goes out from it.
 /// </remarks>
 public sealed class EmailSendingService : IEmailSendingService
 {
@@ -87,7 +88,7 @@ public sealed class EmailSendingService : IEmailSendingService
     {
         if (await _organizations.GetMemberRoleAsync(userId, organizationId, ct) == null) return DomainErrors.Organization.NotMember;
         var org = await _organizations.GetByIdAsync(organizationId, ct);
-        return org == null ? DomainErrors.Organization.NotFound : Dto(org.SendingAddress);
+        return org == null ? DomainErrors.Organization.NotFound : Dto(org.SendingAddress, organizationId);
     }
 
     public async Task<Result<EmailSendingDto>> UpdateAsync(Guid organizationId, Guid userId, UpdateEmailSendingRequest request, CancellationToken ct = default)
@@ -106,15 +107,16 @@ public sealed class EmailSendingService : IEmailSendingService
         await _organizations.UpdateAsync(org, ct);
         _logger.LogInformation("Organization {OrganizationId}'s sending address was {Change} by {UserId}",
             organizationId, org.SendingAddress == null ? "cleared" : "set", userId);
-        return Dto(org.SendingAddress);
+        return Dto(org.SendingAddress, organizationId);
     }
 
-    private EmailSendingDto Dto(string? sendingAddress)
+    private EmailSendingDto Dto(string? sendingAddress, Guid organizationId)
     {
         var domain = sendingAddress is { } a && a.LastIndexOf('@') is var at and > 0 ? a[(at + 1)..] : null;
         return new EmailSendingDto(
             sendingAddress,
-            domain != null && _settings.IsVerifiedSendingDomain(domain),
+            // Verified for this workspace: the same domain verified for another one does not count.
+            domain != null && _settings.IsVerifiedSendingDomain(domain, organizationId),
             string.IsNullOrWhiteSpace(_settings.FromAddress) ? null : _settings.FromAddress.Trim(),
             _settings.CapturesReplies);
     }

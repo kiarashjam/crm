@@ -38,12 +38,19 @@ public sealed class EmailSettings
 
     /// <summary>
     /// Domains the mail service has authenticated (SendGrid → Sender Authentication →
-    /// Authenticate Your Domain), comma separated, e.g. "acme.ch, club.example". A
+    /// Authenticate Your Domain), each with the workspace it was verified for, comma
+    /// separated: "acme.ch=&lt;workspace id&gt;, club.example=&lt;workspace id&gt;". A
     /// workspace's own sending address is used as From only when its domain is listed
-    /// here; otherwise its email goes out from <see cref="FromAddress"/>, which the relay
-    /// accepts. Listing a domain the relay has not verified makes that workspace's email
-    /// fail, so add one here only after the mail service shows it as verified.
+    /// here for that workspace; otherwise its email goes out from <see cref="FromAddress"/>,
+    /// which the relay accepts. Listing a domain the relay has not verified makes that
+    /// workspace's email fail, so add one here only after the mail service shows it as verified.
     /// </summary>
+    /// <remarks>
+    /// The workspace id is required. Anyone can sign up and save any sending address, so a
+    /// domain listed on its own would let every workspace send as it: as another customer,
+    /// or as the shared sender's own domain. An entry without a workspace id counts for none.
+    /// The same domain may be listed once for each workspace it belongs to.
+    /// </remarks>
     public string VerifiedSendingDomains { get; set; } = "";
 
     /// <summary>
@@ -73,14 +80,23 @@ public sealed class EmailSettings
     /// </summary>
     public string EventWebhookVerificationKey { get; set; } = "";
 
-    /// <summary>Whether the mail service has verified <paramref name="domain"/> for sending.</summary>
-    public bool IsVerifiedSendingDomain(string? domain)
+    /// <summary>
+    /// Whether the mail service has verified <paramref name="domain"/> for sending on behalf
+    /// of the workspace <paramref name="organizationId"/> (see <see cref="VerifiedSendingDomains"/>).
+    /// </summary>
+    public bool IsVerifiedSendingDomain(string? domain, Guid? organizationId)
     {
         var wanted = (domain ?? "").Trim().TrimEnd('.');
-        if (wanted.Length == 0) return false;
-        return (VerifiedSendingDomains ?? "")
-            .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Any(d => string.Equals(d.TrimEnd('.'), wanted, StringComparison.OrdinalIgnoreCase));
+        if (wanted.Length == 0 || organizationId is not Guid workspace) return false;
+        foreach (var entry in (VerifiedSendingDomains ?? "").Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var equals = entry.IndexOf('=');
+            if (equals < 0) continue;
+            if (string.Equals(entry[..equals].Trim().TrimEnd('.'), wanted, StringComparison.OrdinalIgnoreCase)
+                && Guid.TryParse(entry[(equals + 1)..].Trim(), out var verifiedFor) && verifiedFor == workspace)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>The reply-capture domain, or null when none is set.</summary>

@@ -30,8 +30,9 @@ public class Organization : Common.BaseEntity
     public string? OutboundWebhookSecret { get; set; }
     /// <summary>
     /// The workspace's own sender address, e.g. hello@acme.ch. Its email goes out from
-    /// it only while its domain is one the mail service has verified (Email:VerifiedSendingDomains);
-    /// until then it goes out from the configured shared address, as before.
+    /// it only while its domain is one the mail service has verified for this workspace
+    /// (Email:VerifiedSendingDomains); until then it goes out from the configured shared
+    /// address, as before.
     /// </summary>
     public string? SendingAddress { get; set; }
     /// <summary>

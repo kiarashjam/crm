@@ -50,7 +50,11 @@ public class OutreachMailTests
 
         var unverified = await With("").SenderAsync(Org, null);
         unverified.Should().Be(new OutreachSender("Acme", "olga@acme.example", "Olga", null));
-        (await With("club.example, ACME.example").SenderAsync(Org, null)).FromAddress.Should().Be("Hello@Acme.Example");
+        (await With($"club.example={Guid.NewGuid()}, ACME.example={Org}").SenderAsync(Org, null)).FromAddress.Should().Be("Hello@Acme.Example");
+        (await With($"acme.example={Guid.NewGuid()}").SenderAsync(Org, null)).FromAddress
+            .Should().BeNull("the domain was verified for another workspace");
+        (await With("acme.example").SenderAsync(Org, null)).FromAddress
+            .Should().BeNull("a domain listed for no workspace would let every workspace send as it");
     }
 
     [Fact]

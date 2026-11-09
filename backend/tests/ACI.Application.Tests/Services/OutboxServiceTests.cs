@@ -242,13 +242,18 @@ public class OutboxServiceTests
     }
 
     [Theory]
-    [InlineData("acme.example", "hello@acme.example")]
-    [InlineData("other.example", null)]
+    [InlineData("acme.example={org}", "hello@acme.example")]
+    [InlineData("club.example={other}, Acme.Example. = {org}", "hello@acme.example")]
+    [InlineData("other.example={org}", null)]
     [InlineData("", null)]
-    public async Task AWorkspaceSendsFromItsOwnAddressOnlyOnceItsDomainIsVerified(string verified, string? from)
+    // Any workspace may save any address: a domain verified for another workspace, or
+    // listed for none, must not let this one send as it.
+    [InlineData("acme.example={other}", null)]
+    [InlineData("acme.example", null)]
+    public async Task AWorkspaceSendsFromItsOwnAddressOnlyOnceItsDomainIsVerifiedForIt(string verified, string? from)
     {
         _workspace.SendingAddress = "hello@acme.example";
-        _settings.VerifiedSendingDomains = verified;
+        _settings.VerifiedSendingDomains = verified.Replace("{org}", Org.ToString()).Replace("{other}", Guid.NewGuid().ToString());
 
         var message = await QueueAndDispatchAsync(Email());
 

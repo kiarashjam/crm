@@ -194,7 +194,7 @@ then everything works as before.
 
 | Name | Value | What it switches on |
 |------|-------|---------------------|
-| `Email__VerifiedSendingDomains` | domains SendGrid has authenticated, comma separated, e.g. `acme.ch, club.example` | A workspace whose own sending address (Settings → Organization → Email sender) is on one of these domains sends from it. Add a domain only once SendGrid shows it as verified: the relay refuses mail from a domain it has not verified. |
+| `Email__VerifiedSendingDomains` | each domain SendGrid has authenticated with the workspace it belongs to, comma separated, e.g. `acme.ch=3f2b…-…, club.example=9a1c…-…` | A workspace whose own sending address (Settings → Organization → Email sender) is on a domain listed for that workspace sends from it. Add a domain only once SendGrid shows it as verified: the relay refuses mail from a domain it has not verified. The workspace id is required: anyone can sign up and save any address, so a domain listed on its own would let every workspace send as it, and is ignored. |
 | `Email__InboundReplyDomain` | e.g. `reply.yourdomain.ch` | With `Email__InboundParseSecret`: every workspace email also names `reply+<token>@` this domain in Reply-To, so a reply reaches the person and comes back into the CRM. |
 | `Email__InboundParseSecret` | a long random string, e.g. `openssl rand -hex 24` | Turns on `POST /api/public/email/inbound/<secret>`. |
 | `Email__EventWebhookSecret` | a long random string | Turns on `POST /api/public/email/events/<secret>`. |
@@ -220,8 +220,10 @@ sequences writing to it; the composer then refuses the address and says why.
 
 **A workspace's own domain.** In **SendGrid → Settings → Sender Authentication →
 Authenticate Your Domain**, add the workspace's domain and give its owner the DNS records
-to publish. Once SendGrid shows it as verified, add the domain to
-`Email__VerifiedSendingDomains`. The workspace's Settings page says which address is in use.
+to publish. Once SendGrid shows it as verified, add `domain=<workspace id>` to
+`Email__VerifiedSendingDomains`; the workspace's Settings page shows its id while its
+address is not in use yet, and says which address is in use. Check that the domain really
+belongs to that workspace's organization before listing it.
 
 Both public endpoints answer 404 until their secret or key is set, and their secrets are
 kept out of the request log.

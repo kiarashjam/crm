@@ -59,7 +59,10 @@ describe('the workspace email sender', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(state.update).toHaveBeenCalledWith('org-1', 'hello@acme.example'));
-    expect(await screen.findByText(/Not used yet: acme\.example has not been verified/)).toBeTruthy();
+    const notYet = await screen.findByText(/Not used yet: acme\.example has not been verified/);
+    // A domain is switched on for one workspace (another may name the same domain), so
+    // the owner is given the id to pass on to whoever runs Cadence.
+    expect(notYet.textContent).toMatch(/switches it on for this workspace, whose id is org-1\./);
     expect(screen.getByText('Acme <info@pavillon46.ch>')).toBeTruthy();
     expect(toast.success).toHaveBeenCalledWith('Saved. Email still goes out from info@pavillon46.ch until acme.example is verified.');
   });

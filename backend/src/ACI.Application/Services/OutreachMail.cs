@@ -79,7 +79,7 @@ public sealed class OutreachMail : IOutreachMail
     public async Task<OutreachSender> SenderAsync(Guid? organizationId, Guid? replyToUserId, CancellationToken ct = default)
     {
         var workspace = organizationId is Guid id ? await _organizations.GetByIdAsync(id, ct) : null;
-        var from = VerifiedSendingAddress(workspace?.SendingAddress);
+        var from = VerifiedSendingAddress(workspace?.SendingAddress, workspace?.Id);
         foreach (var candidate in new[] { replyToUserId, workspace?.OwnerUserId }.Distinct())
         {
             if (candidate is not Guid userId) continue;
@@ -94,15 +94,17 @@ public sealed class OutreachMail : IOutreachMail
     }
 
     /// <summary>
-    /// The workspace's own address, only while the mail service has verified its domain.
-    /// The relay refuses mail from a domain it has not verified, so until then the
-    /// configured shared address is used, which it accepts.
+    /// The workspace's own address, only while the mail service has verified its domain
+    /// for this workspace. The relay refuses mail from a domain it has not verified, so
+    /// until then the configured shared address is used, which it accepts. Another
+    /// workspace naming the same domain gets the shared address too: any workspace may
+    /// save any address, and must not send as someone else's verified domain.
     /// </summary>
-    private string? VerifiedSendingAddress(string? sendingAddress)
+    private string? VerifiedSendingAddress(string? sendingAddress, Guid? organizationId)
     {
         var address = (sendingAddress ?? "").Trim();
         if (address.Length == 0 || !ValidationHelper.IsValidEmail(address)) return null;
-        return _settings.IsVerifiedSendingDomain(address[(address.LastIndexOf('@') + 1)..]) ? address : null;
+        return _settings.IsVerifiedSendingDomain(address[(address.LastIndexOf('@') + 1)..], organizationId) ? address : null;
     }
 
     public string? TrackingUrl(Guid leadId)

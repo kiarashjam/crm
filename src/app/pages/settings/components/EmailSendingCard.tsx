@@ -116,9 +116,10 @@ export function EmailSendingCard() {
           </p>
         ) : (
           <p className="mt-2 text-xs text-amber-700" role="status">
-            Not used yet: {domain} has not been verified with the mail service, so email still goes out from{' '}
-            {sender.sharedAddress ?? 'the shared address'}. Whoever runs Cadence authenticates the domain with the mail
-            service (a few DNS records on it) and then switches it on.
+            Not used yet: {domain} has not been verified with the mail service for this workspace, so email still goes
+            out from {sender.sharedAddress ?? 'the shared address'}. Whoever runs Cadence authenticates the domain with
+            the mail service (a few DNS records on it) and then switches it on for this workspace, whose id is{' '}
+            <span className="font-mono">{currentOrg.id}</span>.
           </p>
         )
       )}
