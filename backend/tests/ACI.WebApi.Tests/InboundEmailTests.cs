@@ -122,6 +122,7 @@ public class InboundEmailTests
         reply.Subject.Should().Be("Reply from Jean Dupont: Re: Hello");
         reply.Body.Should().Be("Yes please, call me tomorrow.", "the quoted conversation is left out");
         reply.Participants.Should().Be("jean@example.ch");
+        reply.Direction.Should().Be("inbound", "they wrote to us");
         (await EnrollmentStatusAsync(owner, enrollmentId)).Should().Be("stopped", "they answered, so the next email must not go");
         (await app.Services.Read(db => db.OutboundMessages.Single().RepliedAtUtc)).Should().NotBeNull();
         var notice = await app.Services.Read(db => db.Notifications.Single(n => n.UserId == ownerId && n.Title == "Jean Dupont replied"));

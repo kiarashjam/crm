@@ -88,6 +88,7 @@ public class ComposedEmailTests
         var activity = await factory.Services.Read(db => db.Activities.Single(a => a.LeadId == leadId && a.Type == "email"));
         activity.Subject.Should().Be("Email: Following up");
         activity.Body.Should().Be("Hi Jean");
+        activity.Direction.Should().Be("outbound", "the timeline shows which way an email went");
         (await factory.Services.Read(db => db.OutboundMessages.Single().Source)).Should().Be("assistant");
         // A person's email is their response, as when they log one by hand.
         (await factory.Services.Read(db => db.Leads.Single(l => l.Id == leadId).FirstResponseAtUtc)).Should().NotBeNull();

@@ -610,6 +610,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
                 ContactId = message.ContactId,
                 DealId = message.DealId,
                 Participants = Clip(string.Join(", ", Split(message.To).Concat(Split(message.Cc))), 500),
+                // The timeline shows which way an email went, as for one logged by hand.
+                Direction = ActivityFacts.Outbound,
                 IsAutomated = !message.CountsAsResponse,
             }, ct);
             if (created.IsSuccess)

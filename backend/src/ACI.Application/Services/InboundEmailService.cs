@@ -179,6 +179,7 @@ public sealed class InboundEmailService : IInboundEmailService
                 ContactId = message.ContactId,
                 DealId = message.DealId,
                 Participants = Clip(reply.FromAddress.Trim(), 500),
+                Direction = ActivityFacts.Inbound,
                 IsAutomated = true,
             }, ct);
             if (created.IsSuccess) return created.Value.Id;
