@@ -202,14 +202,6 @@ public sealed class DealRepository : IDealRepository
     private static bool IsBlankAmount(Deal deal) =>
         deal.Amount == 0m || (deal.Amount == null && string.IsNullOrWhiteSpace(deal.Value));
 
-    /// <summary>HP-11: Record a deal stage change.</summary>
-    public async Task AddStageChangeAsync(DealStageChange change, CancellationToken ct = default)
-    {
-        _db.DealStageChanges.Add(change);
-        await _db.SaveChangesAsync(ct);
-    }
-
-    /// <summary>HP-11: Get stage change history for a deal.</summary>
     public async Task<IReadOnlyList<DealStageChange>> GetStageChangesAsync(
         Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
@@ -218,10 +210,11 @@ public sealed class DealRepository : IDealRepository
             .AnyAsync(d => d.Id == dealId, ct);
         if (!dealExists) return Array.Empty<DealStageChange>();
 
-        return await _db.DealStageChanges
+        return await _db.DealStageChanges.AsNoTracking()
             .Where(sc => sc.DealId == dealId)
             .Include(sc => sc.ChangedByUser)
             .OrderByDescending(sc => sc.ChangedAtUtc)
+            .ThenByDescending(sc => sc.Id)
             .ToListAsync(ct);
     }
 }

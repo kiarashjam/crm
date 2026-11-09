@@ -239,6 +239,24 @@ public class DealsController : ControllerBase
         return result.ToNoContentResult();
     }
 
+    /// <summary>
+    /// The stages a deal has been in, newest first: when it came into each, from where,
+    /// who moved it, and when it moved on.
+    /// </summary>
+    /// <response code="200">The history; a deal from before history was kept may have none.</response>
+    /// <response code="404">Not a deal this person can see.</response>
+    [HttpGet("{id:guid}/stage-history")]
+    [ProducesResponseType(typeof(IReadOnlyList<DealStageChangeDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<DealStageChangeDto>>> GetStageHistory(Guid id, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await _dealService.GetStageHistoryAsync(id, userId.Value, _currentUser.CurrentOrganizationId, ct);
+        return result.ToActionResult();
+    }
+
     /// <summary>Keeps this deal and folds the other one into it.</summary>
     /// <response code="204">Merged; the other deal is gone and everything on it is on this one.</response>
     /// <response code="403">The other deal is private and this person may not make this one private.</response>

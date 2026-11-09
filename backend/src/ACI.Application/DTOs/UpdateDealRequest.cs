@@ -35,7 +35,9 @@ public record UpdateDealRequest
     /// <summary>
     /// Deal stage name (legacy, prefer using DealStageId).
     /// </summary>
-    [StringLength(50, ErrorMessage = "Stage cannot exceed 50 characters")]
+    // As long as a stage's name can be: the board sends the name with the stage's id,
+    // and capped at 50 a move into a stage with a longer name was refused.
+    [StringLength(128, ErrorMessage = "Stage cannot exceed 128 characters")]
     public string? Stage { get; init; }
 
     /// <summary>

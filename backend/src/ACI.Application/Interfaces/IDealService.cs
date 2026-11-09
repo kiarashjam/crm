@@ -45,4 +45,10 @@ public interface IDealService
 
     /// <summary>Keeps one deal and folds a duplicate of it into it.</summary>
     Task<Result> MergeAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// The stages the deal has been in, newest first: when it came into each, from where,
+    /// who moved it, and when it left again.
+    /// </summary>
+    Task<Result<IReadOnlyList<DealStageChangeDto>>> GetStageHistoryAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default);
 }
