@@ -14,10 +14,10 @@ import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
   getUserSettings, saveUserSettings, resetUserSettings,
-  getTimezones, getCurrencies, getLanguages,
+  getTimezones, getLanguages,
   twoFactorSetup, twoFactorStatus, twoFactorEnable, twoFactorDisable,
 } from '@/app/api';
-import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption, CurrencyOption, LanguageOption } from '@/app/api/types';
+import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption, LanguageOption } from '@/app/api/types';
 import { messages } from '@/app/api/messages';
 import { ProfileSection } from '@/app/pages/settings/components/ProfileSection';
 import { NotificationsSection } from '@/app/pages/settings/components/NotificationsSection';
@@ -101,7 +101,6 @@ export default function Settings() {
 
   // Options data
   const [timezones, setTimezones] = useState<TimezoneOption[]>([]);
-  const [currencies, setCurrencies] = useState<CurrencyOption[]>([]);
   const [languages, setLanguages] = useState<LanguageOption[]>([]);
 
   // 2FA state
@@ -169,7 +168,6 @@ export default function Settings() {
       }));
 
     getTimezones().then(setTimezones).catch(() => {});
-    getCurrencies().then(setCurrencies).catch(() => {});
     getLanguages().then(setLanguages).catch(() => {});
 
     // Only whether 2FA is on. Opening Settings used to ask for "setup", which sent the
@@ -637,7 +635,6 @@ export default function Settings() {
           <AccountSection
             settings={settings}
             updateSettings={updateSettings}
-            currencies={currencies}
             handleReset={handleReset}
           />
         );
