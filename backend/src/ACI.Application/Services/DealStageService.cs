@@ -108,9 +108,26 @@ public class DealStageService : IDealStageService
 
         if (probability is < 0 or > 100) return Result.Failure<DealStageDto>(DomainErrors.DealStage.InvalidProbability);
 
+        var outcomeBefore = DealStageMoves.OutcomeOf(existing);
         if (displayOrder.HasValue) existing.DisplayOrder = displayOrder.Value;
         if (isWon.HasValue) existing.IsWon = isWon.Value;
         if (isLost.HasValue) existing.IsLost = isLost.Value;
+        var outcomeAfter = DealStageMoves.OutcomeOf(existing);
+        if (outcomeAfter != outcomeBefore)
+        {
+            // The deals that had the outcome the stage gave take the one it gives now, saved
+            // with it, as moving each of them into such a stage would. The board counts an
+            // open deal in a won stage as won and the reports read the deal's own outcome,
+            // so a stage made the won stage in Settings left every deal in it won on the
+            // board and open in the reports. A deal closed the other way on its own page
+            // keeps its outcome. No automation runs: a stage relabelled is not a deal won.
+            var now = DateTime.UtcNow;
+            foreach (var deal in await _repository.GetDealsWithOutcomeAsync(existing.Id, outcomeBefore, ct))
+            {
+                deal.IsWon = outcomeAfter;
+                deal.ClosedAtUtc = outcomeAfter == null ? null : now;
+            }
+        }
         // Every open deal in the stage without a probability of its own is re-weighted at
         // once: those deals read the stage's, rather than having been given a copy of it.
         if (clearProbability) existing.Probability = null;

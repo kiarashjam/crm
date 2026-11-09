@@ -14,6 +14,22 @@ export interface StageSettings {
   outcome: StageOutcome;
 }
 
+/**
+ * What saving a new outcome does to the deals already in the stage: the server gives the
+ * ones that had the stage's old outcome its new one, as moving them there would, so the
+ * board and the reports keep agreeing. A deal closed the other way keeps its outcome.
+ */
+function outcomeChangeNote(from: StageOutcome, to: StageOutcome): string | null {
+  if (from === to) return null;
+  const deals = from === 'open' ? 'The open deals in this stage' : `The ${from} deals in this stage`;
+  return to === 'open' ? `${deals} are reopened.` : `${deals} are marked ${to}.`;
+}
+
+function OutcomeChangeNote({ from, to }: { from: StageOutcome; to: StageOutcome }) {
+  const note = outcomeChangeNote(from, to);
+  return note ? <p className="basis-full text-xs text-amber-700">{note}</p> : null;
+}
+
 /** A pipeline's own stale days; null follows the workspace's. */
 export interface PipelineSettings {
   staleDealDays: number | null;
@@ -302,6 +318,7 @@ export function PipelinesSection({
                                 >
                                   Cancel
                                 </button>
+                                <OutcomeChangeNote from={s.isWon ? 'won' : s.isLost ? 'lost' : 'open'} to={editingOutcome} />
                               </div>
                             ) : (
                               <>

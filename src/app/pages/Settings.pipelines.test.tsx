@@ -77,6 +77,8 @@ describe('pipeline settings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit Signed' }));
     fireEvent.change(screen.getByLabelText('Probability for Signed'), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText('Outcome for Signed'), { target: { value: 'won' } });
+    // The deals already in it follow, which the manager is told before saving.
+    expect(screen.getByText('The open deals in this stage are marked won.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save stage Signed' }));
 
     await waitFor(() => expect(api.updateDealStage).toHaveBeenCalledWith('st-2',
@@ -88,6 +90,7 @@ describe('pipeline settings', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Proposal' }));
     expect(screen.getByLabelText('Probability for Proposal')).toHaveValue(30);
+    expect(screen.queryByText(/deals in this stage are/)).toBeNull();
     fireEvent.change(screen.getByLabelText('Probability for Proposal'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save stage Proposal' }));
 

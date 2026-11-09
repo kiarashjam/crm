@@ -56,4 +56,7 @@ public sealed class DealStageRepository : IDealStageRepository
 
     public async Task<bool> HasAnyDealsAsync(Guid stageId, CancellationToken ct = default) =>
         await _db.Deals.AnyAsync(d => d.DealStageId == stageId, ct);
+
+    public async Task<IReadOnlyList<Deal>> GetDealsWithOutcomeAsync(Guid stageId, bool? outcome, CancellationToken ct = default) =>
+        await _db.Deals.Where(d => d.DealStageId == stageId && d.IsWon == outcome).ToListAsync(ct);
 }

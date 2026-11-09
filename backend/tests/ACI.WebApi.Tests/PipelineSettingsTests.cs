@@ -54,6 +54,71 @@ public class PipelineSettingsTests
             .GetProperty("probability").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
+    /// <summary>
+    /// Settings can make a stage the won (or lost) stage. The deals already in it follow,
+    /// as if each had been moved there: the board counts an open deal in a won stage as
+    /// won and the reports read the deal's own outcome, so they disagreed about every deal
+    /// in the stage. Made open again, the stage reopens the deals it had closed.
+    /// </summary>
+    [Fact]
+    public async Task MakingAStageTheWonStageClosesTheOpenDealsInIt()
+    {
+        var (factory, owner, _) = await WorkspaceAsync();
+        using var _f = factory;
+        await DealsFollowTheirStagesOutcomeAsync(owner);
+    }
+
+    /// <summary>The same on SQL Server, where finding the deals that are still open has to translate.</summary>
+    [SqlServerFact]
+    public async Task MakingAStageTheWonStageClosesTheOpenDealsInItOnSqlServer()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (owner, _) = await SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
+            var org = await Json(await owner.PostAsync("/api/organizations", Body(new { name = "Pavillon" })), HttpStatusCode.Created);
+            owner.In(org.GetProperty("id").GetGuid());
+            await DealsFollowTheirStagesOutcomeAsync(owner);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    private static async Task DealsFollowTheirStagesOutcomeAsync(HttpClient owner)
+    {
+        var pipelineId = (await Json(await owner.PostAsync("/api/pipelines", Body(new { name = "Memberships" })))).GetProperty("id").GetGuid();
+        var signed = (await Json(await owner.PostAsync("/api/dealstages", Body(new { pipelineId, name = "Signed", displayOrder = 1 })))).GetProperty("id").GetGuid();
+        async Task<Guid> DealIn(string name) =>
+            (await Json(await owner.PostAsync("/api/deals", Body(new { name, amount = 1000, dealStageId = signed })))).GetProperty("id").GetGuid();
+        var waiting = await DealIn("Waiting for the committee");
+        // Lost on its own page; the pipeline has no lost stage to move it to, so it stays.
+        var declined = await DealIn("Declined");
+        await Json(await owner.PutAsync($"/api/deals/{declined}", Body(new { isWon = false })));
+
+        await Json(await owner.PutAsync($"/api/dealstages/{signed}", Body(new { isWon = true, isLost = false })));
+
+        var won = await Json(await owner.GetAsync($"/api/deals/{waiting}"));
+        won.GetProperty("isWon").GetBoolean().Should().BeTrue("a deal in the won stage is won, in the reports as on the board");
+        won.GetProperty("closedAtUtc").ValueKind.Should().NotBe(JsonValueKind.Null);
+        (await Json(await owner.GetAsync($"/api/deals/{declined}"))).GetProperty("isWon").GetBoolean()
+            .Should().BeFalse("it was lost by a person, not by the stage");
+        (await Json(await owner.GetAsync("/api/reporting/dashboard"))).GetProperty("dealsWonCount").GetInt32().Should().Be(1);
+        var board = await Json(await owner.GetAsync($"/api/deals/board?pipelineId={pipelineId}"));
+        board.GetProperty("summary").GetProperty("won").GetInt32().Should().Be(1);
+        board.GetProperty("summary").GetProperty("lost").GetInt32().Should().Be(1);
+
+        await Json(await owner.PutAsync($"/api/dealstages/{signed}", Body(new { isWon = false, isLost = false })));
+
+        var reopened = await Json(await owner.GetAsync($"/api/deals/{waiting}"));
+        reopened.GetProperty("isWon").ValueKind.Should().Be(JsonValueKind.Null, "the stage that closed it no longer does");
+        reopened.GetProperty("closedAtUtc").ValueKind.Should().Be(JsonValueKind.Null);
+        (await Json(await owner.GetAsync($"/api/deals/{declined}"))).GetProperty("isWon").GetBoolean().Should().BeFalse();
+    }
+
     [Theory]
     [InlineData(-1)]
     [InlineData(101)]
