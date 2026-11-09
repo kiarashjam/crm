@@ -47,6 +47,7 @@ public sealed class LeadOpsService : ILeadOpsService
     private readonly ILeadAutomation _automation;
     private readonly IActivityService _activities;
     private readonly IOrganizationRepository? _organizations;
+    private readonly ICollaborationNotifier? _collaboration;
 
     public LeadOpsService(
         ILeadOpsRepository ops,
@@ -55,7 +56,8 @@ public sealed class LeadOpsService : ILeadOpsService
         INotificationService notifications,
         ILeadAutomation automation,
         IActivityService activities,
-        IOrganizationRepository? organizations = null)
+        IOrganizationRepository? organizations = null,
+        ICollaborationNotifier? collaboration = null)
     {
         _ops = ops;
         _leads = leads;
@@ -64,6 +66,7 @@ public sealed class LeadOpsService : ILeadOpsService
         _automation = automation;
         _activities = activities;
         _organizations = organizations;
+        _collaboration = collaboration;
     }
 
     public async Task<IReadOnlyList<ScoringRuleDto>> GetScoringRulesAsync(Guid? organizationId, CancellationToken ct = default)
@@ -330,6 +333,7 @@ public sealed class LeadOpsService : ILeadOpsService
 
         var updated = 0;
         var missing = 0;
+        var handedOver = new List<(Guid Id, string Name)>();
         foreach (var id in request.Ids.Distinct())
         {
             var lead = await _leadRepository.GetByIdAsync(id, userId, organizationId, ct);
@@ -338,6 +342,7 @@ public sealed class LeadOpsService : ILeadOpsService
                 missing++;
                 continue;
             }
+            var ownerBefore = lead.AssignedToUserId;
             if (!string.IsNullOrWhiteSpace(source)) lead.Source = source;
             if (request.ClearQueue) lead.QueueId = null;
             else if (request.QueueId != null) lead.QueueId = request.QueueId;
@@ -348,10 +353,16 @@ public sealed class LeadOpsService : ILeadOpsService
             // concurrent assignment), so the owner goes through AssignAsync.
             var saved = await _leadRepository.UpdateAsync(lead, userId, organizationId, ct) != null;
             if (saved && request.AssignedToUserId is Guid newOwner)
+            {
                 saved = await _leadRepository.AssignAsync(id, userId, organizationId, newOwner, ct) != null;
+                if (saved && newOwner != ownerBefore) handedOver.Add((lead.Id, lead.Name));
+            }
             if (saved) updated++;
             else missing++;
         }
+        // One line for every lead handed to the new owner, not one each.
+        if (_collaboration != null && request.AssignedToUserId is Guid givenTo && handedOver.Count > 0)
+            await _collaboration.RecordsAssignedAsync(RecordTypes.Lead, givenTo, organizationId, handedOver, userId, ct);
         return new BulkLeadUpdateResult(updated, missing);
     }
 

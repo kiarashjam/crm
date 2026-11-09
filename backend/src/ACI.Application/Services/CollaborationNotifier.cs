@@ -91,6 +91,48 @@ public sealed partial class CollaborationNotifier : ICollaborationNotifier
         }
     }
 
+    public async Task RecordAssignedAsync(string recordType, Guid recordId, string recordName, Guid? organizationId, Guid? assigneeId, Guid actorId, string? madeBy = null, CancellationToken ct = default)
+    {
+        try
+        {
+            if (assigneeId is not Guid assignee || assignee == actorId || organizationId is not Guid org) return;
+            if (!await IsMemberAsync(assignee, org, ct)) return;
+            if (recordType == RecordTypes.Deal && !await CanSeeDealAsync(assignee, org, recordId, ct)) return;
+            var noun = Noun(recordType);
+            var title = madeBy != null
+                ? $"{Capitalized(madeBy)} gave you a {noun}"
+                : $"{await NameOfAsync(actorId, ct)} assigned you a {noun}";
+            await NotifyAsync(assignee, org, recordType, title, recordName, $"/{noun}s/{recordId}", null, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not tell the new owner about {RecordType} {RecordId}", recordType, recordId);
+        }
+    }
+
+    public async Task RecordsAssignedAsync(string recordType, Guid assigneeId, Guid? organizationId, IReadOnlyList<(Guid Id, string Name)> records, Guid actorId, CancellationToken ct = default)
+    {
+        if (records.Count == 1)
+        {
+            await RecordAssignedAsync(recordType, records[0].Id, records[0].Name, organizationId, assigneeId, actorId, null, ct);
+            return;
+        }
+        try
+        {
+            if (records.Count == 0 || assigneeId == actorId || organizationId is not Guid org) return;
+            if (!await IsMemberAsync(assigneeId, org, ct)) return;
+            var noun = Noun(recordType);
+            var names = string.Join("; ", records.Take(3).Select(r => r.Name));
+            var more = records.Count > 3 ? $"; and {records.Count - 3} more" : "";
+            await NotifyAsync(assigneeId, org, recordType,
+                $"{await NameOfAsync(actorId, ct)} assigned you {records.Count} {noun}s", names + more, $"/{noun}s", null, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not tell {AssigneeId} about {Count} {RecordType}s", assigneeId, records.Count, recordType);
+        }
+    }
+
     public async Task TaskCommentedAsync(TaskItem task, Guid commentId, string body, Guid actorId, CancellationToken ct = default)
     {
         try
@@ -214,6 +256,9 @@ public sealed partial class CollaborationNotifier : ICollaborationNotifier
 
     private static IEnumerable<Mentions.Person> People(IReadOnlyList<OrganizationMember> members) =>
         members.Select(m => new Mentions.Person(m.UserId, m.User?.Name, m.User?.Email));
+
+    /// <summary>"lead" or "deal": also the bell's type for it and, with an s, the page it is on.</summary>
+    private static string Noun(string recordType) => recordType == RecordTypes.Deal ? "deal" : "lead";
 
     private static string Capitalized(string text) =>
         text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];

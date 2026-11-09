@@ -259,6 +259,76 @@ public class CollaborationNotificationTests
     }
 
     [Fact]
+    public async Task ALeadHandedToARepTellsThemOnce()
+    {
+        using var team = await TeamAsync();
+        var leadId = await LeadAsync(team.Marc);
+
+        await Ok(await team.Marc.PutAsync($"/api/leads/{leadId}/assign", Body(new { assignedToUserId = team.AnnaId })), "give it to Anna");
+        await Ok(await team.Marc.PutAsync($"/api/leads/{leadId}/assign", Body(new { assignedToUserId = team.AnnaId })), "again, no change");
+
+        var bell = await BellAsync(team.Anna);
+        bell.Should().ContainSingle();
+        bell[0].GetProperty("type").GetString().Should().Be("lead");
+        bell[0].GetProperty("title").GetString().Should().Be("Marc Weber assigned you a lead");
+        bell[0].GetProperty("message").GetString().Should().Be("Jean Dupont");
+        bell[0].GetProperty("link").GetString().Should().Be($"/leads/{leadId}");
+    }
+
+    [Fact]
+    public async Task LeadsHandedOverTogetherAreOneLine()
+    {
+        using var team = await TeamAsync();
+        var ids = new List<Guid>();
+        foreach (var (name, email) in new[] { ("Ada Lovelace", "ada@example.ch"), ("Grace Hopper", "grace@example.ch") })
+            ids.Add((await Ok(await team.Marc.PostAsync("/api/leads", Body(new { name, email, status = "New" })), $"create {name}")).GetProperty("id").GetGuid());
+
+        await Ok(await team.Marc.PostAsync("/api/lead-ops/bulk", Body(new { ids, assignedToUserId = team.LucaId })), "bulk owner");
+
+        var bell = await BellAsync(team.Luca);
+        bell.Should().ContainSingle();
+        bell[0].GetProperty("title").GetString().Should().Be("Marc Weber assigned you 2 leads");
+        bell[0].GetProperty("message").GetString().Should().Be("Ada Lovelace; Grace Hopper");
+        bell[0].GetProperty("link").GetString().Should().Be("/leads");
+    }
+
+    [Fact]
+    public async Task ANewLeadRoutedToARepTellsThemRoutingGaveItToThem()
+    {
+        using var team = await TeamAsync();
+        await Ok(await team.Marc.PostAsync("/api/lead-ops/assignment", Body(new
+        {
+            id = Guid.Empty, name = "Everything to Anna", kind = "roundrobin", priority = 1,
+            sourceMatch = (string?)null, territoryId = (Guid?)null, queueId = (Guid?)null,
+            memberUserIds = new[] { team.AnnaId }, isActive = true,
+        })), "add the routing rule");
+
+        var leadId = await LeadAsync(team.Marc);
+
+        var bell = await BellAsync(team.Anna);
+        bell.Should().ContainSingle();
+        bell[0].GetProperty("title").GetString().Should().Be("Lead routing gave you a lead");
+        bell[0].GetProperty("link").GetString().Should().Be($"/leads/{leadId}");
+    }
+
+    [Fact]
+    public async Task ADealMadeForOrHandedToSomeoneTellsThem()
+    {
+        using var team = await TeamAsync();
+
+        var deal = await Ok(await team.Marc.PostAsync("/api/deals", Body(new { name = "Corporate membership", amount = 4800, currency = "CHF", assigneeId = team.AnnaId })), "create deal");
+        var dealId = deal.GetProperty("id").GetGuid();
+        await Ok(await team.Marc.PutAsync($"/api/deals/{dealId}", Body(new { assigneeId = team.LucaId })), "hand it to Luca");
+
+        var anna = await BellAsync(team.Anna);
+        anna.Should().ContainSingle();
+        anna[0].GetProperty("type").GetString().Should().Be("deal");
+        anna[0].GetProperty("title").GetString().Should().Be("Marc Weber assigned you a deal");
+        anna[0].GetProperty("link").GetString().Should().Be($"/deals/{dealId}");
+        (await BellAsync(team.Luca)).Should().ContainSingle().Which.GetProperty("message").GetString().Should().Be("Corporate membership");
+    }
+
+    [Fact]
     public async Task ACommentIsStillSavedWhenNobodyCanBeTold()
     {
         using var team = await TeamAsync();

@@ -18,6 +18,7 @@ public class DealService : IDealService
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IOrganizationRepository? _organizations;
     private readonly IDealStageRepository? _stages;
+    private readonly ICollaborationNotifier? _notifier;
     private readonly ILogger<DealService> _logger;
 
     public DealService(
@@ -28,7 +29,8 @@ public class DealService : IDealService
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
         IOrganizationRepository? organizations = null,
-        IDealStageRepository? stages = null)
+        IDealStageRepository? stages = null,
+        ICollaborationNotifier? notifier = null)
     {
         _repository = repository;
         _activityRepository = activityRepository;
@@ -38,6 +40,7 @@ public class DealService : IDealService
         _webhooks = webhooks;
         _organizations = organizations;
         _stages = stages;
+        _notifier = notifier;
     }
 
     /// <inheritdoc />
@@ -217,6 +220,9 @@ public class DealService : IDealService
             entity.StageChanges.Add(entered);
 
         entity = await _repository.AddAsync(entity, ct);
+        // A deal made for someone else tells them.
+        if (_notifier != null)
+            await _notifier.RecordAssignedAsync(RecordTypes.Deal, entity.Id, entity.Name, organizationId, entity.AssigneeId, userId, null, ct);
 
         _logger.LogInformation(
             "Deal {DealId} created successfully for user {UserId}",
@@ -249,6 +255,7 @@ public class DealService : IDealService
 
         // Track stage change before applying update (HP-11)
         var oldStageId = existing.DealStageId;
+        var assigneeBefore = existing.AssigneeId;
         var oldStageName = existing.DealStage?.Name ?? existing.Stage;
         var previousWon = existing.IsWon;
 
@@ -373,6 +380,8 @@ public class DealService : IDealService
                 id);
             return DomainErrors.General.ServerError;
         }
+        if (_notifier != null && existing.AssigneeId != assigneeBefore)
+            await _notifier.RecordAssignedAsync(RecordTypes.Deal, existing.Id, existing.Name, organizationId, existing.AssigneeId, userId, null, ct);
 
         if (moved)
         {
