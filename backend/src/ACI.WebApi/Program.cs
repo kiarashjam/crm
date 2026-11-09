@@ -279,6 +279,7 @@ try
     builder.Services.AddSingleton<OutboxSignal>();
     builder.Services.AddSingleton<IOutboxSignal>(sp => sp.GetRequiredService<OutboxSignal>());
     builder.Services.AddSingleton<OutboxDispatcher>();
+    builder.Services.AddScoped<IInboundEmailService, InboundEmailService>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();
     builder.Services.AddScoped<IDuplicateService, DuplicateService>();

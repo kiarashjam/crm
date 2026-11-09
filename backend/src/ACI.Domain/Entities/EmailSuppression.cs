@@ -41,4 +41,10 @@ public static class EmailSuppressionReasons
 
     /// <summary>The mail service would not send to it at all, e.g. an invalid address.</summary>
     public const string Invalid = "invalid";
+
+    /// <summary>
+    /// The person unsubscribed through the mail service's own link or list, not the
+    /// workspace's (which marks them do not contact instead).
+    /// </summary>
+    public const string Unsubscribed = "unsubscribed";
 }

@@ -655,6 +655,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         {
             EmailSuppressionReasons.SpamReport => $"marked this workspace's email as spam on {on}",
             EmailSuppressionReasons.Invalid => $"was refused by the mail service as not deliverable on {on}",
+            EmailSuppressionReasons.Unsubscribed => $"unsubscribed through the mail service on {on}",
             _ => $"bounced on {on}",
         };
     }

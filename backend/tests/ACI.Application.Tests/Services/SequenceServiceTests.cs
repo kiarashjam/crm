@@ -214,6 +214,7 @@ public class SequenceServiceTests
         { Reachable with { DoNotContact = true }, "do not contact" },
         { Reachable with { SuppressedAs = EmailSuppressionReasons.Bounced }, "bounced" },
         { Reachable with { SuppressedAs = EmailSuppressionReasons.SpamReport }, "spam" },
+        { Reachable with { SuppressedAs = EmailSuppressionReasons.Unsubscribed }, "unsubscribed" },
         { Reachable with { IsArchived = true }, "archived" },
         { Reachable with { IsConverted = true }, "converted" },
         { Reachable with { Status = "Lost / Not Interested" }, "Lost / Not Interested" },

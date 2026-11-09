@@ -284,8 +284,16 @@ public sealed class SequenceService : ISequenceService
     {
         if (!target.Exists) return "they are no longer in this workspace";
         if (target.DoNotContact) return "they are marked do not contact";
-        if (target.SuppressedAs == EmailSuppressionReasons.SpamReport) return "they marked the workspace's email as spam";
-        if (target.SuppressedAs != null) return "their email address bounced";
+        if (target.SuppressedAs is { } suppressed)
+        {
+            return suppressed switch
+            {
+                EmailSuppressionReasons.SpamReport => "they marked the workspace's email as spam",
+                EmailSuppressionReasons.Unsubscribed => "they unsubscribed",
+                EmailSuppressionReasons.Invalid => "their email address cannot be delivered to",
+                _ => "their email address bounced",
+            };
+        }
         if (target.IsArchived) return "they are archived";
         if (target.IsConverted) return "they have been converted";
         if (target.Status is { } status && FinishedStatuses.Contains(status.Trim())) return $"their status is {status.Trim()}";
