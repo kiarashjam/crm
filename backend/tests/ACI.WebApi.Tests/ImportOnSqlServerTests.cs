@@ -74,4 +74,60 @@ public class ImportOnSqlServerTests
             await SqlServerApp.DropDatabaseAsync(database);
         }
     }
+
+    [SqlServerFact]
+    public async Task CompaniesContactsAndLeadsAreImportedAndUndoneOneAfterAnother()
+    {
+        // Each undo removes rows that point at each other: a lead, the contact made for it
+        // and the company named after its email; a contact and the company it brought.
+        // SQL Server refuses a removal in the wrong order, where the in-memory provider does not.
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (owner, _) = await SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
+            var created = await owner.PostAsync("/api/organizations", Body(new { name = "Pavillon" }));
+            created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+            var orgId = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+            owner.In(orgId);
+            async Task<object?> CountAsync(string table) =>
+                await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [{table}] WHERE [OrganizationId] = '{orgId}'");
+
+            var companies = await OkJson(await Import(owner, "company", "name;domain\r\nAcme SA;acme.example\r\nBeta AG;beta.example\r\n",
+                new[] { "name", "domain" }), "import companies");
+            companies.GetProperty("created").GetInt32().Should().Be(2);
+
+            var contacts = await OkJson(await Import(owner, "contact",
+                "first name;last name;email;company\r\nAnna;Roth;anna@roth.example;Acme SA\r\nMarc;Weber;marc@weber.example;Gamma GmbH\r\n",
+                new[] { "firstName", "lastName", "email", "company" }), "import contacts");
+            contacts.GetProperty("created").GetInt32().Should().Be(2);
+            (await CountAsync("Companies")).Should().Be(3, "the contact import adds Gamma GmbH");
+
+            var leads = await OkJson(await Import(owner, "lead", "name,email\r\nDana Frei,dana@frei-treuhand.example\r\n",
+                new[] { "name", "email" }), "import leads");
+            leads.GetProperty("created").GetInt32().Should().Be(1);
+            (await CountAsync("Contacts")).Should().Be(3, "Dana is given a contact");
+            (await CountAsync("Companies")).Should().Be(4, "and a company named after her email");
+
+            var undoLeads = await OkJson(await owner.PostAsync($"/api/imports/{leads.GetProperty("batchId").GetGuid()}/undo", null), "undo the leads");
+            (undoLeads.GetProperty("leads").GetInt32(), undoLeads.GetProperty("contacts").GetInt32(), undoLeads.GetProperty("companies").GetInt32())
+                .Should().Be((1, 1, 1));
+            (await CountAsync("Leads")).Should().Be(0);
+            (await CountAsync("Contacts")).Should().Be(2);
+
+            var undoContacts = await OkJson(await owner.PostAsync($"/api/imports/{contacts.GetProperty("batchId").GetGuid()}/undo", null), "undo the contacts");
+            (undoContacts.GetProperty("contacts").GetInt32(), undoContacts.GetProperty("companies").GetInt32()).Should().Be((2, 1));
+            (await CountAsync("Contacts")).Should().Be(0);
+            (await CountAsync("Companies")).Should().Be(2, "Acme SA and Beta AG came from the company import");
+
+            var undoCompanies = await OkJson(await owner.PostAsync($"/api/imports/{companies.GetProperty("batchId").GetGuid()}/undo", null), "undo the companies");
+            undoCompanies.GetProperty("companies").GetInt32().Should().Be(2);
+            (await CountAsync("Companies")).Should().Be(0);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
 }
