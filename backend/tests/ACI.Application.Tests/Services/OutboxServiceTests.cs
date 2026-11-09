@@ -207,6 +207,19 @@ public class OutboxServiceTests
     }
 
     [Fact]
+    public async Task AWorkspaceNameLongerThanTheFromNameColumnIsCut_NotFatal()
+    {
+        // Organizations.Name holds 256 characters, OutboundMessages.FromName 200. On SQL
+        // Server a longer name failed the insert, so nothing that workspace sent could queue.
+        _workspace.Name = new string('W', 256);
+
+        var message = await QueueAndDispatchAsync(Email());
+
+        message.FromName.Should().HaveLength(OutboxService.MaxFromName);
+        _sent.Single().FromName.Should().Be(new string('W', OutboxService.MaxFromName));
+    }
+
+    [Fact]
     public async Task SomeoneWhoHasLeftTheWorkspaceIsNotTheReplyTo_TheOwnerIs()
     {
         var former = Guid.NewGuid();

@@ -153,6 +153,9 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     /// <summary>The first attempt and one after each retry delay.</summary>
     public static readonly int MaxAttempts = RetryDelays.Length + 1;
 
+    /// <summary>OutboundMessages.FromName is nvarchar(200).</summary>
+    internal const int MaxFromName = 200;
+
     private readonly IOutboxRepository _messages;
     private readonly IEmailSender _email;
     private readonly IWebhookTransport _webhooks;
@@ -254,7 +257,9 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             NextAttemptAtUtc = now,
             CreatedAtUtc = now,
             CreatedByUserId = request.CreatedByUserId,
-            FromName = sender.WorkspaceName,
+            // A workspace's name may be 256 characters and the column holds 200: unclipped,
+            // every email of a workspace with a longer name failed to queue.
+            FromName = Clip(sender.WorkspaceName, MaxFromName),
             FromAddress = sender.FromAddress,
             ReplyTo = replyTo.Count == 0 ? null : string.Join(", ", replyTo),
             To = string.Join(", ", to),
