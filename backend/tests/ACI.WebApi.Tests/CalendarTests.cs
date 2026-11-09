@@ -1,8 +1,12 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using ACI.Application.Interfaces;
+using ACI.Domain.Entities;
 using ACI.Domain.Enums;
+using ACI.Infrastructure.Persistence;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
 namespace ACI.WebApi.Tests;
@@ -131,6 +135,36 @@ public class CalendarTests
         var calendar = await Ok(await CalendarAsync(team.Anna, DateTime.UtcNow.Date, DateTime.UtcNow.Date.AddDays(7), "team"), "the team's calendar");
 
         calendar.GetProperty("entries").EnumerateArray().Select(e => e.GetProperty("title").GetString()).Should().NotContain("Confidential terms");
+    }
+
+    [Fact]
+    public async Task ALeadsMeetingIsNotCrowdedOutByLeadsWithOtherDatesThatMonth()
+    {
+        // The leads are picked out in SQL by their pipeline text, and only so many are
+        // read. Matched on the month anywhere in the text, a lead first called this month
+        // whose meeting is in March took a place, and enough of them pushed real meetings
+        // past the cut without a word.
+        using var factory = new CustomWebApplicationFactory();
+        var (_, marcId) = await SignInAsync(factory, "marc@pavillon46.ch");
+        var org = await CreateAsync(factory, marcId, "Pavillon46");
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Lead NewLead(string id, string name, string pipeline) => new()
+        {
+            Id = Guid.Parse(id), UserId = marcId, OrganizationId = org, Name = name, Email = $"{id[..8]}@example.ch",
+            Status = "New", PipelineState = pipeline, CreatedAtUtc = DateTime.UtcNow,
+        };
+        db.Leads.AddRange(
+            NewLead("00000000-0000-0000-0000-000000000001", "First called in November",
+                """{"outreachDate":"2026-11-03","meetingDate":"2027-03-10"}"""),
+            NewLead("ffffffff-ffff-ffff-ffff-ffffffffffff", "Meeting in November",
+                """{"outreachDate":"2026-10-20","meetingDate":"2026-11-12"}"""));
+        await db.SaveChangesAsync();
+        var leads = scope.ServiceProvider.GetRequiredService<ILeadRepository>();
+
+        var found = await leads.GetWithMeetingInMonthsAsync(marcId, org, ["2026-11"], mineOnly: false, take: 1);
+
+        found.Select(l => l.Name).Should().Equal("Meeting in November");
     }
 
     [Theory]

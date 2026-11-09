@@ -1,4 +1,6 @@
+using ACI.Application.Interfaces;
 using ACI.Application.Services;
+using ACI.Domain.Entities;
 
 namespace ACI.Application.Tests.Services;
 
@@ -41,10 +43,42 @@ public class CalendarServiceTests
     }
 
     [Fact]
+    public async Task LeadsReadUpToTheCutSayTheCalendarMayBeMissingSome()
+    {
+        // The leads come from SQL up to a cut. When the cut is reached there may be more
+        // meetings than were read, so the calendar says some may be missing rather than
+        // passing the ones read off as all of them.
+        var from = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        var tasks = new Mock<ITaskRepository>();
+        tasks.Setup(t => t.GetDueBetweenAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var activities = new Mock<IActivityRepository>();
+        activities.Setup(a => a.GetMeetingsBetweenAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var leads = new Mock<ILeadRepository>();
+        leads.Setup(l => l.GetWithMeetingInMonthsAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid? _, IReadOnlyList<string> _, bool _, int take, CancellationToken _) =>
+                Enumerable.Range(0, take).Select(i => new Lead
+                {
+                    Id = Guid.NewGuid(), Name = $"Lead {i}",
+                    // In the months asked for, but outside the days on show.
+                    PipelineState = """{"meetingDate":"2026-12-28"}""",
+                }).ToList());
+
+        var calendar = await new CalendarService(tasks.Object, activities.Object, leads.Object)
+            .GetAsync(Guid.NewGuid(), Guid.NewGuid(), from, from.AddDays(42), "team");
+
+        calendar.IsSuccess.Should().BeTrue();
+        calendar.Value.Entries.Should().BeEmpty();
+        calendar.Value.Truncated.Should().BeTrue();
+    }
+
+    [Fact]
     public void TheLongestSpanReadNeverCoversMoreThanThreeMonths()
     {
-        // The lead query is written for three month patterns: the longest span, with a day
-        // either side, starting on the last day of a month, must stay inside three.
+        // The lead query matches text for each month, so the months are kept few: the
+        // longest span, with a day either side, starting on the last day of a month, must
+        // stay inside three.
         var start = new DateOnly(2027, 1, 31).AddDays(-1);
         var end = new DateOnly(2027, 1, 31).AddDays(CalendarService.MaxDays + 1);
         CalendarService.Months(start, end).Should().HaveCountLessThanOrEqualTo(3);

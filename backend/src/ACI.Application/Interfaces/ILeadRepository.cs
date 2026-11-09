@@ -27,8 +27,8 @@ public interface ILeadRepository
     /// </summary>
     Task<IReadOnlyList<Lead>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default);
     /// <summary>
-    /// Leads whose pipeline names a meeting date that may fall in one of <paramref name="months"/>
-    /// ("2026-11"): a cheap first cut, which the caller narrows by reading the date itself.
+    /// Leads whose pipeline's meeting date is in one of <paramref name="months"/> ("2026-11"),
+    /// matched as text in SQL, which the caller narrows to days by reading the date itself.
     /// The person's own (see WorkScope) or the team's, at most <paramref name="take"/>.
     /// </summary>
     Task<IReadOnlyList<Lead>> GetWithMeetingInMonthsAsync(Guid userId, Guid? organizationId, IReadOnlyList<string> months, bool mineOnly, int take, CancellationToken ct = default);

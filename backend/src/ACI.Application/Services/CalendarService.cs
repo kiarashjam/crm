@@ -30,10 +30,16 @@ public sealed class CalendarService : ICalendarService
     /// <summary>
     /// The longest span read at once: a month page shows six weeks (42 days). With a day
     /// either side for the all-day entries, that is never more than three months, which
-    /// the lead query is written for.
+    /// keeps the lead query's text matching short.
     /// </summary>
     public const int MaxDays = 45;
     public const int MaxPerKind = 1000;
+
+    /// <summary>
+    /// Leads read for their meeting dates. The months asked for run past the days on
+    /// show, so more are read than can be shown.
+    /// </summary>
+    private const int MaxLeadsRead = MaxPerKind * 2;
 
     private readonly ITaskRepository _tasks;
     private readonly IActivityRepository _activities;
@@ -59,7 +65,8 @@ public sealed class CalendarService : ICalendarService
         // and end on either side of UTC midnight depending on where the viewer is.
         var firstDay = DateOnly.FromDateTime(from).AddDays(-1);
         var lastDay = DateOnly.FromDateTime(to).AddDays(1);
-        var leads = await _leads.GetWithMeetingInMonthsAsync(userId, organizationId, Months(firstDay, lastDay), mine, MaxPerKind * 2, ct);
+        // One more than is read says whether the read was cut short.
+        var leads = await _leads.GetWithMeetingInMonthsAsync(userId, organizationId, Months(firstDay, lastDay), mine, MaxLeadsRead + 1, ct);
         var leadMeetings = leads
             .Select(lead => (Lead: lead, Meeting: MeetingOf(lead.PipelineState)))
             .Where(x => x.Meeting is { } m && m.Day >= firstDay && m.Day <= lastDay)
@@ -70,7 +77,10 @@ public sealed class CalendarService : ICalendarService
             .Concat(leadMeetings.Take(MaxPerKind).Select(x => LeadMeetingEntry(x.Lead, x.Meeting!.Value)))
             .OrderBy(e => e.StartUtc).ThenBy(e => e.Title, StringComparer.Ordinal)
             .ToList();
-        var truncated = tasks.Count > MaxPerKind || meetings.Count > MaxPerKind || leadMeetings.Count > MaxPerKind;
+        // Leads past the read may hold meetings on show: the calendar says some may be
+        // missing rather than passing off the ones read as all of them.
+        var truncated = tasks.Count > MaxPerKind || meetings.Count > MaxPerKind || leadMeetings.Count > MaxPerKind
+            || leads.Count > MaxLeadsRead;
         return new CalendarDto(from, to, mine ? WorkScope.Mine : WorkScope.Team, entries, truncated);
     }
 
