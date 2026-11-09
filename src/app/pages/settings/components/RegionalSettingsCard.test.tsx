@@ -63,6 +63,19 @@ describe('the workspace currency, number format and time zone', () => {
     expect(toast.success).toHaveBeenCalled();
   });
 
+  it('sends only what changed, so a zone the server cannot read does not hold up a new currency', async () => {
+    // A Windows host without ICU knows no IANA zone, and the server refuses the whole
+    // save over one field it cannot read: the unchanged Europe/Zurich went with every save.
+    const user = userEvent.setup();
+    render(<RegionalSettingsCard />);
+
+    await user.selectOptions(screen.getByLabelText('Currency'), 'EUR');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(state.update).toHaveBeenCalledTimes(1));
+    expect(state.update).toHaveBeenCalledWith('org-1', { currency: 'EUR' });
+  });
+
   it("shows a sales rep the workspace's settings without letting them change them", () => {
     state.org = workspace({ isOwner: false, role: 1, currency: 'EUR' });
     render(<RegionalSettingsCard />);

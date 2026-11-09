@@ -86,9 +86,16 @@ export function RegionalSettingsCard() {
   const locales = LOCALES.some((l) => l.code === form.locale) ? LOCALES : [{ code: form.locale, name: form.locale }, ...LOCALES];
 
   const save = async () => {
+    // Only what changed. The server refuses a whole save over any one field it cannot
+    // read, and a Windows host without ICU cannot read the IANA zone at all, so sending
+    // the unchanged Europe/Zurich with a new currency kept the currency from saving.
+    const changes: Partial<Regional> = {};
+    if (form.currency !== saved.currency) changes.currency = form.currency;
+    if (form.locale !== saved.locale) changes.locale = form.locale;
+    if (form.timeZone !== saved.timeZone) changes.timeZone = form.timeZone;
     setSaving(true);
     try {
-      await updateOrganizationSettings(currentOrg.id, form);
+      await updateOrganizationSettings(currentOrg.id, changes);
       await refreshOrgs();
       toast.success('Workspace currency, number format and time zone saved.');
     } catch (err) {
