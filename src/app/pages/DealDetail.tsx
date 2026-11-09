@@ -40,7 +40,8 @@ import {
   DialogFooter,
 } from '@/app/components/ui/dialog';
 import { cn } from '@/app/components/ui/utils';
-import { UrgencyBadge, getDaysUntilClose, STAGE_COLORS } from './pipeline/DealCard';
+import { UrgencyBadge, STAGE_COLORS } from './pipeline/DealCard';
+import { formatCloseDate, getDaysUntilClose } from './pipeline/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
@@ -191,11 +192,9 @@ export default function DealDetail() {
   };
 
   const stageName = deal?.dealStageName || deal?.stage || 'Qualification';
-  const daysToClose = getDaysUntilClose(deal?.expectedCloseDateUtc);
+  const daysToClose = getDaysUntilClose(deal?.expectedCloseDateUtc, money.timeZone);
   const stageColors = STAGE_COLORS[stageName];
-  const closeLabel = deal?.expectedCloseDateUtc
-    ? new Date(deal.expectedCloseDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-    : null;
+  const closeLabel = deal?.expectedCloseDateUtc ? formatCloseDate(deal.expectedCloseDateUtc) : null;
 
   if (loading) {
     return (
@@ -473,7 +472,7 @@ export default function DealDetail() {
                     <div className="min-w-0">
                       <dt className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Expected close</dt>
                       <dd className="mt-0.5 font-medium text-slate-800 dark:text-slate-200">
-                        {new Date(deal.expectedCloseDateUtc).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                        {formatCloseDate(deal.expectedCloseDateUtc, 'long')}
                       </dd>
                     </div>
                   )}

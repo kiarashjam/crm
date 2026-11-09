@@ -1,6 +1,7 @@
 import { AlertCircle, Calendar } from 'lucide-react';
 import type { Deal, Pipeline } from '@/app/api/types';
 import { FALLBACK_STAGES } from './config';
+import { dateOnlyKey, daysBetween, formatDay, todayKeyIn } from '@/app/lib/zonedTime';
 
 /**
  * Resolve stage list: from pipeline's dealStages (sorted by displayOrder) or fallback to FALLBACK_STAGES.
@@ -87,19 +88,23 @@ export function formatLastActivity(iso: string | undefined): string {
 }
 
 /**
- * Calculate days until close from an ISO date string.
+ * Days from today to a deal's expected close date: 0 on the day, negative once past.
+ *
+ * A close date is the day that was picked, stored as that day's UTC midnight, and
+ * "today" is the workspace's, in its time zone. Both were read by this browser's
+ * clock, so west of UTC a deal showed as due a day early, and the board's Overdue
+ * figure, counted on the workspace's calendar, could disagree with the card's badge.
  */
-export function getDaysUntilClose(iso: string | undefined): number | null {
+export function getDaysUntilClose(iso: string | undefined | null, timeZone: string, now: Date = new Date()): number | null {
   if (!iso) return null;
-  try {
-    const d = new Date(iso);
-    d.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  } catch {
-    return null;
-  }
+  const day = dateOnlyKey(iso);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  return daysBetween(todayKeyIn(timeZone, now), day);
+}
+
+/** A close date written as the day that was picked, wherever the viewer is. */
+export function formatCloseDate(iso: string, month: 'short' | 'long' = 'short'): string {
+  return formatDay(iso, { month, day: 'numeric', year: 'numeric' });
 }
 
 /**

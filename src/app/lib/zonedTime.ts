@@ -93,11 +93,14 @@ export function startOfDayIn(year: number, month: number, day: number, timeZone:
 /**
  * The calendar day of a date-only value, such as an expected close date, which is
  * stored as the UTC midnight of the day that was picked. Read in a zone west of UTC
- * it would land on the day before.
+ * it would land on the day before. Empty for text that is no date at all, rather than
+ * an error that would blank the page showing it.
  */
 export function dateOnlyKey(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : dayKeyIn(iso, 'UTC');
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : dayKeyIn(d, 'UTC');
 }
 
 const utcOf = (key: string) => Date.UTC(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, Number(key.slice(8, 10)));

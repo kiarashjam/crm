@@ -23,6 +23,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import type { Deal } from './types';
 import { useMoney } from '@/app/hooks/useMoney';
+import { getDaysUntilClose } from './utils';
 
 export const DEAL_CARD_TYPE = 'DEAL_CARD';
 
@@ -43,19 +44,6 @@ export function formatLastActivity(iso: string | undefined): string {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   } catch {
     return '';
-  }
-}
-
-export function getDaysUntilClose(iso: string | undefined): number | null {
-  if (!iso) return null;
-  try {
-    const d = new Date(iso);
-    d.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  } catch {
-    return null;
   }
 }
 
@@ -122,7 +110,7 @@ export const DealCard = forwardRef(function DealCard({
 }: DealCardProps, ref: ForwardedRef<HTMLDivElement>) {
   const money = useMoney();
   const lastActivity = formatLastActivity(deal.lastActivityAtUtc);
-  const daysToClose = getDaysUntilClose(deal.expectedCloseDateUtc);
+  const daysToClose = getDaysUntilClose(deal.expectedCloseDateUtc, money.timeZone);
 
   const [{ isDragging: drag }, dragRef] = useDrag(() => ({
     type: DEAL_CARD_TYPE,

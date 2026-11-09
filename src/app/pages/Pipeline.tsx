@@ -80,7 +80,7 @@ import { cn } from '@/app/components/ui/utils';
 // Import extracted components and utilities
 import { DroppableStageColumn } from './pipeline/DroppableStageColumn';
 import { STAGE_COLORS_MAP } from './pipeline/config';
-import { getStageList, dealOutcome, groupDealsByStage, getDaysUntilClose, UrgencyBadge } from './pipeline/utils';
+import { getStageList, dealOutcome, groupDealsByStage, getDaysUntilClose, formatCloseDate, UrgencyBadge } from './pipeline/utils';
 import { AMOUNT_HINT, amountInput, amountOf, currencyOptions, parseMoneyInput } from '@/app/lib/money';
 import { dateOnlyKey, todayKeyIn } from '@/app/lib/zonedTime';
 import { useMoney } from '@/app/hooks/useMoney';
@@ -206,7 +206,8 @@ export default function Pipeline() {
     // Overdue: due before today on the workspace's calendar. A close date is the day
     // that was picked, so it is compared as that day.
     const today = todayKeyIn(money.timeZone);
-    const overdue = active.filter(d => d.expectedCloseDateUtc && dateOnlyKey(d.expectedCloseDateUtc) < today).length;
+    const closeDay = (d: Deal) => (d.expectedCloseDateUtc ? dateOnlyKey(d.expectedCloseDateUtc) : '');
+    const overdue = active.filter(d => closeDay(d) !== '' && closeDay(d) < today).length;
 
     // Closing this week
     const weekOut = new Date(`${today}T00:00:00Z`);
@@ -657,10 +658,10 @@ export default function Pipeline() {
   const contactOf = (deal: Deal) => (deal.contactId ? contacts.find((c) => c.id === deal.contactId)?.name : undefined) ?? deal.contactName;
   const closeDate = (deal: Deal) => {
     if (!deal.expectedCloseDateUtc) return '—';
-    const days = getDaysUntilClose(deal.expectedCloseDateUtc);
+    const days = getDaysUntilClose(deal.expectedCloseDateUtc, money.timeZone);
     return (
       <span className="flex flex-wrap items-center gap-1.5">
-        <span>{new Date(deal.expectedCloseDateUtc).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+        <span>{formatCloseDate(deal.expectedCloseDateUtc)}</span>
         {days !== null && <UrgencyBadge days={days} />}
       </span>
     );
@@ -1325,15 +1326,9 @@ export default function Pipeline() {
                 {detailDeal.expectedCloseDateUtc && (
                   <div>
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">Expected close</p>
-                    <p className="text-slate-900 text-sm">
-                      {new Date(detailDeal.expectedCloseDateUtc).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      })}
-                    </p>
-                    {getDaysUntilClose(detailDeal.expectedCloseDateUtc) !== null && (
-                      <UrgencyBadge days={getDaysUntilClose(detailDeal.expectedCloseDateUtc)!} />
+                    <p className="text-slate-900 text-sm">{formatCloseDate(detailDeal.expectedCloseDateUtc)}</p>
+                    {getDaysUntilClose(detailDeal.expectedCloseDateUtc, money.timeZone) !== null && (
+                      <UrgencyBadge days={getDaysUntilClose(detailDeal.expectedCloseDateUtc, money.timeZone)!} />
                     )}
                   </div>
                 )}

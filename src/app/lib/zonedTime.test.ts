@@ -39,6 +39,10 @@ describe('dateOnlyKey', () => {
     expect(dateOnlyKey('2026-11-01T00:00:00Z')).toBe('2026-11-01');
     expect(dayKeyIn('2026-11-01T00:00:00Z', 'America/New_York')).toBe('2026-10-31');
   });
+
+  it('is empty for text that is no date, instead of an error that blanks the board', () => {
+    expect(dateOnlyKey('soon')).toBe('');
+  });
 });
 
 describe('counting calendar days', () => {
