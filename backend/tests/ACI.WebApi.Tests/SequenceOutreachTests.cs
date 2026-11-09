@@ -224,6 +224,32 @@ public class SequenceOutreachTests
     }
 
     [Fact]
+    public async Task AStepEmailStillWaitingWhenThePersonAnswersIsNotSent()
+    {
+        // The relay does not take the step's email, so the outbox holds it and tries again
+        // later. The person writes back to the rep meanwhile, and the rep logs the reply.
+        // That stops the sequence; the email waiting must not follow the answer.
+        await using var app = new App();
+        var (owner, ownerId) = await SignInAsync(app, "owner@example.ch");
+        owner.In(await CreateAsync(app, ownerId, "Pavillon46"));
+        var sequenceId = await SequenceAsync(owner, new { type = "email", dayOffset = 0, subject = "Hello", body = "Hi" });
+        var leadId = await LeadAsync(owner);
+        var enrollmentId = (await Json(await EnrollAsync(owner, sequenceId, leadId), "enroll")).GetProperty("id").GetGuid();
+        app.Mail.Answer = MailServer.NotNow();
+        await app.RunDueStepsAsync();
+        (await app.Services.Read(db => db.OutboundMessages.Single().Status)).Should().Be("queued");
+
+        await Json(await owner.PostAsync("/api/activities", Body(new { type = "call", subject = "Jean rang back", leadId })), "log the reply");
+        (await EnrollmentStatusAsync(owner, enrollmentId)).Should().Be("stopped");
+        app.Mail.Answer = OutboxSendResult.Sent;
+        await app.MakeQueuedDueAsync();
+        await app.DispatchOutboxAsync();
+
+        app.Mail.Sent.Should().BeEmpty();
+        (await app.Services.Read(db => db.OutboundMessages.Single().Status)).Should().Be("cancelled");
+    }
+
+    [Fact]
     public async Task AnEmailTheOutboxGivesUpOnStopsTheSequence_AndTellsWhoEnrolledThem()
     {
         await using var app = new App();

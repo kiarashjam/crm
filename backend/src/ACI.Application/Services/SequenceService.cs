@@ -35,7 +35,9 @@ public interface ISequenceService
 /// An email step hands its email to the outbox, which fills it, checks the
 /// suppression list again, retries a send that fails and writes it on the timeline
 /// once it has gone. The next step waits until it has: a sequence never overtakes its
-/// own email, and one the outbox gives up on stops the enrollment.
+/// own email, it completes only once its last email has gone, and one the outbox gives
+/// up on stops the enrollment. An email still waiting when the sequence is stopped (the
+/// person replied, say) is not sent.
 /// </para>
 /// </remarks>
 public sealed class SequenceService : ISequenceService
@@ -234,20 +236,21 @@ public sealed class SequenceService : ISequenceService
             return;
         }
 
-        var steps = sequence.Steps.OrderBy(s => s.SortOrder).ToList();
-        if (enrollment.CurrentStep >= steps.Count)
+        // The last step's email is still waiting in the outbox (the mail server did not
+        // take it yet). The next step waits for it, so the sequence never overtakes its
+        // own email, and an enrollment whose final email is waiting completes only once it
+        // has gone; one the outbox gives up on stops the enrollment.
+        if (await _outbox.HasQueuedAsync(enrollment.Id, ct))
         {
-            Complete(enrollment);
+            enrollment.NextActionAtUtc = now.Add(HoldFor);
             await _sequences.SaveEnrollmentAsync(enrollment, ct);
             return;
         }
 
-        // The last step's email is still waiting in the outbox (the mail server did not
-        // take it yet). The next step waits for it, so the sequence never overtakes its
-        // own email; one the outbox gives up on stops the enrollment.
-        if (await _outbox.HasQueuedAsync(enrollment.Id, ct))
+        var steps = sequence.Steps.OrderBy(s => s.SortOrder).ToList();
+        if (enrollment.CurrentStep >= steps.Count)
         {
-            enrollment.NextActionAtUtc = now.Add(HoldFor);
+            Complete(enrollment);
             await _sequences.SaveEnrollmentAsync(enrollment, ct);
             return;
         }
@@ -274,8 +277,15 @@ public sealed class SequenceService : ISequenceService
         }
 
         enrollment.CurrentStep += 1;
-        if (enrollment.CurrentStep >= steps.Count) Complete(enrollment);
-        else enrollment.NextActionAtUtc = now.AddDays(Math.Max(0, steps[enrollment.CurrentStep].DayOffset));
+        if (enrollment.CurrentStep < steps.Count)
+            enrollment.NextActionAtUtc = now.AddDays(Math.Max(0, steps[enrollment.CurrentStep].DayOffset));
+        else if (await _outbox.HasQueuedAsync(enrollment.Id, ct))
+            // The last step's email has not gone yet. Completed, the enrollment could no
+            // longer be stopped by a reply that arrives first, and the outbox sends the email
+            // of a sequence that is still running; so it stays open, and the next run
+            // completes it once the email has gone.
+            enrollment.NextActionAtUtc = now;
+        else Complete(enrollment);
         await _sequences.SaveEnrollmentAsync(enrollment, ct);
     }
 

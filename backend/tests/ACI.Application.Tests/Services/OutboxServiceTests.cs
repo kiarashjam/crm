@@ -390,6 +390,35 @@ public class OutboxServiceTests
         _targets.Verify(t => t.SaveEnrollmentAsync(enrollment, It.IsAny<CancellationToken>()));
     }
 
+    [Theory]
+    [InlineData("stopped", false)]
+    [InlineData(null, false)]
+    [InlineData("completed", true)]
+    [InlineData("paused", true)]
+    public async Task ASequenceEmailStillWaitingWhenItsSequenceEndsIsNotSent(string? statusMeanwhile, bool sent)
+    {
+        // The step queued it, and the mail server did not take it. Meanwhile the person
+        // answered (which stops the enrollment), or someone took them out of the sequence
+        // (null: the enrollment is gone). The last step's email completes the enrollment
+        // the moment it is queued, so a completed one still sends.
+        var enrollment = new OutreachEnrollment { Id = Guid.NewGuid(), OrganizationId = Org, Status = "active" };
+        OutreachEnrollment? current = enrollment;
+        _targets.Setup(t => t.GetEnrollmentAsync(enrollment.Id, Org, It.IsAny<CancellationToken>())).ReturnsAsync(() => current);
+        _answer = new OutboxSendResult(OutboxSendOutcome.Retry, "421 Try again later", 421);
+        var message = await QueueAndDispatchAsync(Email() with { Source = OutboundSources.Sequence, SourceId = enrollment.Id, LeadId = Lead });
+        message.Status.Should().Be(OutboundStatuses.Queued);
+
+        if (statusMeanwhile == null) current = null;
+        else enrollment.Status = statusMeanwhile;
+        _answer = OutboxSendResult.Sent;
+        MakeDue();
+        await DispatchAsync();
+
+        _sent.Should().HaveCount(sent ? 1 : 0);
+        message.Status.Should().Be(sent ? OutboundStatuses.Sent : OutboundStatuses.Cancelled);
+        if (!sent) message.LastError.Should().Contain("not sent");
+    }
+
     [Fact]
     public async Task APersonWaitingGetsTheFirstAttemptAtOnce_HeldFromTheDispatcherMeanwhile()
     {

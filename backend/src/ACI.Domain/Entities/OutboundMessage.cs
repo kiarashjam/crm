@@ -164,7 +164,11 @@ public static class OutboundStatuses
     /// <summary>Given up on: refused for good, or still failing after the last retry.</summary>
     public const string Failed = "failed";
 
-    /// <summary>Taken back before it went: by the person who wrote it, or because its destination was removed.</summary>
+    /// <summary>
+    /// Taken back before it went: by the person who wrote it, or because what it was for
+    /// went first (the workspace's webhook address, the lead or contact, or the sequence,
+    /// stopped by a reply, say).
+    /// </summary>
     public const string Cancelled = "cancelled";
 
     /// <summary>

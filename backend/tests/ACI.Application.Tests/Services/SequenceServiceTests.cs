@@ -178,6 +178,34 @@ public class SequenceServiceTests
     }
 
     [Fact]
+    public async Task TheLastStepCompletesTheEnrollmentOnlyOnceItsEmailHasGone()
+    {
+        // Completed at once, the enrollment could no longer be stopped by a reply that
+        // arrived while its email waited in the outbox, and the email would follow the
+        // reply. It stays open until the email has gone.
+        var sequence = Sequence(EmailStep(0, "Hi", "Body"));
+        var enrollment = Due(sequence);
+        Ready(sequence, enrollment, Reachable);
+        var gone = false;
+        _outbox.Setup(o => o.HasQueuedAsync(enrollment.Id, It.IsAny<CancellationToken>())).ReturnsAsync(() => _queued.Count > 0 && !gone);
+
+        await Service().RunDueAsync();
+
+        _queued.Should().ContainSingle();
+        enrollment.Status.Should().Be("active", "its last email has not gone yet");
+        enrollment.CurrentStep.Should().Be(1);
+        enrollment.NextActionAtUtc.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
+
+        gone = true;
+        enrollment.NextActionAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        await Service().RunDueAsync();
+
+        enrollment.Status.Should().Be("completed");
+        enrollment.NextActionAtUtc.Should().BeNull();
+        _queued.Should().ContainSingle("nothing more is sent");
+    }
+
+    [Fact]
     public async Task AnEmailTheOutboxRefusesStopsTheEnrollment()
     {
         var sequence = Sequence(EmailStep(0, "Hi", "Body"));

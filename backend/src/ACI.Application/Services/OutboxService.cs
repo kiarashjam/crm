@@ -369,6 +369,17 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             return new OutboxAttempt(OutboxAttemptResult.Suppressed, gone, "Email.RecordGone");
         }
 
+        // A sequence's email waits here while the mail server does not take it, for up to
+        // two days. If the person answered meanwhile, or someone stopped or removed the
+        // enrollment, the sequence has ended, and its email must not follow the answer.
+        if (await SequenceStoppedAsync(message, ct) is { } stopped)
+        {
+            Stop(message, OutboundStatuses.Cancelled, stopped);
+            await _messages.SaveAsync(ct);
+            _logger.LogInformation("Outbox email {MessageId} was not sent: {Reason}", message.Id, stopped);
+            return new OutboxAttempt(OutboxAttemptResult.Suppressed, stopped, "Email.SequenceStopped");
+        }
+
         // Asked again at the moment it goes: someone may have unsubscribed or bounced
         // since it was queued, and a "stop" has to win over a message already waiting.
         if (message.OrganizationId is Guid org
@@ -670,6 +681,21 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         if (message.ContactId is Guid contactId && await _targets.TargetStateAsync("contact", contactId, org, ct) is { Exists: false })
             return "The contact it was for has been deleted, so it was not sent.";
         return null;
+    }
+
+    /// <summary>
+    /// Why the sequence behind a message has ended since the step queued it, or null while
+    /// it runs. Completed counts as running: the last step's email completes the
+    /// enrollment as soon as it is queued.
+    /// </summary>
+    private async Task<string?> SequenceStoppedAsync(OutboundMessage message, CancellationToken ct)
+    {
+        if (message.Source != OutboundSources.Sequence || message.SourceId is not Guid enrollmentId) return null;
+        var enrollment = await _targets.GetEnrollmentAsync(enrollmentId, message.OrganizationId, ct);
+        if (enrollment == null) return "The person was taken out of the sequence before it went, so it was not sent.";
+        return string.Equals(enrollment.Status, "stopped", StringComparison.OrdinalIgnoreCase)
+            ? "The sequence stopped before it went (a reply, say), so it was not sent."
+            : null;
     }
 
     private static string SuppressedBecause(EmailSuppression suppression)
