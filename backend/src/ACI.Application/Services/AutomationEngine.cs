@@ -188,7 +188,17 @@ public sealed class AutomationEngine : IAutomationEngine
         return null;
     }
 
-    private async Task NotifyAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    /// <summary>
+    /// The rep a rule hands a lead or deal to hears so, and that the rule did it; they
+    /// used to find out only by opening it. Not for an imported row: an import is not
+    /// new work arriving, and one line per row would bury the bell.
+    /// </summary>
+    private Task TellNewOwnerAsync(AutomationRule rule, string recordType, Guid recordId, string recordName, Guid ownerId, AutomationEvent evt, CancellationToken ct) =>
+        _notifier == null || evt.FromImport
+            ? Task.CompletedTask
+            : _notifier.RecordAssignedAsync(recordType, recordId, recordName, evt.OrganizationId, ownerId, evt.ActorUserId, $"the automation \"{rule.Name}\"", ct);
+
+    private async Task NotifyAsync(AutomationRule rule,IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
         var recipient = evt.AssigneeId ?? evt.ActorUserId;
         var message = Value(config, "message");
@@ -225,16 +235,6 @@ public sealed class AutomationEngine : IAutomationEngine
                 await TellNewOwnerAsync(rule, RecordTypes.Deal, dealId, deal.Name, userId, evt, ct);
         }
     }
-
-    /// <summary>
-    /// The rep a rule hands a lead or deal to hears so, and that the rule did it; they
-    /// used to find out only by opening it. Not for an imported row: an import is not
-    /// new work arriving, and one line per row would bury the bell.
-    /// </summary>
-    private Task TellNewOwnerAsync(AutomationRule rule, string recordType, Guid recordId, string recordName, Guid ownerId, AutomationEvent evt, CancellationToken ct) =>
-        _notifier == null || evt.FromImport
-            ? Task.CompletedTask
-            : _notifier.RecordAssignedAsync(recordType, recordId, recordName, evt.OrganizationId, ownerId, evt.ActorUserId, $"the automation \"{rule.Name}\"", ct);
 
     private async Task SendAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
