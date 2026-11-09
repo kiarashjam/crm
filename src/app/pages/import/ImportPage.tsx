@@ -377,7 +377,9 @@ export default function ImportPage({ kind }: ImportPageProps) {
                 <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-6" aria-labelledby="import-matches">
                   <div>
                     <h3 id="import-matches" className="font-semibold text-slate-800">Rows that match {info.many === 'companies' ? 'a company' : 'someone'} already here</h3>
-                    <p className="mt-1 text-sm text-slate-500">A row matches by {info.matchedBy}.</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      A row matches by {info.matchedBy}.{info.matchNote && <> {info.matchNote}</>}
+                    </p>
                   </div>
                   <RadioGroup value={duplicates} onValueChange={(v) => { setPreview(null); setDuplicates(v === 'update' ? 'update' : 'skip'); }}>
                     <div className="flex items-start gap-3">

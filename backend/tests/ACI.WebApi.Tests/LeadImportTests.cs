@@ -247,6 +247,30 @@ public class LeadImportTests
     }
 
     [Fact]
+    public async Task SomeoneWhoSharesOnlyAPhoneIsAddedWithANoteToCheck()
+    {
+        // A phone alone is not a match: a couple share a landline, colleagues a switchboard.
+        // The dry run names who else has the number, so a real duplicate can still be caught.
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await WorkspaceAsync(factory);
+        await AddLeadAsync(client, new { name = "Jean Dupont", email = "jean@dupont.example", phone = "079 123 45 67", status = "New" });
+
+        var csv = "name,email,phone\n"
+            + "Anne Dupont,anne@dupont.example,+41 79 123 45 67\n"  // 2: Jean's number, written another way
+            + "Paul Keller,paul@keller.example,044 555 66 77\n"     // 3: a number nobody has
+            + "Rita Keller,rita@keller.example,+41 44 555 66 77\n"  // 4: row 3's number
+            + "Hans Muster,hans@muster.example,\n";                 // 5: no number
+        var preview = await OkJson(await Preview(client, "lead", csv, new[] { "name", "email", "phone" }), "preview");
+
+        Action(preview, 2).Should().Be("create");
+        Notes(preview, 2).Should().Contain("Same phone number as “Jean Dupont”, already in your leads: check they are not the same person");
+        Notes(preview, 3).Should().NotContain(n => n.Contains("phone number"));
+        Action(preview, 4).Should().Be("create");
+        Notes(preview, 4).Should().Contain("Same phone number as row 3: check they are not the same person");
+        Notes(preview, 5).Should().NotContain(n => n.Contains("phone number"));
+    }
+
+    [Fact]
     public async Task TheDryRunAndTheImportRefuseTheSameRows()
     {
         // A status the workspace has, but longer than a lead's status may be. The dry run

@@ -65,8 +65,9 @@ internal sealed class ImportPlannedRow
 /// A row matches a record already here by its email, or by its name and phone number
 /// together; a company by its name or its domain. The phone alone is not enough: a
 /// couple share a landline, and so do the colleagues at a front desk, and the second
-/// of them would have been skipped, or written over the first. A row that repeats an
-/// earlier row of the same file is skipped and says which.
+/// of them would have been skipped, or written over the first. Such a row is added,
+/// with a note naming whoever has its number, so the dry run shows where a duplicate
+/// may be. A row that repeats an earlier row of the same file is skipped and says which.
 /// </para>
 /// <para>
 /// A matching row is skipped, or with "update" it writes its values over the record's.
@@ -86,13 +87,15 @@ internal sealed class ImportPlanner
     private readonly (string Name, Guid? Id)? _defaultSource;
 
     private readonly Dictionary<string, List<ImportExisting>> _existing = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ImportExisting> _existingByPhone = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ImportCompany> _companyByName = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ImportCompany> _companyByDomain = new(StringComparer.Ordinal);
 
-    // Across the rows of the file: what earlier rows were, the records they matched, and
-    // the companies they add.
+    // Across the rows of the file: what earlier rows were, the records they matched, the
+    // phone numbers of the people they add, and the companies they add.
     private readonly Dictionary<string, int> _seen = new(StringComparer.Ordinal);
     private readonly Dictionary<Guid, int> _matched = new();
+    private readonly Dictionary<string, int> _phonesAdded = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _companiesAdded = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (string Name, int Row)> _companiesFromEmail = new(StringComparer.Ordinal);
 
@@ -123,6 +126,11 @@ internal sealed class ImportPlanner
                 if (!_existing.TryGetValue(key, out var list)) _existing[key] = list = new List<ImportExisting>();
                 list.Add(record);
             }
+        // The records come oldest first, so a number several people share names the oldest.
+        if (IsPerson)
+            foreach (var record in existing)
+                if (ImportValues.PhoneKey(record.Values.GetValueOrDefault("phone")) is { Length: > 0 } phone)
+                    _existingByPhone.TryAdd(phone, record);
         foreach (var company in companies)
         {
             _companyByName.TryAdd(ImportValues.NameKey(company.Name), company);
@@ -233,6 +241,7 @@ internal sealed class ImportPlanner
             }
             Remember(keys, row.Number);
             PlanCreate(planned);
+            NoteSharedPhone(planned);
             return planned;
         }
 
@@ -348,6 +357,21 @@ internal sealed class ImportPlanner
                 planned.Notes.Add($"Adds the company {ImportValues.Show(named)}, named after the email address");
             }
         }
+    }
+
+    /// <summary>
+    /// A person added who shares a phone number with someone here, or with someone an
+    /// earlier row adds: not a match (see the class remarks), but worth a look.
+    /// </summary>
+    private void NoteSharedPhone(ImportPlannedRow planned)
+    {
+        if (!IsPerson || ImportValues.PhoneKey(planned.Values.GetValueOrDefault("phone")) is not { Length: > 0 } phone) return;
+        if (_existingByPhone.TryGetValue(phone, out var known))
+            planned.Notes.Add($"Same phone number as {ImportValues.Show(known.Label)}, already in your {Nouns}: check they are not the same person");
+        else if (_phonesAdded.TryGetValue(phone, out var row))
+            planned.Notes.Add($"Same phone number as row {row}: check they are not the same person");
+        else
+            _phonesAdded[phone] = planned.Row;
     }
 
     private void PlanUpdate(ImportPlannedRow planned, ImportExisting match)

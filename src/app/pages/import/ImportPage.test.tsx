@@ -58,7 +58,11 @@ describe('importing contacts and companies', () => {
     expect(api.analyzeImport).toHaveBeenCalledWith('contact', expect.anything());
     expect(screen.getByRole('heading', { name: 'Import contacts' })).toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: 'Run automations for these leads' })).not.toBeInTheDocument();
-    expect(screen.getByText('A row matches by the same email, or the same name and phone number.')).toBeInTheDocument();
+    // A shared phone alone is not a match (a couple share a landline); the check notes it.
+    expect(screen.getByText(
+      'A row matches by the same email, or the same name and phone number. Someone who only shares a phone number '
+      + 'with a person here is added, with a note to check they are not the same person.',
+    )).toBeInTheDocument();
   });
 
   it('needs the company name to import companies', async () => {

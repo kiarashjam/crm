@@ -20,9 +20,15 @@ export interface ImportKindInfo {
   listName: string;
   /** People are matched by email, or name and phone; companies by name or domain. */
   matchedBy: string;
+  /** What a match is not, when that needs saying. */
+  matchNote?: string;
   sampleFileName: string;
   sample: string;
 }
+
+// A couple share a landline and colleagues a switchboard, so a phone number alone does
+// not make two people one; the server adds the row and notes who else has the number.
+const SHARED_PHONE = 'Someone who only shares a phone number with a person here is added, with a note to check they are not the same person.';
 
 export const IMPORT_KINDS: Record<ImportKind, ImportKindInfo> = {
   lead: {
@@ -36,6 +42,7 @@ export const IMPORT_KINDS: Record<ImportKind, ImportKindInfo> = {
     listPath: '/leads',
     listName: 'Leads',
     matchedBy: 'the same email, or the same name and phone number',
+    matchNote: SHARED_PHONE,
     sampleFileName: 'leads_template.csv',
     sample: [
       'name,email,phone,company,job title,source,status,notes',
@@ -55,6 +62,7 @@ export const IMPORT_KINDS: Record<ImportKind, ImportKindInfo> = {
     listPath: '/contacts',
     listName: 'Contacts',
     matchedBy: 'the same email, or the same name and phone number',
+    matchNote: SHARED_PHONE,
     sampleFileName: 'contacts_template.csv',
     sample: [
       'first name,last name,email,phone,company,job title,notes',
