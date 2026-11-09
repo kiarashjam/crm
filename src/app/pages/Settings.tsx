@@ -23,7 +23,7 @@ import { ProfileSection } from '@/app/pages/settings/components/ProfileSection';
 import { NotificationsSection } from '@/app/pages/settings/components/NotificationsSection';
 import { AccountSection } from '@/app/pages/settings/components/AccountSection';
 import { AppearanceSection } from '@/app/pages/settings/components/AppearanceSection';
-import { PipelinesSection } from '@/app/pages/settings/components/PipelinesSection';
+import { PipelinesSection, type PipelineSettings, type StageSettings } from '@/app/pages/settings/components/PipelinesSection';
 import { CustomFieldsSection } from '@/app/pages/settings/components/CustomFieldsSection';
 import { OrganizationSection } from '@/app/pages/settings/components/OrganizationSection';
 import { SecuritySection } from '@/app/pages/settings/components/SecuritySection';
@@ -366,10 +366,16 @@ export default function Settings() {
     }
   };
 
-  const handleUpdatePipeline = async (id: string) => {
+  const handleUpdatePipeline = async (id: string, settings?: PipelineSettings) => {
     if (!editingPipelineName.trim()) return;
     try {
-      const p = await updatePipeline(id, { name: editingPipelineName.trim() });
+      const p = await updatePipeline(id, {
+        name: editingPipelineName.trim(),
+        // Blank follows the workspace's stale days; a number is the pipeline's own.
+        ...(settings === undefined ? {} : settings.staleDealDays === null
+          ? { followWorkspaceStaleDays: true }
+          : { staleDealDays: settings.staleDealDays }),
+      });
       if (p) {
         toast.success('Pipeline updated');
         setEditingPipelineId(null);
@@ -432,10 +438,18 @@ export default function Settings() {
     }
   };
 
-  const handleUpdateStage = async (stageId: string, pipelineId: string) => {
+  const handleUpdateStage = async (stageId: string, pipelineId: string, settings?: StageSettings) => {
     if (!editingStageName.trim()) return;
     try {
-      const s = await updateDealStage(stageId, { name: editingStageName.trim() });
+      const s = await updateDealStage(stageId, {
+        name: editingStageName.trim(),
+        // A blank probability takes the stage's default away; the outcome sets both flags.
+        ...(settings === undefined ? {} : {
+          ...(settings.probability === null ? { clearProbability: true } : { probability: settings.probability }),
+          isWon: settings.outcome === 'won',
+          isLost: settings.outcome === 'lost',
+        }),
+      });
       if (s) {
         toast.success('Stage updated');
         setEditingStageId(null);
