@@ -97,7 +97,7 @@ public class ClubSchemaTests
         ddl[guard..alter].Should().NotContain(";", "the ALTER belongs to that IF");
     }
 
-    private static string ProgramDdl()
+    internal static string ProgramDdl()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "backend")))
@@ -107,7 +107,7 @@ public class ClubSchemaTests
     }
 
     /// <summary>What EF itself would write for this model, with no database involved.</summary>
-    private static string EfCreateScript()
+    internal static string EfCreateScript()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer("Server=not-connected;Database=none;Trusted_Connection=True;")
@@ -116,7 +116,7 @@ public class ClubSchemaTests
         return db.Database.GenerateCreateScript();
     }
 
-    private static string Between(string text, string start, string end)
+    internal static string Between(string text, string start, string end)
     {
         var from = text.IndexOf(start, StringComparison.Ordinal);
         from.Should().BeGreaterThan(-1, $"expected to find '{start}'");

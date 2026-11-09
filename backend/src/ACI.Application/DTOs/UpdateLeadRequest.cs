@@ -97,4 +97,20 @@ public record UpdateLeadRequest
 
     [StringLength(40)]
     public string? CompanySize { get; init; }
+
+    /// <summary>
+    /// "import" when an import updates the lead from a row of its file. A status it changes
+    /// then sets off no lead.status_changed automations, unless <see cref="RunAutomations"/>
+    /// asks for them: the file records where people already are, it is not each of them
+    /// moving on today. Null for every other edit.
+    /// </summary>
+    [RegularExpression("(?i)^import$", ErrorMessage = "Origin can only be \"import\"")]
+    public string? Origin { get; init; }
+
+    /// <summary>With <see cref="Origin"/> "import": run the status automations anyway, because the person importing chose to.</summary>
+    public bool RunAutomations { get; init; }
+
+    /// <summary>True when an import is making this change.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsImport => string.Equals(Origin?.Trim(), "import", StringComparison.OrdinalIgnoreCase);
 }

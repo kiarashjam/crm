@@ -32,6 +32,12 @@ public class Contact : Common.BaseEntity
     public bool DoNotContact { get; set; }
     public string? PreferredContactMethod { get; set; }
 
+    /// <summary>
+    /// The import that created this contact (see <see cref="ImportBatch"/>), including the
+    /// contact a lead from an import is given; null for one made any other way.
+    /// </summary>
+    public Guid? ImportBatchId { get; set; }
+
     public User User { get; set; } = null!;
     public User? UpdatedByUser { get; set; }
     public User? ArchivedByUser { get; set; }

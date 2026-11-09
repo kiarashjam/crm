@@ -4,7 +4,7 @@ import {
   Search, Plus, Pencil, Trash2, Building2, Mail, Phone, Briefcase,
   User, X, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Activity as ActivityIcon,
   MessageSquare, Clock, Users, Sparkles, Paperclip, BarChart3, AlertCircle,
-  ExternalLink, Archive, ArchiveRestore
+  ExternalLink, Archive, ArchiveRestore, Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -558,6 +558,10 @@ export default function Contacts() {
                   ]}
                 />
                 <WriteOnly>
+                  <Button onClick={() => navigate('/contacts/import')} variant="outline" className={heroSecondary} aria-label="Import">
+                    <Upload className="h-4 w-4" />
+                    <span className="hidden sm:inline">Import</span>
+                  </Button>
                   <Button onClick={openCreate} className={heroPrimary('emerald')}>
                     <Plus className="h-4 w-4" />
                     Add Contact

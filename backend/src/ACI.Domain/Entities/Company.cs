@@ -19,6 +19,12 @@ public class Company : Common.BaseEntity
     public DateTime? UpdatedAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }
 
+    /// <summary>
+    /// The import that created this company (see <see cref="ImportBatch"/>), as a row of its
+    /// own or as the company named on an imported lead or contact; null for one made any other way.
+    /// </summary>
+    public Guid? ImportBatchId { get; set; }
+
     public User User { get; set; } = null!;
     public User? UpdatedByUser { get; set; }
     public Organization? Organization { get; set; }

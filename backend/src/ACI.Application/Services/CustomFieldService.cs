@@ -198,7 +198,8 @@ public sealed class CustomFieldService : ICustomFieldService
     }
 
     /// <summary>A value checked against its field; strings that are empty become null.</summary>
-    private static (bool Ok, JsonElement Value, string Expected) Normalize(CustomFieldDefinition definition, JsonElement raw)
+    /// <remarks>Internal so an import checks each cell by this same rule before it writes anything.</remarks>
+    internal static (bool Ok, JsonElement Value, string Expected) Normalize(CustomFieldDefinition definition, JsonElement raw)
     {
         var none = JsonSerializer.SerializeToElement<object?>(null);
         if (raw.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return (true, none, "");

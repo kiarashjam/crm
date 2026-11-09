@@ -69,6 +69,7 @@ public class AppDbContext : DbContext
     public DbSet<ClubDocument> ClubDocuments => Set<ClubDocument>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
+    public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
 
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
@@ -76,6 +77,14 @@ public class AppDbContext : DbContext
     /// "created" line of its own.
     /// </summary>
     public bool RecordsAuditTrail { get; set; } = true;
+
+    /// <summary>
+    /// The import running in this request, if one is. Every lead, contact and company
+    /// added while it is set carries its id, whoever adds it: the importer, the contact
+    /// a new lead is given, or the company its email domain names. That is what lets
+    /// the import be undone without leaving those behind.
+    /// </summary>
+    public Guid? ImportBatchId { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -102,6 +111,7 @@ public class AppDbContext : DbContext
     {
         StampClubDocumentVersions();
         StampDealAmounts();
+        StampImportBatch();
         await RecordDependents.RemoveAsync(this, cancellationToken);
         var events = RecordsAuditTrail ? await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -121,6 +131,7 @@ public class AppDbContext : DbContext
     {
         StampClubDocumentVersions();
         StampDealAmounts();
+        StampImportBatch();
         RecordDependents.Remove(this);
         var events = RecordsAuditTrail ? AuditTrail.Capture(this, _currentUser) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -170,6 +181,19 @@ public class AppDbContext : DbContext
             else
                 deal.Amount = MoneyText.StoredAmount(deal.Value);
         }
+    }
+
+    // See ImportBatchId. Only records being added: one the import updates was already there,
+    // and undoing the import must not remove it.
+    private void StampImportBatch()
+    {
+        if (ImportBatchId is not { } batchId) return;
+        foreach (var entry in ChangeTracker.Entries<Lead>())
+            if (entry.State == EntityState.Added) entry.Entity.ImportBatchId ??= batchId;
+        foreach (var entry in ChangeTracker.Entries<Contact>())
+            if (entry.State == EntityState.Added) entry.Entity.ImportBatchId ??= batchId;
+        foreach (var entry in ChangeTracker.Entries<Company>())
+            if (entry.State == EntityState.Added) entry.Entity.ImportBatchId ??= batchId;
     }
 
     // A failed save must not leave its audit lines queued, or a retry would record them twice.

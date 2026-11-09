@@ -28,6 +28,8 @@ internal sealed class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.HasIndex(e => e.OrganizationId);
         builder.HasIndex(e => e.IsArchived);
         builder.HasIndex(e => e.DoNotContact);
+        // Undoing an import finds the records it created by this.
+        builder.HasIndex(e => e.ImportBatchId);
         // Unique email per workspace: per organization, and with none, per user. One
         // index over (Email, OrganizationId) counted every personal user's NULL as the
         // same workspace, so a second user could not have a contact the first one had.

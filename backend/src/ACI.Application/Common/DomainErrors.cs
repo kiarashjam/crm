@@ -269,6 +269,60 @@ public static class DomainErrors
     }
 
     /// <summary>
+    /// Errors for importing a file of leads, contacts or companies, and for undoing one.
+    /// </summary>
+    public static class Import
+    {
+        public static readonly Error InvalidKind = new(
+            "Import.InvalidKind", "You can import leads, contacts or companies");
+
+        public static readonly Error Unreadable = new(
+            "Import.Unreadable", "The file could not be read. Upload it again");
+
+        public static Error TooLarge(int megabytes) => new(
+            "Import.TooLarge", $"The file is larger than {megabytes} MB. Split it into smaller files and import them one after another");
+
+        public static readonly Error Empty = new(
+            "Import.Empty", "The file is empty");
+
+        public static readonly Error NoRows = new(
+            "Import.NoRows", "The file has a header row but no rows under it");
+
+        public static Error TooManyRows(int max) => new(
+            "Import.TooManyRows", string.Create(CultureInfo.InvariantCulture,
+                $"The file has more than {max:N0} rows. Import up to {max:N0} at a time"));
+
+        public static Error UnclosedQuote(int row) => new(
+            "Import.UnclosedQuote", $"Row {row} opens a quoted cell that never closes, so the rest of the file would be read as one cell. Check the quotes in that row");
+
+        public static readonly Error ColumnsMismatch = new(
+            "Import.ColumnsMismatch", "The column choices don't match the file's columns. Choose the columns again");
+
+        public static Error UnknownField(string field) => new(
+            "Import.UnknownField", $"\"{field}\" is not a field you can import into");
+
+        public static Error FieldMappedTwice(string label) => new(
+            "Import.FieldMappedTwice", $"Two columns are going into {label}. Choose one");
+
+        public static Error FieldRequired(string label) => new(
+            "Import.FieldRequired", $"Choose the column that holds {label}");
+
+        public static readonly Error InvalidDuplicates = new(
+            "Import.InvalidDuplicates", "Rows that match a record already here are either skipped or used to update it");
+
+        public static readonly Error NotFound = new(
+            "Import.NotFound", "The import was not found");
+
+        // "NotOwner" in the code is what maps this to 403 Forbidden.
+        public static readonly Error NotOwnerOrManager = new(
+            "Import.NotOwnerOrManager", "Only whoever ran the import, or the workspace's owner or a manager, can undo it");
+
+        // Codes ending ".Conflict" map to 409.
+        public static readonly Error StillRunning = new(
+            "Import.Running.Conflict", "This import is still running. Undo it once it has finished");
+    }
+
+    /// <summary>
     /// Lead-related errors.
     /// </summary>
     public static class Lead

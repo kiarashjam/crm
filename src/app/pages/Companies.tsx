@@ -4,7 +4,7 @@ import {
   Building2, Search, Plus, Pencil, Trash2, Globe, Briefcase, Users, X,
   SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, BarChart3, TrendingUp,
   ExternalLink, MapPin, Calendar, Link2, Factory, Sparkles, Building, UserCircle,
-  AlertCircle, DollarSign, Target
+  AlertCircle, DollarSign, Target, Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -524,6 +524,10 @@ export default function Companies() {
                   ]}
                 />
                 <WriteOnly>
+                  <Button onClick={() => navigate('/companies/import')} variant="outline" className={heroSecondary} aria-label="Import">
+                    <Upload className="h-4 w-4" />
+                    <span className="hidden sm:inline">Import</span>
+                  </Button>
                   <Button onClick={openCreate} className={heroPrimary('blue')}>
                     <Plus className="h-4 w-4" />
                     Add Company

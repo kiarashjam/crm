@@ -57,10 +57,17 @@ public class OrganizationCloneTests
 
         // A converted lead: the lead points at its deal, the deal at its contact, the
         // contact back at the lead. Saved in two steps, as no insert order satisfies a loop.
+        // It came in by an import, so it also points at that.
+        var import = new ImportBatch
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, UserId = owner, EntityType = "lead", FileName = "waitlist.csv",
+            TotalRows = 1, CreatedCount = 1, StartedAtUtc = now, FinishedAtUtc = now,
+        };
         var lead = new Lead
         {
             Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Jean Dupont", Email = $"jean@{name}.ch", Status = "Qualified",
             CompanyId = company.Id, LeadSourceId = source.Id, LeadStatusId = status.Id, AssignedToUserId = rep, IsConverted = true, CreatedAtUtc = now,
+            ImportBatchId = import.Id,
         };
         var contact = new Contact { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Jean Dupont", Email = $"jean@{name}.ch", CompanyId = company.Id, CreatedAtUtc = now };
         var deal = new Deal
@@ -68,7 +75,7 @@ public class OrganizationCloneTests
             Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Founding membership", Value = "12000", Currency = "CHF",
             PipelineId = pipeline.Id, DealStageId = stage.Id, CompanyId = company.Id, AssigneeId = rep, IsPrivate = true, CreatedAtUtc = now,
         };
-        db.AddRange(lead, contact, deal);
+        db.AddRange(import, lead, contact, deal);
         await db.SaveChangesAsync();
         lead.ConvertedToDealId = deal.Id;
         lead.ConvertedToContactId = contact.Id;
