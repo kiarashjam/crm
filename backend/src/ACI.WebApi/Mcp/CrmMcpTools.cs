@@ -499,10 +499,14 @@ public sealed class CrmMcpTools
     private static string FormatDeal(DealDto deal)
     {
         var stage = deal.DealStageName ?? deal.Stage ?? "no stage";
+        // The stored amount, written the one way every reader agrees on. A deal from before
+        // amounts were numbers kept its text as typed ("CHF 85,500"), which read as
+        // "CHF 85,500 CHF" here; that text is shown only when it holds no number at all.
+        var amount = deal.Amount is decimal stored ? MoneyText.ValueText(stored) : deal.Value;
         var parts = new List<string>
         {
             deal.Name,
-            $"{deal.Value} {deal.Currency ?? ""}".Trim(),
+            $"{amount} {deal.Currency ?? ""}".Trim(),
             stage,
             deal.CompanyName ?? "no company",
             deal.ContactName ?? "no contact",

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ACI.WebApi.Tests;
@@ -153,6 +154,29 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
         body.Should().Contain(leadA);
         body.Should().NotContain(leadB);
         body.Should().Contain("\"isError\":false");
+    }
+
+    [Fact]
+    public async Task ADealsAmountIsTheStoredNumberNotTheTextTypedYearsAgo()
+    {
+        // A deal from before amounts were numbers keeps the text it was typed with. The
+        // tools printed that text beside the currency: "CHF 85,500 CHF".
+        var key = "aci_" + Guid.NewGuid().ToString("N");
+        var records = await SeedFullOrganizationAsync(key, "Northwind");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var deal = await db.Deals.SingleAsync(d => d.Id == records.DealId);
+            deal.Value = "CHF 85,500";
+            deal.Currency = "CHF";
+            await db.SaveChangesAsync();
+        }
+        var client = _factory.CreateClient();
+
+        var shown = await CallText(client, key, "get_deal", $$"""{"id":"{{records.DealId}}"}""");
+
+        shown.Should().Contain("85500 CHF");
+        shown.Should().NotContain("CHF 85,500");
     }
 
     [Fact]
