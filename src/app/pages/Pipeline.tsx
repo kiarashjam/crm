@@ -225,7 +225,10 @@ export default function Pipeline() {
   // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee). The board
   // sends these to the server; the table, list and card layouts filter every deal here.
   const currentUserId = useMemo(() => getCurrentUser()?.id, []);
+  // Typed filters wait for a pause in the typing, so each keystroke is not a request.
   const debouncedSearch = useDebounce(searchQuery, 300);
+  const debouncedMin = useDebounce(filterValueMin, 300);
+  const debouncedMax = useDebounce(filterValueMax, 300);
   const boardQuery = useMemo<DealBoardQuery>(() => ({
     pipelineId: selectedPipelineId ?? undefined,
     take: BOARD_PAGE,
@@ -234,12 +237,12 @@ export default function Pipeline() {
     mine: filterMyDeals || undefined,
     assigneeId: filterAssignee !== 'all' && filterAssignee !== 'unassigned' ? filterAssignee : undefined,
     unassigned: filterAssignee === 'unassigned' || undefined,
-    minAmount: parseMoneyInput(filterValueMin) ?? undefined,
-    maxAmount: parseMoneyInput(filterValueMax) ?? undefined,
+    minAmount: parseMoneyInput(debouncedMin) ?? undefined,
+    maxAmount: parseMoneyInput(debouncedMax) ?? undefined,
     closeFrom: filterCloseDateFrom || undefined,
     closeTo: filterCloseDateTo || undefined,
     staleOnly: filterStale || undefined,
-  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
+  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, debouncedMin, debouncedMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
 
   const filteredDeals = useMemo(() => {
     let result = [...pipelineDeals];

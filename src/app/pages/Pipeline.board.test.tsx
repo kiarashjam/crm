@@ -147,6 +147,9 @@ describe('the board from the server', () => {
 
     fireEvent.change(screen.getByLabelText('Search deals'), { target: { value: 'gala' } });
     await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'gala' })));
+
+    fireEvent.change(screen.getByLabelText('Maximum deal value'), { target: { value: '5000' } });
+    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'gala', maxAmount: 5000 })));
   });
 
   it("puts the weighted pipeline and the stale count in the board's figures", async () => {
