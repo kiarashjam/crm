@@ -191,6 +191,21 @@ public class CollaborationNotificationTests
     }
 
     [Fact]
+    public async Task AMentionInALoggedEmailSaysAnEmail()
+    {
+        using var team = await TeamAsync();
+        var leadId = await LeadAsync(team.Marc);
+
+        await Ok(await team.Marc.PostAsync("/api/activities", Body(new
+        {
+            type = "email", subject = "Offer sent", body = "Sent the offer. @Luca Rossi they may call you.", leadId,
+        })), "log the email");
+
+        (await BellAsync(team.Luca)).Should().ContainSingle().Which.GetProperty("message").GetString()
+            .Should().Be("In an email on Jean Dupont: Sent the offer. @Luca Rossi they may call you.");
+    }
+
+    [Fact]
     public async Task AnEmailAddressInANoteIsNotAMention()
     {
         using var team = await TeamAsync();

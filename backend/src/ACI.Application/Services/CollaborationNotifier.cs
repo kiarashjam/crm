@@ -188,8 +188,10 @@ public sealed partial class CollaborationNotifier : ICollaborationNotifier
                 : activity.ContactId is Guid contact ? $"/contacts/{contact}"
                 : "/activities";
             var kind = activity.Type.Replace('_', ' ').ToLowerInvariant();
+            // "In an email", not "In a email".
+            var article = kind.Length > 0 && "aeiou".Contains(kind[0]) ? "an" : "a";
             var on = string.IsNullOrWhiteSpace(recordName) ? "" : $" on {recordName.Trim()}";
-            var message = $"In a {kind}{on}: {Snippet(string.IsNullOrWhiteSpace(activity.Body) ? activity.Subject : activity.Body)}";
+            var message = $"In {article} {kind}{on}: {Snippet(string.IsNullOrWhiteSpace(activity.Body) ? activity.Subject : activity.Body)}";
             foreach (var id in mentioned)
             {
                 if (!await CanSeeDealAsync(id, org, activity.DealId, ct)) continue;
