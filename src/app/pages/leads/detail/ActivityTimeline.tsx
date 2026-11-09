@@ -6,6 +6,8 @@ import {
 import type { Activity } from '@/app/api/types';
 import { cn } from '@/app/components/ui/utils';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
+import { useRegional } from '@/app/hooks/useMoney';
+import { daysBetween, dayKeyIn, formatDay, todayKeyIn } from '@/app/lib/zonedTime';
 
 interface TypeStyle {
   icon: typeof Phone;
@@ -46,24 +48,23 @@ function styleFor(type: string): TypeStyle {
   return TYPE_STYLES[type?.toLowerCase()] ?? FALLBACK_STYLE;
 }
 
-function startOfDayKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+/**
+ * A day's heading: Today, Yesterday, or the day itself. Days are the workspace's, in its
+ * time zone, as the reports count them: by this browser's clock, a call made at the club
+ * just after midnight was filed under the day before for anyone west of it.
+ */
+export function relativeDayLabel(dayKey: string, timeZone: string, now: Date = new Date()): string {
+  const today = todayKeyIn(timeZone, now);
+  const ago = daysBetween(dayKey, today);
+  if (ago === 0) return 'Today';
+  if (ago === 1) return 'Yesterday';
+  const sameYear = dayKey.slice(0, 4) === today.slice(0, 4);
+  return formatDay(dayKey, { weekday: 'long', month: 'short', day: 'numeric', year: sameYear ? undefined : 'numeric' });
 }
 
-function relativeDayLabel(d: Date): string {
-  const today = new Date();
-  const todayKey = startOfDayKey(today);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayKey = startOfDayKey(yesterday);
-  const key = startOfDayKey(d);
-  if (key === todayKey) return 'Today';
-  if (key === yesterdayKey) return 'Yesterday';
-  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: today.getFullYear() === d.getFullYear() ? undefined : 'numeric' });
-}
-
-function timeLabel(d: Date): string {
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+/** The time of day, on the same clock as the day it is filed under. */
+function timeLabel(d: Date, timeZone: string): string {
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone });
 }
 
 interface ActivityTimelineProps {
@@ -84,18 +85,18 @@ export function ActivityTimeline({
   emptyDetail = 'Calls, emails, meetings, and notes land here as they happen.',
 }: ActivityTimelineProps) {
   const reduce = useMotionPreference();
+  const { timeZone } = useRegional();
   const groups = useMemo(() => {
     const sorted = [...activities].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    const map = new Map<string, { day: Date; items: Activity[] }>();
+    const map = new Map<string, { day: string; items: Activity[] }>();
     for (const a of sorted) {
-      const d = new Date(a.createdAt);
-      const key = startOfDayKey(d);
-      const existing = map.get(key);
+      const day = dayKeyIn(a.createdAt, timeZone);
+      const existing = map.get(day);
       if (existing) existing.items.push(a);
-      else map.set(key, { day: d, items: [a] });
+      else map.set(day, { day, items: [a] });
     }
     return Array.from(map.values());
-  }, [activities]);
+  }, [activities, timeZone]);
 
   if (groups.length === 0) {
     return (
@@ -124,9 +125,9 @@ export function ActivityTimeline({
   return (
     <div className="space-y-8">
       {groups.map(({ day, items }) => (
-        <section key={startOfDayKey(day)}>
+        <section key={day}>
           <div className="sticky top-0 z-10 -mx-1 mb-3 flex items-center gap-3 bg-gradient-to-b from-white via-white to-white/90 px-1 py-1 backdrop-blur">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{relativeDayLabel(day)}</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{relativeDayLabel(day, timeZone)}</span>
             <span className="h-px flex-1 bg-slate-100" />
             <span className="text-xs text-slate-500">{items.length} item{items.length === 1 ? '' : 's'}</span>
           </div>
@@ -178,7 +179,7 @@ export function ActivityTimeline({
                           <span className="truncate text-sm font-medium text-slate-800">{activity.subject}</span>
                         )}
                       </div>
-                      <span className="shrink-0 text-xs text-slate-500">{timeLabel(created)}</span>
+                      <span className="shrink-0 text-xs text-slate-500">{timeLabel(created, timeZone)}</span>
                     </div>
                     {activity.body && (
                       <p className={cn(

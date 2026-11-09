@@ -1,7 +1,7 @@
 // The headings the Activities page lists activities under, on the workspace's calendar.
 
 import { describe, expect, it } from 'vitest';
-import { getDateGroup } from './utils';
+import { formatDate, formatRelativeDate, getDateGroup } from './utils';
 
 describe("an activity's heading", () => {
   // Half past midnight on Sunday 1 November in Zurich; still Saturday 31 October in
@@ -34,5 +34,27 @@ describe("an activity's heading", () => {
     // 23:30 UTC on 30 September is already 1 October in Zurich.
     expect(getDateGroup('2026-09-30T23:30:00Z', 'Europe/Zurich', now)).toMatch(/October 2026/);
     expect(getDateGroup('2026-09-30T23:30:00Z', 'America/New_York', now)).toMatch(/September 2026/);
+  });
+});
+
+describe("an activity's date", () => {
+  it('is written on the same clock as the heading it is listed under', () => {
+    // Ten past midnight on 1 November in Zurich, a week and more ago: listed under
+    // November there, it read "Oct 31" in a browser west of the club.
+    const call = '2026-10-31T23:10:00Z';
+    const now = new Date('2026-11-12T10:00:00Z');
+    const day = (timeZone: string) => new Date(call).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone });
+    const time = (timeZone: string) => new Date(call).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short', timeZone });
+    expect(day('Europe/Zurich')).not.toBe(day('America/New_York'));
+    expect(formatRelativeDate(call, 'Europe/Zurich', now)).toBe(day('Europe/Zurich'));
+    expect(formatRelativeDate(call, 'America/New_York', now)).toBe(day('America/New_York'));
+    expect(formatDate(call, 'Europe/Zurich')).toBe(time('Europe/Zurich'));
+    expect(formatDate(call, 'America/New_York')).toBe(time('America/New_York'));
+  });
+
+  it('says how long ago it was within the week, wherever the club is', () => {
+    const now = new Date('2026-11-01T12:00:00Z');
+    expect(formatRelativeDate('2026-11-01T11:55:00Z', 'Europe/Zurich', now)).toBe('5m ago');
+    expect(formatRelativeDate('2026-10-29T12:00:00Z', 'America/New_York', now)).toBe('3d ago');
   });
 });

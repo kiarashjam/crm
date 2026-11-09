@@ -58,7 +58,7 @@ import {
 } from '@/app/components/views';
 import { useMoney } from '@/app/hooks/useMoney';
 import { dayKeyIn, todayKeyIn } from '@/app/lib/zonedTime';
-import { getDateGroup } from './activities/utils';
+import { formatDate, formatRelativeDate, getDateGroup } from './activities/utils';
 
 const ACTIVITY_TYPES = [
   { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-700', borderColor: 'border-emerald-200' },
@@ -71,26 +71,6 @@ const ACTIVITY_TYPES = [
   { id: 'follow_up', label: 'Follow-up', icon: CalendarClock, color: 'orange', bgColor: 'bg-orange-100', textColor: 'text-orange-700', borderColor: 'border-orange-200' },
   { id: 'deadline', label: 'Deadline', icon: Clock, color: 'red', bgColor: 'bg-red-100', textColor: 'text-red-700', borderColor: 'border-red-200' },
 ] as const;
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
-}
-
-function formatRelativeDate(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 type ActivityFilter = 'all' | 'contact' | 'deal' | 'lead';
 
@@ -561,7 +541,7 @@ export default function Activities() {
                 </span>
                 <span className="text-xs text-slate-500 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  {formatRelativeDate(activity.createdAt)}
+                  {formatRelativeDate(activity.createdAt, money.timeZone)}
                 </span>
                 {activity.updatedAt && (
                   <span className="text-xs text-slate-500 italic">(edited)</span>
@@ -603,7 +583,7 @@ export default function Activities() {
         {/* Footer with timestamp and creator */}
         <div className="px-4 py-2 bg-slate-50/50 border-t border-slate-100">
           <p className="text-xs text-slate-500">
-            {formatDate(activity.createdAt)}
+            {formatDate(activity.createdAt, money.timeZone)}
             {activity.createdByName && <> &middot; by {activity.createdByName}</>}
           </p>
         </div>
@@ -635,7 +615,7 @@ export default function Activities() {
     { id: 'note', label: 'Note', byDefault: false, className: 'max-w-xs', cell: (a) => (a.body ? <span className="line-clamp-1">{a.body}</span> : '—') },
     { id: 'participants', label: 'Participants', byDefault: false, cell: (a) => a.participants || '—' },
     { id: 'by', label: 'By', cell: (a) => a.createdByName || '—' },
-    { id: 'when', label: 'When', cell: (a) => <span className="whitespace-nowrap" title={formatDate(a.createdAt)}>{formatRelativeDate(a.createdAt)}</span> },
+    { id: 'when', label: 'When', cell: (a) => <span className="whitespace-nowrap" title={formatDate(a.createdAt, money.timeZone)}>{formatRelativeDate(a.createdAt, money.timeZone)}</span> },
   ];
 
   const activityHeroStats: PageStat[] = [
