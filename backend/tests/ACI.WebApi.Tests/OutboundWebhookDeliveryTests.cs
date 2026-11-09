@@ -47,11 +47,16 @@ public class OutboundWebhookDeliveryTests
     private class App : CustomWebApplicationFactory
     {
         public readonly Receiver Hook = new();
+        public readonly MailServer Mail = new();
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             base.ConfigureWebHost(builder);
-            builder.ConfigureTestServices(services => services.AddScoped<IWebhookTransport>(_ => Hook));
+            builder.ConfigureTestServices(services =>
+            {
+                services.AddScoped<IWebhookTransport>(_ => Hook);
+                services.AddSingleton(Mail.Mock.Object);
+            });
         }
     }
 
@@ -160,6 +165,47 @@ public class OutboundWebhookDeliveryTests
         delivery.GetProperty("status").GetString().Should().Be("queued");
         delivery.GetProperty("lastStatusCode").GetInt32().Should().Be(500);
         delivery.GetProperty("attempts").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AReceiverThatDoesNotAnswerDoesNotHoldUpEveryoneElsesEmail()
+    {
+        // One outbox sends for every workspace. Each attempt at a receiver that never
+        // answers waits for the timeout; taken one at a time, a workspace whose receiver
+        // is down held every other workspace's email behind its events.
+        await using var app = new App();
+        var (owner, org) = await WorkspaceAsync(app);
+        app.Hook.Hang = new TaskCompletionSource();
+        (await AddLeadAsync(owner)).StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+            var eventDue = db.OutboundMessages.Single().NextAttemptAtUtc!.Value;
+            db.OutboundMessages.Add(new ACI.Domain.Entities.OutboundMessage
+            {
+                Id = Guid.NewGuid(), OrganizationId = org, Channel = "email", Source = "automation", Status = "queued",
+                // Due just after the event, so a dispatcher taking one at a time reaches it second.
+                NextAttemptAtUtc = eventDue.AddMilliseconds(1), CreatedAtUtc = DateTime.UtcNow, To = "anne@example.ch", Subject = "Welcome",
+                Body = "Hello", TextBody = "Hello", HtmlBody = "<p>Hello</p>", MessageIdHeader = $"<{Guid.NewGuid():N}@pavillon46.ch>",
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var dispatching = app.DispatchOutboxAsync();
+        try
+        {
+            var waited = Stopwatch.StartNew();
+            while (app.Mail.Sent.Count == 0 && waited.Elapsed < TimeSpan.FromSeconds(10))
+                await Task.Delay(50);
+
+            app.Mail.Sent.Should().ContainSingle("the email goes while the receiver keeps the event waiting");
+            app.Hook.Count.Should().Be(1, "the event is being posted at the same time");
+        }
+        finally
+        {
+            app.Hook.Hang.TrySetResult();
+        }
+        (await dispatching).Should().Be(2);
     }
 
     [Fact]

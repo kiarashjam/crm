@@ -29,14 +29,26 @@ public sealed class OutboxSignal : IOutboxSignal
 /// Sends what is due in the outbox: one pass over up to <see cref="BatchSize"/> messages.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Each message is attempted in a scope of its own, so one that fails — a database
 /// error halfway through, say — cannot leave something behind in the next one's
 /// unit of work. The claim inside <see cref="IOutbox.ProcessAsync"/> makes it safe for
-/// every instance to run this at once.
+/// every instance to run this at once, and for one pass to attempt several at once.
+/// </para>
+/// <para>
+/// Up to <see cref="Concurrency"/> go at a time. One outbox sends for every workspace,
+/// and an attempt can wait a long time: ten seconds for a webhook receiver that does not
+/// answer, thirty for a mail server that does not. Taken one at a time, a single
+/// workspace whose receiver was down held every other workspace's email behind its
+/// events. Delivery is at least once and in no promised order, as before.
+/// </para>
 /// </remarks>
 public sealed class OutboxDispatcher
 {
     public const int BatchSize = 50;
+
+    /// <summary>Messages one instance attempts at the same time.</summary>
+    public const int Concurrency = 8;
 
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<OutboxDispatcher> _logger;
@@ -54,18 +66,18 @@ public sealed class OutboxDispatcher
         using (var scope = _scopes.CreateScope())
             due = await scope.ServiceProvider.GetRequiredService<IOutboxRepository>().DueAsync(DateTime.UtcNow, BatchSize, ct);
 
-        foreach (var message in due)
+        await Parallel.ForEachAsync(due, new ParallelOptions { MaxDegreeOfParallelism = Concurrency, CancellationToken = ct }, async (message, token) =>
         {
             using var scope = _scopes.CreateScope();
             try
             {
-                await scope.ServiceProvider.GetRequiredService<IOutbox>().ProcessAsync(message, ct);
+                await scope.ServiceProvider.GetRequiredService<IOutbox>().ProcessAsync(message, token);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogError(ex, "Outbox message {MessageId} failed", message.Id);
             }
-        }
+        });
         return due.Count;
     }
 }
