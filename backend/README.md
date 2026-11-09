@@ -208,7 +208,7 @@ An import still running cannot be undone: both undo calls answer 409 until it ha
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET/POST/PUT/DELETE` | `/api/pipelines` | Manage pipelines (with their own stale-deal days) |
-| `GET/POST/PUT/DELETE` | `/api/dealstages` | Manage deal stages (won or lost, and a default probability) |
+| `GET/POST/PUT/DELETE` | `/api/dealstages` | Manage deal stages (won or lost, and a default probability). Making a stage won, lost or open again gives the deals that had its old outcome the new one |
 | `GET/POST/PUT/DELETE` | `/api/leadsources` | Manage lead sources |
 | `GET/POST/PUT/DELETE` | `/api/leadstatuses` | Manage lead statuses |
 
