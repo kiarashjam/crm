@@ -118,21 +118,36 @@ X-Organization-Id: your-org-guid
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/contacts` | List all contacts |
+| `GET` | `/api/contacts` | One page of contacts: `status` (active, archived, all), `companyId`, `hasCompany`, `activity` (recent, quiet), `sortBy`, `sortDir`, `search`, applied to the whole workspace |
+| `GET` | `/api/contacts/stats` | The figures above the list, over the whole workspace |
+| `GET` | `/api/contacts/export` | Every contact the list shows with the same parameters, as CSV (up to 50,000) |
 | `GET` | `/api/contacts/search?q=john` | Search contacts |
 | `GET` | `/api/contacts/{id}` | Get single contact |
+| `GET` | `/api/contacts/{id}/lookalikes` | Contacts that look like this one (the duplicate rules), less those marked not the same |
 | `POST` | `/api/contacts` | Create contact |
 | `PUT` | `/api/contacts/{id}` | Update contact |
-| `DELETE` | `/api/contacts/{id}` | Delete contact |
+| `DELETE` | `/api/contacts/{id}` | Delete contact (a lead it was made for does not get another) |
 
 ### Companies
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/companies` | List companies |
+| `GET` | `/api/companies` | One page of companies with their counts: `industry`, `hasIndustry`, `size`, `sortBy` (name, createdAt, contacts, deals), `sortDir`, `search` |
+| `GET` | `/api/companies/summary` | The figures above the list, and the industries in use |
+| `GET` | `/api/companies/export` | Every company the list shows, as CSV |
 | `GET` | `/api/companies/{id}` | Get company |
 | `POST` | `/api/companies` | Create company |
 | `PUT` | `/api/companies/{id}` | Update company |
+
+### Duplicates
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/duplicates/contacts` | Duplicate contacts: same email, same phone however written, or same name when phone and company do not disagree |
+| `GET` | `/api/duplicates/companies` | Duplicate companies: same web domain, or same name when the domains do not disagree |
+| `GET` | `/api/duplicates/{kind}/not-same` | Pairs the team said are not the same (contacts, companies, leads, deals, members, households) |
+| `POST` | `/api/duplicates/{kind}/not-same` | `{ recordIds }`: keep every pair among them apart, for the whole workspace |
+| `POST` | `/api/duplicates/{kind}/not-same/clear` | `{ recordIds }`: offer them again |
 
 ### Deals
 
