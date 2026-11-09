@@ -42,6 +42,9 @@ public class RegionalSettingsTests
     {
         RegionalSettings.TryTimeZone("Europe/Zurich", out var iana).Should().BeTrue();
         iana.Should().Be("Europe/Zurich");
+        // The browser formats dates by IANA names only.
+        RegionalSettings.TryTimeZone("W. Europe Standard Time", out var fromWindows).Should().BeTrue();
+        fromWindows.Should().Be("Europe/Berlin");
         RegionalSettings.TryTimeZone("Mars/Olympus_Mons", out _).Should().BeFalse();
     }
 
