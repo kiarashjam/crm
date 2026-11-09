@@ -66,6 +66,7 @@ export default function RelationshipsCard({
   const reduce = useMotionPreference();
   const [items, setItems] = useState<ContactRelationship[] | null>(null);
   const [contactId, setContactId] = useState<string | null>(null);
+  const [contactDeleted, setContactDeleted] = useState(false);
   const [failed, setFailed] = useState(false);
   const [loadedContacts, setLoadedContacts] = useState<Contact[] | null>(null);
   const [open, setOpen] = useState(false);
@@ -83,6 +84,7 @@ export default function RelationshipsCard({
         if (cancelled) return;
         setItems(list.items);
         setContactId(list.contactId);
+        setContactDeleted(list.contactDeleted === true);
       })
       .catch(() => { if (!cancelled) { setItems([]); setFailed(true); } });
     return () => { cancelled = true; };
@@ -256,7 +258,9 @@ export default function RelationshipsCard({
           <p className="text-sm text-slate-500">The relationships could not be loaded.</p>
         ) : contactId === null ? (
           <p className="text-sm text-slate-500">
-            Give {firstName} a name and an email to record their spouse or family.
+            {contactDeleted
+              ? `${firstName}'s contact was deleted, so their spouse or family are not recorded here.`
+              : `Give ${firstName} a name and an email to record their spouse or family.`}
           </p>
         ) : (
           <>

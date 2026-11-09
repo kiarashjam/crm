@@ -311,6 +311,7 @@ try
         .ConfigurePrimaryHttpMessageHandler(ACI.Infrastructure.Services.OutboundWebhookPublisher.PublicOnlyHandler);
     builder.Services.AddHostedService<ACI.WebApi.Services.LeadFollowUpBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.WeeklyDigestBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
@@ -882,6 +883,9 @@ try
                     ALTER TABLE [Leads] ADD [EmailOpenCount] int NOT NULL CONSTRAINT DF_Leads_EmailOpenCount DEFAULT 0;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Leads') AND name = 'EnrichedDomain')
                     ALTER TABLE [Leads] ADD [EnrichedDomain] nvarchar(200) NULL;
+                -- When someone deleted the lead's person contact, so it is not made again (see Lead).
+                IF COL_LENGTH(N'dbo.Leads', N'PersonContactRemovedAtUtc') IS NULL
+                    ALTER TABLE [Leads] ADD [PersonContactRemovedAtUtc] datetime2 NULL;
             ");
 
             // One-time data fixes (see DataFixes). A failure is logged and retried on

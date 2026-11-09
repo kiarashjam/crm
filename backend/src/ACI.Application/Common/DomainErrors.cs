@@ -393,6 +393,10 @@ public static class DomainErrors
 
         public static readonly Error LeadHasNoContact = new(
             "ContactRelationship.LeadHasNoContact", "This lead needs a name and an email before relationships can be recorded");
+
+        public static readonly Error LeadContactDeleted = new(
+            "ContactRelationship.LeadContactDeleted",
+            "This lead's contact was deleted, so relationships are not recorded on the lead");
     }
 
     /// <summary>

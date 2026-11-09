@@ -5,7 +5,9 @@ using System.Text.Json;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
+using ACI.WebApi.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ACI.WebApi.Tests;
 
@@ -53,6 +55,13 @@ public class LeadBecomesContactTests
             status = "New",
         })), "create second lead");
         second.GetProperty("isConverted").GetBoolean().Should().BeFalse();
+
+        // The lead written straight to the database gets its contact from the background
+        // job; listing contacts no longer writes any.
+        await new PersonContactBackfillBackgroundService(
+                factory.Services.GetRequiredService<IServiceScopeFactory>(),
+                NullLogger<PersonContactBackfillBackgroundService>.Instance)
+            .RunOnceAsync(CancellationToken.None);
 
         var contacts = await ReadJson(await client.GetAsync("/api/contacts?page=1&pageSize=50"), "list contacts");
         var emails = contacts.GetProperty("items").EnumerateArray()

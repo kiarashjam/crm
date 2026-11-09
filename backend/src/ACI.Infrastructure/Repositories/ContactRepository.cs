@@ -16,6 +16,11 @@ public sealed class ContactRepository : IContactRepository
             ? q.Where(c => c.UserId == userId && c.OrganizationId == null)
             : q.Where(c => c.OrganizationId == organizationId);
 
+    private static IQueryable<Lead> LeadsIn(IQueryable<Lead> q, Guid userId, Guid? organizationId) =>
+        organizationId == null
+            ? q.Where(l => l.UserId == userId && l.OrganizationId == null)
+            : q.Where(l => l.OrganizationId == organizationId);
+
     private static IQueryable<Contact> ApplySearch(IQueryable<Contact> query, string? search)
     {
         if (string.IsNullOrWhiteSpace(search)) return query;
@@ -157,6 +162,21 @@ public sealed class ContactRepository : IContactRepository
         await _db.TaskItems.Where(t => t.ContactId == id).ExecuteUpdateAsync(s => s.SetProperty(t => t.ContactId, (Guid?)null), ct);
         await _db.Leads.Where(l => l.ReferredByContactId == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.ReferredByContactId, (Guid?)null), ct);
         await _db.ContactRelationships.Where(r => r.ContactId == id || r.RelatedContactId == id).ExecuteDeleteAsync(ct);
+
+        // Every lead with a name and an email is given a person contact automatically, so
+        // a lead whose contact this was would get a new, empty one the next time anyone
+        // saved it, and the delete would quietly not stick. The lead keeps a note that a
+        // person deleted its contact instead, and no other is made for it.
+        var leadId = entity.ConvertedFromLeadId;
+        var now = DateTime.UtcNow;
+        foreach (var lead in await LeadsIn(_db.Leads, userId, organizationId)
+                     .Where(l => l.ConvertedToContactId == id || l.Id == leadId)
+                     .ToListAsync(ct))
+        {
+            if (lead.ConvertedToContactId == id) lead.ConvertedToContactId = null;
+            lead.PersonContactRemovedAtUtc ??= now;
+        }
+
         _db.Contacts.Remove(entity);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -188,6 +208,9 @@ public sealed class ContactRepository : IContactRepository
     {
         if (string.IsNullOrWhiteSpace(lead.Name) || string.IsNullOrWhiteSpace(lead.Email))
             return;
+        // Someone deleted this lead's contact (see DeleteAsync); making another undoes that.
+        if (lead.PersonContactRemovedAtUtc != null)
+            return;
 
         // Only contacts in the lead's own workspace. Matched by organization alone,
         // two users with no organization shared one pool: a lead took another user's
@@ -212,9 +235,26 @@ public sealed class ContactRepository : IContactRepository
 
         if (lead.ConvertedToContactId is Guid existingId)
         {
-            var existing = await workspace.FirstOrDefaultAsync(c => c.Id == existingId && !c.IsArchived, ct);
-            if (existing != null)
+            // An archived contact is still this lead's: making a new one would bring back
+            // a person someone put away.
+            if (await workspace.AnyAsync(c => c.Id == existingId, ct))
                 return;
+            // Gone altogether, so deleted before a delete left its note on the lead. The
+            // note is written now, rather than the contact made again.
+            if (!await _db.Contacts.AnyAsync(c => c.Id == existingId, ct))
+            {
+                var tracked = await _db.Leads.FirstOrDefaultAsync(l => l.Id == lead.Id, ct);
+                var removedAt = tracked?.PersonContactRemovedAtUtc ?? DateTime.UtcNow;
+                if (tracked != null)
+                {
+                    tracked.ConvertedToContactId = null;
+                    tracked.PersonContactRemovedAtUtc = removedAt;
+                    await _db.SaveChangesAsync(ct);
+                }
+                lead.ConvertedToContactId = null;
+                lead.PersonContactRemovedAtUtc = removedAt;
+                return;
+            }
         }
 
         var email = lead.Email.Trim();
@@ -246,28 +286,50 @@ public sealed class ContactRepository : IContactRepository
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task EnsureMissingPersonContactsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    public async Task<int> BackfillPersonContactsAsync(int maxLeads, CancellationToken ct = default)
     {
         var linkedLeadIds = _db.Contacts
             .Where(c => c.ConvertedFromLeadId != null)
             .Select(c => c.ConvertedFromLeadId!.Value);
-
-        var leads = organizationId == null
-            ? _db.Leads.Where(l => l.UserId == userId && l.OrganizationId == null)
-            : _db.Leads.Where(l => l.OrganizationId == organizationId);
-
-        for (var pass = 0; pass < 20; pass++)
+        // Looked at once per run, linked or not: a lead that cannot be given a contact
+        // must not be picked first again and again while the others wait.
+        var seen = new List<Guid>();
+        var linked = 0;
+        while (seen.Count < maxLeads)
         {
-            var missing = await leads
-                .Where(l => l.Name != "" && l.Email != "" && l.ConvertedToContactId == null && !linkedLeadIds.Contains(l.Id))
+            var missing = await _db.Leads
+                .Where(l => l.Name.Trim() != "" && l.Email.Trim() != "" && l.ConvertedToContactId == null
+                    && l.PersonContactRemovedAtUtc == null && !linkedLeadIds.Contains(l.Id) && !seen.Contains(l.Id))
                 .OrderBy(l => l.CreatedAtUtc)
-                .Take(50)
+                .Take(Math.Min(50, maxLeads - seen.Count))
                 .ToListAsync(ct);
+            if (missing.Count == 0) break;
 
-            if (missing.Count == 0) return;
             foreach (var lead in missing)
-                await EnsurePersonContactAsync(lead, ct);
+            {
+                seen.Add(lead.Id);
+                try
+                {
+                    await EnsurePersonContactAsync(lead, ct);
+                    if (lead.ConvertedToContactId != null) linked++;
+                }
+                catch (DbUpdateException)
+                {
+                    // One lead whose contact cannot be saved (a clash with a row someone
+                    // wrote meanwhile, say) is tried again on the next run; the rest go on.
+                    _db.ChangeTracker.Clear();
+                }
+            }
         }
+        return linked;
+    }
+
+    public async Task<Contact?> GetPersonContactAsync(Lead lead, Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var workspace = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
+        if (lead.ConvertedToContactId is Guid id && await workspace.FirstOrDefaultAsync(c => c.Id == id, ct) is { } pointed)
+            return pointed;
+        return await workspace.FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct);
     }
 
     public async Task<IReadOnlyList<Contact>> FindLookalikesAsync(Contact contact, CancellationToken ct = default)

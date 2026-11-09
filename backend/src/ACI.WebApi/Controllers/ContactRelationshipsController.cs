@@ -100,9 +100,10 @@ public class ContactRelationshipsController : ControllerBase
     public async Task<ActionResult<ContactRelationshipListDto>> ListForLead(Guid leadId, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();
-        var contact = await _service.LeadContactIdAsync(leadId, userId, _currentUser.CurrentOrganizationId, ct);
+        // Reads only: a lead without a contact is answered as one, not given one.
+        var contact = await _service.LeadContactAsync(leadId, userId, _currentUser.CurrentOrganizationId, ensure: false, ct);
         if (contact.IsFailure) return Result.Failure<ContactRelationshipListDto>(contact.Error).ToActionResult();
-        if (contact.Value is not { } contactId) return Ok(new ContactRelationshipListDto(null, []));
+        if (contact.Value.ContactId is not { } contactId) return Ok(new ContactRelationshipListDto(null, [], contact.Value.Deleted));
         var result = await _service.ListAsync(contactId, userId, _currentUser.CurrentOrganizationId, ct);
         return result.ToActionResult();
     }
@@ -155,10 +156,11 @@ public class ContactRelationshipsController : ControllerBase
 
     private async Task<Result<Guid>> LeadContactAsync(Guid leadId, Guid userId, CancellationToken ct)
     {
-        var contact = await _service.LeadContactIdAsync(leadId, userId, _currentUser.CurrentOrganizationId, ct);
+        var contact = await _service.LeadContactAsync(leadId, userId, _currentUser.CurrentOrganizationId, ensure: true, ct);
         if (contact.IsFailure) return Result.Failure<Guid>(contact.Error);
-        return contact.Value is { } id
-            ? Result.Success(id)
-            : Result.Failure<Guid>(DomainErrors.ContactRelationship.LeadHasNoContact);
+        if (contact.Value.ContactId is { } id) return Result.Success(id);
+        return Result.Failure<Guid>(contact.Value.Deleted
+            ? DomainErrors.ContactRelationship.LeadContactDeleted
+            : DomainErrors.ContactRelationship.LeadHasNoContact);
     }
 }

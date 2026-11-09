@@ -14,10 +14,14 @@ public record ContactRelationshipDto(
     Guid? RelatedLeadId,
     DateTime CreatedAtUtc);
 
-/// <summary>A contact's relationships. <c>ContactId</c> is null for a lead that has no contact yet.</summary>
+/// <summary>
+/// A contact's relationships. <c>ContactId</c> is null for a lead that has no contact yet,
+/// and <c>ContactDeleted</c> says when that is because someone deleted the lead's contact.
+/// </summary>
 public record ContactRelationshipListDto(
     Guid? ContactId,
-    IReadOnlyList<ContactRelationshipDto> Items);
+    IReadOnlyList<ContactRelationshipDto> Items,
+    bool ContactDeleted = false);
 
 /// <summary>Records, or changes, how this contact is related to another one.</summary>
 public record SetContactRelationshipRequest

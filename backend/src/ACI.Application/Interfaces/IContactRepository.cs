@@ -34,11 +34,22 @@ public interface IContactRepository
     Task<bool> ArchiveAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<bool> UnarchiveAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
-    /// <summary>Creates the person contact for a lead when one does not exist yet.</summary>
+    /// <summary>
+    /// Creates the person contact for a lead when one does not exist yet, unless someone
+    /// deleted the lead's contact (<see cref="Lead.PersonContactRemovedAtUtc"/>). A write:
+    /// it is called when a lead is saved, never to read one.
+    /// </summary>
     Task EnsurePersonContactAsync(Lead lead, CancellationToken ct = default);
 
-    /// <summary>Creates missing person contacts for leads in this organization.</summary>
-    Task EnsureMissingPersonContactsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <summary>
+    /// Gives person contacts to leads in every workspace that should have one and do not
+    /// (older leads, or ones a tool wrote straight to the database), at most
+    /// <paramref name="maxLeads"/> leads a run. Returns how many leads were given one.
+    /// </summary>
+    Task<int> BackfillPersonContactsAsync(int maxLeads, CancellationToken ct = default);
+
+    /// <summary>The lead's person contact in the workspace, archived or not, or null. Reads only.</summary>
+    Task<Contact?> GetPersonContactAsync(Lead lead, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     Task<IReadOnlyList<Contact>> FindLookalikesAsync(Contact contact, CancellationToken ct = default);
 

@@ -43,8 +43,6 @@ public class ContactService : IContactService
             "Getting paged contacts for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}', companyId {CompanyId}",
             userId, organizationId, page, pageSize, search, companyId);
 
-        await _repository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
-
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, includeArchived, companyId, ct);
         
@@ -70,8 +68,6 @@ public class ContactService : IContactService
         _logger.LogDebug(
             "Getting contacts for user {UserId}, organization {OrganizationId}, includeArchived: {IncludeArchived}",
             userId, organizationId, includeArchived);
-
-        await _repository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
 
         var list = await _repository.GetByUserIdAsync(userId, organizationId, includeArchived, ct);
         var lastByContact = await _activityRepository.GetLastActivityByContactIdsAsync(
