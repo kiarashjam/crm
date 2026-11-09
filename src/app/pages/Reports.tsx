@@ -224,7 +224,8 @@ export default function Reports() {
     }
     if (d.missingProbability > 0) {
       out.push(
-        `${plural(d.missingProbability, 'open deal')} ${d.missingProbability === 1 ? 'has' : 'have'} no win probability set, `
+        `${plural(d.missingProbability, 'open deal')} ${d.missingProbability === 1 ? 'has' : 'have'} no win probability, `
+        + `of ${d.missingProbability === 1 ? 'its' : 'their'} own or from ${d.missingProbability === 1 ? 'its' : 'their'} stage, `
         + `so ${d.missingProbability === 1 ? 'it is' : 'they are'} left out of the weighted forecast.`,
       );
     }

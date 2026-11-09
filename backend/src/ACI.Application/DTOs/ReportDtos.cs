@@ -66,7 +66,7 @@ public sealed record DealFiguresDto(int Count, IReadOnlyList<MoneyRowDto> ByCurr
 
 /// <summary>The probability-weighted value of open deals in one currency.</summary>
 /// <param name="Covered">Deals with both a probability and a readable value: the ones in <paramref name="Value"/>.</param>
-/// <param name="Missing">Open deals with no probability, left out rather than given a made-up one.</param>
+/// <param name="Missing">Open deals with no probability, their own or their stage's, left out rather than given a made-up one.</param>
 public sealed record WeightedRowDto(string Currency, decimal Value, int Covered, int Missing);
 
 /// <summary>Open deals at one stage, in one currency.</summary>
