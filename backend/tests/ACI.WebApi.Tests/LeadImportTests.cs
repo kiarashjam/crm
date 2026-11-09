@@ -83,11 +83,12 @@ public class LeadImportTests
         await using var factory = new CustomWebApplicationFactory();
         var (client, _, _) = await WorkspaceAsync(factory);
         await AddLeadAsync(client, new { name = "Jean Dupont", email = "jean@dupont.example", phone = "079 123 45 67", status = "New" });
+        await AddLeadAsync(client, new { name = "Marc Weber", email = "marc@weber.example", status = "New" });
         var before = await factory.Services.Read(db => db.Leads.Count());
 
         var csv = "name,email,phone\n"
             + "Marie Curie,marie@curie.example,\n"          // 2: new
-            + "J. Dupont,JEAN@dupont.example,\n"              // 3: the same email, in capitals
+            + "M. Weber,MARC@weber.example,\n"                // 3: the same email, in capitals
             + "Jean Dupont,jean.d@else.example,+41 79 123 45 67\n" // 4: the same name and phone, written another way
             + "Marie C.,marie@curie.example,\n"               // 5: repeats row 2
             + "Bob,not-an-email,\n"                           // 6: refused
@@ -208,6 +209,41 @@ public class LeadImportTests
         lead.ImportBatchId.Should().BeNull("the lead was already here; undoing the import must not remove it");
         (await factory.Services.Read(db => db.TaskItems.Count())).Should().Be(0,
             "the file records where people already are; it does not set off the status automations unless asked");
+    }
+
+    [Fact]
+    public async Task ARowRefusedForWantingANameDoesNotHideALaterRowWithOne()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await WorkspaceAsync(factory);
+
+        var csv = "email,name\nanna@roth.example,\nanna@roth.example,Anna Roth\n";
+        var result = await OkJson(await Preview(client, "lead", csv, new[] { "email", "name" }, duplicates: "update"), "preview");
+
+        Action(result, 2).Should().Be("error");
+        Action(result, 3).Should().Be("create", "the row before it imported nothing, so this is not a repeat of it");
+    }
+
+    [Fact]
+    public async Task TwoRowsReachingOneLeadByDifferentKeysDoNotBothUpdateIt()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await WorkspaceAsync(factory);
+        await AddLeadAsync(client, new { name = "Bob Keller", email = "bob@keller.example", phone = "079 123 45 67", status = "New" });
+
+        // The two rows share no key with each other, so neither repeats the other; each
+        // reaches Bob by its own.
+        var csv = "name,email,phone,job title\n"
+            + "Robert Keller,bob@keller.example,,Chef\n"                          // by email
+            + "Bob Keller,bob.work@else.example,+41 79 123 45 67,Sommelier\n";   // by name and phone
+        var result = await OkJson(await Import(client, "lead", csv, new[] { "name", "email", "phone", "jobTitle" }, duplicates: "update"), "import");
+
+        Action(result, 2).Should().Be("update");
+        Action(result, 3).Should().Be("skip");
+        Message(result, 3).Should().Be("Same lead as row 2: Bob Keller");
+        var bob = await factory.Services.Read(db => db.Leads.Single());
+        (bob.Name, bob.Email, bob.JobTitle).Should().Be(("Robert Keller", "bob@keller.example", "Chef"),
+            "the second row would have written over the first, email included");
     }
 
     [Fact]

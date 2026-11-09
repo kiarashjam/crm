@@ -89,8 +89,10 @@ internal sealed class ImportPlanner
     private readonly Dictionary<string, ImportCompany> _companyByName = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ImportCompany> _companyByDomain = new(StringComparer.Ordinal);
 
-    // Across the rows of the file: what earlier rows were, and the companies they add.
+    // Across the rows of the file: what earlier rows were, the records they matched, and
+    // the companies they add.
     private readonly Dictionary<string, int> _seen = new(StringComparer.Ordinal);
+    private readonly Dictionary<Guid, int> _matched = new();
     private readonly Dictionary<string, int> _companiesAdded = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (string Name, int Row)> _companiesFromEmail = new(StringComparer.Ordinal);
 
@@ -139,6 +141,18 @@ internal sealed class ImportPlanner
         RecordTypes.Contact => "contacts",
         _ => "companies",
     };
+
+    private string Noun => _kind switch
+    {
+        RecordTypes.Lead => "lead",
+        RecordTypes.Contact => "contact",
+        _ => "company",
+    };
+
+    private void Remember(List<(string Key, string How)> keys, int row)
+    {
+        foreach (var (key, _) in keys) _seen[key] = row;
+    }
 
     public IReadOnlyList<ImportPlannedRow> Plan(IReadOnlyList<CsvRow> rows) => rows.Select(PlanRow).ToList();
 
@@ -196,7 +210,6 @@ internal sealed class ImportPlanner
             planned.Message = $"Same {how} as row {earlier}";
             return planned;
         }
-        foreach (var (key, _) in keys) _seen[key] = row.Number;
 
         ImportExisting? match = null;
         string? matchedBy = null;
@@ -212,12 +225,28 @@ internal sealed class ImportPlanner
 
         if (match == null)
         {
-            if (!planned.Values.ContainsKey("name")) planned.Fail("No name, and nobody here has this email to update");
-            else PlanCreate(planned);
+            // Refused without being remembered, so a later row with the name can still add them.
+            if (!planned.Values.ContainsKey("name"))
+            {
+                planned.Fail("No name, and nobody here has this email to update");
+                return planned;
+            }
+            Remember(keys, row.Number);
+            PlanCreate(planned);
             return planned;
         }
 
         planned.RecordId = match.Id;
+        // Two rows can reach one record by different keys (one by email, one by name and
+        // phone). The second would write over the first, so the first one stands.
+        if (_matched.TryGetValue(match.Id, out var sameAs))
+        {
+            planned.Action = ImportPlannedRow.Skip;
+            planned.Message = $"Same {Noun} as row {sameAs}: {match.Label}";
+            return planned;
+        }
+        Remember(keys, row.Number);
+        _matched[match.Id] = row.Number;
         if (!_update)
         {
             planned.Action = ImportPlannedRow.Skip;
