@@ -68,7 +68,8 @@ public sealed class IntegrationController : ControllerBase
         var deals = await _reporting.GetDashboardStatsAsync(owner, organization.Id, ct);
         var stages = await _reporting.GetPipelineValueByStageAsync(owner, organization.Id, ct);
         var leads = await _leads.GetStatsAsync(owner, organization.Id, ct);
-        var tasks = await _tasks.GetStatsAsync(owner, organization.Id, ct);
+        // No scope: the whole organization's tasks, not just the owner's own.
+        var tasks = await _tasks.GetStatsAsync(owner, organization.Id, ct: ct);
         var recent = await _activities.GetPagedAsync(owner, organization.Id, 1, RecentActivityCount, null, null, ct);
 
         Response.Headers.CacheControl = "no-store";
@@ -81,7 +82,7 @@ public sealed class IntegrationController : ControllerBase
             deals,
             stages,
             recent.Items
-                .OrderByDescending(a => a.CreatedAtUtc)
+                .OrderByDescending(HappenedAt)
                 .Select(ToActivity)
                 .ToList()));
     }
@@ -149,7 +150,7 @@ public sealed class IntegrationController : ControllerBase
         return Ok(new IntegrationDealDetailDto(
             ToDeal(deal.Value),
             activities
-                .OrderByDescending(a => a.CreatedAtUtc)
+                .OrderByDescending(HappenedAt)
                 .Take(RecentActivityCount)
                 .Select(ToActivity)
                 .ToList(),
@@ -175,7 +176,11 @@ public sealed class IntegrationController : ControllerBase
     }
 
     private static OrganizationActivityDto ToActivity(ActivityDto a) =>
-        new(a.Type, a.Subject, a.DealName ?? a.ContactName ?? a.LeadName, a.CreatedByName, a.CreatedAtUtc);
+        new(a.Type, a.Subject, a.DealName ?? a.ContactName ?? a.LeadName, a.CreatedByName, HappenedAt(a));
+
+    // When the activity happened, which can be before it was logged (a call written down the
+    // next day). The timeline and the MCP tools order and date activities by it too.
+    private static DateTime HappenedAt(ActivityDto a) => a.OccurredAtUtc ?? a.CreatedAtUtc;
 
     private static IntegrationDealDto ToDeal(DealDto d) => new(
         d.Id,

@@ -67,6 +67,31 @@ public class IntegrationSummaryTests : IClassFixture<CustomWebApplicationFactory
         activity.TryGetProperty("body", out _).Should().BeFalse("activity bodies stay in Cadence");
     }
 
+    [Fact]
+    public async Task Activity_is_dated_and_ordered_by_when_it_happened()
+    {
+        // A call written down a week late is logged after this morning's call but happened
+        // before it. The timeline and the MCP tools put it after, and date it last week.
+        var key = "aci_" + Guid.NewGuid().ToString("N");
+        var org = await SeedAsync("Fabrikam", key);
+        var now = DateTime.UtcNow;
+        var lastWeek = now.AddDays(-7);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Activities.Add(new Activity { Id = Guid.NewGuid(), UserId = org.OwnerId, OrganizationId = org.OrganizationId, Type = "call", Subject = "Made this morning", CreatedAtUtc = now.AddHours(-2), OccurredAtUtc = now.AddHours(-2) });
+            db.Activities.Add(new Activity { Id = Guid.NewGuid(), UserId = org.OwnerId, OrganizationId = org.OrganizationId, Type = "call", Subject = "Made last week", CreatedAtUtc = now.AddMinutes(-1), OccurredAtUtc = lastWeek });
+            await db.SaveChangesAsync();
+        }
+
+        using var json = JsonDocument.Parse(await (await Get(key)).Content.ReadAsStringAsync());
+        var recent = json.RootElement.GetProperty("recentActivity").EnumerateArray().ToList();
+
+        recent.Select(a => a.GetProperty("subject").GetString()).Should().ContainInOrder("Made this morning", "Made last week");
+        recent.Single(a => a.GetProperty("subject").GetString() == "Made last week")
+            .GetProperty("atUtc").GetDateTime().Should().BeCloseTo(lastWeek, TimeSpan.FromSeconds(1));
+    }
+
     private Task<HttpResponseMessage> Get(string key)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, "/api/integration/summary");
@@ -74,7 +99,7 @@ public class IntegrationSummaryTests : IClassFixture<CustomWebApplicationFactory
         return _factory.CreateClient().SendAsync(request);
     }
 
-    private sealed record Seeded(Guid OrganizationId, string ActivitySubject);
+    private sealed record Seeded(Guid OrganizationId, string ActivitySubject, Guid OwnerId);
 
     private async Task<Seeded> SeedAsync(string name, string? mcpKey, string? webhookKey = null, string dealValue = "25000")
     {
@@ -100,6 +125,6 @@ public class IntegrationSummaryTests : IClassFixture<CustomWebApplicationFactory
         db.TaskItems.Add(new TaskItem { Id = Guid.NewGuid(), UserId = userId, OrganizationId = orgId, Title = "Follow up", Status = ACI.Domain.Enums.TaskStatus.Todo, Priority = ACI.Domain.Enums.TaskPriority.Medium, CreatedAtUtc = DateTime.UtcNow });
         db.Activities.Add(new Activity { Id = Guid.NewGuid(), UserId = userId, OrganizationId = orgId, Type = "call", Subject = subject, Body = "private notes", CreatedAtUtc = DateTime.UtcNow });
         await db.SaveChangesAsync();
-        return new Seeded(orgId, subject);
+        return new Seeded(orgId, subject, userId);
     }
 }
