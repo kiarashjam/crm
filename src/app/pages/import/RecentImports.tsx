@@ -188,9 +188,10 @@ export default function RecentImports({ kind, refreshKey }: RecentImportsProps) 
                 {b.skipped > 0 && <> · skipped {b.skipped.toLocaleString()}</>}
                 {b.failed > 0 && <> · {b.failed.toLocaleString()} not imported</>}
               </p>
-              {!b.finishedAtUtc && (
+              {b.running && <p className="text-sm text-slate-500">Still running. It can be undone once it has finished.</p>}
+              {!b.finishedAtUtc && !b.running && (
                 <p className="text-sm text-amber-700">
-                  Not finished: it is still running, or the server stopped part way through. If it stopped, undo it and import the file again.
+                  Stopped part way through, so some rows were not imported. Undo it, then import the file again.
                 </p>
               )}
               {b.undoneAtUtc && (

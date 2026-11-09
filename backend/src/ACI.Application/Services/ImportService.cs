@@ -44,6 +44,15 @@ public sealed class ImportService : IImportService
     private const int ListedBatches = 20;
     private const int RowsPerTransaction = 50;
 
+    /// <summary>
+    /// An import not finished this long after it started has stopped (the server restarted
+    /// part way), rather than still running. A full file takes a minute or two.
+    /// </summary>
+    private static readonly TimeSpan StillRunningFor = TimeSpan.FromMinutes(10);
+
+    private static bool Running(ImportBatch batch) =>
+        batch.FinishedAtUtc == null && batch.StartedAtUtc > DateTime.UtcNow - StillRunningFor;
+
     private readonly IImportRepository _imports;
     private readonly ILeadService _leads;
     private readonly IContactService _contacts;
@@ -244,7 +253,8 @@ public sealed class ImportService : IImportService
             b.Batch.UndoneAtUtc,
             b.Batch.RemovedCount,
             b.Remaining,
-            b.Remaining > 0 && (manager || b.Batch.UserId == userId))).ToList();
+            Running(b.Batch),
+            b.Remaining > 0 && !Running(b.Batch) && (manager || b.Batch.UserId == userId))).ToList();
     }
 
     /// <inheritdoc />
@@ -256,6 +266,8 @@ public sealed class ImportService : IImportService
         // people who could remove those records anyway.
         if (batch.UserId != userId && !await CanUndoAnyAsync(userId, organizationId, ct))
             return DomainErrors.Import.NotOwnerOrManager;
+        // Undoing what is still arriving would remove some rows while later ones link to them.
+        if (Running(batch)) return DomainErrors.Import.StillRunning;
 
         var plan = await _imports.PlanUndoAsync(batch, ct);
         if (!dryRun)

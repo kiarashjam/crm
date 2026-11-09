@@ -316,6 +316,10 @@ public static class DomainErrors
         // "NotOwner" in the code is what maps this to 403 Forbidden.
         public static readonly Error NotOwnerOrManager = new(
             "Import.NotOwnerOrManager", "Only whoever ran the import, or the workspace's owner or a manager, can undo it");
+
+        // Codes ending ".Conflict" map to 409.
+        public static readonly Error StillRunning = new(
+            "Import.Running.Conflict", "This import is still running. Undo it once it has finished");
     }
 
     /// <summary>

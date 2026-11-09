@@ -159,6 +159,7 @@ X-Organization-Id: your-org-guid
 ### Imports (leads, contacts, companies)
 
 The file travels with each request, base64-encoded, up to 5 MB and 2,000 rows.
+An import still running cannot be undone: both undo calls answer 409 until it has finished.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|

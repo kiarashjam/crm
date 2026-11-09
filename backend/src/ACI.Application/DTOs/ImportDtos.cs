@@ -99,8 +99,10 @@ public sealed record ImportResultDto(
     IReadOnlyList<ImportRowDto> Rows);
 
 /// <summary>A past import.</summary>
+/// <param name="FinishedAtUtc">Null while it runs, or when the server stopped part way through.</param>
 /// <param name="Remaining">How many records it created are still here.</param>
-/// <param name="CanUndo">Whether the caller may undo it, and it has records left to undo.</param>
+/// <param name="Running">Started a few minutes ago and not finished: still running, so it cannot be undone yet.</param>
+/// <param name="CanUndo">Whether the caller may undo it now, and it has records left to undo.</param>
 public sealed record ImportBatchDto(
     Guid Id,
     string Kind,
@@ -118,6 +120,7 @@ public sealed record ImportBatchDto(
     DateTime? UndoneAtUtc,
     int Removed,
     int Remaining,
+    bool Running,
     bool CanUndo);
 
 /// <summary>What undoing an import removed, or for a dry run would remove, and what it kept.</summary>

@@ -89,10 +89,12 @@ public class ImportsController : ControllerBase
     /// <response code="200">The records it would remove, by kind, and the ones it keeps.</response>
     /// <response code="403">Only whoever ran it, or the owner or a manager, can undo it.</response>
     /// <response code="404">No such import in this workspace.</response>
+    /// <response code="409">The import is still running.</response>
     [HttpGet("{id:guid}/undo")]
     [ProducesResponseType(typeof(ImportUndoDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ImportUndoDto>> UndoPreview(Guid id, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();
@@ -106,10 +108,12 @@ public class ImportsController : ControllerBase
     /// <response code="200">What was removed, and what was kept and why.</response>
     /// <response code="403">Only whoever ran it, or the owner or a manager, can undo it.</response>
     /// <response code="404">No such import in this workspace.</response>
+    /// <response code="409">The import is still running: undoing it then would remove rows while later ones link to them.</response>
     [HttpPost("{id:guid}/undo")]
     [ProducesResponseType(typeof(ImportUndoDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ImportUndoDto>> Undo(Guid id, CancellationToken ct)
     {
         if (_currentUser.UserId is not { } userId) return Unauthorized();

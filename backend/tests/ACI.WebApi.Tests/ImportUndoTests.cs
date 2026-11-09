@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -128,6 +129,56 @@ public class ImportUndoTests
         var contact = await factory.Services.Read(db => db.Contacts.Single());
         contact.Id.Should().Be(eva);
         contact.ConvertedFromLeadId.Should().BeNull();
+    }
+
+    /// <summary>A batch as an import leaves it part way through, with leads it has saved.</summary>
+    private static async Task<(Guid Batch, Guid[] Leads)> UnfinishedAsync(
+        CustomWebApplicationFactory factory, Guid userId, Guid orgId, DateTime started, params TimeSpan?[] customValuesAfter)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var batch = new ImportBatch
+        {
+            Id = Guid.NewGuid(), OrganizationId = orgId, UserId = userId, EntityType = "lead", FileName = "big.csv",
+            TotalRows = 2000, StartedAtUtc = started,
+        };
+        db.ImportBatches.Add(batch);
+        var leads = new List<Guid>();
+        for (var i = 0; i < customValuesAfter.Length; i++)
+        {
+            var created = started.AddSeconds(5 + i);
+            var lead = new Lead
+            {
+                Id = Guid.NewGuid(), UserId = userId, OrganizationId = orgId, Name = $"Person {i}", Email = $"p{i}@bluewin.ch",
+                Status = "New", CreatedAtUtc = created, ImportBatchId = batch.Id,
+            };
+            db.Leads.Add(lead);
+            if (customValuesAfter[i] is { } after)
+                db.CustomFieldValues.Add(new CustomFieldValueSet
+                {
+                    Id = Guid.NewGuid(), OrganizationId = orgId, OwnerUserId = userId, EntityType = "lead", RecordId = lead.Id,
+                    ValuesJson = "{}", UpdatedAtUtc = created + after,
+                });
+            leads.Add(lead.Id);
+        }
+        await db.SaveChangesAsync();
+        return (batch.Id, leads.ToArray());
+    }
+
+    [Fact]
+    public async Task AnImportStillRunningCannotBeUndoneYet()
+    {
+        // Undoing it then would remove rows while later ones are still being linked to them.
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, userId, orgId) = await WorkspaceAsync(factory);
+        var (batchId, _) = await UnfinishedAsync(factory, userId, orgId, DateTime.UtcNow.AddMinutes(-1), (TimeSpan?)null);
+
+        (await client.GetAsync($"/api/imports/{batchId}/undo")).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await client.PostAsync($"/api/imports/{batchId}/undo", null)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await factory.Services.Read(db => db.Leads.Count())).Should().Be(1);
+        var listed = (await OkJson(await client.GetAsync("/api/imports"), "imports")).EnumerateArray().Single();
+        listed.GetProperty("running").GetBoolean().Should().BeTrue();
+        listed.GetProperty("canUndo").GetBoolean().Should().BeFalse();
     }
 
     [Fact]
