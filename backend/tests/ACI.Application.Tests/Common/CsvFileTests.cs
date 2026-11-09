@@ -92,6 +92,19 @@ public class CsvFileTests
     }
 
     [Fact]
+    public void TheQuoteAnExportPutsBeforeAFormulaIsDropped()
+    {
+        // Cadence's export, like most, quotes a cell a spreadsheet would otherwise run.
+        var file = Read("name,phone,city,score\n'=Anna,'+41 79 123 45 67,'s-Hertogenbosch,\"'-5\"\n");
+
+        var row = file.Rows[0];
+        row.Cell(0).Should().Be("=Anna");
+        row.Cell(1).Should().Be("+41 79 123 45 67");
+        row.Cell(2).Should().Be("'s-Hertogenbosch", "a quote of its own is kept");
+        row.Cell(3).Should().Be("-5");
+    }
+
+    [Fact]
     public void BlankHeadersAreNamedAfterTheirPlace()
     {
         Read("name,,email\nJean,x,jean@example.ch\n").Headers.Should().Equal("name", "Column 2", "email");

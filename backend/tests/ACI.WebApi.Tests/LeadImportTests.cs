@@ -78,6 +78,24 @@ public class LeadImportTests
     }
 
     [Fact]
+    public async Task AFileExportedFromTheLeadsPageImportsAgain()
+    {
+        // The Leads page's export, as it writes it: a byte-order mark, and a quote before a
+        // phone number starting with "+" so a spreadsheet shows it as text.
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await WorkspaceAsync(factory);
+        var csv = "﻿Id,Name,Email,Phone,Company,Source,Status\n"
+            + "7d3c5c1e-0000-4000-8000-000000000001,Jean Dupont,jean@dupont.example,'+41 79 123 45 67,,Website,New\n";
+        var analysis = await OkJson(await Analyze(client, "lead", csv), "analyze");
+        var columns = analysis.GetProperty("columns").EnumerateArray().Select(c => c.GetProperty("field").GetString()).ToArray();
+
+        var result = await OkJson(await Import(client, "lead", csv, columns), "import");
+
+        Action(result, 2).Should().Be("create", Message(result, 2));
+        (await factory.Services.Read(db => db.Leads.Single())).Phone.Should().Be("+41 79 123 45 67");
+    }
+
+    [Fact]
     public async Task TheDryRunSaysWhatEachRowWouldDoAndWritesNothing()
     {
         await using var factory = new CustomWebApplicationFactory();

@@ -115,8 +115,27 @@ public sealed class CsvFile
         return new CsvFile(separator, encoding, headers, rows);
     }
 
-    /// <summary>A cell as it should be stored: without the spaces around it, including non-breaking ones.</summary>
-    public static string Clean(string? cell) => (cell ?? "").Trim().Trim(' ', '﻿').Trim();
+    /// <summary>
+    /// A cell as it should be stored: without the spaces around it, including non-breaking
+    /// ones, and without the quote an export puts before a cell that would start a formula.
+    /// </summary>
+    /// <remarks>
+    /// Cadence's own export (exportCsv.ts), like most, writes a phone number as
+    /// "'+41 79 123 45 67" and a name starting with "=" as "'=...", so a spreadsheet shows
+    /// them as text instead of running them. Read back as written, every international
+    /// number in an exported and re-imported file was refused as not a phone number. Only
+    /// a quote before = + - @, a tab or a carriage return is dropped, the exact cases the
+    /// export quotes; "'s-Hertogenbosch" keeps its own.
+    /// </remarks>
+    public static string Clean(string? cell)
+    {
+        var text = Trimmed(cell);
+        return text.Length > 1 && text[0] == '\'' && text[1] is '=' or '+' or '-' or '@' or '\t' or '\r'
+            ? Trimmed(text[1..])
+            : text;
+    }
+
+    private static string Trimmed(string? cell) => (cell ?? "").Trim().Trim(' ', '﻿').Trim();
 
     private static (string Text, string Encoding) Decode(byte[] bytes)
     {
