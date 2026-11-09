@@ -826,9 +826,10 @@ export function NextActions() {
               </motion.p>
             )}
           </AnimatePresence>
+          {/* Said as the server cuts each list: a lead untouched for weeks may be among those left out. */}
           {mineOnly && mine.queue?.truncated && (
             <p className="pb-1 text-xs text-slate-500 dark:text-slate-400">
-              You have more open work than one read holds: these come from the most pressing of it.
+              More of your work is open than one read holds. Here: the tasks due and deals closing soonest, and the leads worked most lately.
             </p>
           )}
         </>

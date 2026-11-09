@@ -86,6 +86,16 @@ describe('the queue in a workspace', () => {
     expect(localStorage.getItem('cadence.workScope.assistant')).toBe('team');
   });
 
+  it('says which of the rep\'s work was sent when the server held some back', async () => {
+    // The leads the server sends are the ones worked most lately, not the most pressing.
+    workQueue.mockResolvedValue({ scope: 'mine', tasks: [], leads: [MY_LEAD] as never, deals: [], truncated: true });
+    at('/dashboard');
+
+    expect(await screen.findByText(
+      'More of your work is open than one read holds. Here: the tasks due and deals closing soonest, and the leads worked most lately.',
+    )).toBeInTheDocument();
+  });
+
   it('says when nothing of the rep is waiting, rather than that everyone is caught up', async () => {
     workQueue.mockResolvedValue({ scope: 'mine', tasks: [], leads: [], deals: [], truncated: false });
     at('/dashboard');
