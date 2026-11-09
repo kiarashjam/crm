@@ -113,4 +113,12 @@ public record UpdateLeadRequest
     /// <summary>True when an import is making this change.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsImport => string.Equals(Origin?.Trim(), "import", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The lead's version as this edit read it (<c>version</c> on the lead, or its ETag).
+    /// When sent, the edit is refused with 409 if anyone has saved the lead since, rather
+    /// than written over their changes. Left out, the edit is applied to the lead as it
+    /// is now: right for a change to one field that reads nothing else, such as a step recorded on its pipeline.
+    /// </summary>
+    public Guid? Version { get; init; }
 }

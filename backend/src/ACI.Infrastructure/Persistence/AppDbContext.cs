@@ -1,5 +1,6 @@
 using ACI.Application.Common;
 using ACI.Application.Interfaces;
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -113,7 +114,7 @@ public class AppDbContext : DbContext
     /// </summary>
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        StampClubDocumentVersions();
+        StampVersions();
         StampDealAmounts();
         StampImportBatch();
         StampContactKeys();
@@ -135,7 +136,7 @@ public class AppDbContext : DbContext
     /// <inheritdoc cref="SaveChangesAsync(bool, CancellationToken)"/>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        StampClubDocumentVersions();
+        StampVersions();
         StampDealAmounts();
         StampImportBatch();
         StampContactKeys();
@@ -154,11 +155,12 @@ public class AppDbContext : DbContext
         }
     }
 
-    // Whoever writes a club record (a service, a member merge, the cloner), its version
-    // moves, so a save made from an older read of it is refused. See ClubDocument.Version.
-    private void StampClubDocumentVersions()
+    // Whoever writes a club record, a lead, a deal, a contact or a company (a service, a
+    // job, a merge, the cloner), its version moves, so a save made from an older read of
+    // it is refused. See IVersioned.
+    private void StampVersions()
     {
-        foreach (var entry in ChangeTracker.Entries<ClubDocument>())
+        foreach (var entry in ChangeTracker.Entries<IVersioned>())
             if (entry.State is EntityState.Added or EntityState.Modified)
                 entry.Entity.Version = Guid.NewGuid();
     }

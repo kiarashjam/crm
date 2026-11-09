@@ -3,7 +3,7 @@ namespace ACI.Domain.Entities;
 /// <summary>
 /// Contact (person) owned by a user; optionally linked to a company.
 /// </summary>
-public class Contact : Common.BaseEntity
+public class Contact : Common.BaseEntity, Common.IVersioned
 {
     public Guid UserId { get; set; }
     public Guid? OrganizationId { get; set; }
@@ -51,6 +51,9 @@ public class Contact : Common.BaseEntity
     /// until start-up fills it. Written on every save (AppDbContext), never by hand.
     /// </summary>
     public string? NameKey { get; set; }
+
+    /// <summary>A new value on every save; an edit made from an older one is refused (see <see cref="Deal.Version"/>).</summary>
+    public Guid Version { get; set; }
 
     public User User { get; set; } = null!;
     public User? UpdatedByUser { get; set; }

@@ -279,6 +279,9 @@ public sealed class LeadRepository : ILeadRepository
     {
         var existing = await FilterByUserAndOrg(_db.Leads, userId, organizationId).FirstOrDefaultAsync(l => l.Id == lead.Id, ct);
         if (existing == null) return null;
+        // Callers pass a copy they read earlier, and every field below is copied from it,
+        // so the save has to be checked against that read, not this one.
+        _db.ExpectVersionOf(existing, lead);
         existing.Name = lead.Name;
         existing.Email = lead.Email;
         existing.Phone = lead.Phone;
@@ -315,7 +318,7 @@ public sealed class LeadRepository : ILeadRepository
         existing.ConvertedToCompanyId = lead.ConvertedToCompanyId;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveRefusingStaleAsync(ct);
         return existing;
     }
 

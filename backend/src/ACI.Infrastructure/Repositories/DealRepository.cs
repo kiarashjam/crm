@@ -117,6 +117,7 @@ public sealed class DealRepository : IDealRepository
     {
         var existing = await IncludeRelated(FilterByUserAndOrg(_db.Deals, userId, organizationId)).FirstOrDefaultAsync(d => d.Id == deal.Id, ct);
         if (existing == null) return null;
+        _db.ExpectVersionOf(existing, deal);
         existing.Name = deal.Name;
         existing.Value = deal.Value;
         existing.Amount = deal.Amount;
@@ -136,7 +137,7 @@ public sealed class DealRepository : IDealRepository
         existing.ClosedAtUtc = deal.ClosedAtUtc;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveRefusingStaleAsync(ct);
         return existing;
     }
 

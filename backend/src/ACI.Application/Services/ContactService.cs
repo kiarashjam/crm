@@ -262,6 +262,11 @@ public class ContactService : IContactService
             return DomainErrors.Contact.NotFound;
         }
 
+        // Made from an older read: saving would write the form's older values over what
+        // someone saved since. See UpdateContactRequest.Version.
+        if (request.Version is Guid readVersion && readVersion != existing.Version)
+            return DomainErrors.Contact.Changed;
+
         // Validate email format if provided
         if (request.Email != null && !ValidationHelper.IsValidEmail(request.Email))
         {
@@ -301,7 +306,16 @@ public class ContactService : IContactService
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
 
-        var updated = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+        Contact? updated;
+        try
+        {
+            updated = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            // Saved by someone else between this request reading the contact and writing it.
+            return DomainErrors.Contact.Changed;
+        }
         
         if (updated == null)
         {
@@ -476,5 +490,6 @@ public class ContactService : IContactService
             e.Company?.Name,
             e.CreatedAtUtc,
             e.UpdatedAtUtc,
-            e.Description);
+            e.Description,
+            e.Version);
 }

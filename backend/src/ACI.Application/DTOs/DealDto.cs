@@ -40,7 +40,10 @@ public record DealDto(
     DateTime? StageEnteredAtUtc = null,
     DateTime? IdleSinceUtc = null,
     bool IsStale = false,
-    int? StaleAfterDays = null);
+    int? StaleAfterDays = null,
+    // The deal as of this read. An edit that sends it back is refused once anyone has
+    // saved the deal since (see UpdateDealRequest.Version).
+    Guid? Version = null);
 
 /// <summary>The deal to fold into the one named in the route.</summary>
 public record MergeDealsRequest(Guid OtherDealId);

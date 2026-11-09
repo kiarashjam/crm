@@ -37,8 +37,9 @@ public record CompanyListItemDto(
     DateTime? UpdatedAtUtc,
     int ContactCount,
     int DealCount,
-    IReadOnlyList<CurrencyTotalDto> DealTotals)
-    : CompanyDto(Id, Name, Domain, Industry, Size, Description, Website, Location, CreatedAtUtc, UpdatedAtUtc);
+    IReadOnlyList<CurrencyTotalDto> DealTotals,
+    Guid? Version = null)
+    : CompanyDto(Id, Name, Domain, Industry, Size, Description, Website, Location, CreatedAtUtc, UpdatedAtUtc, Version);
 
 /// <summary>
 /// The figures above the companies list, over the whole workspace. Most were worked out in

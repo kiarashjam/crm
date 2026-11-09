@@ -144,6 +144,7 @@ public class DealsController : ControllerBase
             _currentUser.CurrentOrganizationId, 
             ct);
         
+        if (result.IsSuccess) Response.SetETag(result.Value.Version);
         return result.ToActionResult();
     }
 
@@ -190,12 +191,14 @@ public class DealsController : ControllerBase
     /// <response code="401">User is not authenticated.</response>
     /// <response code="403">The owner is not a member of this workspace, or only its owner or a manager may change its privacy.</response>
     /// <response code="404">Deal not found.</response>
+    /// <response code="409">Someone saved the deal after the version this edit sends (in <c>version</c> or If-Match).</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(DealDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<DealDto>> Update(
         Guid id, 
         [FromBody] UpdateDealRequest request, 
@@ -203,14 +206,19 @@ public class DealsController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
+        // The version the edit was made from, from the body or from If-Match.
+        var (version, versionError) = Request.ExpectedVersion(request.Version);
+        if (versionError != null) return versionError.ToProblemResult();
+
         var result = await _dealService.UpdateAsync(
             id, 
             userId.Value, 
             _currentUser.CurrentOrganizationId, 
-            request, 
+            request with { Version = version }, 
             ct);
-        
+
+        if (result.IsSuccess) Response.SetETag(result.Value.Version);
         return result.ToActionResult();
     }
 

@@ -3,7 +3,7 @@ namespace ACI.Domain.Entities;
 /// <summary>
 /// Deal (opportunity) owned by a user; optionally linked to a company.
 /// </summary>
-public class Deal : Common.BaseEntity
+public class Deal : Common.BaseEntity, Common.IVersioned
 {
     public Guid UserId { get; set; }
     public Guid? OrganizationId { get; set; }
@@ -45,6 +45,13 @@ public class Deal : Common.BaseEntity
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }
+
+    /// <summary>
+    /// A new value on every save (see <see cref="Common.IVersioned"/>). The API returns it,
+    /// and an edit that sends back the one it was made from is refused once someone else
+    /// has saved the deal since, instead of writing that person's changes over.
+    /// </summary>
+    public Guid Version { get; set; }
 
     public User User { get; set; } = null!;
     public User? UpdatedByUser { get; set; }

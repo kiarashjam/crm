@@ -280,9 +280,40 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
                 moved++;
             }
 
-            await _db.SaveChangesAsync(ct);
+            moved -= await SaveScoresAsync(ct);
             _db.ChangeTracker.Clear();
             if (leads.Count < page) return moved;
+        }
+    }
+
+    /// <summary>
+    /// Saves a page of new scores. A lead someone saved while the page was being scored
+    /// keeps what they saved, and its score is worked out again on the next run. Returns
+    /// how many leads were left out for that reason.
+    /// </summary>
+    /// <remarks>
+    /// Every lead's version is checked on save (see IVersioned) and a page is saved as one
+    /// unit, so without this one lead edited at that moment would refuse the whole page,
+    /// and every lead after it would wait six hours for the next run.
+    /// </remarks>
+    private async Task<int> SaveScoresAsync(CancellationToken ct)
+    {
+        var skipped = 0;
+        while (true)
+        {
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+                return skipped;
+            }
+            catch (DbUpdateConcurrencyException ex) when (ex.Entries.Count > 0)
+            {
+                foreach (var entry in ex.Entries)
+                {
+                    entry.State = EntityState.Detached;
+                    skipped++;
+                }
+            }
         }
     }
 

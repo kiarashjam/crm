@@ -2,6 +2,7 @@ using System.Text.Json;
 using ACI.Application.Common;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace ACI.WebApi.Middleware;
 
@@ -44,6 +45,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         };
 
         problemDetails.Extensions["traceId"] = httpContext.TraceIdentifier;
+        // The code a client branches on to offer a reload, as for a service's own ".Changed.Conflict".
+        if (exception is ConcurrencyConflictException or DbUpdateConcurrencyException)
+            problemDetails.Extensions["errorCode"] = "Record.Changed.Conflict";
         
         if (_environment.IsDevelopment())
         {
@@ -68,6 +72,9 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         UnauthorizedAccessException => (StatusCodes.Status403Forbidden, "Forbidden", "You are not authorized to perform this action"),
         // A lost race is an answer, not a fault: the other change stands and this one was not saved.
         ConcurrencyConflictException => (StatusCodes.Status409Conflict, "Conflict", "Someone else changed this at the same moment, so your change was not saved. Reload and try again."),
+        // The same race where no repository put it into words: a lead, deal, contact or
+        // company saved by someone else between this request reading it and writing it.
+        DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Conflict", "Someone else changed this at the same moment, so your change was not saved. Reload and try again."),
         InvalidOperationException => (StatusCodes.Status400BadRequest, "Bad Request", "The request was invalid"),
         ArgumentException => (StatusCodes.Status400BadRequest, "Bad Request", "Invalid argument provided"),
         KeyNotFoundException => (StatusCodes.Status404NotFound, "Not Found", "The requested resource was not found"),

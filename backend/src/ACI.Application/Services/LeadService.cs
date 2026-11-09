@@ -318,6 +318,12 @@ public class LeadService : ILeadService
             return DomainErrors.Lead.AlreadyConverted;
         }
 
+        // Made from an older read: the edit dialogs send back every field they showed, so
+        // saving would put back whatever someone (or the pipeline, or a job) has changed
+        // since. See UpdateLeadRequest.Version.
+        if (request.Version is Guid readVersion && readVersion != existing.Version)
+            return DomainErrors.Lead.Changed;
+
         // Validate email format if provided
         if (request.Email != null && !ValidationHelper.IsValidEmail(request.Email))
         {
@@ -395,7 +401,16 @@ public class LeadService : ILeadService
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
 
-        var updated = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+        Lead? updated;
+        try
+        {
+            updated = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            // Saved by someone else between this request reading the lead and writing it.
+            return DomainErrors.Lead.Changed;
+        }
         
         if (updated == null)
         {
@@ -852,5 +867,6 @@ public class LeadService : ILeadService
             e.EnrichedDomain,
             e.ScoreIsManual,
             e.ReferredByContactId,
-            e.ReferredByContact?.Name);
+            e.ReferredByContact?.Name,
+            Version: e.Version);
 }

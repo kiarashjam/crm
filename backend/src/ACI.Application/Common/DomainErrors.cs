@@ -253,6 +253,11 @@ public static class DomainErrors
         public static Error UnarchiveDuplicateEmail(string email) => new(
             "Contact.DuplicateEmailOnRestore",
             $"An active contact already uses '{email}', so this one cannot be restored beside it. Merge the two, or change one of the emails first");
+
+        /// <summary>A 409: the code ends ".Conflict".</summary>
+        public static readonly Error Changed = new(
+            "Contact.Changed.Conflict",
+            "Someone else changed this contact after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
     }
 
     /// <summary>
@@ -271,6 +276,11 @@ public static class DomainErrors
         
         public static readonly Error DomainInvalid = new(
             "Company.DomainInvalid", "The domain format is invalid");
+
+        /// <summary>A 409: the code ends ".Conflict".</summary>
+        public static readonly Error Changed = new(
+            "Company.Changed.Conflict",
+            "Someone else changed this company after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
     }
 
     /// <summary>
@@ -364,6 +374,11 @@ public static class DomainErrors
 
         public static readonly Error ReferrerIsSelf = new(
             "Lead.ReferrerIsSelf", "A lead cannot be referred by the contact made from that same lead");
+
+        /// <summary>A 409: the code ends ".Conflict".</summary>
+        public static readonly Error Changed = new(
+            "Lead.Changed.Conflict",
+            "Someone else changed this lead after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
     }
 
     /// <summary>
@@ -489,6 +504,11 @@ public static class DomainErrors
         
         public static readonly Error PipelineNotFound = new(
             "Deal.PipelineNotFound", "The pipeline was not found in this workspace");
+
+        /// <summary>A 409: the code ends ".Conflict".</summary>
+        public static readonly Error Changed = new(
+            "Deal.Changed.Conflict",
+            "Someone else changed this deal after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.");
     }
 
     /// <summary>

@@ -230,6 +230,11 @@ public class CompanyService : ICompanyService
             _logger.LogWarning("Company {CompanyId} not found for update", id);
             return DomainErrors.Company.NotFound;
         }
+
+        // Made from an older read: saving would write the form's older values over what
+        // someone saved since. See UpdateCompanyRequest.Version.
+        if (request.Version is Guid readVersion && readVersion != existing.Version)
+            return DomainErrors.Company.Changed;
         
         // Validate domain format if provided
         if (!string.IsNullOrWhiteSpace(request.Domain) && !ValidationHelper.IsValidDomain(request.Domain))
@@ -265,6 +270,12 @@ public class CompanyService : ICompanyService
             
             _logger.LogInformation("Successfully updated company {CompanyId}", id);
             return Map(existing);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            // Saved by someone else between this request reading the company and writing
+            // it: an answer, not a server error.
+            return DomainErrors.Company.Changed;
         }
         catch (Exception ex)
         {
@@ -323,11 +334,11 @@ public class CompanyService : ICompanyService
 
     private static CompanyListItemDto ListItem(Company c, int contacts, int deals, IReadOnlyList<CurrencyTotalDto> totals) => new(
         c.Id, c.Name, c.Domain, c.Industry, c.Size, c.Description, c.Website, c.Location, c.CreatedAtUtc, c.UpdatedAtUtc,
-        contacts, deals, totals);
+        contacts, deals, totals, c.Version);
 
     /// <summary>A list item as the plain company, for the callers that ask for that.</summary>
     private static CompanyDto Map(CompanyListItemDto c) => new(
-        c.Id, c.Name, c.Domain, c.Industry, c.Size, c.Description, c.Website, c.Location, c.CreatedAtUtc, c.UpdatedAtUtc);
+        c.Id, c.Name, c.Domain, c.Industry, c.Size, c.Description, c.Website, c.Location, c.CreatedAtUtc, c.UpdatedAtUtc, c.Version);
 
     private static CompanyDto Map(Company c) => new(
         c.Id, 
@@ -339,6 +350,7 @@ public class CompanyService : ICompanyService
         c.Website,
         c.Location,
         c.CreatedAtUtc,
-        c.UpdatedAtUtc
+        c.UpdatedAtUtc,
+        c.Version
     );
 }

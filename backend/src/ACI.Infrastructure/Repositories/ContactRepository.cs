@@ -253,6 +253,7 @@ public sealed class ContactRepository : IContactRepository
     {
         var existing = await FilterByUserAndOrg(_db.Contacts, userId, organizationId).FirstOrDefaultAsync(c => c.Id == contact.Id, ct);
         if (existing == null) return null;
+        _db.ExpectVersionOf(existing, contact);
         existing.Name = contact.Name;
         existing.Email = contact.Email;
         existing.Phone = contact.Phone;
@@ -263,7 +264,7 @@ public sealed class ContactRepository : IContactRepository
         existing.Description = contact.Description;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveRefusingStaleAsync(ct);
         return existing;
     }
 

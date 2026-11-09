@@ -189,6 +189,7 @@ public sealed class CompanyRepository : ICompanyRepository
     {
         var existing = await FilterByUserAndOrg(_db.Companies, userId, organizationId).FirstOrDefaultAsync(c => c.Id == company.Id, ct);
         if (existing == null) return null;
+        _db.ExpectVersionOf(existing, company);
         existing.Name = company.Name;
         existing.Domain = company.Domain;
         existing.Industry = company.Industry;
@@ -198,7 +199,7 @@ public sealed class CompanyRepository : ICompanyRepository
         existing.Location = company.Location;
         existing.UpdatedAtUtc = DateTime.UtcNow;
         existing.UpdatedByUserId = userId;
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveRefusingStaleAsync(ct);
         return existing;
     }
 

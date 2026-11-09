@@ -116,6 +116,7 @@ public sealed class DealBoardService : IDealBoardService
         public DateTime? ClosedAtUtc { get; set; }
         public bool IsPrivate { get; set; }
         public Guid? TeamId { get; set; }
+        public Guid Version { get; set; }
     }
 
     public async Task<Result<DealBoardDto>> GetBoardAsync(Guid userId, Guid? organizationId, DealBoardQuery query, CancellationToken ct = default)
@@ -400,6 +401,7 @@ public sealed class DealBoardService : IDealBoardService
                 ClosedAtUtc = d.ClosedAtUtc,
                 IsPrivate = d.IsPrivate,
                 TeamId = d.TeamId,
+                Version = d.Version,
             })
             .ToListAsync(ct);
         var hasMore = rows.Count > take;
@@ -426,7 +428,9 @@ public sealed class DealBoardService : IDealBoardService
                 p?.StageEnteredAtUtc,
                 idleSince,
                 StaleDeals.IsStale(open, idleSince, layout.StaleAfterDays, now),
-                layout.StaleAfterDays);
+                layout.StaleAfterDays,
+                // A card opens the edit dialog, whose save is checked against it.
+                r.Version);
         }).ToList();
         return (cards, hasMore);
     }

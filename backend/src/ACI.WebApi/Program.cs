@@ -1836,6 +1836,33 @@ try
                 END TRY BEGIN CATCH END CATCH;
             ");
 
+            // Every save gives a lead, deal, contact or company a new version, and a save made
+            // from an older read of it is refused instead of written over the newer one (see
+            // IVersioned). Existing rows each take a fresh value, and the default covers a row
+            // written during a deploy by an instance still running the previous code. Adding a
+            // NOT NULL column writes every row once, which on the Basic database tier can
+            // outlast a command's default 30 seconds, so the batch has longer. Each ALTER is
+            // guarded on its own, so a start that stops part-way is finished by the next.
+            var versionTimeout = db.Database.GetCommandTimeout();
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Leads', N'Version') IS NULL
+                    ALTER TABLE [Leads] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT [DF_Leads_Version] DEFAULT NEWID();
+                IF COL_LENGTH(N'dbo.Deals', N'Version') IS NULL
+                    ALTER TABLE [Deals] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT [DF_Deals_Version] DEFAULT NEWID();
+                IF COL_LENGTH(N'dbo.Contacts', N'Version') IS NULL
+                    ALTER TABLE [Contacts] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT [DF_Contacts_Version] DEFAULT NEWID();
+                IF COL_LENGTH(N'dbo.Companies', N'Version') IS NULL
+                    ALTER TABLE [Companies] ADD [Version] uniqueidentifier NOT NULL CONSTRAINT [DF_Companies_Version] DEFAULT NEWID();
+            ");
+            }
+            finally
+            {
+                db.Database.SetCommandTimeout(versionTimeout);
+            }
+
             // Duplicates (see DuplicateService). Contacts carry the keys they are matched on, and
             // the team's "not the same" decisions are kept in DuplicateDecisions. The contact
             // indexes go in a batch of their own, after the columns they cover exist, each

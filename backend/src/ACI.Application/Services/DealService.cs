@@ -269,6 +269,12 @@ public class DealService : IDealService
             return DomainErrors.Deal.NotFound;
         }
 
+        // Made from an older read: someone has saved the deal since, and the edit dialog
+        // sends back every field it showed, so saving would put their changes back the
+        // way they were before. The edit is refused, and the person reloads.
+        if (request.Version is Guid readVersion && readVersion != existing.Version)
+            return DomainErrors.Deal.Changed;
+
         // Track stage change before applying update (HP-11)
         var oldStageId = existing.DealStageId;
         var assigneeBefore = existing.AssigneeId;
@@ -387,7 +393,16 @@ public class DealService : IDealService
         existing.UpdatedAtUtc = now;
         existing.UpdatedByUserId = userId;
 
-        var updated = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+        Deal? updated;
+        try
+        {
+            updated = await _repository.UpdateAsync(existing, userId, organizationId, ct);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            // Saved by someone else between this request reading the deal and writing it.
+            return DomainErrors.Deal.Changed;
+        }
         
         if (updated == null)
         {
@@ -627,5 +642,6 @@ public class DealService : IDealService
             e.ClosedAtUtc,
             e.IsPrivate,
             e.TeamId,
-            e.Amount);
+            e.Amount,
+            Version: e.Version);
 }

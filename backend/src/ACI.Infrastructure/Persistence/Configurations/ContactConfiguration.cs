@@ -17,6 +17,8 @@ internal sealed class ContactConfiguration : IEntityTypeConfiguration<Contact>
         builder.Property(e => e.PreferredContactMethod).HasMaxLength(32);
         builder.Property(e => e.PhoneKey).HasMaxLength(16);
         builder.Property(e => e.NameKey).HasMaxLength(256);
+        // An edit made from an older read of the contact is refused, not written over the newer one. See IVersioned.
+        builder.Property(e => e.Version).IsConcurrencyToken();
 
         // Relationships
         builder.HasOne(e => e.User).WithMany(u => u.Contacts).HasForeignKey(e => e.UserId);

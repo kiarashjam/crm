@@ -226,6 +226,7 @@ public class CompaniesController : ControllerBase
             _currentUser.CurrentOrganizationId, 
             ct);
         
+        if (result.IsSuccess) Response.SetETag(result.Value.Version);
         return result.ToActionResult();
     }
 
@@ -269,11 +270,13 @@ public class CompaniesController : ControllerBase
     /// <response code="400">Invalid request data.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Company not found.</response>
+    /// <response code="409">Someone saved the company after the version this edit sends (in <c>version</c> or If-Match).</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(CompanyDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<CompanyDto>> Update(
         Guid id, 
         [FromBody] UpdateCompanyRequest request, 
@@ -281,14 +284,19 @@ public class CompaniesController : ControllerBase
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
+        // The version the edit was made from, from the body or from If-Match.
+        var (version, versionError) = Request.ExpectedVersion(request.Version);
+        if (versionError != null) return versionError.ToProblemResult();
+
         var result = await _companyService.UpdateAsync(
             id, 
             userId.Value, 
             _currentUser.CurrentOrganizationId, 
-            request, 
+            request with { Version = version }, 
             ct);
-        
+
+        if (result.IsSuccess) Response.SetETag(result.Value.Version);
         return result.ToActionResult();
     }
 

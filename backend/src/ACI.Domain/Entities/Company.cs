@@ -3,7 +3,7 @@ namespace ACI.Domain.Entities;
 /// <summary>
 /// Company (organization) owned by a user; contacts and deals can be linked.
 /// </summary>
-public class Company : Common.BaseEntity
+public class Company : Common.BaseEntity, Common.IVersioned
 {
     public Guid UserId { get; set; }
     /// <summary>When set, data is scoped by organization; when null, legacy user-scoped.</summary>
@@ -24,6 +24,9 @@ public class Company : Common.BaseEntity
     /// own or as the company named on an imported lead or contact; null for one made any other way.
     /// </summary>
     public Guid? ImportBatchId { get; set; }
+
+    /// <summary>A new value on every save; an edit made from an older one is refused (see <see cref="Deal.Version"/>).</summary>
+    public Guid Version { get; set; }
 
     public User User { get; set; } = null!;
     public User? UpdatedByUser { get; set; }

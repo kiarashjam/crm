@@ -104,4 +104,12 @@ public record UpdateDealRequest
 
     /// <summary>The sales team this deal belongs to.</summary>
     public Guid? TeamId { get; init; }
+
+    /// <summary>
+    /// The deal's version as this edit read it (<c>version</c> on the deal, or its ETag).
+    /// When sent, the edit is refused with 409 if anyone has saved the deal since, rather
+    /// than written over their changes. Left out, the edit is applied to the deal as it
+    /// is now: right for a change to one field that reads nothing else, such as a move to another stage.
+    /// </summary>
+    public Guid? Version { get; init; }
 }
