@@ -54,6 +54,7 @@ import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
 import { withActivity } from '@/app/components/RecordActivity';
+import { MentionTextarea, useWorkspacePeople } from '@/app/components/MentionTextarea';
 import { activityTime, isOurResponse, type ActivityFactsPayload } from '@/app/lib/activityFacts';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
 import { SalesTrackerCard } from './leads/detail/SalesTrackerCard';
@@ -181,6 +182,7 @@ export default function LeadDetailPage() {
 
   // Quick-log + email composer + task input
   const [noteDraft, setNoteDraft] = useState('');
+  const people = useWorkspacePeople();
   const [savingNote, setSavingNote] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
   const [emailBody, setEmailBody] = useState('');
@@ -1073,15 +1075,16 @@ export default function LeadDetailPage() {
                       </span>
                       Add a note
                     </label>
-                    <textarea
+                    <MentionTextarea
                       id="lead-note-draft"
                       value={noteDraft}
-                      onChange={(e) => setNoteDraft(e.target.value)}
+                      onChange={setNoteDraft}
+                      people={people}
                       onKeyDown={(e) => {
                         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); handleAddNote(); }
                       }}
                       rows={2}
-                      placeholder="Capture a quick thought — Cmd/Ctrl+Enter to save."
+                      placeholder="Capture a quick thought — @mention a teammate to tell them. Cmd/Ctrl+Enter to save."
                       className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-amber-50/30 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-amber-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-300/40"
                     />
                     <div className="mt-2 flex items-center justify-end">

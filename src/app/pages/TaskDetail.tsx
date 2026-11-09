@@ -61,6 +61,7 @@ import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
+import { MentionTextarea, useWorkspacePeople } from '@/app/components/MentionTextarea';
 
 const STATUS_OPTIONS: { value: TaskStatusType; label: string; icon: typeof Circle; color: string }[] = [
   { value: 'todo', label: 'To Do', icon: Circle, color: 'text-slate-500' },
@@ -107,6 +108,7 @@ export default function TaskDetail() {
   const [comments, setComments] = useState<TaskCommentDto[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const people = useWorkspacePeople();
   const [addingComment, setAddingComment] = useState(false);
 
   // Delete confirmation
@@ -420,12 +422,15 @@ export default function TaskDetail() {
                 </ul>
 
                 <div className="flex gap-3 border-t border-slate-100 pt-4">
-                  <Textarea
+                  <MentionTextarea
+                    aria-label="Comment"
                     value={commentText}
-                    onChange={e => setCommentText(e.target.value)}
-                    placeholder="Write a comment..."
+                    onChange={setCommentText}
+                    people={people}
+                    placeholder="Write a comment... type @ to mention a teammate"
                     rows={2}
-                    className="flex-1 resize-none focus-visible:border-emerald-300"
+                    wrapperClassName="flex-1"
+                    className="w-full resize-none rounded-md border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                     onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAddComment(); }}
                   />
                   <WriteOnly>
@@ -440,7 +445,7 @@ export default function TaskDetail() {
                     </Button>
                   </WriteOnly>
                 </div>
-                <p className="mt-2 text-xs text-slate-500">Press Ctrl+Enter to send</p>
+                <p className="mt-2 text-xs text-slate-500">Press Ctrl+Enter to send. Whoever works the task, whoever made it, and anyone you @mention are told.</p>
               </RecordCard>
             </div>
 

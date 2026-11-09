@@ -2,6 +2,7 @@ import type { FormEvent } from 'react';
 import { Activity as ActivityIcon, CheckCircle2, Mail, Pencil, Phone, Plus, Users } from 'lucide-react';
 import type { Activity } from '@/app/api/types';
 import { ActivityFactsFields } from '@/app/components/ActivityFactsFields';
+import { MentionTextarea, useWorkspacePeople } from '@/app/components/MentionTextarea';
 import { activityFactsLine, activityTime, factsProblem, EMPTY_FACTS, type ActivityFactsDraft } from '@/app/lib/activityFacts';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { Button } from '@/app/components/ui/button';
@@ -94,6 +95,7 @@ export function ActivityLogForm({ draft, onChange, saving, onSubmit }: {
 }) {
   const facts = draft.facts ?? EMPTY_FACTS;
   const problem = factsProblem(draft.type, facts);
+  const people = useWorkspacePeople();
   return (
     <form
       onSubmit={(e) => {
@@ -123,10 +125,12 @@ export function ActivityLogForm({ draft, onChange, saving, onSubmit }: {
           className="h-9 flex-1 bg-white text-sm dark:bg-slate-800"
         />
       </div>
-      <textarea
-        placeholder="Details (optional)..."
+      <MentionTextarea
+        aria-label="Details"
+        placeholder="Details (optional)... @mention a teammate to tell them"
         value={draft.body}
-        onChange={(e) => onChange({ ...draft, body: e.target.value })}
+        onChange={(body) => onChange({ ...draft, body })}
+        people={people}
         className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-600 dark:bg-slate-800"
         rows={2}
       />
