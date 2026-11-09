@@ -8,13 +8,19 @@ public class Deal : Common.BaseEntity
     public Guid UserId { get; set; }
     public Guid? OrganizationId { get; set; }
     public string Name { get; set; } = string.Empty;
+    /// <summary>
+    /// <see cref="Amount"/> as text ("85500", "99.40"), written from it on every save, for
+    /// older clients, the MCP tools and outbound webhooks. Deals from before amounts were
+    /// numbers kept whatever was typed here.
+    /// </summary>
     public string Value { get; set; } = string.Empty;
     /// <summary>
-    /// The number in <see cref="Value"/>, read whenever the deal is saved, so reports can
-    /// add deals up in the database instead of loading every row to parse its text.
-    /// Null when Value holds no readable number.
+    /// The deal's money, to the cent, in <see cref="Currency"/>. Reports add it up in the
+    /// database, per currency. Null only for a deal saved before amounts were numbers
+    /// whose text held no readable number.
     /// </summary>
     public decimal? Amount { get; set; }
+    /// <summary>ISO 4217 code of <see cref="Amount"/>; a new deal takes its workspace's.</summary>
     public string? Currency { get; set; }
     public string? Stage { get; set; }
     public Guid? PipelineId { get; set; }

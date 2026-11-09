@@ -3,12 +3,14 @@ namespace ACI.Application.Common;
 using System.Globalization;
 
 /// <summary>
-/// Reading an amount out of the free-text <c>Deal.Value</c> column.
+/// Reading an amount out of text: the free-text <c>Deal.Value</c> of deals saved before
+/// amounts were numbers, and the text older clients still send instead of an amount.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Deal values are stored as text, so they arrive in whatever shape whoever typed
-/// them used: <c>"85,500"</c>, <c>"CHF 85 500"</c>, <c>"€50.000"</c>,
+/// A deal's money is now <c>Deal.Amount</c>, a number, with <c>Value</c> written from it
+/// (<see cref="DealMoney"/>). Before that, values were stored as text, so they arrived in
+/// whatever shape whoever typed them used: <c>"85,500"</c>, <c>"CHF 85 500"</c>, <c>"€50.000"</c>,
 /// <c>"$1,234.56"</c>. The reporting queries previously did
 /// <c>value.Replace("$", "").Replace(",", "")</c> and fell through to <c>0</c>
 /// when <c>decimal.TryParse</c> failed — so every deal priced in anything but
@@ -138,12 +140,4 @@ public static class MoneyText
         amount == decimal.Truncate(amount)
             ? decimal.Truncate(amount).ToString("0", CultureInfo.InvariantCulture)
             : amount.ToString("0.00", CultureInfo.InvariantCulture);
-
-    /// <summary>
-    /// The currency to attribute an amount to. Never guesses from the text: an
-    /// unset currency is reported as USD, which is what the rest of the system
-    /// already assumes, rather than inferred from a symbol that may not be there.
-    /// </summary>
-    public static string NormaliseCurrency(string? currency)
-        => string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim().ToUpperInvariant();
 }

@@ -108,29 +108,32 @@ public class MoneyTextTests
     }
 
     [Fact]
-    public void NormaliseCurrencyDefaultsToTheAssumptionAlreadyInTheSystem()
-    {
-        MoneyText.NormaliseCurrency(null).Should().Be("USD");
-        MoneyText.NormaliseCurrency("").Should().Be("USD");
-        MoneyText.NormaliseCurrency("  ").Should().Be("USD");
-    }
-
-    [Fact]
-    public void NormaliseCurrencyUppercasesAndTrims()
-    {
-        MoneyText.NormaliseCurrency(" chf ").Should().Be("CHF");
-        MoneyText.NormaliseCurrency("eur").Should().Be("EUR");
-    }
-
-    [Fact]
     public void NeverInfersCurrencyFromTheAmountText()
     {
         // A "€" in the value column does not make the deal's currency EUR — the
         // currency lives in its own column, and guessing would let a typo in a
-        // free-text field silently reassign a deal's currency.
-        MoneyText.NormaliseCurrency(null).Should().Be("USD");
+        // free-text field silently reassign a deal's currency. A deal that names
+        // none is in its workspace's.
+        DealMoney.CurrencyOf(null, "CHF").Value.Should().Be("CHF");
         MoneyText.TryParseAmount("€50,000", out var value).Should().BeTrue();
         value.Should().Be(50000m);
+    }
+
+    [Theory]
+    [InlineData(" chf ", "CHF")]
+    [InlineData("eur", "EUR")]
+    public void ACurrencyCodeInAnotherCaseIsTheSameCode(string requested, string expected)
+    {
+        DealMoney.CurrencyOf(requested, "CHF").Value.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("€")]
+    [InlineData("Fr.")]
+    [InlineData("EURO")]
+    public void ASymbolOrAWordIsNotACurrencyCode(string requested)
+    {
+        DealMoney.CurrencyOf(requested, "CHF").IsFailure.Should().BeTrue();
     }
 
     // ── the number stored beside the text, for reports ───────────────────────
