@@ -150,6 +150,10 @@ public class AppDbContext : DbContext
     // text written from it, and one that set only the text (a tool, a test) gets the
     // number read from it. A save that touches neither re-reads the text, so a row from
     // before Amount existed is put right when anyone edits it.
+    //
+    // Text that already reads as the number is kept as it is. The cloner and a merge
+    // carry an older deal's number together with its text ("CHF 12,000 + VAT"), and
+    // rewriting that to "12000" lost the words in the copy that the original still has.
     private void StampDealAmounts()
     {
         foreach (var entry in ChangeTracker.Entries<Deal>())
@@ -160,7 +164,9 @@ public class AppDbContext : DbContext
                 ? deal.Amount != null
                 : entry.Property(d => d.Amount).IsModified;
             if (numberSet && deal.Amount is decimal amount)
-                deal.Value = MoneyText.ValueText(amount);
+            {
+                if (MoneyText.StoredAmount(deal.Value) != amount) deal.Value = MoneyText.ValueText(amount);
+            }
             else
                 deal.Amount = MoneyText.StoredAmount(deal.Value);
         }

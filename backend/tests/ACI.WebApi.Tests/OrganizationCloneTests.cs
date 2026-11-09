@@ -273,6 +273,25 @@ public class OrganizationCloneTests
     }
 
     [Fact]
+    public async Task AnOlderDealKeepsTheWordsItsAmountWasTypedWith()
+    {
+        // A deal from before amounts were numbers: the text as typed, and the number read
+        // from it once. The copy rewrote the text from the number ("12000"), so the copy
+        // lost the "+ VAT" that the original still has.
+        var (connection, db, original, _, _) = await WorldAsync();
+        using var _c = connection;
+        await using var _d = db;
+        await db.Deals.Where(d => d.Id == original.Deal)
+            .ExecuteUpdateAsync(set => set.SetProperty(d => d.Value, "CHF 12,000 + VAT").SetProperty(d => d.Amount, 12000m));
+
+        var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
+
+        var copy = await db.Deals.AsNoTracking().SingleAsync(d => d.OrganizationId == report.CopyId);
+        copy.Value.Should().Be("CHF 12,000 + VAT");
+        copy.Amount.Should().Be(12000m);
+    }
+
+    [Fact]
     public async Task NothingThatExistsEmailsAnyoneTwice_AndTheWaysInStayWithTheOriginal()
     {
         var (connection, db, original, _, _) = await WorldAsync();
