@@ -5,14 +5,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { EmailSending, Organization } from '@/app/api/organizations';
+import type { EmailSending, EmailSuppression, Organization } from '@/app/api/organizations';
 
 const state = vi.hoisted(() => ({
   org: null as Organization | null,
   demo: false,
   sender: null as EmailSending | null,
+  suppressions: [] as EmailSuppression[],
   get: vi.fn(),
   update: vi.fn(),
+  lift: vi.fn(),
 }));
 vi.mock('@/app/contexts/OrgContext', () => ({ useOrg: () => ({ currentOrg: state.org }) }));
 vi.mock('@/app/api/apiClient', () => ({ servesDemoData: () => state.demo }));
@@ -20,6 +22,8 @@ vi.mock('@/app/api/organizations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/organizations')>()),
   getEmailSending: (...args: unknown[]) => state.get(...args),
   updateEmailSending: (...args: unknown[]) => state.update(...args),
+  getEmailSuppressions: async () => state.suppressions,
+  liftEmailSuppression: (...args: unknown[]) => state.lift(...args),
 }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
@@ -37,6 +41,8 @@ beforeEach(() => {
   state.get.mockReset();
   state.get.mockImplementation(async () => state.sender);
   state.update.mockReset();
+  state.suppressions = [];
+  state.lift.mockReset();
   toast.success.mockReset();
   toast.error.mockReset();
 });
@@ -74,6 +80,32 @@ describe('the workspace email sender', () => {
     expect(await screen.findByText('Only the owner or a manager can change this.')).toBeTruthy();
     expect(screen.getByLabelText('The workspace’s own sending address')).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+  });
+
+  it('lists the addresses the mail service reported, and lets a manager email one again', async () => {
+    state.org = workspace({ isOwner: false, role: 2 });
+    state.suppressions = [{ id: 's1', email: 'jean@example.ch', reason: 'bounced', detail: '550 no such user', createdAtUtc: '2026-11-03T09:00:00Z' }];
+    state.lift.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<EmailSendingCard />);
+
+    expect(await screen.findByText('jean@example.ch')).toBeTruthy();
+    expect(screen.getByText(/^bounced on/)).toBeTruthy();
+    expect(screen.getByText('550 no such user')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Email it again' }));
+
+    await waitFor(() => expect(state.lift).toHaveBeenCalledWith('org-1', 's1'));
+    await waitFor(() => expect(screen.queryByText('jean@example.ch')).toBeNull());
+    expect(toast.success).toHaveBeenCalledWith('jean@example.ch can be emailed again.');
+  });
+
+  it('shows a rep the list without the way to lift it', async () => {
+    state.org = workspace({ isOwner: false, role: 1 });
+    state.suppressions = [{ id: 's1', email: 'jean@example.ch', reason: 'spam_report', detail: null, createdAtUtc: '2026-11-03T09:00:00Z' }];
+    render(<EmailSendingCard />);
+
+    expect(await screen.findByText(/marked this workspace’s email as spam/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Email it again' })).toBeNull();
   });
 
   it('shows nothing in demo mode, which sends no email', () => {

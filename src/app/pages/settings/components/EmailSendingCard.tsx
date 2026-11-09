@@ -8,14 +8,26 @@ import { useEffect, useState } from 'react';
 import { Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { useOrg } from '@/app/contexts/OrgContext';
-import { getEmailSending, isOrgAdmin, updateEmailSending, type EmailSending } from '@/app/api/organizations';
+import {
+  getEmailSending, getEmailSuppressions, isOrgAdmin, liftEmailSuppression, updateEmailSending,
+  type EmailSending, type EmailSuppression,
+} from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 
 const field = 'w-full h-11 px-3 border border-slate-300 rounded-xl bg-white text-slate-900 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none disabled:bg-slate-50 disabled:text-slate-600';
 
+/** Why an address is not emailed, in words. */
+const WHY: Record<EmailSuppression['reason'], string> = {
+  bounced: 'bounced',
+  spam_report: 'marked this workspace’s email as spam',
+  invalid: 'cannot be delivered to',
+  unsubscribed: 'unsubscribed through the mail service',
+};
+
 export function EmailSendingCard() {
   const { currentOrg } = useOrg();
   const [sender, setSender] = useState<EmailSending | null>(null);
+  const [suppressions, setSuppressions] = useState<EmailSuppression[]>([]);
   const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
   const orgId = currentOrg?.id;
@@ -30,8 +42,22 @@ export function EmailSendingCard() {
         setAddress(found.sendingAddress ?? '');
       })
       .catch(() => { if (!cancelled) setSender(null); });
+    getEmailSuppressions(orgId)
+      .then((found) => { if (!cancelled) setSuppressions(found); })
+      .catch(() => { if (!cancelled) setSuppressions([]); });
     return () => { cancelled = true; };
   }, [orgId]);
+
+  const lift = async (suppression: EmailSuppression) => {
+    if (!orgId) return;
+    try {
+      await liftEmailSuppression(orgId, suppression.id);
+      setSuppressions((list) => list.filter((s) => s.id !== suppression.id));
+      toast.success(`${suppression.email} can be emailed again.`);
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'The address was not taken off the list.');
+    }
+  };
 
   // Demo workspaces send nothing; without an answer from the server there is nothing true to show.
   if (!currentOrg || servesDemoData() || !sender) return null;
@@ -107,6 +133,31 @@ export function EmailSendingCard() {
         </button>
       ) : (
         <p className="mt-4 text-xs text-slate-500">Only the owner or a manager can change this.</p>
+      )}
+      {suppressions.length > 0 && (
+        <div className="mt-6">
+          <h4 className="font-medium text-slate-900">Addresses this workspace does not email</h4>
+          <p className="text-xs text-slate-500 mt-1 mb-2">
+            The mail service reported these. Sequences writing to them stopped, and the composer refuses them.
+            {canEdit && ' Taking one off lets this workspace email it again; if the mail service lists it too, remove it there as well, or it drops the email and reports it again.'}
+          </p>
+          <ul className="max-w-2xl divide-y divide-slate-100 border border-slate-200 rounded-xl text-sm" aria-label="Addresses this workspace does not email">
+            {suppressions.map((s) => (
+              <li key={s.id} className="px-3 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <span>
+                  <span className="font-medium text-slate-800">{s.email}</span>{' '}
+                  <span className="text-slate-600">{WHY[s.reason] ?? s.reason} on {new Date(s.createdAtUtc).toLocaleDateString()}</span>
+                  {s.detail && <span className="block text-xs text-slate-500">{s.detail}</span>}
+                </span>
+                {canEdit && (
+                  <button type="button" onClick={() => void lift(s)} className="text-xs font-medium text-orange-700 hover:text-orange-800">
+                    Email it again
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </section>
   );

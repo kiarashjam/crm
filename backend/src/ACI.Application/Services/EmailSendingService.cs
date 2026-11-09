@@ -20,10 +20,21 @@ public sealed record EmailSendingDto(string? SendingAddress, bool Verified, stri
 /// <param name="SendingAddress">The address to send from; empty clears it.</param>
 public sealed record UpdateEmailSendingRequest(string? SendingAddress);
 
+/// <summary>An address the workspace does not email because the mail service reported it.</summary>
+/// <param name="Reason">bounced, spam_report, invalid or unsubscribed.</param>
+/// <param name="Detail">What the mail service said, when it said.</param>
+public sealed record EmailSuppressionDto(Guid Id, string Email, string Reason, string? Detail, DateTime CreatedAtUtc);
+
 public interface IEmailSendingService
 {
     Task<Result<EmailSendingDto>> GetAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
     Task<Result<EmailSendingDto>> UpdateAsync(Guid organizationId, Guid userId, UpdateEmailSendingRequest request, CancellationToken ct = default);
+
+    /// <summary>The addresses the workspace does not email because the mail service reported them.</summary>
+    Task<Result<IReadOnlyList<EmailSuppressionDto>>> SuppressionsAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>Takes an address off that list (owner or manager), so the workspace may email it again.</summary>
+    Task<Result> LiftSuppressionAsync(Guid organizationId, Guid userId, Guid suppressionId, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -40,14 +51,36 @@ public interface IEmailSendingService
 public sealed class EmailSendingService : IEmailSendingService
 {
     private readonly IOrganizationRepository _organizations;
+    private readonly IOutboxRepository _outbox;
     private readonly EmailSettings _settings;
     private readonly ILogger<EmailSendingService> _logger;
 
-    public EmailSendingService(IOrganizationRepository organizations, IOptions<EmailSettings> settings, ILogger<EmailSendingService> logger)
+    public EmailSendingService(IOrganizationRepository organizations, IOutboxRepository outbox, IOptions<EmailSettings> settings, ILogger<EmailSendingService> logger)
     {
         _organizations = organizations;
+        _outbox = outbox;
         _settings = settings.Value;
         _logger = logger;
+    }
+
+    public async Task<Result<IReadOnlyList<EmailSuppressionDto>>> SuppressionsAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
+    {
+        if (await _organizations.GetMemberRoleAsync(userId, organizationId, ct) == null) return DomainErrors.Organization.NotMember;
+        var rows = await _outbox.SuppressionsAsync(organizationId, 200, ct);
+        return Result.Success<IReadOnlyList<EmailSuppressionDto>>(rows
+            .Select(s => new EmailSuppressionDto(s.Id, s.Email, s.Reason, s.Detail, s.CreatedAtUtc)).ToList());
+    }
+
+    public async Task<Result> LiftSuppressionAsync(Guid organizationId, Guid userId, Guid suppressionId, CancellationToken ct = default)
+    {
+        // Emailing someone who complained, or an address that bounced, is a manager's call.
+        var role = await _organizations.GetMemberRoleAsync(userId, organizationId, ct);
+        if (role == null) return DomainErrors.Organization.NotMember;
+        if (role is not (OrgMemberRole.Owner or OrgMemberRole.Manager)) return DomainErrors.Organization.NotOwnerOrManager;
+        if (!await _outbox.LiftSuppressionAsync(organizationId, suppressionId, ct))
+            return new Error("EmailSuppression.NotFound", "That address is not on the list.");
+        _logger.LogInformation("A suppressed address of organization {OrganizationId} was lifted by {UserId}", organizationId, userId);
+        return Result.Success();
     }
 
     public async Task<Result<EmailSendingDto>> GetAsync(Guid organizationId, Guid userId, CancellationToken ct = default)

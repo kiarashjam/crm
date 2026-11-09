@@ -171,6 +171,22 @@ public sealed class OutboxRepository : IOutboxRepository
         }
     }
 
+    public async Task<IReadOnlyList<EmailSuppression>> SuppressionsAsync(Guid organizationId, int take, CancellationToken ct = default) =>
+        await _db.EmailSuppressions.AsNoTracking()
+            .Where(s => s.OrganizationId == organizationId)
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task<bool> LiftSuppressionAsync(Guid organizationId, Guid suppressionId, CancellationToken ct = default)
+    {
+        var row = await _db.EmailSuppressions.FirstOrDefaultAsync(s => s.Id == suppressionId && s.OrganizationId == organizationId, ct);
+        if (row == null) return false;
+        _db.EmailSuppressions.Remove(row);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
     public Task<bool> InboundSeenAsync(Guid organizationId, string messageIdHeader, CancellationToken ct = default) =>
         _db.InboundEmails.AnyAsync(i => i.OrganizationId == organizationId && i.MessageIdHeader == messageIdHeader, ct);
 

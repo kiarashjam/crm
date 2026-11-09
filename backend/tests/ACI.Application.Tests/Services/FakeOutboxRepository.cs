@@ -83,6 +83,13 @@ internal sealed class FakeOutboxRepository : IOutboxRepository
         return Task.FromResult(true);
     }
 
+    public Task<IReadOnlyList<EmailSuppression>> SuppressionsAsync(Guid organizationId, int take, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<EmailSuppression>>(Suppressions.Where(s => s.OrganizationId == organizationId)
+            .OrderByDescending(s => s.CreatedAtUtc).Take(take).ToList());
+
+    public Task<bool> LiftSuppressionAsync(Guid organizationId, Guid suppressionId, CancellationToken ct = default) =>
+        Task.FromResult(Suppressions.RemoveAll(s => s.Id == suppressionId && s.OrganizationId == organizationId) > 0);
+
     public Task<bool> InboundSeenAsync(Guid organizationId, string messageIdHeader, CancellationToken ct = default) =>
         Task.FromResult(Inbound.Any(i => i.OrganizationId == organizationId && i.MessageIdHeader == messageIdHeader));
 

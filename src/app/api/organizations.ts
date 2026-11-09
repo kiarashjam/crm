@@ -125,6 +125,26 @@ export async function updateEmailSending(orgId: string, sendingAddress: string):
   });
 }
 
+/** An address the workspace does not email because the mail service reported it. */
+export interface EmailSuppression {
+  id: string;
+  email: string;
+  reason: 'bounced' | 'spam_report' | 'invalid' | 'unsubscribed';
+  /** What the mail service said, e.g. "550 5.1.1 The email account does not exist". */
+  detail: string | null;
+  createdAtUtc: string;
+}
+
+export async function getEmailSuppressions(orgId: string): Promise<EmailSuppression[]> {
+  if (servesDemoData()) return [];
+  return authFetchJson<EmailSuppression[]>(`/api/organizations/${orgId}/email/suppressions`);
+}
+
+/** Takes an address off the list, so the workspace may email it again. Owner or manager only. */
+export async function liftEmailSuppression(orgId: string, suppressionId: string): Promise<void> {
+  await authFetchJson<void>(`/api/organizations/${orgId}/email/suppressions/${suppressionId}`, { method: 'DELETE' });
+}
+
 export async function listMyPendingInvites(): Promise<InviteDto[]> {
   if (servesDemoData()) return [];
   const list = await authFetchJson<InviteDto[]>('/api/invites/pending');

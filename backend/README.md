@@ -225,6 +225,8 @@ own Message-ID, and is written once on the record's timeline when it has gone.
 | `POST` | `/api/email/{id}/cancel` | Take back a queued email before it goes (whoever sent it, or a manager); 409 once it has gone |
 | `GET` | `/api/organizations/{id}/email` | Who the workspace's email goes out from: its own address, whether its domain is verified, the shared address, whether replies come back |
 | `PUT` | `/api/organizations/{id}/email` | `{ sendingAddress }`: set or clear the workspace's own sending address (owner or manager) |
+| `GET` | `/api/organizations/{id}/email/suppressions` | Addresses the workspace does not email because the mail service reported them (bounced, invalid, spam report, unsubscribed) |
+| `DELETE` | `/api/organizations/{id}/email/suppressions/{suppressionId}` | Take an address off that list so the workspace may email it again (owner or manager) |
 | `GET` | `/api/webhook/organizations/{id}/deliveries` | The latest outbound webhook deliveries and what the receiver answered (owner or manager) |
 | `POST` | `/api/public/email/inbound/{secret}` | SendGrid Inbound Parse: a reply, matched to its message by reply+token address or In-Reply-To/References, written on the timeline; the person's sequences stop. 404 without `Email:InboundParseSecret` |
 | `POST` | `/api/public/email/events/{secret}` | SendGrid Event Webhook (or `/events` with a signature checked against `Email:EventWebhookVerificationKey`): bounces, drops, spam reports and unsubscribes suppress the address and stop sequences; deliveries and opens are recorded |

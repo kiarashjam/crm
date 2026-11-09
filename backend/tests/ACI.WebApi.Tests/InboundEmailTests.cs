@@ -224,6 +224,34 @@ public class InboundEmailTests
     }
 
     [Fact]
+    public async Task AManagerSeesTheBouncedAddress_AndCanLiftIt_ARepCannot()
+    {
+        await using var app = new App();
+        var (owner, _, leadId, _, first) = await EmailedLeadAsync(app);
+        await Json(await app.CreateClient().PostAsync($"/api/public/email/events/{EventsSecret}", Events(new Dictionary<string, object>
+        {
+            ["email"] = "jean@example.ch", ["event"] = "bounce", ["type"] = "bounce", ["reason"] = "550 mailbox full for good",
+            ["cadence_message_id"] = first.OutboundMessageId.ToString(),
+        })), "events");
+        var org = await app.Services.Read(db => db.Organizations.Single().Id);
+        var (rep, repId) = await SignInAsync(app, "rep@example.ch");
+        await AddMemberAsync(app, org, repId, ACI.Domain.Enums.OrgMemberRole.Member);
+        rep.In(org);
+
+        var listed = (await Json(await rep.GetAsync($"/api/organizations/{org}/email/suppressions"), "rep lists")).EnumerateArray().Single();
+        listed.GetProperty("email").GetString().Should().Be("jean@example.ch");
+        listed.GetProperty("reason").GetString().Should().Be("bounced");
+        listed.GetProperty("detail").GetString().Should().Be("550 mailbox full for good");
+        var id = listed.GetProperty("id").GetGuid();
+
+        (await rep.DeleteAsync($"/api/organizations/{org}/email/suppressions/{id}")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await owner.DeleteAsync($"/api/organizations/{org}/email/suppressions/{id}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await owner.DeleteAsync($"/api/organizations/{org}/email/suppressions/{id}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        await Json(await owner.PostAsync("/api/email/send", Body(new { to = "jean@example.ch", subject = "New address?", body = "Hi", leadId })), "the composer may write again");
+    }
+
+    [Fact]
     public async Task ASpamReportFoundByItsMessageIdSuppressesTheAddress()
     {
         await using var app = new App();

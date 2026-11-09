@@ -54,6 +54,12 @@ public interface IOutboxRepository
     /// <summary>Puts an address on the workspace's suppression list. False when it was on it already.</summary>
     Task<bool> SuppressAsync(EmailSuppression suppression, CancellationToken ct = default);
 
+    /// <summary>The workspace's suppression list, newest first.</summary>
+    Task<IReadOnlyList<EmailSuppression>> SuppressionsAsync(Guid organizationId, int take, CancellationToken ct = default);
+
+    /// <summary>Takes one address off the workspace's list. False when it was not on it.</summary>
+    Task<bool> LiftSuppressionAsync(Guid organizationId, Guid suppressionId, CancellationToken ct = default);
+
     /// <summary>Whether a reply with this Message-ID has been taken in for the workspace already.</summary>
     Task<bool> InboundSeenAsync(Guid organizationId, string messageIdHeader, CancellationToken ct = default);
 
