@@ -279,7 +279,8 @@ public class LeadService : ILeadService
         if (_automations != null && (!request.IsImport || request.RunAutomations))
         {
             await _automations.DispatchAsync("lead.created", new AutomationEvent(
-                organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId), ct);
+                organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId,
+                FromImport: request.IsImport), ct);
         }
         if (_webhooks != null && !request.IsImport)
             await _webhooks.PublishAsync(organizationId, "lead.created", new { entity.Id, entity.Name, entity.Email }, ct);
@@ -407,7 +408,7 @@ public class LeadService : ILeadService
         await _contactRepository.EnsurePersonContactAsync(updated, ct);
         if (!string.Equals(previousStatus, updated.Status, StringComparison.Ordinal))
             await _statusSync.AnnounceAsync(updated, previousStatus, userId, userId, plan, ct,
-                runAutomations: !request.IsImport || request.RunAutomations);
+                runAutomations: !request.IsImport || request.RunAutomations, fromImport: request.IsImport);
 
         _logger.LogInformation(
             "Lead {LeadId} updated successfully",

@@ -252,10 +252,97 @@ public class CollaborationNotificationTests
 
         await LeadAsync(team.Marc);
 
-        var bell = await BellAsync(team.Anna);
+        var bell = (await BellAsync(team.Anna)).Where(n => n.GetProperty("type").GetString() == "task").ToList();
         bell.Should().ContainSingle();
         bell[0].GetProperty("title").GetString().Should().Be("The automation \"New web lead\" gave you a task");
         bell[0].GetProperty("message").GetString().Should().Be("Call within the day");
+    }
+
+    private static async Task AssignRuleAsync(Team team, string trigger) =>
+        await Ok(await team.Marc.PostAsync("/api/automations", Body(new
+        {
+            name = "Hand to Anna", trigger, enabled = true,
+            actions = new[] { new { type = "assign", config = new { userId = team.AnnaId.ToString() } } },
+        })), "add the rule");
+
+    [Fact]
+    public async Task ALeadARuleHandsToARepTellsThemTheRuleDidIt()
+    {
+        // A rule's assignment was silent: the rep found the lead only by opening the list.
+        using var team = await TeamAsync();
+        await AssignRuleAsync(team, "lead.created");
+
+        var leadId = await LeadAsync(team.Marc);
+
+        var bell = await BellAsync(team.Anna);
+        bell.Should().ContainSingle();
+        bell[0].GetProperty("type").GetString().Should().Be("lead");
+        bell[0].GetProperty("title").GetString().Should().Be("The automation \"Hand to Anna\" gave you a lead");
+        bell[0].GetProperty("message").GetString().Should().Be("Jean Dupont");
+        bell[0].GetProperty("link").GetString().Should().Be($"/leads/{leadId}");
+        (await BellAsync(team.Marc)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ADealARuleHandsToARepTellsThemTheRuleDidIt()
+    {
+        using var team = await TeamAsync();
+        await AssignRuleAsync(team, "deal.won");
+        var dealId = (await Ok(await team.Marc.PostAsync("/api/deals", Body(new { name = "Family membership", amount = 4800, currency = "CHF" })), "create deal"))
+            .GetProperty("id").GetGuid();
+
+        await Ok(await team.Marc.PutAsync($"/api/deals/{dealId}", Body(new { isWon = true })), "Marc marks it won");
+
+        var bell = await BellAsync(team.Anna);
+        bell.Should().ContainSingle();
+        bell[0].GetProperty("title").GetString().Should().Be("The automation \"Hand to Anna\" gave you a deal");
+        bell[0].GetProperty("link").GetString().Should().Be($"/deals/{dealId}");
+    }
+
+    [Fact]
+    public async Task ARuleHandingARepALeadTheyAlreadyWorkSaysNothing()
+    {
+        using var team = await TeamAsync();
+        await AssignRuleAsync(team, "lead.status_changed");
+        var leadId = await LeadAsync(team.Marc);
+        await Ok(await team.Marc.PutAsync($"/api/leads/{leadId}/assign", Body(new { assignedToUserId = team.AnnaId })), "give it to Anna");
+
+        await Ok(await team.Marc.PutAsync($"/api/leads/{leadId}", Body(new { status = "Contacted" })), "Marc moves the lead on");
+
+        var bell = await BellAsync(team.Anna);
+        bell.Should().ContainSingle("only Marc's own hand-over is news");
+        bell[0].GetProperty("title").GetString().Should().Be("Marc Weber assigned you a lead");
+    }
+
+    [Fact]
+    public async Task LeadsARuleHandsOutFromAnImportDoNotFillTheBell()
+    {
+        // The person importing asked for the rules to run: each row is still not new work
+        // arriving, and a line per row would bury the bell.
+        using var team = await TeamAsync();
+        await AssignRuleAsync(team, "lead.created");
+
+        var lead = await Ok(await team.Marc.PostAsync("/api/leads", Body(new
+        {
+            name = "Jean Dupont", email = "jean@example.ch", status = "New", origin = "import", runAutomations = true,
+        })), "import a row");
+
+        (await team.Factory.Services.Read(db => db.Leads.Single(l => l.Id == lead.GetProperty("id").GetGuid()).AssignedToUserId))
+            .Should().Be(team.AnnaId, "the rule still ran");
+        (await BellAsync(team.Anna)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LeadsARuleHandsOutWhenAnImportMovesThemOnDoNotFillTheBellEither()
+    {
+        using var team = await TeamAsync();
+        await AssignRuleAsync(team, "lead.status_changed");
+        var leadId = await LeadAsync(team.Marc);
+
+        await Ok(await team.Marc.PutAsync($"/api/leads/{leadId}", Body(new { status = "Contacted", origin = "import", runAutomations = true })), "an import moves it on");
+
+        (await team.Factory.Services.Read(db => db.Leads.Single(l => l.Id == leadId).AssignedToUserId)).Should().Be(team.AnnaId, "the rule still ran");
+        (await BellAsync(team.Anna)).Should().BeEmpty();
     }
 
     [Fact]
