@@ -57,6 +57,7 @@ import { prefetchRoute } from './organizations/prefetchRoute';
 import { WorkspaceCard } from './organizations/WorkspaceCard';
 import LaunchSequence from './organizations/LaunchSequence';
 import CreateWorkspaceDialog from './organizations/CreateWorkspaceDialog';
+import { BrandName } from '@/app/components/BrandName';
 
 /** The page's colour, for the hero, its main action and the focus rings. */
 const TONE = 'indigo' as const;
@@ -389,7 +390,7 @@ export default function Organizations() {
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 shadow-lg shadow-amber-500/25 ring-1 ring-white/20">
               <Sparkles className="h-5 w-5 text-white drop-shadow-sm" aria-hidden />
             </span>
-            <span className="text-lg font-semibold tracking-tight text-slate-800">Cadence</span>
+            <BrandName className="text-lg font-semibold tracking-tight text-slate-800" />
           </div>
           <div className="flex min-w-0 items-center gap-2">
             {user && (

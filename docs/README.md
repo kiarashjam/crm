@@ -17,6 +17,7 @@ This folder contains consolidated project documentation organized by topic.
 | [../PROJECT_ASPECTS.md](../PROJECT_ASPECTS.md) | Every aspect of the project in one place |
 | [../PROJECT_STRUCTURE_REPORT.md](../PROJECT_STRUCTURE_REPORT.md) | Folder structure analysis and recommendations |
 | [../backend/README.md](../backend/README.md) | Backend architecture (Clean Architecture, EF Core) |
+| [INTEGRATION_API.md](./INTEGRATION_API.md) | Read-only JSON routes for systems linked to an organization (BMS, BonApp admin) |
 
 ## Reports
 

@@ -51,7 +51,7 @@ export const messages = {
     passwordResetEmailSent:
       'If an account exists for that email, you will receive reset instructions shortly.',
     passwordResetComplete: 'Your password was updated. You can sign in now.',
-    passwordResetRequiresApi: 'Password reset requires the app to be connected to the Cadence API (set VITE_API_URL).',
+    passwordResetRequiresApi: 'Password reset requires the app to be connected to the CadenceE API (set VITE_API_URL).',
     passwordResetMissingToken: 'This reset link is missing a token. Open the link from your email or request a new reset.',
   },
   twoFa: {

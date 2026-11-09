@@ -181,7 +181,7 @@ const HELP: Record<string, HelpEntry> = {
     title: 'Attach copy', tagline: 'Save writing on a lead, contact, or deal.',
     features: [
       { emoji: '✍️', title: 'The writing', body: 'Paste it here, or open a draft from the dashboard or History.' },
-      { emoji: '📌', title: 'The record', body: 'Pick who it belongs to. Cadence keeps it in History. It is not emailed.' },
+      { emoji: '📌', title: 'The record', body: 'Pick who it belongs to. CadenceE keeps it in History. It is not emailed.' },
     ],
   },
   settings: {

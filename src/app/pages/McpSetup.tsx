@@ -91,7 +91,7 @@ export function ClaudeSection() {
   const hasKey = Boolean(info?.hasMcpApiKey);
   const configKey = apiKey || 'YOUR_API_KEY';
   const bearer = `Bearer ${configKey}`;
-  const connectorName = `Cadence — ${orgName}`;
+  const connectorName = `CadenceE — ${orgName}`;
   const canGenerate = isOrgAdmin(currentOrg);
   const claudeCanReach = isReachableByClaude(mcpUrl);
   const questions = exampleQuestions(orgName);
@@ -257,7 +257,7 @@ export function ClaudeSection() {
 
               <TabsContent value="cursor" className="space-y-4">
                 <FileGuide
-                  title="Add Cadence to every Cursor project on this computer"
+                  title="Add CadenceE to every Cursor project on this computer"
                   steps={[
                     'Create the organization key in the Claude tab if you have not already.',
                     'On Windows, open %USERPROFILE%\\.cursor\\mcp.json. On Mac or Linux, open ~/.cursor/mcp.json.',
@@ -271,7 +271,7 @@ export function ClaudeSection() {
 
               <TabsContent value="vscode" className="space-y-4">
                 <FileGuide
-                  title="Add Cadence in VS Code"
+                  title="Add CadenceE in VS Code"
                   steps={[
                     'Create the organization key in the Claude tab if you have not already.',
                     'Open .vscode/mcp.json in the project, or your user MCP settings.',

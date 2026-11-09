@@ -218,7 +218,7 @@ public sealed class OrganizationService : IOrganizationService
 
     private static readonly Error EmailNotConfirmed = new(
         "Organization.MemberEmailNotConfirmed",
-        "That account has not confirmed its email address yet. Ask them to open the confirmation email Cadence sent them, then add them — or send an invitation instead.");
+        "That account has not confirmed its email address yet. Ask them to open the confirmation email CadenceE sent them, then add them — or send an invitation instead.");
 
     public async Task<Result> UpdateMemberRoleAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, OrgMemberRole newRole, CancellationToken ct = default)
     {

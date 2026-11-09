@@ -427,7 +427,7 @@ function ClosedPanel({ label, count, refreshing, onOpen, onAsk }: {
       <motion.button
         type="button"
         onClick={onAsk}
-        aria-label="Ask Cadence AI"
+        aria-label="Ask CadenceE"
         whileHover={reduce ? undefined : { y: -2 }}
         whileTap={reduce ? undefined : { scale: 0.97 }}
         className={pill}
@@ -447,7 +447,7 @@ function AskPill({ onAsk }: { onAsk: () => void }) {
     <motion.button
       type="button"
       onClick={onAsk}
-      aria-label="Ask Cadence AI"
+      aria-label="Ask CadenceE"
       aria-expanded={false}
       whileHover={reduce ? undefined : { y: -1 }}
       whileTap={reduce ? undefined : { scale: 0.97 }}

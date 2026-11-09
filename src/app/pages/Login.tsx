@@ -16,6 +16,7 @@ import {
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { cn } from '@/app/components/ui/utils';
 import { invitationToResume } from '@/app/lib/inviteLink';
+import { BrandName } from '@/app/components/BrandName';
 
 const HIGHLIGHTS = [
   { icon: Bot, title: 'AI that writes with you', body: 'Draft emails, follow-ups and notes in your voice.' },
@@ -106,11 +107,11 @@ export default function Login() {
         <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(circle,white_1px,transparent_1px)] [background-size:22px_22px]" />
 
         <div className="relative">
-          <Link to="/" className="inline-flex items-center gap-2 text-white/90 transition-colors hover:text-white" aria-label="Cadence home">
+          <Link to="/" className="inline-flex items-center gap-2 text-white/90 transition-colors hover:text-white" aria-label="CadenceE home">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 ring-1 ring-white/30 backdrop-blur">
               <Sparkles className="h-5 w-5" />
             </span>
-            <span className="text-lg font-bold tracking-tight">Cadence</span>
+            <BrandName tagline onColor className="text-lg font-bold tracking-tight" />
           </Link>
         </div>
 
@@ -161,7 +162,7 @@ export default function Login() {
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-lg shadow-orange-500/25">
                 <Sparkles className="h-5 w-5" />
               </span>
-              <span className="text-lg font-bold tracking-tight text-slate-900">Cadence</span>
+              <BrandName className="text-lg font-bold tracking-tight text-slate-900" />
             </Link>
 
             <div className="mb-7 text-center lg:text-left">
@@ -406,7 +407,7 @@ const AUTH_ERROR_COPY: Record<AuthErrorKind, {
     icon: WifiOff, tone: 'bg-rose-100 text-rose-600',
     title: "Couldn't reach the server",
     what: 'The app tried to sign you in but never got a response.',
-    how: 'This happens when your connection drops, you’re offline, or the Cadence API isn’t reachable right now. Check your connection and try again.',
+    how: 'This happens when your connection drops, you’re offline, or the CadenceE API isn’t reachable right now. Check your connection and try again.',
   },
   config: {
     icon: Info, tone: 'bg-blue-100 text-blue-600',

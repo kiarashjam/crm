@@ -16,7 +16,7 @@ export default function NotDeliveredNotice({ children }: { children?: ReactNode 
     >
       <MailX className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />
       <div>
-        <p className="font-medium">Cadence does not deliver email, SMS or push messages yet.</p>
+        <p className="font-medium">CadenceE does not deliver email, SMS or push messages yet.</p>
         <p className="mt-0.5">
           {children ?? 'What you log here is a record for your team. Nobody receives it: send it from your own mail or phone.'}
         </p>

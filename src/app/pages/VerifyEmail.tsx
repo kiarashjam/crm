@@ -22,7 +22,7 @@ export default function VerifyEmail() {
   const user = getCurrentUser();
   const signedIn = !!user && user.id !== 'demo';
   const [state, setState] = useState<State>(() => {
-    if (!isUsingRealApi()) return { kind: 'failed', message: 'Confirming an email address needs the app to be connected to the Cadence server.' };
+    if (!isUsingRealApi()) return { kind: 'failed', message: 'Confirming an email address needs the app to be connected to the CadenceE server.' };
     if (!token) return { kind: 'failed', message: 'This link is missing its code. Open the link from the email again.' };
     return { kind: 'working' };
   });
@@ -71,7 +71,7 @@ export default function VerifyEmail() {
           className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 rounded-lg"
         >
           <ArrowLeft className="w-5 h-5" aria-hidden />
-          {signedIn ? 'Back to Cadence' : 'Back to sign in'}
+          {signedIn ? 'Back to CadenceE' : 'Back to sign in'}
         </Link>
       </header>
 
