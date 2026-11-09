@@ -22,6 +22,10 @@ public class DealServiceTests
         _dealRepositoryMock = new Mock<IDealRepository>();
         _activityRepositoryMock = new Mock<IActivityRepository>();
         _loggerMock = new Mock<ILogger<DealService>>();
+        // No stage history for these deals: when each came into its stage is not known.
+        _dealRepositoryMock
+            .Setup(r => r.GetPaceAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DealPaceInfo>());
 
         _sut = new DealService(
             _dealRepositoryMock.Object,
