@@ -113,7 +113,7 @@ function reassignStoredContact(key: string, fromId: string, toId: string): void 
   }
 }
 
-interface ApiContact {
+export interface ApiContact {
   id: string;
   name: string;
   email: string;
@@ -132,7 +132,7 @@ interface ApiContact {
   updatedAtUtc?: string | null;
 }
 
-function mapContact(d: ApiContact): Contact {
+export function mapContact(d: ApiContact): Contact {
   return {
     id: d.id,
     name: d.name,

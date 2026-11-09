@@ -29,6 +29,33 @@ describe('finding duplicates', () => {
     expect(groups[0]?.reason).toBe('Same email');
   });
 
+  it('finds one contact entered twice under two emails, as server data always has them', () => {
+    // A contact's email is unique in its workspace, so the rule that ruled out any two
+    // with different emails never found a duplicate on a real server.
+    const groups = duplicateContactGroups([
+      { id: 'a', name: 'Marc Dubois', email: 'marc@gmail.com', phone: '+41 79 123 45 67' },
+      { id: 'b', name: 'Marc  Dubois', email: 'm.dubois@firm.ch', phone: '079 123 45 67' },
+      { id: 'c', name: 'Marc Dubois', email: 'marc@bank.ch', phone: '+41 78 555 55 55' },
+      { id: 'd', name: 'Lea Meier', email: 'lea@one.ch', phone: '+41 44 111 22 33' },
+      { id: 'e', name: 'L. Meier', email: 'lea@two.ch', phone: '044 111 22 33' },
+    ]);
+    expect(groups.map((g) => [g.records.map((r) => r.id), g.reason])).toEqual([
+      [['a', 'b'], 'Same phone · Same name'],
+      [['d', 'e'], 'Same phone'],
+    ]);
+  });
+
+  it('does not offer two contacts who share a name but have different phones or companies', () => {
+    expect(duplicateContactGroups([
+      { id: 'a', name: 'Alex Meier', email: 'alex@one.ch', phone: '079 111 22 33' },
+      { id: 'b', name: 'Alex Meier', email: 'alex@two.ch', phone: '079 999 88 77' },
+    ])).toEqual([]);
+    expect(duplicateContactGroups([
+      { id: 'a', name: 'Alex Meier', email: 'alex@acme.ch', companyId: 'acme' },
+      { id: 'b', name: 'Alex Meier', email: 'alex@globex.ch', companyId: 'globex' },
+    ])).toEqual([]);
+  });
+
   it('does not offer two different people who only share a name', () => {
     expect(duplicateLeadGroups([
       lead('a', { email: 'john@one.com' }),

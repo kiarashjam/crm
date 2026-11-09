@@ -155,6 +155,15 @@ describe('collectWork', () => {
     expect(ranked.find((item) => item.key === 'lead:l1')?.brief?.copyTypeId).toBe('sales-email');
   });
 
+  it('suggests merging one person entered under two emails, unless the team said they are two people', () => {
+    const contacts = [
+      { id: 'c1', name: 'Marc Dubois', email: 'marc@gmail.com', phone: '+41 79 123 45 67' },
+      { id: 'c2', name: 'Marc Dubois', email: 'm.dubois@firm.ch', phone: '079 123 45 67' },
+    ];
+    expect(collectWork({ contacts }, now, 10).map((item) => item.key)).toContain('duplicates:contacts');
+    expect(collectWork({ contacts, notSame: ['c1|c2'] }, now, 10).map((item) => item.key)).not.toContain('duplicates:contacts');
+  });
+
   it('asks for a way to reach a lead before calling, and does not draft a message', () => {
     const ranked = collectWork({ leads: [{ id: 'l1', name: 'Ada' }] }, now);
     expect(ranked[0]?.action).toMatch(/no way to reach/);

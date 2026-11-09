@@ -4,7 +4,7 @@
 // enrollments use the same idea: one suggestion per record, from the fields
 // already saved. No language model, and nothing here writes.
 
-import { duplicateCompanyGroups, duplicateContactGroups } from '@/app/api/dedupe';
+import { duplicateCompanyGroups, duplicateContactGroups, pairsOf, type DuplicateGroup } from '@/app/api/dedupe';
 import type { SequenceStepType } from '@/app/api/sequences';
 import { calendarKey, daysBetween, todayKey } from './calendarDay';
 import { nextActionForLead, type NextAction, type SuggestionKind, type SuggestableLead } from './nextAction';
@@ -459,6 +459,8 @@ export interface WorkspaceInput {
   contacts?: SuggestableContact[];
   companies?: SuggestableCompany[];
   automations?: SuggestableAutomation[];
+  /** Pairs of record ids (sorted, joined by "|") the team said are not the same. */
+  notSame?: string[];
 }
 
 /** The most urgent suggestions across every working list. One row per record. */
@@ -506,8 +508,12 @@ export function collectWork(input: WorkspaceInput, now: Date = new Date(), limit
     const step = nextActionForAutomation(rule);
     if (step) items.push(step);
   }
-  const contactGroups = duplicateContactGroups(contacts);
-  const companyGroups = duplicateCompanyGroups(input.companies ?? []);
+  // A group every pair of which the team said is not the same is not offered again.
+  const decided = new Set(input.notSame ?? []);
+  const undecided = <T extends { id: string }>(groups: DuplicateGroup<T>[]) =>
+    groups.filter((g) => !pairsOf(g.records.map((r) => r.id)).every((p) => decided.has(p)));
+  const contactGroups = undecided(duplicateContactGroups(contacts));
+  const companyGroups = undecided(duplicateCompanyGroups(input.companies ?? []));
   for (const step of duplicateSuggestions('contacts', contactGroups)) items.push(step);
   for (const step of duplicateSuggestions('companies', companyGroups)) items.push(step);
 

@@ -1,20 +1,22 @@
 // Duplicate detection and merging, for every kind of record that can be entered twice.
 //
-// Detection runs in the browser over the whole list, the same way in demo mode and
-// against the server. It is deliberately strict: two records are the same only
-// when they share an identifier (an email, a domain) or share a name and nothing
-// known about them disagrees. Two different John Smiths with different emails are
-// not offered for merging.
+// Contacts and companies are found by the server (GET /api/duplicates/contacts and
+// /companies), with the rules below; the browser runs the same rules in demo mode and
+// for the other kinds. Two records are the same when they share an identifier, or share
+// a name and nothing known about them disagrees. A contact's email is unique in its
+// workspace, so for contacts a different email rules nothing out: the same person
+// entered twice has two addresses. Leads keep the strict rule, as their emails are not
+// unique. "Not the same" is the workspace's decision, kept on the server.
 //
 // Merging goes to the server, which moves everything attached to the duplicates
 // onto the record kept (see the merge endpoints). In demo mode it happens here,
 // with the same rules: the kept record's values stay, its empty fields are filled
 // from the others, and whatever pointed at a duplicate points at it instead.
 
-import { authFetch, ensureOk, servesDemoData } from './apiClient';
+import { authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient';
 import { relinkMockRecords } from './mockStore';
-import { getContacts, updateContact, deleteContact } from './contacts';
-import { getCompanies, updateCompany, deleteCompany } from './companies';
+import { getContacts, updateContact, deleteContact, mapContact, type ApiContact } from './contacts';
+import { getCompanies, updateCompany, deleteCompany, mapCompany, type CompanyRaw } from './companies';
 import { getLeads, updateLead, deleteLead } from './leads';
 import { getDeals, updateDeal, deleteDeal } from './deals';
 import { getMembers, updateMember, deleteMember, type Member } from './members';
@@ -150,8 +152,24 @@ function personRules<T extends Person>(): MatchRule<T>[] {
   ];
 }
 
+/**
+ * Contacts, as the server finds them (DuplicateRules): the same email, the same phone
+ * however it is written, or the same name when neither phone nor company disagrees.
+ */
+function contactRules<T extends Person>(): MatchRule<T>[] {
+  return [
+    { reason: 'Same email', key: (p) => norm(p.email) },
+    { reason: 'Same phone', key: (p) => normalizePhone(p.phone) },
+    {
+      reason: 'Same name',
+      key: (p) => normalizeName(p.name),
+      same: (a, b) => !conflicts(normalizePhone(a.phone), normalizePhone(b.phone)) && !conflicts(company(a), company(b)),
+    },
+  ];
+}
+
 export function duplicateContactGroups<T extends Person>(contacts: T[]): DuplicateGroup<T>[] {
-  return groupDuplicates(contacts, personRules<T>());
+  return groupDuplicates(contacts, contactRules<T>());
 }
 
 export function duplicateLeadGroups<T extends Person>(leads: T[]): DuplicateGroup<T>[] {
@@ -211,11 +229,77 @@ export function duplicateHouseholdGroups<T extends { id: string; name?: string |
 }
 
 export async function findDuplicateContacts(): Promise<DuplicateGroup<Contact>[]> {
+  if (!servesDemoData()) return (await scanContactDuplicates()).groups;
   return duplicateContactGroups(await getContacts());
 }
 
 export async function findDuplicateCompanies(): Promise<DuplicateGroup<Company>[]> {
+  if (!servesDemoData()) return (await scanCompanyDuplicates()).groups;
   return duplicateCompanyGroups(await getCompanies());
+}
+
+// ── Found on the server, decided for the team ───────────────────────────────
+
+/** A group someone said is not the same records, by its records' ids, so it can be offered again. */
+export interface NotSameGroup {
+  key: string;
+  recordIds: string[];
+}
+
+/** A kind's duplicates, as the server found them, and the groups hidden by "not the same". */
+export interface DuplicateScan<T> {
+  groups: DuplicateGroup<T>[];
+  notSame: NotSameGroup[];
+}
+
+interface ApiScan<R> {
+  groups?: { key: string; reason: string; records?: R[] }[];
+  notSame?: { key: string; recordIds?: string[] }[];
+}
+
+function scanOf<R, T>(raw: ApiScan<R> | undefined, map: (record: R) => T): DuplicateScan<T> {
+  return {
+    groups: (raw?.groups ?? []).map((g) => ({ key: g.key, reason: g.reason, records: (g.records ?? []).map(map) })),
+    notSame: (raw?.notSame ?? []).map((g) => ({ key: g.key, recordIds: g.recordIds ?? g.key.split('|') })),
+  };
+}
+
+/** The workspace's duplicate contacts, found by the server over every contact. */
+export async function scanContactDuplicates(): Promise<DuplicateScan<Contact>> {
+  return scanOf(await authFetchJson<ApiScan<ApiContact>>('/api/duplicates/contacts'), mapContact);
+}
+
+/** The workspace's duplicate companies, found by the server. */
+export async function scanCompanyDuplicates(): Promise<DuplicateScan<Company>> {
+  return scanOf(await authFetchJson<ApiScan<CompanyRaw>>('/api/duplicates/companies'), mapCompany);
+}
+
+/** Two record ids, written one way whichever comes first. */
+export const pairKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+/** Every pair among these records. */
+export function pairsOf(ids: string[]): string[] {
+  const pairs: string[] = [];
+  ids.forEach((a, i) => ids.slice(i + 1).forEach((b) => pairs.push(pairKey(a, b))));
+  return pairs;
+}
+
+/** The pairs of this kind the workspace said are not the same. */
+export async function getNotSamePairs(kind: MergeKind): Promise<string[]> {
+  const pairs = await authFetchJson<{ recordIdA: string; recordIdB: string }[]>(`/api/duplicates/${kind}/not-same`);
+  return Array.isArray(pairs) ? pairs.map((p) => pairKey(p.recordIdA, p.recordIdB)) : [];
+}
+
+/** "These are not the same": never offered again, to anyone in the workspace. */
+export async function markNotSame(kind: MergeKind, recordIds: string[]): Promise<void> {
+  const res = await authFetch(`/api/duplicates/${kind}/not-same`, { method: 'POST', body: JSON.stringify({ recordIds }) });
+  await ensureOk(res);
+}
+
+/** Offer these records as possible duplicates again. */
+export async function clearNotSame(kind: MergeKind, recordIds: string[]): Promise<void> {
+  const res = await authFetch(`/api/duplicates/${kind}/not-same/clear`, { method: 'POST', body: JSON.stringify({ recordIds }) });
+  await ensureOk(res);
 }
 
 // ── What the merged record looks like ───────────────────────────────────────

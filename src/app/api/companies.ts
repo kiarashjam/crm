@@ -8,7 +8,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-type CompanyRaw = {
+export type CompanyRaw = {
   id: string;
   name: string;
   domain?: string | null;
@@ -20,7 +20,7 @@ type CompanyRaw = {
   createdAtUtc?: string | null;
   updatedAtUtc?: string | null;
 };
-function mapCompany(c: CompanyRaw): Company {
+export function mapCompany(c: CompanyRaw): Company {
   return {
     id: c.id,
     name: c.name,

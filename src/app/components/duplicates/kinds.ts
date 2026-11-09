@@ -10,7 +10,8 @@ import { servesDemoData } from '@/app/api/apiClient';
 import {
   CONTACT_MERGE_FIELDS, COMPANY_MERGE_FIELDS, DEAL_MERGE_FIELDS, HOUSEHOLD_MERGE_FIELDS, LEAD_MERGE_FIELDS, MEMBER_MERGE_FIELDS,
   duplicateCompanyGroups, duplicateContactGroups, duplicateDealGroups, duplicateHouseholdGroups, duplicateLeadGroups, duplicateMemberGroups,
-  type DuplicateGroup, type HouseholdForMerge, type MergeField, type MergeKind,
+  scanCompanyDuplicates, scanContactDuplicates,
+  type DuplicateGroup, type DuplicateScan, type HouseholdForMerge, type MergeField, type MergeKind,
 } from '@/app/api/dedupe';
 import { getHouseholdMembers, getHouseholds } from '@/app/api/households';
 import { getContacts } from '@/app/api/contacts';
@@ -30,6 +31,11 @@ export interface DuplicateKind<T extends { id: string }> {
   icon: ElementType;
   load: () => Promise<T[]>;
   group: (records: T[]) => DuplicateGroup<T>[];
+  /**
+   * The server's own search, for the kinds it finds: over every record, with the team's
+   * "not the same" decisions applied. Demo mode uses load and group instead.
+   */
+  scan?: () => Promise<DuplicateScan<T>>;
   fields: MergeField<T>[];
   title: (record: T) => string;
   subtitle: (record: T) => string | undefined;
@@ -63,6 +69,7 @@ export const CONTACT_DUPLICATES: DuplicateKind<Contact> = {
   icon: Users,
   load: async () => withCompanyNames(await getContacts()),
   group: duplicateContactGroups,
+  scan: scanContactDuplicates,
   fields: CONTACT_MERGE_FIELDS,
   title: (c) => c.name || c.email || 'Unnamed contact',
   subtitle: (c) => [c.email, c.companyName].filter(Boolean).join(' · ') || c.phone,
@@ -82,6 +89,7 @@ export const COMPANY_DUPLICATES: DuplicateKind<Company> = {
   icon: Building2,
   load: () => getCompanies(),
   group: duplicateCompanyGroups,
+  scan: scanCompanyDuplicates,
   fields: COMPANY_MERGE_FIELDS,
   title: (c) => c.name || c.domain || 'Unnamed company',
   subtitle: (c) => [c.domain || c.website, c.location].filter(Boolean).join(' · ') || c.industry,

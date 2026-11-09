@@ -1,9 +1,20 @@
-// The duplicates on a list page: every record of its kind, loaded on its own so a
-// paged list still sees them all, grouped, less any the person said are not the same.
+// The duplicates on a list page: every record of its kind, grouped, less any the team said
+// are not the same.
+//
+// Against the server, contacts and companies are found by the server itself (spec.scan),
+// over every record; the other kinds are loaded whole and grouped here. Either way "not
+// the same" is a decision kept on the server for the whole workspace, so a colleague, or
+// the same person on another device, is not asked about that pair again. In demo mode the
+// decisions stay in this browser, as everything else does.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { servesDemoData } from '@/app/api/apiClient';
 import { onDataChanged } from '@/app/api/dataChanged';
-import type { DuplicateGroup } from '@/app/api/dedupe';
+import {
+  clearNotSame as clearNotSameOnServer, getNotSamePairs, markNotSame as markNotSameOnServer, pairsOf,
+  type DuplicateGroup, type NotSameGroup,
+} from '@/app/api/dedupe';
 import type { DuplicateKind } from './kinds';
 
 /** Wait for the page itself to settle before reading the whole list. */
@@ -31,12 +42,14 @@ function writeNotSame(kind: string, keys: Set<string>): void {
   }
 }
 
+const idsOf = (key: string) => key.split('|').filter(Boolean);
+
 export interface DuplicateGroups<T> {
   /** Groups still to be dealt with, most records first. */
   groups: DuplicateGroup<T>[];
   /** Whether the list has been read at least once. */
   loaded: boolean;
-  /** Groups the person said are not the same, and so are not shown. */
+  /** Groups the team said are not the same, and so are not shown. */
   notSameCount: number;
   /** Offer the groups marked "not the same" again. */
   clearNotSame: () => void;
@@ -44,7 +57,7 @@ export interface DuplicateGroups<T> {
   extra: number;
   /** Look again now, after a merge. */
   refresh: () => Promise<void>;
-  /** "These are not the same": never offered again. */
+  /** "These are not the same": never offered again, to anyone in the workspace. */
   markNotSame: (keys: string[]) => void;
 }
 
@@ -52,17 +65,39 @@ export function useDuplicateGroups<T extends { id: string }>(
   spec: DuplicateKind<T>,
   { enabled = true, delayMs = FIRST_LOOK_MS }: { enabled?: boolean; delayMs?: number } = {},
 ): DuplicateGroups<T> {
+  const onServer = !servesDemoData();
   const [records, setRecords] = useState<T[]>([]);
+  // What the server found, for the kinds it finds itself.
+  const [scanned, setScanned] = useState<{ groups: DuplicateGroup<T>[]; notSame: NotSameGroup[] } | null>(null);
+  // The team's decisions, for the kinds grouped here.
+  const [decided, setDecided] = useState<Set<string> | null>(null);
+  const [notSameHere, setNotSameHere] = useState<Set<string>>(() => readNotSame(spec.kind));
+  // Hidden as soon as someone decides, before the server's answer comes back.
+  const [justDecided, setJustDecided] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);
-  const [notSame, setNotSame] = useState<Set<string>>(() => readNotSame(spec.kind));
   const alive = useRef(true);
   const loading = useRef<Promise<void> | null>(null);
 
+  const read = useCallback(async () => {
+    if (onServer && spec.scan) {
+      const scan = await spec.scan();
+      if (alive.current) setScanned(scan);
+      return;
+    }
+    const [list, pairs] = await Promise.all([
+      spec.load(),
+      // Finding duplicates is a help: without the decisions, nothing is hidden.
+      onServer ? getNotSamePairs(spec.kind).catch(() => null) : Promise.resolve(null),
+    ]);
+    if (!alive.current) return;
+    setRecords(Array.isArray(list) ? list : []);
+    setDecided(pairs ? new Set(pairs) : null);
+  }, [spec, onServer]);
+
   const refresh = useCallback(async () => {
     if (loading.current) return loading.current;
-    const run = spec
-      .load()
-      .then((list) => { if (alive.current) setRecords(Array.isArray(list) ? list : []); })
+    const run = read()
+      .then(() => { if (alive.current) setJustDecided(new Set()); })
       // Finding duplicates is a help, never a reason for the page to fail.
       .catch(() => undefined)
       .finally(() => {
@@ -71,7 +106,7 @@ export function useDuplicateGroups<T extends { id: string }>(
       });
     loading.current = run;
     return run;
-  }, [spec]);
+  }, [read]);
 
   useEffect(() => {
     alive.current = true;
@@ -90,25 +125,54 @@ export function useDuplicateGroups<T extends { id: string }>(
     };
   }, [enabled, delayMs, refresh]);
 
-  const all = useMemo(() => spec.group(records), [spec, records]);
-  const groups = useMemo(() => all.filter((g) => !notSame.has(g.key)), [all, notSame]);
-  const notSameCount = all.length - groups.length;
+  const { groups, hidden } = useMemo(() => {
+    if (scanned) {
+      return { groups: scanned.groups.filter((g) => !justDecided.has(g.key)), hidden: scanned.notSame };
+    }
+    const all = spec.group(records);
+    // A group is hidden when every pair in it was said to be not the same; a new record
+    // that looks like one of them brings the group back.
+    const isHidden = decided
+      ? (g: DuplicateGroup<T>) => justDecided.has(g.key) || pairsOf(g.records.map((r) => r.id)).every((p) => decided.has(p))
+      : (g: DuplicateGroup<T>) => notSameHere.has(g.key);
+    return {
+      groups: all.filter((g) => !isHidden(g)),
+      hidden: all.filter(isHidden).map((g) => ({ key: g.key, recordIds: g.records.map((r) => r.id) })),
+    };
+  }, [scanned, spec, records, decided, notSameHere, justDecided]);
+  const notSameCount = hidden.length;
 
   const clearNotSame = useCallback(() => {
-    const next = new Set(notSame);
-    all.forEach((g) => next.delete(g.key));
-    writeNotSame(spec.kind, next);
-    setNotSame(next);
-  }, [all, notSame, spec.kind]);
+    if (!onServer) {
+      const next = new Set(notSameHere);
+      hidden.forEach((g) => next.delete(g.key));
+      writeNotSame(spec.kind, next);
+      setNotSameHere(next);
+      return;
+    }
+    void Promise.all(hidden.map((g) => clearNotSameOnServer(spec.kind, g.recordIds)))
+      .catch((err: unknown) => { toast.error(err instanceof Error && err.message ? err.message : 'They could not be offered again.'); })
+      .finally(() => { void refresh(); });
+  }, [onServer, notSameHere, hidden, spec.kind, refresh]);
 
   const markNotSame = useCallback((keys: string[]) => {
-    setNotSame((current) => {
-      const next = new Set(current);
-      keys.forEach((k) => next.add(k));
-      writeNotSame(spec.kind, next);
-      return next;
-    });
-  }, [spec.kind]);
+    if (!onServer) {
+      setNotSameHere((current) => {
+        const next = new Set(current);
+        keys.forEach((k) => next.add(k));
+        writeNotSame(spec.kind, next);
+        return next;
+      });
+      return;
+    }
+    setJustDecided((current) => new Set([...current, ...keys]));
+    void Promise.all(keys.map((key) => markNotSameOnServer(spec.kind, idsOf(key))))
+      .catch((err: unknown) => {
+        toast.error(err instanceof Error && err.message ? err.message : 'The decision was not saved.');
+        setJustDecided((current) => new Set([...current].filter((k) => !keys.includes(k))));
+      })
+      .finally(() => { void refresh(); });
+  }, [onServer, spec.kind, refresh]);
 
   const extra = groups.reduce((n, g) => n + g.records.length - 1, 0);
   return { groups, loaded, notSameCount, clearNotSame, extra, refresh, markNotSame };
