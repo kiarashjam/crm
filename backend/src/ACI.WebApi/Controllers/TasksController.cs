@@ -22,15 +22,17 @@ public class TasksController : ControllerBase
     private readonly ITaskService _taskService;
     private readonly ICurrentUserService _currentUser;
     private readonly AppDbContext _db;
+    private readonly ICollaborationNotifier _notifier;
 
     /// <summary>
     /// Initializes a new instance of the TasksController.
     /// </summary>
-    public TasksController(ITaskService taskService, ICurrentUserService currentUser, AppDbContext db)
+    public TasksController(ITaskService taskService, ICurrentUserService currentUser, AppDbContext db, ICollaborationNotifier notifier)
     {
         _taskService = taskService;
         _currentUser = currentUser;
         _db = db;
+        _notifier = notifier;
     }
 
     /// <summary>
@@ -566,6 +568,10 @@ public class TasksController : ControllerBase
 
         _db.TaskComments.Add(comment);
         await _db.SaveChangesAsync(ct);
+
+        // Whoever works the task, whoever made it, and anyone the comment @mentions hear of it.
+        var task = await _db.TaskItems.AsNoTracking().FirstAsync(t => t.Id == id, ct);
+        await _notifier.TaskCommentedAsync(task, comment.Id, comment.Body, userId.Value, ct);
 
         // Reload with Author
         var author = await _db.Users.FindAsync(new object[] { userId.Value }, ct);

@@ -123,7 +123,7 @@ public sealed class AutomationEngine : IAutomationEngine
             switch (type)
             {
                 case "create_task":
-                    await CreateTaskAsync(config, evt, ct);
+                    await CreateTaskAsync(rule, config, evt, ct);
                     break;
                 case "notify":
                     await NotifyAsync(rule, config, evt, ct);
@@ -141,7 +141,7 @@ public sealed class AutomationEngine : IAutomationEngine
         }
     }
 
-    private async Task CreateTaskAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    private async Task CreateTaskAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
         var title = Value(config, "title");
         if (string.IsNullOrWhiteSpace(title)) title = "Follow up";
@@ -157,6 +157,8 @@ public sealed class AutomationEngine : IAutomationEngine
             LeadId = evt.LeadId,
             DealId = evt.DealId,
             AssigneeId = await OwnerAsync(evt, ct),
+            // The rep it goes to hears it came from this rule, not from whoever set it off.
+            MadeBy = $"the automation \"{rule.Name}\"",
         }, ct);
     }
 

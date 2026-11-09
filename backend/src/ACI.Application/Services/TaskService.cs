@@ -14,12 +14,14 @@ public class TaskService : ITaskService
 {
     private readonly ITaskRepository _repository;
     private readonly IWorkspaceRecords _records;
+    private readonly ICollaborationNotifier _notifier;
     private readonly ILogger<TaskService> _logger;
 
-    public TaskService(ITaskRepository repository, IWorkspaceRecords records, ILogger<TaskService> logger)
+    public TaskService(ITaskRepository repository, IWorkspaceRecords records, ICollaborationNotifier notifier, ILogger<TaskService> logger)
     {
         _repository = repository;
         _records = records;
+        _notifier = notifier;
         _logger = logger;
     }
 
@@ -215,7 +217,9 @@ public class TaskService : ITaskService
             };
             
             entity = await _repository.AddAsync(entity, ct);
-            
+            // A task made for someone else tells them, whoever or whatever made it.
+            await _notifier.TaskAssignedAsync(entity, userId, request.MadeBy, ct);
+
             _logger.LogInformation("Successfully created task {TaskId} with title '{Title}'", entity.Id, entity.Title);
             return Map(entity);
         }
@@ -253,7 +257,8 @@ public class TaskService : ITaskService
             request.ClearAssignee == true ? null : request.AssigneeId ?? existing.AssigneeId,
             userId, organizationId, ct);
         if (links.IsFailure) return links.Error;
-        
+        var assigneeBefore = existing.AssigneeId;
+
         try
         {
             // Update title if provided (reject empty/whitespace titles)
@@ -361,7 +366,9 @@ public class TaskService : ITaskService
                 _logger.LogWarning("Task {TaskId} update returned null", id);
                 return DomainErrors.Task.NotFound;
             }
-            
+            if (existing.AssigneeId != assigneeBefore)
+                await _notifier.TaskAssignedAsync(existing, userId, null, ct);
+
             _logger.LogInformation("Successfully updated task {TaskId}", id);
             return Map(existing);
         }
@@ -434,46 +441,60 @@ public class TaskService : ITaskService
 
     /// <inheritdoc />
     public async Task<Result<TaskDto>> AssignTaskAsync(
-        Guid id, 
-        Guid userId, 
-        Guid? organizationId, 
-        Guid? assigneeId, 
+        Guid id,
+        Guid userId,
+        Guid? organizationId,
+        Guid? assigneeId,
         CancellationToken ct = default)
     {
+        var (result, handedOver) = await AssignAsync(id, userId, organizationId, assigneeId, ct);
+        if (handedOver != null) await _notifier.TaskAssignedAsync(handedOver, userId, null, ct);
+        return result;
+    }
+
+    /// <summary>
+    /// Gives the task to <paramref name="assigneeId"/>. Also returns the task when that
+    /// is a change of hands, for the caller to tell the new assignee: one at a time, or
+    /// all at once after a bulk change.
+    /// </summary>
+    private async Task<(Result<TaskDto> Result, TaskItem? HandedOver)> AssignAsync(
+        Guid id, Guid userId, Guid? organizationId, Guid? assigneeId, CancellationToken ct)
+    {
         _logger.LogInformation("Assigning task {TaskId} to user {AssigneeId}", id, assigneeId);
-        
+
         var existing = await _repository.GetByIdWithRelationsAsync(id, userId, organizationId, ct);
-        
+
         if (existing == null)
         {
             _logger.LogWarning("Task {TaskId} not found for assignment", id);
-            return DomainErrors.Task.NotFound;
+            return (DomainErrors.Task.NotFound, null);
         }
 
         var links = await CheckLinksAsync(existing, existing.LeadId, existing.DealId, existing.ContactId, assigneeId, userId, organizationId, ct);
-        if (links.IsFailure) return links.Error;
-        
+        if (links.IsFailure) return (links.Error, null);
+        var assigneeBefore = existing.AssigneeId;
+
         try
         {
             existing.AssigneeId = assigneeId;
             existing.UpdatedAtUtc = DateTime.UtcNow;
             existing.UpdatedByUserId = userId;
-            
+
             existing = await _repository.UpdateAsync(existing, userId, organizationId, ct);
-            
+
             if (existing == null)
             {
                 _logger.LogWarning("Task {TaskId} assignment returned null", id);
-                return DomainErrors.Task.NotFound;
+                return (DomainErrors.Task.NotFound, null);
             }
-            
+
             _logger.LogInformation("Successfully assigned task {TaskId} to user {AssigneeId}", id, assigneeId);
-            return Map(existing);
+            return (Map(existing), assigneeId != null && assigneeId != assigneeBefore ? existing : null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error assigning task {TaskId}", id);
-            return DomainErrors.General.ServerError;
+            return (DomainErrors.General.ServerError, null);
         }
     }
 
@@ -726,23 +747,32 @@ public class TaskService : ITaskService
 
         int succeeded = 0;
         int failed = 0;
+        var handedOver = new List<TaskItem>();
 
         foreach (var taskId in request.TaskIds)
         {
             try
             {
-                Result result = request.Action.ToLowerInvariant() switch
+                Result result;
+                if (action == "assignee")
                 {
-                    "status" when request.Status != null => 
-                        await UpdateStatusAsync(taskId, userId, organizationId, request.Status, ct),
-                    "priority" when request.Priority != null =>
-                        await UpdatePriorityAsync(taskId, userId, organizationId, request.Priority, ct),
-                    "assignee" =>
-                        await AssignTaskAsync(taskId, userId, organizationId, request.AssigneeId, ct),
-                    "delete" =>
-                        await DeleteAsync(taskId, userId, organizationId, ct),
-                    _ => DomainErrors.General.ValidationError
-                };
+                    var (assigned, task) = await AssignAsync(taskId, userId, organizationId, request.AssigneeId, ct);
+                    if (task != null) handedOver.Add(task);
+                    result = assigned;
+                }
+                else
+                {
+                    result = action switch
+                    {
+                        "status" when request.Status != null =>
+                            await UpdateStatusAsync(taskId, userId, organizationId, request.Status, ct),
+                        "priority" when request.Priority != null =>
+                            await UpdatePriorityAsync(taskId, userId, organizationId, request.Priority, ct),
+                        "delete" =>
+                            await DeleteAsync(taskId, userId, organizationId, ct),
+                        _ => DomainErrors.General.ValidationError
+                    };
+                }
 
                 if (result.IsSuccess) succeeded++;
                 else failed++;
@@ -752,6 +782,10 @@ public class TaskService : ITaskService
                 failed++;
             }
         }
+
+        // One notification for the lot, not one per task handed over.
+        if (request.AssigneeId is Guid newAssignee && handedOver.Count > 0)
+            await _notifier.TasksAssignedAsync(newAssignee, handedOver, userId, ct);
 
         _logger.LogInformation("Bulk {Action} completed: {Succeeded}/{Total} succeeded", 
             request.Action, succeeded, request.TaskIds.Length);

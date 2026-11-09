@@ -17,6 +17,7 @@ public class ActivityService : IActivityService
     private readonly IDealRepository _dealRepository;
     private readonly ILeadAutomation _automation;
     private readonly ISequenceRepository _sequences;
+    private readonly ICollaborationNotifier _notifier;
     private readonly ILogger<ActivityService> _logger;
 
     private static readonly HashSet<string> ReplyTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -36,6 +37,7 @@ public class ActivityService : IActivityService
         IDealRepository dealRepository,
         ILeadAutomation automation,
         ISequenceRepository sequences,
+        ICollaborationNotifier notifier,
         ILogger<ActivityService> logger)
     {
         _repository = repository;
@@ -44,6 +46,7 @@ public class ActivityService : IActivityService
         _dealRepository = dealRepository;
         _automation = automation;
         _sequences = sequences;
+        _notifier = notifier;
         _logger = logger;
     }
 
@@ -240,6 +243,9 @@ public class ActivityService : IActivityService
             _logger.LogInformation("Successfully created activity {ActivityId} of type '{Type}'", entity.Id, entity.Type);
             // Re-fetch so the DTO can include the related entity and creator-user names.
             var fetched = await _repository.GetByIdAsync(entity.Id, userId, organizationId, ct);
+            // "@Anna, can you call them?" in a note tells Anna. A sequence's own lines mention nobody.
+            if (!request.IsAutomated)
+                await _notifier.ActivityMentionsAsync(fetched ?? entity, RecordName(fetched), null, userId, ct);
             return Map(fetched ?? entity);
         }
         catch (Exception ex)
@@ -295,6 +301,10 @@ public class ActivityService : IActivityService
             return DomainErrors.Activity.NotFound;
         }
 
+        // What it said before the edit: only someone the edit newly mentions is told.
+        var textBefore = Mentions.TextOf(existing.Subject, existing.Body);
+        var recordName = RecordName(existing);
+
         try
         {
             var activityType = (request.Type ?? existing.Type).ToLowerInvariant();
@@ -338,6 +348,8 @@ public class ActivityService : IActivityService
                 return DomainErrors.General.ServerError;
             }
 
+            await _notifier.ActivityMentionsAsync(existing, recordName, textBefore, userId, ct);
+
             _logger.LogInformation("Successfully updated activity {ActivityId}", id);
             return Map(existing);
         }
@@ -376,6 +388,10 @@ public class ActivityService : IActivityService
             _logger.LogWarning(ex, "Activity {ActivityId} was saved, but its sequence could not be stopped", entity.Id);
         }
     }
+
+    /// <summary>The lead, deal or contact the activity is on, by name, when it was read with them.</summary>
+    private static string? RecordName(Activity? activity) =>
+        activity?.Lead?.Name ?? activity?.Deal?.Name ?? activity?.Contact?.Name;
 
     private static ActivityDto Map(Activity e) =>
         new ActivityDto(

@@ -40,6 +40,7 @@ public class ActivityServiceTests
             _dealRepositoryMock.Object,
             automation.Object,
             sequences.Object,
+            Mock.Of<ICollaborationNotifier>(),
             _loggerMock.Object);
     }
 

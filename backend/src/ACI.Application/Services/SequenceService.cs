@@ -330,6 +330,7 @@ public sealed class SequenceService : ISequenceService
                 LeadId = enrollment.TargetType == "lead" ? enrollment.TargetId : null,
                 ContactId = enrollment.TargetType == "contact" ? enrollment.TargetId : null,
                 AssigneeId = target.OwnerUserId,
+                MadeBy = $"the sequence \"{sequence.Name}\"",
             }, ct);
             return created.IsSuccess ? StepOutcome.Done : StepOutcome.Retry;
         }

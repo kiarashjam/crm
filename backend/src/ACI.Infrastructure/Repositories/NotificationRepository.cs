@@ -34,8 +34,18 @@ public sealed class NotificationRepository : INotificationRepository
 
     public async Task<Notification> AddAsync(Notification notification, CancellationToken ct = default)
     {
-        _db.Notifications.Add(notification);
-        await _db.SaveChangesAsync(ct);
+        var entry = _db.Notifications.Add(notification);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            // Refused (a duplicate SourceKey, say): it must not stay queued, or the next
+            // save in this request, the change the notification was about, fails with it.
+            entry.State = EntityState.Detached;
+            throw;
+        }
         return notification;
     }
 
