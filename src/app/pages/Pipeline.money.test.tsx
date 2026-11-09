@@ -6,12 +6,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import type { Deal } from '@/app/api/types';
+import type { Deal, DealBoardQuery } from '@/app/api/types';
 import { formatMoney } from '@/app/lib/money';
+import { demoBoard } from '@/app/api/dealBoardDemo';
 
 const api = vi.hoisted(() => ({
   getDeals: vi.fn(), updateDeal: vi.fn(), createDeal: vi.fn(), deleteDeal: vi.fn(),
   getCompanies: vi.fn(), getContacts: vi.fn(), getPipelines: vi.fn(), getOrgMembers: vi.fn(),
+  getDealBoard: vi.fn(), getDealBoardColumn: vi.fn(),
 }));
 vi.mock('@/app/api', async () => ({ ...(await vi.importActual<typeof import('@/app/api')>('@/app/api')), ...api }));
 vi.mock('@/app/api/activities', () => ({ getActivitiesByDeal: async () => [], createActivity: vi.fn() }));
@@ -45,13 +47,17 @@ beforeEach(() => {
   api.getCompanies.mockResolvedValue([]);
   api.getPipelines.mockResolvedValue([]);
   api.getOrgMembers.mockResolvedValue([]);
-  api.getDeals.mockResolvedValue([
+  const deals = [
     deal({ name: 'Fondation Léman', value: '40000', amount: 40000, currency: 'CHF' }),
     deal({ name: 'Salon de Genève', value: '30000', amount: 30000, currency: 'EUR', stage: 'Negotiation' }),
     // Typed before amounts were numbers: its text says nothing to read.
     deal({ name: 'Vague', value: 'to be agreed', amount: null, currency: 'CHF' }),
     deal({ name: 'Signed gala', value: '10000', amount: 10000, currency: 'CHF', stage: 'Closed Won', isWon: true }),
-  ]);
+  ];
+  api.getDeals.mockResolvedValue(deals);
+  // The board and its figures come from the server, which adds them up per currency;
+  // the demo board here is built by the same rules.
+  api.getDealBoard.mockImplementation(async (query: DealBoardQuery) => demoBoard(deals, query, 'CHF'));
 });
 
 // The board loads four lists before it draws anything; wait for a deal on it.

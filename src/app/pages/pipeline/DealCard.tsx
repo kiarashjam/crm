@@ -23,7 +23,7 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import type { Deal } from './types';
 import { useMoney } from '@/app/hooks/useMoney';
-import { getDaysUntilClose } from './utils';
+import { daysSince, formatDays, getDaysUntilClose } from './utils';
 
 export const DEAL_CARD_TYPE = 'DEAL_CARD';
 
@@ -111,6 +111,9 @@ export const DealCard = forwardRef(function DealCard({
   const money = useMoney();
   const lastActivity = formatLastActivity(deal.lastActivityAtUtc);
   const daysToClose = getDaysUntilClose(deal.expectedCloseDateUtc, money.timeZone);
+  // How long it has sat in its stage, when the history says; and how long since anything happened.
+  const daysInStage = daysSince(deal.stageEnteredAtUtc);
+  const quietDays = daysSince(deal.idleSinceUtc);
 
   const [{ isDragging: drag }, dragRef] = useDrag(() => ({
     type: DEAL_CARD_TYPE,
@@ -181,6 +184,14 @@ export const DealCard = forwardRef(function DealCard({
                 {money.formatDeal(deal)}
               </span>
               {daysToClose !== null && <UrgencyBadge days={daysToClose} />}
+              {deal.isStale && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-800"
+                  title={quietDays !== null ? `No activity for ${formatDays(quietDays)}` : 'No recent activity'}
+                >
+                  <Clock className="h-3 w-3" aria-hidden /> Stale
+                </span>
+              )}
             </div>
             
             {/* Contact Info */}
@@ -218,6 +229,14 @@ export const DealCard = forwardRef(function DealCard({
                     <span className="text-[10px] font-medium">Task</span>
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* Time in stage, from the stage history */}
+            {daysInStage !== null && (
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-500">
+                <Calendar className="w-3 h-3" />
+                <span>In {stageName} {daysInStage === 0 ? 'since today' : `for ${formatDays(daysInStage)}`}</span>
               </div>
             )}
 

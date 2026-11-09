@@ -102,6 +102,20 @@ export function getDaysUntilClose(iso: string | undefined | null, timeZone: stri
   return daysBetween(todayKeyIn(timeZone, now), day);
 }
 
+/** Whole days from an instant until now, never below 0; null when there is no instant. */
+export function daysSince(iso: string | undefined | null, now: Date = new Date()): number | null {
+  if (!iso) return null;
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return null;
+  return Math.max(0, Math.floor((now.getTime() - then) / (24 * 60 * 60 * 1000)));
+}
+
+/** A number of days as people say it: "today", "1 day", "12 days". */
+export function formatDays(days: number): string {
+  if (days <= 0) return 'today';
+  return days === 1 ? '1 day' : `${days} days`;
+}
+
 /** A close date written as the day that was picked, wherever the viewer is. */
 export function formatCloseDate(iso: string, month: 'short' | 'long' = 'short'): string {
   return formatDay(iso, { month, day: 'numeric', year: 'numeric' });
