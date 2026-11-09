@@ -385,6 +385,16 @@ public class ContactService : IContactService
             "Unarchiving contact {ContactId} for user {UserId}",
             id, userId);
 
+        // A contact's email is unique among the workspace's active contacts. Someone may
+        // have been added again under the same address since this one was archived, and
+        // restoring it then broke that rule: the database refused, and the person saw
+        // "failed" with no reason. Archived contacts can now be listed and restored, so
+        // this is said plainly instead.
+        var contact = await _repository.GetByIdAsync(id, userId, organizationId, ct);
+        if (contact is { IsArchived: true }
+            && await _repository.EmailExistsAsync(contact.Email, userId, organizationId, id, ct))
+            return DomainErrors.Contact.UnarchiveDuplicateEmail(contact.Email.Trim());
+
         var unarchived = await _repository.UnarchiveAsync(id, userId, organizationId, ct);
         
         if (!unarchived)

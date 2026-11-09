@@ -100,6 +100,28 @@ public class ContactListOnServerTests
     }
 
     [Fact]
+    public async Task RestoringAnArchivedContactWhoseEmailIsTakenAgainSaysWhy()
+    {
+        Guid archived = Guid.Empty;
+        var s = await SeedAsync((db, user, org, _) =>
+        {
+            var old = Person(user, org, "Anna Keller", null, DateTime.UtcNow.AddYears(-1), archived: true);
+            old.Email = "anna@example.ch";
+            archived = old.Id;
+            var again = Person(user, org, "Anna Keller", null, DateTime.UtcNow);
+            again.Email = "Anna@Example.ch";
+            db.Contacts.AddRange(old, again);
+        });
+        using var _ = s.Factory;
+
+        var res = await s.Owner.PostAsync($"/api/contacts/{archived}/unarchive", null);
+
+        res.StatusCode.Should().Be(HttpStatusCode.Conflict, "the database allows one active contact per email, and refused with a 500");
+        (await res.Content.ReadAsStringAsync()).Should().Contain("Merge the two");
+        (await GetJson(s.Owner, $"/api/contacts/{archived}")).GetProperty("isArchived").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
     public async Task TheActivityFilterAndTheLastActivityOrderReadEveryContactsActivities()
     {
         var s = await SeedAsync((db, user, org, _) =>

@@ -339,8 +339,9 @@ export default function Contacts() {
           toast.error(messages.errors.generic);
         }
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (error) {
+      // The server says why, e.g. that an active contact already uses this email.
+      toast.error(error instanceof Error && error.message ? error.message : messages.errors.generic);
     }
   };
 

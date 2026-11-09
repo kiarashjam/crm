@@ -242,8 +242,9 @@ export default function ContactDetail() {
         const refreshed = await getContactById(contact.id);
         if (refreshed) setContact(refreshed);
       }
-    } catch {
-      toast.error('Failed to update archive status');
+    } catch (err) {
+      // The server says why, e.g. that an active contact already uses this email.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to update archive status');
     }
   };
 

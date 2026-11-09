@@ -97,6 +97,18 @@ describe('Contacts', () => {
     expect(screen.queryByText('Anna Keller')).toBeNull();
   });
 
+  it('says why an archived contact cannot be restored', async () => {
+    contactsApi.unarchiveContact.mockRejectedValue(new Error("An active contact already uses 'old@example.ch', so this one cannot be restored beside it."));
+    show('/contacts?status=archived');
+    await screen.findByText('Old Member');
+    const trigger = screen.getByText('Actions for Old Member').closest('button')!;
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Unarchive/ }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("An active contact already uses 'old@example.ch', so this one cannot be restored beside it."));
+    expect(contactsApi.unarchiveContact).toHaveBeenCalledWith('c9');
+  });
+
   it('exports every contact the list shows, through the server', async () => {
     show('/contacts?status=all&company=co1');
     await screen.findByText('Anna Keller');

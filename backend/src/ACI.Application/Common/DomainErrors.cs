@@ -248,6 +248,11 @@ public static class DomainErrors
         
         public static Error DuplicateEmailWithValue(string email) => new(
             "Contact.DuplicateEmail", $"A contact with email '{email}' already exists");
+
+        /// <summary>A 409: the code holds "Duplicate".</summary>
+        public static Error UnarchiveDuplicateEmail(string email) => new(
+            "Contact.DuplicateEmailOnRestore",
+            $"An active contact already uses '{email}', so this one cannot be restored beside it. Merge the two, or change one of the emails first");
     }
 
     /// <summary>

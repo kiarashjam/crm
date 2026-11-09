@@ -477,10 +477,14 @@ export async function archiveContact(id: string): Promise<boolean> {
   return contactStore.update(id, { isArchived: true } as Partial<Contact>) !== null;
 }
 
-/** Unarchive a contact. */
+/**
+ * Unarchive a contact. A refusal throws with the server's reason: another active contact
+ * may have been added under the same email since this one was archived.
+ */
 export async function unarchiveContact(id: string): Promise<boolean> {
   if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${id}/unarchive`, { method: 'POST' });
+    await ensureOk(res);
     return res.status === 204;
   }
   await delay(200);
