@@ -2,6 +2,7 @@
 // print-to-PDF view that needs no extra dependency).
 
 import type { Activity } from '@/app/api/types';
+import { activityFactsLine, activityTime } from './activityFacts';
 import type { CsvColumn } from './exportCsv';
 
 function fmtDateTime(iso?: string): string {
@@ -24,8 +25,10 @@ export function activityRelatedTo(a: Activity): string {
 
 /** Columns for the CSV export (opens directly in Google Sheets / Excel). */
 export const activityCsvColumns: CsvColumn<Activity>[] = [
-  { header: 'Date', value: (a) => fmtDateTime(a.createdAt) },
+  // When it happened; a call logged late is not dated the day it was written down.
+  { header: 'Date', value: (a) => fmtDateTime(activityTime(a)) },
   { header: 'Type', value: (a) => activityTypeLabel(a.type) },
+  { header: 'How it went', value: (a) => activityFactsLine(a) },
   { header: 'Subject', value: (a) => a.subject },
   { header: 'Details', value: (a) => a.body },
   { header: 'Related to', value: (a) => activityRelatedTo(a) },
@@ -50,8 +53,8 @@ export function printActivitiesPdf(rows: Activity[], meta: { subtitle?: string }
     .map(
       (a) => `
       <tr>
-        <td class="date">${esc(fmtDateTime(a.createdAt))}</td>
-        <td><span class="type">${esc(activityTypeLabel(a.type))}</span></td>
+        <td class="date">${esc(fmtDateTime(activityTime(a)))}</td>
+        <td><span class="type">${esc(activityTypeLabel(a.type))}</span>${activityFactsLine(a) ? `<div class="body">${esc(activityFactsLine(a))}</div>` : ''}</td>
         <td>${esc(a.subject) || '<span class="muted">—</span>'}${a.body ? `<div class="body">${esc(a.body)}</div>` : ''}</td>
         <td>${esc(activityRelatedTo(a)) || '<span class="muted">—</span>'}</td>
         <td>${esc(a.createdByName || a.createdByEmail) || '<span class="muted">—</span>'}</td>

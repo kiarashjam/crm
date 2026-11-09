@@ -74,6 +74,8 @@ import { AddLeadDialog } from './leads/AddLeadDialog';
 import { StatusFilterMultiSelect } from './leads/components/StatusFilterMultiSelect';
 import { BulkActionsBar } from './leads/components/BulkActionsBar';
 import { QuickAddLeadDialog } from './leads/components/QuickAddLeadDialog';
+import type { QuickLogPayload } from './leads/components/QuickLogPopover';
+import { activityTime } from '@/app/lib/activityFacts';
 import { LeadGalleryCard } from './leads/LeadGalleryCard';
 import { useLeadStatusSync } from './leads/useLeadStatusSync';
 import {
@@ -555,7 +557,7 @@ export default function Leads() {
         if (bucket) bucket.push(activity);
       }
       for (const bucket of map.values()) {
-        bucket.sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt));
+        bucket.sort((x, y) => Date.parse(activityTime(y)) - Date.parse(activityTime(x)));
       }
       setPageActivities(map);
     } catch {
@@ -1149,20 +1151,16 @@ export default function Leads() {
   // Inline quick-log activity from the card.
   const handleQuickLogActivity = async (
     lead: Lead,
-    payload: { type: string; body: string },
+    payload: QuickLogPayload,
   ) => {
-    await createActivity({
-      type: payload.type,
-      body: payload.body,
-      leadId: lead.id,
-    });
+    await createActivity({ ...payload, leadId: lead.id });
     try {
       const list = await getActivitiesByLead(lead.id);
       setPageActivities((prev) => {
         const next = new Map(prev);
         next.set(
           lead.id,
-          [...list].sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt)),
+          [...list].sort((x, y) => Date.parse(activityTime(y)) - Date.parse(activityTime(x))),
         );
         return next;
       });

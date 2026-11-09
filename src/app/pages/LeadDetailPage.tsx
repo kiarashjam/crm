@@ -53,6 +53,8 @@ import { loadLeadAssignments, setLeadAssignment } from './leads/leadAssignmentSt
 import type { LeadForm } from './leads/types';
 import { InlineField } from './leads/detail/InlineField';
 import { ActivityTimeline } from './leads/detail/ActivityTimeline';
+import { withActivity } from '@/app/components/RecordActivity';
+import { activityTime, isOurResponse, type ActivityFactsPayload } from '@/app/lib/activityFacts';
 import { ScoreGauge } from './leads/detail/ScoreGauge';
 import { SalesTrackerCard } from './leads/detail/SalesTrackerCard';
 import { ReferralCard } from './leads/detail/ReferralCard';
@@ -508,10 +510,15 @@ export default function LeadDetailPage() {
 
   // Logging an outreach touch (call/email/meeting) advances "Last contacted"
   // so the hero metric reflects reality. Optimistic locally; the PUT is
-  // best-effort (kept for the session even if it fails).
-  const bumpLastContacted = async () => {
+  // best-effort (kept for the session even if it fails). It moves to when the
+  // touch happened, never back: a call logged late for this morning does not
+  // undo the one made since, as on the server.
+  const bumpLastContacted = async (happenedAt?: string) => {
     if (!lead) return;
-    const when = new Date().toISOString();
+    const at = happenedAt ? Date.parse(happenedAt) : Date.now();
+    const last = lead.lastContactedAt ? Date.parse(lead.lastContactedAt) : NaN;
+    if (!Number.isNaN(last) && last >= at) return;
+    const when = new Date(Math.min(at, Date.now())).toISOString();
     setLead((prev) => (prev ? { ...prev, lastContactedAt: when } : prev));
     try {
       await updateLead(lead.id, { lastContactedAt: when });
@@ -532,11 +539,14 @@ export default function LeadDetailPage() {
   };
 
   // Quick-log via popover (from card) — also used by the inline note + email flows.
-  const logActivity = async (params: { type: string; subject?: string; body: string }) => {
+  const logActivity = async (params: { type: string; subject?: string; body: string } & ActivityFactsPayload) => {
     if (!lead) return;
     const a = await createActivity({ ...params, leadId: lead.id });
-    if (a) setActivities((prev) => [a, ...prev]);
-    if (OUTREACH_ACTIVITY_TYPES.has(params.type)) void bumpLastContacted();
+    if (a) setActivities((prev) => withActivity(prev, a));
+    // An email they sent, or their call nobody picked up, is not us getting back to them.
+    if (OUTREACH_ACTIVITY_TYPES.has(params.type) && isOurResponse(params.type, params.direction, params.outcome)) {
+      void bumpLastContacted(a ? activityTime(a) : params.occurredAtUtc);
+    }
   };
 
   const handleAddNote = async () => {

@@ -52,7 +52,8 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroSecondary } from '@/app/components/PageHero';
 import { RecordAvatar, RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
-import { ActivityLogForm, ActivityRow } from '@/app/components/RecordActivity';
+import { ActivityLogForm, ActivityRow, withActivity, type ActivityDraft } from '@/app/components/RecordActivity';
+import { factsPayload } from '@/app/lib/activityFacts';
 
 export default function ContactDetail() {
   const money = useMoney();
@@ -64,7 +65,7 @@ export default function ContactDetail() {
   usePageLoading(loading);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
+  const [activityForm, setActivityForm] = useState<ActivityDraft>({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
   const [contactTasks, setContactTasks] = useState<TaskItem[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -201,14 +202,16 @@ export default function ContactDetail() {
         subject: activityForm.subject.trim(),
         body: activityForm.body.trim() || undefined,
         contactId: id,
+        ...factsPayload(activityForm.type, activityForm.facts),
       });
       if (activity) {
-        setActivities((prev) => [activity, ...prev]);
+        setActivities((prev) => withActivity(prev, activity));
         setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
       }
-    } catch {
-      toast.error('Failed to log activity');
+    } catch (err) {
+      // The server says what it refused, a time in the future say, rather than only that it failed.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to log activity');
     } finally {
       setSavingActivity(false);
     }

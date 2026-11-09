@@ -1,6 +1,8 @@
 import type { FormEvent } from 'react';
 import { Activity as ActivityIcon, CheckCircle2, Mail, Pencil, Phone, Plus, Users } from 'lucide-react';
 import type { Activity } from '@/app/api/types';
+import { ActivityFactsFields } from '@/app/components/ActivityFactsFields';
+import { activityFactsLine, activityTime, factsProblem, EMPTY_FACTS, type ActivityFactsDraft } from '@/app/lib/activityFacts';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -37,9 +39,21 @@ export function ActivityKindIcon({ type }: { type: string | undefined }) {
   );
 }
 
+/**
+ * A newly logged activity in its place in a list that runs newest first by when things
+ * happened: a call logged now for this morning goes below what happened since.
+ */
+export function withActivity(list: Activity[], activity: Activity): Activity[] {
+  const at = Date.parse(activityTime(activity));
+  const index = list.findIndex((other) => Date.parse(activityTime(other)) <= at);
+  return index === -1 ? [...list, activity] : [...list.slice(0, index), activity, ...list.slice(index)];
+}
+
 /** One logged activity in a record's list, rising into place in turn. */
 export function ActivityRow({ activity, index }: { activity: Activity; index: number }) {
   const kind = activityKind(activity.type);
+  const facts = activityFactsLine(activity);
+  const when = new Date(activityTime(activity));
   return (
     <StaggerItem
       as="li"
@@ -50,7 +64,11 @@ export function ActivityRow({ activity, index }: { activity: Activity; index: nu
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{activity.subject || kind}</p>
         <p className="mt-0.5 text-xs text-slate-500">
-          {kind} &middot; {new Date(activity.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+          {kind}{facts && <> &middot; {facts}</>} &middot;{' '}
+          <time dateTime={when.toISOString()}>
+            {when.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}{' '}
+            {when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+          </time>
           {activity.createdByName && <> &middot; by {activity.createdByName}</>}
         </p>
         {activity.body && <p className="mt-1 line-clamp-3 text-xs text-slate-600 dark:text-slate-400">{activity.body}</p>}
@@ -63,6 +81,8 @@ export interface ActivityDraft {
   type: string;
   subject: string;
   body: string;
+  /** When it happened and how it went; absent means now, with nothing more said. */
+  facts?: ActivityFactsDraft;
 }
 
 /** The "log an activity" box at the top of a record's activity list. */
@@ -72,9 +92,17 @@ export function ActivityLogForm({ draft, onChange, saving, onSubmit }: {
   saving: boolean;
   onSubmit: (e: FormEvent) => void;
 }) {
+  const facts = draft.facts ?? EMPTY_FACTS;
+  const problem = factsProblem(draft.type, facts);
   return (
     <form
-      onSubmit={onSubmit}
+      onSubmit={(e) => {
+        if (problem) {
+          e.preventDefault();
+          return;
+        }
+        onSubmit(e);
+      }}
       className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 transition-[border-color,box-shadow] duration-300 focus-within:border-emerald-300 focus-within:shadow-md focus-within:shadow-emerald-500/10 dark:border-slate-600 dark:bg-slate-700/50"
     >
       <div className="mb-2 flex gap-2">
@@ -102,11 +130,18 @@ export function ActivityLogForm({ draft, onChange, saving, onSubmit }: {
         className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-slate-600 dark:bg-slate-800"
         rows={2}
       />
+      <ActivityFactsFields
+        className="mt-2"
+        type={draft.type}
+        value={facts}
+        onChange={(next) => onChange({ ...draft, facts: next })}
+      />
+      {problem && <p role="alert" className="mt-2 text-xs text-rose-600">{problem}</p>}
       <div className="mt-2 flex justify-end">
         <Button
           type="submit"
           size="sm"
-          disabled={saving || !draft.subject.trim()}
+          disabled={saving || !draft.subject.trim() || !!problem}
           className="gap-1 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-sm hover:opacity-95"
         >
           <Plus className="h-3.5 w-3.5" />

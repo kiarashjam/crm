@@ -17,7 +17,8 @@ import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { AssignPopover } from './components/AssignPopover';
 import { DerivedStatusBadge } from './components/DerivedStatusBadge';
 import { InlineSalesEditorPopover } from './components/InlineSalesEditorPopover';
-import { QuickLogPopover } from './components/QuickLogPopover';
+import { QuickLogPopover, type QuickLogPayload } from './components/QuickLogPopover';
+import { activityTime } from '@/app/lib/activityFacts';
 import { SalesTrackerBadges } from './components/SalesTrackerBadges';
 import { ACTIVITY_TYPES } from './config';
 import {
@@ -256,7 +257,7 @@ export interface LeadGalleryCardProps {
   onOpen: (lead: Lead) => void;
   onToggleSelected: (leadId: string) => void;
   onAssign: (lead: Lead, userId: string) => void;
-  onQuickLog: (lead: Lead, payload: { type: string; body: string }) => Promise<void>;
+  onQuickLog: (lead: Lead, payload: QuickLogPayload) => Promise<void>;
   onSaved: (updated: Lead) => void;
 }
 
@@ -588,7 +589,7 @@ export function LeadGalleryCard({
                   <span className={cn('min-w-0 flex-1 truncate text-xs', typeKey === 'system' ? 'italic text-slate-500' : 'text-slate-700')}>
                     {text}
                   </span>
-                  <span className="shrink-0 text-[10px] text-slate-500">{ago(activity.createdAt)}</span>
+                  <span className="shrink-0 text-[10px] text-slate-500">{ago(activityTime(activity))}</span>
                 </li>
               );
             })}
