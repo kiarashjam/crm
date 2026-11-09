@@ -333,15 +333,14 @@ public class DuplicateEngineTests
         var database = await SqlServerApp.NewDatabaseAsync();
         try
         {
-            using (SqlServerApp.Start(database)) { }
+            Guid userId;
+            using (var first = SqlServerApp.Start(database))
+                (_, userId) = await SignInAsync(first, $"{Guid.NewGuid():N}@example.com");
             // As production is before this deploy: a contact, and none of the new schema.
             await SqlServerApp.ExecuteAsync(database, "DROP TABLE [DuplicateDecisions]");
             await SqlServerApp.ExecuteAsync(database, "DROP INDEX [IX_Contacts_OrganizationId_PhoneKey] ON [Contacts]");
             await SqlServerApp.ExecuteAsync(database, "DROP INDEX [IX_Contacts_OrganizationId_NameKey] ON [Contacts]");
             await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [Contacts] DROP COLUMN [PhoneKey], [NameKey]");
-            var userId = Guid.NewGuid();
-            await SqlServerApp.ExecuteAsync(database,
-                $"INSERT INTO [Users] ([Id], [Email], [Name], [PasswordHash], [CreatedAtUtc]) VALUES ('{userId}', 'old@example.ch', 'Old', 'x', SYSUTCDATETIME())");
             await SqlServerApp.ExecuteAsync(database,
                 $"INSERT INTO [Contacts] ([Id], [UserId], [Name], [Email], [Phone], [CreatedAtUtc], [IsArchived], [DoNotContact]) VALUES (NEWID(), '{userId}', N'Zoë Martin', 'zoe@example.ch', '+41 79 123 45 67', SYSUTCDATETIME(), 0, 0)");
 
