@@ -27,7 +27,9 @@ describe('formatClubMoney', () => {
 
   it('writes the amount for the locale it is given', () => {
     expect(formatClubMoney(1234.5, 'CHF', 'en-US')).toMatch(/1,234\.50/);
-    expect(formatClubMoney(1234.5, 'CHF', 'de-CH')).toMatch(/1’234\.50/);
+    // Swiss grouping is an apostrophe, but which one depends on the locale data the
+    // runtime ships: ICU 77 writes ’ and ICU 78 writes ', so browsers differ too.
+    expect(formatClubMoney(1234.5, 'CHF', 'de-CH')).toMatch(/1['’]234\.50/);
   });
 
   it('survives a code Intl does not know, and a missing number', () => {
