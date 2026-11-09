@@ -41,6 +41,11 @@ public class Organization : Common.BaseEntity
     public string Locale { get; set; } = "de-CH";
     /// <summary>IANA time zone the workspace's days and months begin in, for reports and forecasts.</summary>
     public string TimeZone { get; set; } = "Europe/Zurich";
+    /// <summary>
+    /// Days without activity after which an open deal is flagged as stale on the board,
+    /// unless its pipeline sets its own (<see cref="Pipeline.StaleDealDays"/>). 0: never.
+    /// </summary>
+    public int StaleDealDays { get; set; } = 30;
 
     public User OwnerUser { get; set; } = null!;
     public ICollection<OrganizationMember> Members { get; set; } = new List<OrganizationMember>();

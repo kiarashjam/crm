@@ -417,14 +417,17 @@ public sealed class OrganizationService : IOrganizationService
             return DomainErrors.Organization.InvalidLocale;
         if (request.TimeZone != null && !RegionalSettings.TryTimeZone(request.TimeZone, out zone))
             return DomainErrors.Organization.InvalidTimeZone;
+        if (request.StaleDealDays is int staleDays && !StaleDeals.IsValidSetting(staleDays))
+            return DomainErrors.Organization.InvalidStaleDealDays;
 
         // Deals keep the currency they were priced in. Only new ones take the new one.
         if (currency != null) org.Currency = currency;
         if (locale != null) org.Locale = locale;
         if (zone != null) org.TimeZone = zone;
+        if (request.StaleDealDays is int days) org.StaleDealDays = days;
         await _organizationRepository.UpdateAsync(org, ct);
-        _logger.LogInformation("Regional settings of organization {OrganizationId} set to {Currency}, {Locale}, {TimeZone} by {UserId}",
-            organizationId, org.Currency, org.Locale, org.TimeZone, userId);
+        _logger.LogInformation("Regional settings of organization {OrganizationId} set to {Currency}, {Locale}, {TimeZone}, stale after {StaleDealDays} days, by {UserId}",
+            organizationId, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays, userId);
         return ToDto(org, userId, role.Value);
     }
 
@@ -501,5 +504,5 @@ public sealed class OrganizationService : IOrganizationService
         Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(apiKey))).ToLowerInvariant();
 
     private static OrganizationDto ToDto(Organization org, Guid userId, OrgMemberRole role) =>
-        new(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)role, org.Currency, org.Locale, org.TimeZone);
+        new(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)role, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays);
 }

@@ -117,7 +117,7 @@ public class DealStagesController : ControllerBase
         var fail = await RequireOrgOwnerOrManager(ct);
         if (fail != null) return fail;
         var orgId = _currentUser.CurrentOrganizationId!.Value;
-        var result = await _dealStageService.CreateAsync(request.PipelineId, orgId, request.Name, request.DisplayOrder, request.IsWon, request.IsLost, ct);
+        var result = await _dealStageService.CreateAsync(request.PipelineId, orgId, request.Name, request.DisplayOrder, request.IsWon, request.IsLost, request.Probability, ct);
         return result.ToActionResult();
     }
 
@@ -147,7 +147,8 @@ public class DealStagesController : ControllerBase
         var fail = await RequireOrgOwnerOrManager(ct);
         if (fail != null) return fail;
         var orgId = _currentUser.CurrentOrganizationId!.Value;
-        var result = await _dealStageService.UpdateAsync(id, orgId, request.Name, request.DisplayOrder, request.IsWon, request.IsLost, ct);
+        var result = await _dealStageService.UpdateAsync(id, orgId, request.Name, request.DisplayOrder, request.IsWon, request.IsLost,
+            request.Probability, request.ClearProbability, ct);
         return result.ToActionResult();
     }
 
@@ -214,6 +215,12 @@ public record CreateDealStageRequest
     /// Whether deals in this stage are considered lost.
     /// </summary>
     public bool IsLost { get; init; } = false;
+
+    /// <summary>
+    /// The chance, 0–100, that a deal in this stage is won, for the deals in it with no
+    /// probability of their own (optional).
+    /// </summary>
+    public int? Probability { get; init; }
 }
 
 /// <summary>
@@ -241,4 +248,15 @@ public record UpdateDealStageRequest
     /// Whether deals in this stage are considered lost (optional).
     /// </summary>
     public bool? IsLost { get; init; }
+
+    /// <summary>
+    /// A new default probability, 0–100 (optional; left out, the stage keeps its own).
+    /// </summary>
+    public int? Probability { get; init; }
+
+    /// <summary>
+    /// True takes the stage's default probability away, so its deals without one of
+    /// their own count as having none.
+    /// </summary>
+    public bool ClearProbability { get; init; }
 }

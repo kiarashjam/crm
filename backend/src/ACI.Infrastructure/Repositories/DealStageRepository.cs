@@ -39,6 +39,7 @@ public sealed class DealStageRepository : IDealStageRepository
         existing.DisplayOrder = stage.DisplayOrder;
         existing.IsWon = stage.IsWon;
         existing.IsLost = stage.IsLost;
+        existing.Probability = stage.Probability;
         await _db.SaveChangesAsync(ct);
         return existing;
     }

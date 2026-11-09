@@ -615,6 +615,9 @@ public static class DomainErrors
 
         public static readonly Error InvalidTimeZone = new(
             "Organization.InvalidTimeZone", "A time zone is an IANA name, such as Europe/Zurich.");
+
+        public static readonly Error InvalidStaleDealDays = new(
+            "Organization.InvalidStaleDealDays", "A deal is stale after a whole number of days from 1 to 365, or 0 to never flag deals.");
     }
 
     /// <summary>
@@ -651,6 +654,9 @@ public static class DomainErrors
         
         public static readonly Error HasDeals = new(
             "Pipeline.HasDeals", "Cannot delete pipeline with existing deals");
+
+        public static readonly Error InvalidStaleDealDays = new(
+            "Pipeline.InvalidStaleDealDays", "A deal is stale after a whole number of days from 1 to 365, or 0 to never flag deals in this pipeline.");
     }
 
     /// <summary>
@@ -705,6 +711,9 @@ public static class DomainErrors
 
         public static readonly Error HasDeals = new(
             "DealStage.HasDeals", "Cannot delete deal stage with existing deals");
+
+        public static readonly Error InvalidProbability = new(
+            "DealStage.InvalidProbability", "A stage's probability is a whole number from 0 to 100.");
     }
 
     /// <summary>

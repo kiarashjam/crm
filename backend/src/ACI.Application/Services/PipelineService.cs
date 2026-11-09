@@ -42,7 +42,7 @@ public class PipelineService : IPipelineService
         return Result.Success(Map(entity));
     }
 
-    public async Task<Result<PipelineDto>> CreateAsync(Guid organizationId, string name, int displayOrder, CancellationToken ct = default)
+    public async Task<Result<PipelineDto>> CreateAsync(Guid organizationId, string name, int displayOrder, int? staleDealDays = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Creating pipeline for organization {OrganizationId} with name {Name}", organizationId, name);
 
@@ -51,6 +51,8 @@ public class PipelineService : IPipelineService
             _logger.LogWarning("Pipeline name is required");
             return Result.Failure<PipelineDto>(DomainErrors.Pipeline.NameRequired);
         }
+        if (staleDealDays is int days && !StaleDeals.IsValidSetting(days))
+            return Result.Failure<PipelineDto>(DomainErrors.Pipeline.InvalidStaleDealDays);
 
         var entity = new Pipeline
         {
@@ -58,6 +60,7 @@ public class PipelineService : IPipelineService
             OrganizationId = organizationId,
             Name = name.Trim(),
             DisplayOrder = displayOrder,
+            StaleDealDays = staleDealDays,
         };
         entity = await _repository.AddAsync(entity, ct);
 
@@ -65,7 +68,7 @@ public class PipelineService : IPipelineService
         return Result.Success(Map(entity));
     }
 
-    public async Task<Result<PipelineDto>> UpdateAsync(Guid id, Guid organizationId, string? name, int? displayOrder, CancellationToken ct = default)
+    public async Task<Result<PipelineDto>> UpdateAsync(Guid id, Guid organizationId, string? name, int? displayOrder, int? staleDealDays = null, bool followWorkspaceStaleDays = false, CancellationToken ct = default)
     {
         _logger.LogInformation("Updating pipeline {PipelineId} for organization {OrganizationId}", id, organizationId);
 
@@ -90,6 +93,11 @@ public class PipelineService : IPipelineService
         {
             existing.DisplayOrder = displayOrder.Value;
         }
+
+        if (staleDealDays is int days && !StaleDeals.IsValidSetting(days))
+            return Result.Failure<PipelineDto>(DomainErrors.Pipeline.InvalidStaleDealDays);
+        if (followWorkspaceStaleDays) existing.StaleDealDays = null;
+        else if (staleDealDays.HasValue) existing.StaleDealDays = staleDealDays.Value;
 
         existing = await _repository.UpdateAsync(existing, ct);
         if (existing == null)
@@ -133,6 +141,7 @@ public class PipelineService : IPipelineService
     private static PipelineDto Map(Pipeline e) => new PipelineDto(e.Id, e.OrganizationId, e.Name, e.DisplayOrder,
         (e.DealStages ?? [])
             .OrderBy(st => st.DisplayOrder)
-            .Select(st => new DealStageDto(st.Id, st.PipelineId, st.Name, st.DisplayOrder, st.IsWon, st.IsLost))
-            .ToList());
+            .Select(st => new DealStageDto(st.Id, st.PipelineId, st.Name, st.DisplayOrder, st.IsWon, st.IsLost, st.Probability))
+            .ToList(),
+        e.StaleDealDays);
 }

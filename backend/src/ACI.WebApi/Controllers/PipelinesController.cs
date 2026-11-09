@@ -112,7 +112,7 @@ public class PipelinesController : ControllerBase
         var fail = await RequireOrgOwnerOrManager(ct);
         if (fail != null) return fail;
         var orgId = _currentUser.CurrentOrganizationId!.Value;
-        var result = await _pipelineService.CreateAsync(orgId, request.Name, request.DisplayOrder, ct);
+        var result = await _pipelineService.CreateAsync(orgId, request.Name, request.DisplayOrder, request.StaleDealDays, ct);
         return result.ToActionResult();
     }
 
@@ -142,7 +142,8 @@ public class PipelinesController : ControllerBase
         var fail = await RequireOrgOwnerOrManager(ct);
         if (fail != null) return fail;
         var orgId = _currentUser.CurrentOrganizationId!.Value;
-        var result = await _pipelineService.UpdateAsync(id, orgId, request.Name, request.DisplayOrder, ct);
+        var result = await _pipelineService.UpdateAsync(id, orgId, request.Name, request.DisplayOrder,
+            request.StaleDealDays, request.FollowWorkspaceStaleDays, ct);
         return result.ToActionResult();
     }
 
@@ -193,6 +194,12 @@ public record CreatePipelineRequest
     /// Display order.
     /// </summary>
     public int DisplayOrder { get; init; } = 0;
+
+    /// <summary>
+    /// Days without activity after which an open deal in it is stale, 1–365, or 0 for
+    /// never (optional; left out, the workspace's setting applies).
+    /// </summary>
+    public int? StaleDealDays { get; init; }
 }
 
 /// <summary>
@@ -210,4 +217,14 @@ public record UpdatePipelineRequest
     /// New display order (optional).
     /// </summary>
     public int? DisplayOrder { get; init; }
+
+    /// <summary>
+    /// New stale-deal days for this pipeline, 1–365, or 0 for never (optional).
+    /// </summary>
+    public int? StaleDealDays { get; init; }
+
+    /// <summary>
+    /// True drops the pipeline's own stale-deal days, so the workspace's apply again.
+    /// </summary>
+    public bool FollowWorkspaceStaleDays { get; init; }
 }

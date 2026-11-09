@@ -37,6 +37,7 @@ public sealed class PipelineRepository : IPipelineRepository
         if (existing == null) return null;
         existing.Name = pipeline.Name;
         existing.DisplayOrder = pipeline.DisplayOrder;
+        existing.StaleDealDays = pipeline.StaleDealDays;
         await _db.SaveChangesAsync(ct);
         return existing;
     }
