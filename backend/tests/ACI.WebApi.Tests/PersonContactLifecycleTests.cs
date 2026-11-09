@@ -121,6 +121,41 @@ public class PersonContactLifecycleTests
     }
 
     [Fact]
+    public async Task AContactAddedAgainUnderTheLeadsEmailIsTheLeadsContact_AndNoOtherIsMade()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        var w = await OpenAsync(connection);
+        await using var db = w.Db;
+        var lead = NewLead(w, "Jane Roe", "jane@example.ch");
+        db.Leads.Add(lead);
+        await db.SaveChangesAsync();
+        var contacts = new ContactRepository(db);
+        await contacts.EnsurePersonContactAsync(lead);
+        (await contacts.DeleteAsync(lead.ConvertedToContactId!.Value, w.User.Id, w.Org.Id)).Should().BeTrue();
+
+        // Someone adds Jane again by hand, under the same email.
+        var again = new Contact { Id = Guid.NewGuid(), UserId = w.User.Id, OrganizationId = w.Org.Id, Name = "Jane Roe", Email = "jane@example.ch", CreatedAtUtc = DateTime.UtcNow };
+        db.Contacts.Add(again);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        // The lead page reads her as the lead's contact, without writing anything.
+        var read = await db.Leads.AsNoTracking().SingleAsync(l => l.Id == lead.Id);
+        var shown = await contacts.GetPersonContactAsync(read, w.User.Id, w.Org.Id);
+        shown.Should().NotBeNull("the lead's contact was deleted, but Jane is a contact again: the page must not say she was deleted");
+        shown!.Id.Should().Be(again.Id);
+        (await db.Leads.AsNoTracking().SingleAsync(l => l.Id == lead.Id)).ConvertedToContactId.Should().BeNull("a read links nothing");
+
+        // The next save links the lead to her, and makes no other contact.
+        await contacts.EnsurePersonContactAsync(read);
+        db.ChangeTracker.Clear();
+        var saved = await db.Leads.AsNoTracking().SingleAsync(l => l.Id == lead.Id);
+        saved.ConvertedToContactId.Should().Be(again.Id);
+        saved.PersonContactRemovedAtUtc.Should().BeNull("the lead has a contact again; deleting it writes the note anew");
+        (await db.Contacts.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
     public async Task ALeadWhoseContactWasDeletedBeforeThisFixIsNotGivenANewOne()
     {
         using var connection = new SqliteConnection("DataSource=:memory:");
@@ -273,6 +308,17 @@ public class PersonContactLifecycleTests
 
             (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [Contacts]")).Should().Be(0, "the delete stuck");
             (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [Leads] WHERE [Id] = '{leadId}' AND [PersonContactRemovedAtUtc] IS NOT NULL")).Should().Be(1);
+
+            // Someone adds Jane again by hand: she is the lead's contact, and no other is made.
+            var again = await owner.PostAsync("/api/contacts", Body(new { name = "Jane Roe", email = "Jane@Example.ch" }));
+            again.StatusCode.Should().Be(HttpStatusCode.OK, await again.Content.ReadAsStringAsync());
+            var againId = JsonDocument.Parse(await again.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+            var shown = JsonDocument.Parse(await (await owner.GetAsync($"/api/leads/{leadId}/relationships")).Content.ReadAsStringAsync()).RootElement;
+            shown.GetProperty("contactId").GetGuid().Should().Be(againId, "the lead page must not say her contact was deleted");
+            shown.GetProperty("contactDeleted").GetBoolean().Should().BeFalse();
+            (await owner.PutAsync($"/api/leads/{leadId}", Body(new { phone = "+41 79 765 43 21" }))).StatusCode.Should().Be(HttpStatusCode.OK);
+            (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [Contacts]")).Should().Be(1);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [Leads] WHERE [Id] = '{leadId}' AND [ConvertedToContactId] = '{againId}' AND [PersonContactRemovedAtUtc] IS NULL")).Should().Be(1);
         }
         finally
         {

@@ -59,7 +59,10 @@ public interface IContactRepository
     /// </summary>
     Task<int> BackfillPersonContactsAsync(int maxLeads, CancellationToken ct = default);
 
-    /// <summary>The lead's person contact in the workspace, archived or not, or null. Reads only.</summary>
+    /// <summary>
+    /// The lead's person contact in the workspace, archived or not; when none is linked, the
+    /// active contact with the lead's email that a save would link it to; or null. Reads only.
+    /// </summary>
     Task<Contact?> GetPersonContactAsync(Lead lead, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     Task<IReadOnlyList<Contact>> FindLookalikesAsync(Contact contact, CancellationToken ct = default);

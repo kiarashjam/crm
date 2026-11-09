@@ -323,9 +323,6 @@ public sealed class ContactRepository : IContactRepository
     {
         if (string.IsNullOrWhiteSpace(lead.Name) || string.IsNullOrWhiteSpace(lead.Email))
             return;
-        // Someone deleted this lead's contact (see DeleteAsync); making another undoes that.
-        if (lead.PersonContactRemovedAtUtc != null)
-            return;
 
         // Only contacts in the lead's own workspace. Matched by organization alone,
         // two users with no organization shared one pool: a lead took another user's
@@ -382,6 +379,12 @@ public sealed class ContactRepository : IContactRepository
             await _db.SaveChangesAsync(ct);
             return;
         }
+
+        // Someone deleted this lead's contact (see DeleteAsync); making another undoes that.
+        // Only making one: a contact someone added since under the lead's email is the
+        // person, and the lead is linked to it above, as any lead is.
+        if (lead.PersonContactRemovedAtUtc != null)
+            return;
 
         var contact = new Contact
         {
@@ -444,7 +447,14 @@ public sealed class ContactRepository : IContactRepository
         var workspace = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
         if (lead.ConvertedToContactId is Guid id && await workspace.FirstOrDefaultAsync(c => c.Id == id, ct) is { } pointed)
             return pointed;
-        return await workspace.FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct);
+        if (await workspace.FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct) is { } linked)
+            return linked;
+        // Not linked yet: the contact the next save links the lead to (see
+        // EnsurePersonContactAsync), so the lead page shows the person someone added again
+        // after deleting the lead's contact, instead of saying it was deleted.
+        if (string.IsNullOrWhiteSpace(lead.Name) || string.IsNullOrWhiteSpace(lead.Email)) return null;
+        var email = lead.Email.Trim();
+        return await workspace.FirstOrDefaultAsync(c => !c.IsArchived && c.Email == email, ct);
     }
 
     public async Task<IReadOnlyList<Contact>> FindLookalikesAsync(Contact contact, CancellationToken ct = default)
@@ -674,5 +684,9 @@ public sealed class ContactRepository : IContactRepository
         if (tracked == null) return;
         tracked.ConvertedToContactId = contactId;
         lead.ConvertedToContactId = contactId;
+        // The lead has a contact again, so the note that its last one was deleted is
+        // history: deleting this one writes it anew.
+        tracked.PersonContactRemovedAtUtc = null;
+        lead.PersonContactRemovedAtUtc = null;
     }
 }
