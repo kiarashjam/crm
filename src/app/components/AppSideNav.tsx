@@ -272,7 +272,7 @@ function SideNavBody({ onNavigate }: { onNavigate: () => void }) {
     <>
       <SheetHeader className="gap-3 border-b border-slate-200 px-5 pb-4 pt-5 pr-16 dark:border-slate-800">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--brand-primary)]">Cadence</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--brand-primary)]">CadenceE · Cadence Engine</p>
           <SheetTitle className="mt-1 text-left text-lg text-slate-950 dark:text-white">
             {org?.currentOrg?.name ?? 'Menu'}
           </SheetTitle>

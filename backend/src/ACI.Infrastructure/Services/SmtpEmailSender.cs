@@ -54,7 +54,7 @@ public sealed class SmtpEmailSender : IEmailSender
             $"{resetUrl}\n\n" +
             "If you did not request this, you can ignore this email.\n";
 
-        return await SendAsync(toEmail, recipientName, "Reset your Cadence password", body, ct);
+        return await SendAsync(toEmail, recipientName, "Reset your CadenceE password", body, ct);
     }
 
     public async Task<bool> SendEmailVerificationEmailAsync(string toEmail, string recipientName, string verifyUrl, CancellationToken ct = default)
@@ -81,9 +81,9 @@ public sealed class SmtpEmailSender : IEmailSender
             "This link expires in 24 hours.\n\n" +
             $"{verifyUrl}\n\n" +
             "Until you confirm it, you can use your own workspace but cannot join anyone else's.\n\n" +
-            "If you did not create a Cadence account, you can ignore this email.\n";
+            "If you did not create a CadenceE account, you can ignore this email.\n";
 
-        return await SendAsync(toEmail, recipientName, "Confirm your email address for Cadence", body, ct);
+        return await SendAsync(toEmail, recipientName, "Confirm your email address for CadenceE", body, ct);
     }
 
     public async Task<bool> SendOrganizationInviteEmailAsync(
@@ -110,14 +110,14 @@ public sealed class SmtpEmailSender : IEmailSender
         var from = string.IsNullOrWhiteSpace(invitedByName) ? "Someone" : invitedByName;
         var body =
             $"Hi,\n\n" +
-            $"{from} invited you to join \"{organizationName}\" on Cadence.\n\n" +
+            $"{from} invited you to join \"{organizationName}\" on CadenceE.\n\n" +
             $"Open the link below to accept. It works only for you, so do not forward this email:\n\n" +
             $"{acceptUrl}\n\n" +
             $"Sign in (or create your account) with this email address — {toEmail} — " +
-            "and confirm the address if Cadence asks you to.\n\n" +
+            "and confirm the address if CadenceE asks you to.\n\n" +
             "This invitation expires in 7 days. If you were not expecting it, you can ignore this email.\n";
 
-        return await SendAsync(toEmail, recipientName: "", subject: $"You have been invited to {organizationName} on Cadence", body: body, ct: ct);
+        return await SendAsync(toEmail, recipientName: "", subject: $"You have been invited to {organizationName} on CadenceE", body: body, ct: ct);
     }
 
     public async Task<bool> SendTaskReminderEmailAsync(

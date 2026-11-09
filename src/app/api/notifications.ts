@@ -91,7 +91,7 @@ const notificationStore = createMockStore<AppNotification>({
     {
       id: 'ntf-seed-3',
       type: 'system',
-      title: 'Welcome to Cadence',
+      title: 'Welcome to CadenceE',
       message: 'Reminders, @mentions and deal updates show up here.',
       link: undefined,
       read: true,

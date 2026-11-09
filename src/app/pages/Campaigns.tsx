@@ -185,7 +185,7 @@ export default function Campaigns() {
 
   const send = async (c: Campaign) => {
     if (!confirm(
-      `Log "${c.name}" as sent? Cadence does not deliver campaigns yet: this only adds the message to each ` +
+      `Log "${c.name}" as sent? CadenceE does not deliver campaigns yet: this only adds the message to each ` +
       'matching member\'s log, and nobody receives it. Send it from your own mail tool as well.',
     )) return;
     setSendingId(c.id);
@@ -431,7 +431,7 @@ export default function Campaigns() {
             <DialogTitle>New campaign</DialogTitle>
             <DialogDescription>
               Pick a channel, write the message and choose a segment. It is saved as a draft; &ldquo;Log as
-              sent&rdquo; then records it for each matching member. Cadence does not deliver it or send it at a set
+              sent&rdquo; then records it for each matching member. CadenceE does not deliver it or send it at a set
               time.
             </DialogDescription>
           </DialogHeader>

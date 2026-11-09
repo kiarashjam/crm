@@ -226,7 +226,7 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
       <div>
         <h3 className="font-semibold text-slate-900 mb-2">Send events to your systems</h3>
         <p className="text-sm text-slate-600 mb-3">
-          Cadence posts each new lead, deal stage change and won deal to this address as JSON. It has
+          CadenceE posts each new lead, deal stage change and won deal to this address as JSON. It has
           to be a public <code className="bg-slate-100 text-slate-800 px-1 rounded">https</code> address. With a
           secret, each post carries <code className="bg-slate-100 text-slate-800 px-1 rounded">X-Cadence-Signature</code>,
           the hex HMAC-SHA256 of the body, so your side can check it came from here.

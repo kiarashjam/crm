@@ -154,8 +154,8 @@ export function AccountSection({
             Deleting your account
           </p>
           <p className="mt-2 text-sm text-slate-600">
-            Cadence cannot delete an account from this page yet. To have your account and personal data
-            deleted, ask the person who administers Cadence for your organization. To leave a workspace
+            CadenceE cannot delete an account from this page yet. To have your account and personal data
+            deleted, ask the person who administers CadenceE for your organization. To leave a workspace
             instead, ask its owner to remove you on the Team page.
           </p>
         </div>

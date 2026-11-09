@@ -537,7 +537,7 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
           <AiOrb size={34} reduce={reduce} />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
-              Ask Cadence AI
+              Ask CadenceE
               <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>
             </span>
             <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
@@ -581,7 +581,7 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
         <AiOrb size={36} thinking={thinking} reduce={reduce} />
         <div className="min-w-0 flex-1">
           <h3 id="agent-chat-heading" className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-slate-900 dark:text-white">
-            Ask Cadence AI
+            Ask CadenceE
             <span className="rounded-full bg-gradient-to-r from-orange-500 to-fuchsia-500 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-white">AI</span>
           </h3>
           <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
@@ -729,7 +729,7 @@ export function AgentDesk({ world, readOnly, accountKey, thinkingMs = THINKING_M
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Ask Cadence AI anything…"
+              placeholder="Ask CadenceE anything…"
               className="max-h-[132px] min-h-[40px] flex-1 resize-none bg-transparent py-2.5 text-sm leading-5 text-slate-900 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none dark:text-slate-100"
             />
             <motion.button

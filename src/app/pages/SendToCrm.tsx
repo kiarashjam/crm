@@ -180,7 +180,7 @@ export default function SendToCrm() {
                 icon={Paperclip}
                 tone="violet"
                 title="Attach copy"
-                subtitle="Save this writing on a lead, contact, or deal. It stays in Cadence and shows up in History."
+                subtitle="Save this writing on a lead, contact, or deal. It stays in CadenceE and shows up in History."
                 badges={
                   <>
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
@@ -359,7 +359,7 @@ export default function SendToCrm() {
               <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100" aria-hidden>
                 <CheckCircle className="h-12 w-12 text-emerald-600" />
               </div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Saved in Cadence</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Saved in CadenceE</h1>
               <p className="mx-auto mt-3 max-w-md text-slate-600">
                 The writing is now on {selectedRecord?.name ?? 'that record'} and in History. Nothing was emailed.
               </p>

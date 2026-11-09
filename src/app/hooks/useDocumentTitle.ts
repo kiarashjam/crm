@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 /** Short brand, same role as the trailing "Hattrick" in a Hattrick tab. */
-export const APP_TITLE = 'Cadence';
+export const APP_TITLE = 'CadenceE';
 
 /** `{name} » {section} » Cadence`, matching Hattrick's `{player} » Players » …`. */
 export function recordTabTitle(name?: string | null, section?: string | null): string {
