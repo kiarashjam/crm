@@ -185,7 +185,10 @@ describe('agent evaluation', () => {
     expect(totals.text).toContain(`Open total: ${formatMoney(65000, 'CHF')}.`);
     expect(totals.text).toMatch(/no numeric amount.*Unpriced/);
     expect(totals.text).toMatch(/negative amount.*Northwind grow/);
-    expect(totals.text).not.toContain('99,999');
+    // The won deal is left out. Amounts are now written "CHF 99’999", so the old check
+    // for "99,999" could never fail.
+    expect(totals.text).not.toMatch(/99\D?999/);
+    expect(totals.text).not.toContain('Won trophy');
 
     expect(parseMoneyInput('-200')).toBe(-200);
     expect(parseMoneyInput('TBD')).toBeNull();
