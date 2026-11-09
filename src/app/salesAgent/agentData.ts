@@ -19,6 +19,8 @@
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { getCompanies, getContacts, getDeals, getLeads, getTasks } from '@/app/api';
+import { servesDemoData } from '@/app/api/apiClient';
+import { getNotSamePairs } from '@/app/api/dedupe';
 import { getAutomations } from '@/app/api/automations';
 import { getEnrollments, getSequences } from '@/app/api/sequences';
 import { onDataChanged } from '@/app/api/dataChanged';
@@ -43,6 +45,8 @@ export interface AgentLists {
   contacts: SuggestableContact[];
   companies: SuggestableCompany[];
   automations: SuggestableAutomation[];
+  /** Contact and company pairs the team said are not the same, so they are not offered for merging. */
+  notSame?: string[];
 }
 
 export interface AgentSnapshot {
@@ -80,10 +84,17 @@ const LIST_LABELS: Record<(typeof LIST_NAMES)[number], string> = {
   automations: 'Automations',
 };
 
+/** The team's "not the same" decisions on contacts and companies (kept on the server; none in demo mode). */
+async function getNotSame(): Promise<string[]> {
+  if (servesDemoData()) return [];
+  const [contacts, companies] = await Promise.all([getNotSamePairs('contacts'), getNotSamePairs('companies')]);
+  return [...contacts, ...companies];
+}
+
 function fetchAll(): Promise<PromiseSettledResult<unknown>[]> {
   return Promise.allSettled([
     getLeads(), getDeals(), getTasks(), getEnrollments(), getSequences(),
-    getContacts(), getCompanies(), getAutomations(),
+    getContacts(), getCompanies(), getAutomations(), getNotSame(),
   ]);
 }
 
@@ -135,7 +146,7 @@ function load(forKey: string): Promise<void> {
     // The workspace changed while this was in flight. These lists belong to
     // the old one and must not be shown under the new.
     if (key !== forKey) return;
-    if (results.every((result) => result.status === 'rejected')) {
+    if (results.slice(0, LIST_NAMES.length).every((result) => result.status === 'rejected')) {
       failed = true;
       if (lists) gaps = LIST_NAMES.map((name) => `${LIST_LABELS[name]} could not be refreshed, so an earlier copy is used.`);
       return;
@@ -157,7 +168,13 @@ function load(forKey: string): Promise<void> {
         ? `${LIST_LABELS[name]} could not be refreshed, so an earlier copy is used.`
         : `${LIST_LABELS[name]} could not be loaded.`);
     });
-    lists = next as unknown as AgentLists;
+    // The decisions only keep pairs out of the merge suggestions: without them, the
+    // earlier ones are used, and no list is reported missing for them.
+    const decided = results[LIST_NAMES.length];
+    lists = {
+      ...(next as unknown as AgentLists),
+      notSame: decided?.status === 'fulfilled' && Array.isArray(decided.value) ? (decided.value as string[]) : previous?.notSame ?? [],
+    };
     gaps = missing;
     loadedAt = Date.now();
     failed = false;

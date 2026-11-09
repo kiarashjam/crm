@@ -21,6 +21,15 @@ public interface IContactService
     /// <returns>A paginated list of contacts.</returns>
     Task<PagedResult<ContactDto>> GetContactsPagedAsync(Guid userId, Guid? organizationId, int page = 1, int pageSize = 20, string? search = null, bool includeArchived = false, Guid? companyId = null, CancellationToken ct = default);
 
+    /// <summary>One page of contacts, with every filter and the order applied to the whole workspace.</summary>
+    Task<PagedResult<ContactDto>> GetContactsPagedAsync(Guid userId, Guid? organizationId, int page, int pageSize, ContactQueryOptions options, CancellationToken ct = default);
+
+    /// <summary>The figures above the contacts list, over the whole workspace.</summary>
+    Task<ContactStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>Every contact the list would show with these filters, as a CSV file.</summary>
+    Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, ContactQueryOptions options, CancellationToken ct = default);
+
     /// <summary>
     /// Retrieves all contacts for a user within an organization.
     /// </summary>

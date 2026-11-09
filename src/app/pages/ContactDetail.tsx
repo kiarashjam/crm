@@ -19,6 +19,8 @@ import ReferredLeadsCard from '@/app/components/ReferredLeadsCard';
 import RelationshipsCard from '@/app/components/RelationshipsCard';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
+import { servesDemoData } from '@/app/api/apiClient';
+import { markNotSame } from '@/app/api/dedupe';
 import {
   getActivitiesByContact, getTasksByContact,
   getDealsPaged, updateContact, deleteContact, archiveContact,
@@ -81,6 +83,7 @@ export default function ContactDetail() {
   const [lookalike, setLookalike] = useState<ContactLookalike | null>(null);
   const [merging, setMerging] = useState(false);
   const [dismissedLookalike, setDismissedLookalike] = useState(false);
+  const [keepingApart, setKeepingApart] = useState(false);
   const [recordRevision, setRecordRevision] = useState(0);
   const { isReadOnly } = useOrg();
 
@@ -239,8 +242,9 @@ export default function ContactDetail() {
         const refreshed = await getContactById(contact.id);
         if (refreshed) setContact(refreshed);
       }
-    } catch {
-      toast.error('Failed to update archive status');
+    } catch (err) {
+      // The server says why, e.g. that an active contact already uses this email.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to update archive status');
     }
   };
 
@@ -414,8 +418,32 @@ export default function ContactDetail() {
                     {merging ? 'Merging…' : 'Yes, merge into this contact'}
                   </Button>
                 </WriteOnly>
-                <Button type="button" variant="outline" className="h-11" onClick={() => setDismissedLookalike(true)}>
-                  No, keep them separate
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11"
+                  disabled={keepingApart}
+                  onClick={async () => {
+                    if (!contact || isReadOnly || servesDemoData()) {
+                      // Only this visit: a Viewer cannot decide for the team, and demo data stays here.
+                      setDismissedLookalike(true);
+                      return;
+                    }
+                    // Decided for the whole team, so nobody is asked about this pair again,
+                    // and the next lookalike, if there is one, is asked about instead.
+                    setKeepingApart(true);
+                    try {
+                      await markNotSame('contacts', [contact.id, lookalike.id]);
+                      const next = await getContactLookalikes(contact.id).catch(() => []);
+                      setLookalike(next.find((l) => l.id !== lookalike.id) ?? null);
+                    } catch (err) {
+                      toast.error(err instanceof Error && err.message ? err.message : 'That could not be saved.');
+                    } finally {
+                      setKeepingApart(false);
+                    }
+                  }}
+                >
+                  {keepingApart ? 'Saving…' : 'No, keep them separate'}
                 </Button>
               </div>
             </section>

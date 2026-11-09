@@ -38,11 +38,15 @@ export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
 
 export function downloadCsv<T>(filename: string, rows: T[], columns: CsvColumn<T>[]): void {
   const csv = toCsv(rows, columns);
-  const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+  downloadFile(new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' }), filename.endsWith('.csv') ? filename : `${filename}.csv`);
+}
+
+/** Save a file the server wrote (an export), under this name. */
+export function downloadFile(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename.endsWith('.csv') ? filename : `${filename}.csv`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

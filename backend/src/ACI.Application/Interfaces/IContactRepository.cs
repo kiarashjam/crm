@@ -1,3 +1,5 @@
+using ACI.Application.Common;
+using ACI.Application.DTOs;
 using ACI.Domain.Entities;
 
 namespace ACI.Application.Interfaces;
@@ -5,15 +7,24 @@ namespace ACI.Application.Interfaces;
 public interface IContactRepository
 {
     // Paginated methods
+    /// <summary>One page of the workspace's contacts, filtered and sorted as asked, with the total that match.</summary>
     Task<(IReadOnlyList<Contact> Items, int TotalCount)> GetPagedAsync(
-        Guid userId, 
-        Guid? organizationId, 
-        int skip, 
-        int take, 
-        string? search = null,
-        bool includeArchived = false,
-        Guid? companyId = null, 
+        Guid userId,
+        Guid? organizationId,
+        int skip,
+        int take,
+        ContactQueryOptions options,
         CancellationToken ct = default);
+
+    /// <summary>The figures above the contacts list, over the whole workspace.</summary>
+    Task<ContactStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every contact the list would show with these filters, in its order, at most
+    /// <paramref name="max"/> of them, and how many match in all.
+    /// </summary>
+    Task<(IReadOnlyList<ContactExportRow> Rows, int Total)> GetExportRowsAsync(
+        Guid userId, Guid? organizationId, ContactQueryOptions options, int max, CancellationToken ct = default);
     
     Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, bool includeArchived = false, CancellationToken ct = default);
     
@@ -34,11 +45,25 @@ public interface IContactRepository
     Task<bool> ArchiveAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<bool> UnarchiveAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
-    /// <summary>Creates the person contact for a lead when one does not exist yet.</summary>
+    /// <summary>
+    /// Creates the person contact for a lead when one does not exist yet, unless someone
+    /// deleted the lead's contact (<see cref="Lead.PersonContactRemovedAtUtc"/>). A write:
+    /// it is called when a lead is saved, never to read one.
+    /// </summary>
     Task EnsurePersonContactAsync(Lead lead, CancellationToken ct = default);
 
-    /// <summary>Creates missing person contacts for leads in this organization.</summary>
-    Task EnsureMissingPersonContactsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <summary>
+    /// Gives person contacts to leads in every workspace that should have one and do not
+    /// (older leads, or ones a tool wrote straight to the database), at most
+    /// <paramref name="maxLeads"/> leads a run. Returns how many leads were given one.
+    /// </summary>
+    Task<int> BackfillPersonContactsAsync(int maxLeads, CancellationToken ct = default);
+
+    /// <summary>
+    /// The lead's person contact in the workspace, archived or not; when none is linked, the
+    /// active contact with the lead's email that a save would link it to; or null. Reads only.
+    /// </summary>
+    Task<Contact?> GetPersonContactAsync(Lead lead, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     Task<IReadOnlyList<Contact>> FindLookalikesAsync(Contact contact, CancellationToken ct = default);
 
@@ -68,3 +93,15 @@ public interface IContactRepository
 
 /// <summary>What an unsubscribe touched, so the outreach still scheduled to them can be stopped.</summary>
 public sealed record DoNotContactMarked(IReadOnlyList<Guid> ContactIds, IReadOnlyList<Guid> LeadIds);
+
+/// <summary>One contact as the export writes it.</summary>
+public sealed record ContactExportRow(
+    string Name,
+    string Email,
+    string? Phone,
+    string? JobTitle,
+    string? CompanyName,
+    bool DoNotContact,
+    bool IsArchived,
+    DateTime? LastActivityAtUtc,
+    DateTime CreatedAtUtc);

@@ -28,8 +28,11 @@ public class ContactService : IContactService
         _logger = logger;
     }
 
+    /// <summary>The most rows one export writes: plenty for a workspace, and a bound on one request.</summary>
+    public const int MaxExportRows = 50_000;
+
     /// <inheritdoc />
-    public async Task<PagedResult<ContactDto>> GetContactsPagedAsync(
+    public Task<PagedResult<ContactDto>> GetContactsPagedAsync(
         Guid userId, 
         Guid? organizationId, 
         int page = 1, 
@@ -37,16 +40,29 @@ public class ContactService : IContactService
         string? search = null,
         bool includeArchived = false,
         Guid? companyId = null, 
+        CancellationToken ct = default) =>
+        GetContactsPagedAsync(userId, organizationId, page, pageSize, new ContactQueryOptions
+        {
+            Search = search,
+            Status = includeArchived ? ContactQueryOptions.All : ContactQueryOptions.Active,
+            CompanyId = companyId,
+        }, ct);
+
+    /// <inheritdoc />
+    public async Task<PagedResult<ContactDto>> GetContactsPagedAsync(
+        Guid userId,
+        Guid? organizationId,
+        int page,
+        int pageSize,
+        ContactQueryOptions options,
         CancellationToken ct = default)
     {
         _logger.LogDebug(
-            "Getting paged contacts for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}', companyId {CompanyId}",
-            userId, organizationId, page, pageSize, search, companyId);
+            "Getting paged contacts for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}', status {Status}",
+            userId, organizationId, page, pageSize, options.Search, options.NormalizedStatus);
 
-        await _repository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
-
-        var skip = (page - 1) * pageSize;
-        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, includeArchived, companyId, ct);
+        var skip = (Math.Max(page, 1) - 1) * pageSize;
+        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, options, ct);
         
         var lastByContact = await _activityRepository.GetLastActivityByContactIdsAsync(
             userId, organizationId, items.Select(c => c.Id), ct);
@@ -57,7 +73,27 @@ public class ContactService : IContactService
             "Retrieved {Count} of {Total} contacts for user {UserId} (page {Page})",
             items.Count, totalCount, userId, page);
 
-        return PagedResult<ContactDto>.Create(dtos, totalCount, page, pageSize);
+        return PagedResult<ContactDto>.Create(dtos, totalCount, Math.Max(page, 1), pageSize);
+    }
+
+    /// <inheritdoc />
+    public Task<ContactStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        _repository.GetStatsAsync(userId, organizationId, ct);
+
+    /// <inheritdoc />
+    public async Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, ContactQueryOptions options, CancellationToken ct = default)
+    {
+        // The rows the list would show, all of them: the page used to export the twenty
+        // contacts on screen.
+        var (rows, total) = await _repository.GetExportRowsAsync(userId, organizationId, options, MaxExportRows, ct);
+        var csv = new CsvExport("Name", "Email", "Phone", "Job title", "Company", "Do not contact", "Archived", "Last activity (UTC)", "Added (UTC)");
+        foreach (var r in rows)
+        {
+            csv.Row(r.Name, r.Email, r.Phone, r.JobTitle, r.CompanyName, CsvExport.YesNo(r.DoNotContact), CsvExport.YesNo(r.IsArchived),
+                CsvExport.Utc(r.LastActivityAtUtc), CsvExport.Utc(r.CreatedAtUtc));
+        }
+        _logger.LogInformation("Exported {Count} of {Total} contacts for user {UserId}", rows.Count, total, userId);
+        return new ExportFile($"contacts-{DateTime.UtcNow:yyyy-MM-dd}.csv", csv.ToBytes(), rows.Count, total);
     }
 
     /// <inheritdoc />
@@ -70,8 +106,6 @@ public class ContactService : IContactService
         _logger.LogDebug(
             "Getting contacts for user {UserId}, organization {OrganizationId}, includeArchived: {IncludeArchived}",
             userId, organizationId, includeArchived);
-
-        await _repository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
 
         var list = await _repository.GetByUserIdAsync(userId, organizationId, includeArchived, ct);
         var lastByContact = await _activityRepository.GetLastActivityByContactIdsAsync(
@@ -351,6 +385,16 @@ public class ContactService : IContactService
             "Unarchiving contact {ContactId} for user {UserId}",
             id, userId);
 
+        // A contact's email is unique among the workspace's active contacts. Someone may
+        // have been added again under the same address since this one was archived, and
+        // restoring it then broke that rule: the database refused, and the person saw
+        // "failed" with no reason. Archived contacts can now be listed and restored, so
+        // this is said plainly instead.
+        var contact = await _repository.GetByIdAsync(id, userId, organizationId, ct);
+        if (contact is { IsArchived: true }
+            && await _repository.EmailExistsAsync(contact.Email, userId, organizationId, id, ct))
+            return DomainErrors.Contact.UnarchiveDuplicateEmail(contact.Email.Trim());
+
         var unarchived = await _repository.UnarchiveAsync(id, userId, organizationId, ct);
         
         if (!unarchived)
@@ -403,21 +447,17 @@ public class ContactService : IContactService
         return Result.Success();
     }
 
+    // "Same" as the duplicate rules read it (MatchKeys): one address in any case, one
+    // number however it is written, one name with or without accents and extra spaces.
     private static IReadOnlyList<ContactFieldComparisonDto> Compare(Contact yours, Contact theirs) =>
     [
-        Field("Name", yours.Name, theirs.Name, Normalize(yours.Name) == Normalize(theirs.Name)),
-        Field("Email", yours.Email, theirs.Email, yours.Email.Trim().ToLowerInvariant() == theirs.Email.Trim().ToLowerInvariant()),
-        Field("Phone", yours.Phone, theirs.Phone, Digits(yours.Phone) == Digits(theirs.Phone) && Digits(yours.Phone).Length >= 7),
+        Field("Name", yours.Name, theirs.Name, MatchKeys.Name(yours.Name) is { } name && name == MatchKeys.Name(theirs.Name)),
+        Field("Email", yours.Email, theirs.Email, MatchKeys.Email(yours.Email) is { } email && email == MatchKeys.Email(theirs.Email)),
+        Field("Phone", yours.Phone, theirs.Phone, MatchKeys.Phone(yours.Phone) is { } phone && phone == MatchKeys.Phone(theirs.Phone)),
     ];
 
     private static ContactFieldComparisonDto Field(string name, string? yours, string? theirs, bool same) =>
         new(name, string.IsNullOrWhiteSpace(yours) ? null : yours.Trim(), string.IsNullOrWhiteSpace(theirs) ? null : theirs.Trim(), same);
-
-    private static string Normalize(string? value) =>
-        string.Join(' ', (value ?? "").Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
-
-    private static string Digits(string? value) =>
-        new string((value ?? "").Where(char.IsDigit).ToArray());
 
     private static ContactDto Map(Contact e, DateTime? lastActivityAtUtc = null) =>
         new ContactDto(

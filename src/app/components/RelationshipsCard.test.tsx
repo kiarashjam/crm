@@ -63,6 +63,20 @@ beforeEach(() => {
 });
 
 describe('RelationshipsCard', () => {
+  it("says a lead's contact was deleted, rather than asking for a name and an email it already has", async () => {
+    api.getRelationships.mockResolvedValue({ contactId: null, items: [], contactDeleted: true });
+    show();
+    expect(await screen.findByText("Claire's contact was deleted, so their spouse or family are not recorded here.")).toBeTruthy();
+    expect(screen.queryByText(/Give Claire a name and an email/)).toBeNull();
+    expect(screen.queryByRole('button', { name: "Add Claire's spouse or a relative" })).toBeNull();
+  });
+
+  it('asks for a name and an email when the lead has no contact yet', async () => {
+    api.getRelationships.mockResolvedValue({ contactId: null, items: [] });
+    show();
+    expect(await screen.findByText('Give Claire a name and an email to record their spouse or family.')).toBeTruthy();
+  });
+
   it('shows the spouse as a link to their lead, marked as the couple', async () => {
     api.getRelationships.mockResolvedValue({ contactId: 'c-claire', items: [spouse] });
     show();

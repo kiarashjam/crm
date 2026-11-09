@@ -248,6 +248,11 @@ public static class DomainErrors
         
         public static Error DuplicateEmailWithValue(string email) => new(
             "Contact.DuplicateEmail", $"A contact with email '{email}' already exists");
+
+        /// <summary>A 409: the code holds "Duplicate".</summary>
+        public static Error UnarchiveDuplicateEmail(string email) => new(
+            "Contact.DuplicateEmailOnRestore",
+            $"An active contact already uses '{email}', so this one cannot be restored beside it. Merge the two, or change one of the emails first");
     }
 
     /// <summary>
@@ -393,6 +398,26 @@ public static class DomainErrors
 
         public static readonly Error LeadHasNoContact = new(
             "ContactRelationship.LeadHasNoContact", "This lead needs a name and an email before relationships can be recorded");
+
+        public static readonly Error LeadContactDeleted = new(
+            "ContactRelationship.LeadContactDeleted",
+            "This lead's contact was deleted, so relationships are not recorded on the lead");
+    }
+
+    /// <summary>
+    /// Errors for the team's "not the same" decisions on duplicates. Not "Duplicate.": a code
+    /// with that word in it is answered as a conflict (409), and these are bad requests.
+    /// </summary>
+    public static class Dedupe
+    {
+        public static readonly Error InvalidKind = new(
+            "Dedupe.InvalidKind", "Unknown kind of record. Use one of: " + string.Join(", ", ACI.Domain.Entities.DuplicateKinds.All));
+
+        public static Error RecordCount(int max) => new(
+            "Dedupe.RecordCount", $"Name between two and {max} different records");
+
+        public static readonly Error RecordsNotInWorkspace = new(
+            "Dedupe.RecordsNotInWorkspace", "Some of these records were not found in this workspace");
     }
 
     /// <summary>

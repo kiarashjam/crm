@@ -668,8 +668,11 @@ public class CompanyServiceTests
         };
 
         _companyRepositoryMock
-            .Setup(r => r.GetPagedAsync(userId, orgId, 0, 10, null, It.IsAny<CancellationToken>()))
+            .Setup(r => r.GetPagedAsync(userId, orgId, 0, 10, It.IsAny<CompanyQueryOptions>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((companies, 50)); // 50 total items
+        _companyRepositoryMock
+            .Setup(r => r.GetStatsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), userId, orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<(Guid, int, int, IReadOnlyList<CurrencyTotalDto>)>());
 
         // Act
         var result = await _sut.GetCompaniesPagedAsync(userId, orgId, page: 1, pageSize: 10);

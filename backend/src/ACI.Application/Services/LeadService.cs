@@ -68,8 +68,6 @@ public class LeadService : ILeadService
             "Getting paged leads for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}",
             userId, organizationId, page, pageSize);
 
-        await _contactRepository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
-
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, options, ct);
 
@@ -95,8 +93,6 @@ public class LeadService : ILeadService
         _logger.LogDebug(
             "Getting leads for user {UserId}, organization {OrganizationId}",
             userId, organizationId);
-
-        await _contactRepository.EnsureMissingPersonContactsAsync(userId, organizationId, ct);
 
         var list = await _repository.GetByUserIdAsync(userId, organizationId, ct);
         
@@ -758,7 +754,13 @@ public class LeadService : ILeadService
         lead.UpdatedAtUtc = DateTime.UtcNow;
         lead.UpdatedByUserId = userId;
         
-        if (contactId.HasValue && request.CreateContact) lead.ConvertedToContactId = contactId;
+        if (contactId.HasValue && request.CreateContact)
+        {
+            lead.ConvertedToContactId = contactId;
+            // Asked for in so many words, so a contact deleted earlier no longer stands
+            // in the way of the lead having one.
+            lead.PersonContactRemovedAtUtc = null;
+        }
         if (dealId.HasValue && request.CreateDeal) lead.ConvertedToDealId = dealId;
         if (newCompanyId.HasValue) lead.ConvertedToCompanyId = newCompanyId;
         

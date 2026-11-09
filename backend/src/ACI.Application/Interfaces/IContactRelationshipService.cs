@@ -21,5 +21,12 @@ public interface IContactRelationshipService
     /// The contact a lead's relationships hang off: the person contact every lead with a
     /// name and an email has. Null when the lead has none.
     /// </summary>
-    Task<Result<Guid?>> LeadContactIdAsync(Guid leadId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <param name="ensure">
+    /// Give the lead its person contact first when it has none. Only for a write: a read
+    /// of the lead's relationships must not create anything, whoever opens the page.
+    /// </param>
+    Task<Result<LeadContact>> LeadContactAsync(Guid leadId, Guid userId, Guid? organizationId, bool ensure, CancellationToken ct = default);
 }
+
+/// <summary>A lead's person contact, and whether someone deleted it (so it is not made again).</summary>
+public sealed record LeadContact(Guid? ContactId, bool Deleted);

@@ -264,6 +264,7 @@ public sealed class LeadRepository : ILeadRepository
         existing.TerritoryId = lead.TerritoryId;
         existing.EnrichedDomain = lead.EnrichedDomain;
         existing.ConvertedToContactId = lead.ConvertedToContactId;
+        existing.PersonContactRemovedAtUtc = lead.PersonContactRemovedAtUtc;
         existing.ConvertedToDealId = lead.ConvertedToDealId;
         existing.ConvertedToCompanyId = lead.ConvertedToCompanyId;
         existing.UpdatedAtUtc = DateTime.UtcNow;

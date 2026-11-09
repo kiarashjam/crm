@@ -114,6 +114,8 @@ public class OrganizationCloneTests
         var spouse = new Contact { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Name = "Marie Dupont", Email = $"marie@{name}.ch", CreatedAtUtc = now };
         db.AddRange(task, contract, sequence, territory, queue, member, team, rule, definition, spouse);
         db.ContactRelationships.Add(new ContactRelationship { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, ContactId = contact.Id, RelatedContactId = spouse.Id, Type = ContactRelationshipTypes.Spouse, CreatedAtUtc = now });
+        // The couple look alike to the duplicate rules; someone said they are two people.
+        db.DuplicateDecisions.Add(new DuplicateDecision { Id = Guid.NewGuid(), UserId = owner, OrganizationId = org.Id, Kind = DuplicateKinds.Contacts, RecordIdA = contact.Id, RecordIdB = spouse.Id, CreatedAtUtc = now });
         db.AddRange(
             new DealStageChange { Id = Guid.NewGuid(), DealId = deal.Id, FromDealStageId = stage.Id, ToDealStageId = won.Id, ChangedByUserId = owner, ChangedAtUtc = now },
             new DealLineItem { Id = Guid.NewGuid(), DealId = deal.Id, Name = "Membership", Quantity = 1, UnitPrice = 12000, CreatedAtUtc = now },
