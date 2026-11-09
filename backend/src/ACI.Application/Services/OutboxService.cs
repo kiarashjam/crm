@@ -229,7 +229,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         var mail = _outreach.Body(organizationId, sender.WorkspaceName, body, to.Concat(cc).ToList(), tracking);
 
         var id = Guid.NewGuid();
-        var replyDomain = _settings.ReplyDomain();
+        var replyDomain = _settings.CapturesReplies ? _settings.ReplyDomain() : null;
         var token = replyDomain == null ? null : NewReplyToken();
         var replyTo = new List<string>();
         if (sender.ReplyTo != null) replyTo.Add(sender.ReplyTo);

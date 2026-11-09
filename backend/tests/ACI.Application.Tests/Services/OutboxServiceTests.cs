@@ -204,11 +204,24 @@ public class OutboxServiceTests
     public async Task WithReplyCapture_ARepliesAddressOfItsOwnIsAdded_AndTheRepStillGetsTheReply()
     {
         _settings.InboundReplyDomain = "Reply.Cadence.Example";
+        _settings.InboundParseSecret = "s3cret";
 
         var message = await QueueAndDispatchAsync(Email());
 
         message.ReplyToken.Should().MatchRegex("^[a-z2-7]{21}$");
         _sent.Single().ReplyTo.Should().Equal("anna@pavillon46.ch", $"reply+{message.ReplyToken}@reply.cadence.example");
+    }
+
+    [Fact]
+    public async Task WithoutTheInboundEndpointSwitchedOn_NoReplyAddressIsNamed()
+    {
+        // Replies sent there would be posted to an endpoint that turns them away.
+        _settings.InboundReplyDomain = "reply.cadence.example";
+
+        var message = await QueueAndDispatchAsync(Email());
+
+        message.ReplyToken.Should().BeNull();
+        _sent.Single().ReplyTo.Should().Equal("anna@pavillon46.ch");
     }
 
     [Theory]

@@ -83,10 +83,17 @@ public sealed class EmailSettings
             .Any(d => string.Equals(d.TrimEnd('.'), wanted, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>The reply-capture domain, or null when replies are not captured.</summary>
+    /// <summary>The reply-capture domain, or null when none is set.</summary>
     public string? ReplyDomain()
     {
         var domain = (InboundReplyDomain ?? "").Trim().Trim('@').TrimEnd('.');
         return domain.Length == 0 ? null : domain.ToLowerInvariant();
     }
+
+    /// <summary>
+    /// Whether replies come back into the CRM: a reply domain to name in Reply-To, and the
+    /// Inbound Parse endpoint switched on to take them. With the domain alone, replies to
+    /// it would be posted to an endpoint that turns them away, so it is not named.
+    /// </summary>
+    public bool CapturesReplies => ReplyDomain() != null && !string.IsNullOrWhiteSpace(InboundParseSecret);
 }
