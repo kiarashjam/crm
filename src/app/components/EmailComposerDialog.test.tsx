@@ -74,6 +74,20 @@ describe('EmailComposerDialog', () => {
     expect(options?.action).toBeUndefined();
   });
 
+  it('when a placeholder has nothing to fill it: the reason, and no email-app way round it', async () => {
+    // The server fills {{firstName}} and the rest; the email app would get them as typed.
+    api.sendEmail.mockRejectedValue(new ApiError(
+      'This email uses {{firstName}}, which has nothing to fill it with here, so it was not sent. Fill it in on the record, remove it, or give it a fallback: {{firstName|…}}',
+      400, '/api/email/send', true, 'Email.MergeField'));
+    const onOpenChange = await send();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    const [text, options] = toast.error.mock.calls[0]!;
+    expect(text).toMatch(/^This email uses \{\{firstName\}\}/);
+    expect(options?.action).toBeUndefined();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
   it('when the send fails: the reason, an email-app way out, no "sent" and no timeline entry', async () => {
     api.sendEmail.mockRejectedValue(new Error('Sending email is not set up on the server yet.'));
     const onOpenChange = await send();

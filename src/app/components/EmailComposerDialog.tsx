@@ -11,8 +11,12 @@ import { Label } from '@/app/components/ui/label';
 import { sendEmail, cancelEmail, createActivity, generateCopy, servesDemoData, mailtoHref } from '@/app/api';
 import { ApiError } from '@/app/api/apiClient';
 
-/** Refusals that are the answer, not a fault to work around in the person's own email app. */
-const REFUSALS = new Set(['Contact.DoNotContact', 'Email.Suppressed']);
+/**
+ * Refusals that are the answer, not a fault to work around in the person's own email
+ * app. A placeholder with nothing to fill it is one too: the email app gets the words as
+ * typed, and would send "Hi {{firstName}}," to the person.
+ */
+const REFUSALS = new Set(['Contact.DoNotContact', 'Email.Suppressed', 'Email.MergeField']);
 
 export interface EmailComposerContext {
   leadId?: string;
