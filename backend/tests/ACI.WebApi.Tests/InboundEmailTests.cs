@@ -146,6 +146,23 @@ public class InboundEmailTests
     }
 
     [Fact]
+    public async Task AReplyWhoseMessageIdIsTooLongToKeepIsStillTakenIn()
+    {
+        // InboundEmails keeps a Message-ID of up to 255 characters. Saving a longer one
+        // fails on SQL Server, and the failure read as "taken in already": the reply was
+        // dropped. It is taken in without its Message-ID instead.
+        await using var app = new App();
+        var (_, _, leadId, _, first) = await EmailedLeadAsync(app);
+        var replyAddress = first.ReplyTo.Single(a => a.EndsWith("@" + ReplyDomain));
+
+        await Json(await app.CreateClient().PostAsync($"/api/public/email/inbound/{ParseSecret}",
+            Reply(replyAddress, headers: $"Message-ID: <{new string('m', 300)}@mail.example.ch>")), "inbound");
+
+        (await app.Services.Read(db => db.InboundEmails.Single().MessageIdHeader)).Should().BeNull();
+        (await app.Services.Read(db => db.Activities.Count(a => a.LeadId == leadId && a.Subject!.StartsWith("Reply")))).Should().Be(1);
+    }
+
+    [Fact]
     public async Task AReplyIsMatchedByInReplyTo_WhenTheReplyAddressIsNotOnIt()
     {
         // A rep forwarding the reply on, say: the token address is gone, the thread is not.

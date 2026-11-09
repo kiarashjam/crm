@@ -47,6 +47,9 @@ public interface IInboundEmailService
 /// </remarks>
 public sealed class InboundEmailService : IInboundEmailService
 {
+    /// <summary>InboundEmails.MessageIdHeader is nvarchar(255).</summary>
+    private const int MaxMessageIdLength = 255;
+
     private readonly IOutboxRepository _messages;
     private readonly ISequenceRepository _sequences;
     private readonly IOrganizationRepository _organizations;
@@ -83,7 +86,9 @@ public sealed class InboundEmailService : IInboundEmailService
             _logger.LogInformation("An inbound email matched nothing that was sent, so it was dropped");
             return InboundReplyOutcome.NotMatched;
         }
-        var messageId = NormalizeMessageId(reply.MessageId);
+        // A Message-ID longer than the column holds is not kept: saving it would fail, and
+        // the failure would read as "taken in already", dropping the reply.
+        var messageId = NormalizeMessageId(reply.MessageId) is { Length: <= MaxMessageIdLength } id ? id : null;
         if (messageId != null && await _messages.InboundSeenAsync(organizationId, messageId, ct))
             return InboundReplyOutcome.AlreadyRecorded;
 
