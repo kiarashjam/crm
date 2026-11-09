@@ -247,6 +247,39 @@ public class LeadImportTests
     }
 
     [Fact]
+    public async Task TheDryRunAndTheImportRefuseTheSameRows()
+    {
+        // A status the workspace has, but longer than a lead's status may be. The dry run
+        // and the import check rows the same way, so the preview never promises what the
+        // import then refuses.
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, _, orgId) = await WorkspaceAsync(factory);
+        var longStatus = "Waiting for the committee to meet after the summer holidays";
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.LeadStatuses.Add(new LeadStatus { Id = Guid.NewGuid(), OrganizationId = orgId, Name = longStatus, DisplayOrder = 0 });
+            await db.SaveChangesAsync();
+        }
+
+        var csv = $"name,email,status\nJean,jean@dupont.example,{longStatus}\nAnne,anne@meier.example,\n";
+        var columns = new[] { "name", "email", "status" };
+        var preview = await OkJson(await Preview(client, "lead", csv, columns), "preview");
+        var imported = await OkJson(await Import(client, "lead", csv, columns), "import");
+
+        foreach (var result in new[] { preview, imported })
+        {
+            Action(result, 2).Should().Be("error");
+            Message(result, 2).Should().Be("Status is longer than 50 characters");
+            // No status in the file: the workspace's only one is the default, and the
+            // request check refuses it. The dry run used to promise "Add" here.
+            Action(result, 3).Should().Be("error");
+            Message(result, 3).Should().Be("Status cannot exceed 50 characters");
+        }
+        (await factory.Services.Read(db => db.Leads.Count())).Should().Be(0);
+    }
+
+    [Fact]
     public async Task AStatusTheWorkspaceDoesNotHaveIsImportedAsTheDefaultAndSaysSo()
     {
         await using var factory = new CustomWebApplicationFactory();

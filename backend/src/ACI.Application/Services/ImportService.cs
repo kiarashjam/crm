@@ -138,6 +138,10 @@ public sealed class ImportService : IImportService
             companies.Select(c => new ImportCompany(c.Id, c.Name, c.Domain)).ToList(),
             statuses, sources, request.DefaultStatus, request.DefaultSource);
         var plan = planner.Plan(file.Rows);
+        // Checked as the API checks a form's request, in the dry run as in the import, so
+        // the preview never promises a row the import would then refuse.
+        foreach (var row in plan.Where(r => r.Action is ImportPlannedRow.Create or ImportPlannedRow.Update))
+            if (Invalid(Request(kind, row, companyId: null, runAutomations: false)) is { } invalid) row.Fail(invalid.Description);
         if (dryRun) return Outcome(null, true, kind, file, plan);
 
         var batch = new ImportBatch
@@ -285,12 +289,8 @@ public sealed class ImportService : IImportService
                 companyId = company.Value;
             }
 
-            var saved = kind switch
-            {
-                RecordTypes.Lead => await SaveLeadAsync(row, companyId, batch.RanAutomations, userId, organizationId, ct),
-                RecordTypes.Contact => await SaveContactAsync(row, companyId, userId, organizationId, ct),
-                _ => await SaveCompanyAsync(row, userId, organizationId, ct),
-            };
+            var request = Request(kind, row, companyId, batch.RanAutomations);
+            var saved = Invalid(request) is { } invalid ? invalid : await SaveAsync(request, row.RecordId, userId, organizationId, ct);
             if (saved.IsFailure)
             {
                 row.Fail(saved.Error.Description);
@@ -313,125 +313,72 @@ public sealed class ImportService : IImportService
         }
     }
 
-    private async Task<Result<Guid>> SaveLeadAsync(ImportPlannedRow row, Guid? companyId, bool runAutomations, Guid userId, Guid? organizationId, CancellationToken ct)
+    /// <summary>
+    /// What a row sends to the service a form would use. Built the same way for the dry run,
+    /// which checks it, and for the import, which sends it, so the two cannot disagree.
+    /// </summary>
+    /// <param name="companyId">The company to link; unknown, and so null, in a dry run.</param>
+    private static object Request(string kind, ImportPlannedRow row, Guid? companyId, bool runAutomations)
     {
         var v = row.Values;
-        if (row.Action == ImportPlannedRow.Create)
+        var create = row.Action == ImportPlannedRow.Create;
+        return kind switch
         {
-            var create = new CreateLeadRequest
+            RecordTypes.Lead when create => new CreateLeadRequest
             {
-                Name = v["name"],
-                Email = v["email"],
-                Phone = v.GetValueOrDefault("phone"),
-                CompanyId = companyId,
-                Source = v.GetValueOrDefault("source"),
-                LeadSourceId = row.SourceId,
-                Status = v["status"],
-                LeadStatusId = row.StatusId,
-                JobTitle = v.GetValueOrDefault("jobTitle"),
-                Country = v.GetValueOrDefault("country"),
-                Industry = v.GetValueOrDefault("industry"),
-                CompanySize = v.GetValueOrDefault("companySize"),
+                Name = v["name"], Email = v["email"], Phone = v.GetValueOrDefault("phone"), CompanyId = companyId,
+                Source = v.GetValueOrDefault("source"), LeadSourceId = row.SourceId, Status = v["status"], LeadStatusId = row.StatusId,
+                JobTitle = v.GetValueOrDefault("jobTitle"), Country = v.GetValueOrDefault("country"), Industry = v.GetValueOrDefault("industry"),
+                CompanySize = v.GetValueOrDefault("companySize"), Description = v.GetValueOrDefault("description"),
+                Origin = "import", RunAutomations = runAutomations,
+            },
+            RecordTypes.Lead => new UpdateLeadRequest
+            {
+                Name = v.GetValueOrDefault("name"), Email = v.GetValueOrDefault("email"), Phone = v.GetValueOrDefault("phone"), CompanyId = companyId,
+                Source = v.GetValueOrDefault("source"), LeadSourceId = row.SourceId, Status = v.GetValueOrDefault("status"), LeadStatusId = row.StatusId,
+                JobTitle = v.GetValueOrDefault("jobTitle"), Country = v.GetValueOrDefault("country"), Industry = v.GetValueOrDefault("industry"),
+                CompanySize = v.GetValueOrDefault("companySize"), Description = v.GetValueOrDefault("description"),
+                Origin = "import", RunAutomations = runAutomations,
+            },
+            RecordTypes.Contact when create => new CreateContactRequest
+            {
+                Name = v["name"], Email = v["email"], Phone = v.GetValueOrDefault("phone"), JobTitle = v.GetValueOrDefault("jobTitle"),
+                CompanyId = companyId, Description = v.GetValueOrDefault("description"), DoNotContact = v.ContainsKey("doNotContact"),
+            },
+            RecordTypes.Contact => new UpdateContactRequest
+            {
+                Name = v.GetValueOrDefault("name"), Email = v.GetValueOrDefault("email"), Phone = v.GetValueOrDefault("phone"),
+                JobTitle = v.GetValueOrDefault("jobTitle"), CompanyId = companyId, Description = v.GetValueOrDefault("description"),
+                DoNotContact = v.ContainsKey("doNotContact") ? true : null,
+            },
+            _ when create => new CreateCompanyRequest
+            {
+                Name = v["name"], Domain = v.GetValueOrDefault("domain"), Website = v.GetValueOrDefault("website"), Industry = v.GetValueOrDefault("industry"),
+                Size = v.GetValueOrDefault("size"), Location = v.GetValueOrDefault("location"), Description = v.GetValueOrDefault("description"),
+            },
+            _ => new UpdateCompanyRequest
+            {
+                Name = v.GetValueOrDefault("name"), Domain = v.GetValueOrDefault("domain"), Website = v.GetValueOrDefault("website"),
+                Industry = v.GetValueOrDefault("industry"), Size = v.GetValueOrDefault("size"), Location = v.GetValueOrDefault("location"),
                 Description = v.GetValueOrDefault("description"),
-                Origin = "import",
-                RunAutomations = runAutomations,
-            };
-            if (Invalid(create) is { } invalid) return invalid;
-            var created = await _leads.CreateAsync(userId, organizationId, create, ct);
-            return created.IsSuccess ? created.Value.Id : created.Error;
-        }
-
-        var change = new UpdateLeadRequest
-        {
-            Name = v.GetValueOrDefault("name"),
-            Email = v.GetValueOrDefault("email"),
-            Phone = v.GetValueOrDefault("phone"),
-            CompanyId = companyId,
-            Source = v.GetValueOrDefault("source"),
-            LeadSourceId = row.SourceId,
-            Status = v.GetValueOrDefault("status"),
-            LeadStatusId = row.StatusId,
-            JobTitle = v.GetValueOrDefault("jobTitle"),
-            Country = v.GetValueOrDefault("country"),
-            Industry = v.GetValueOrDefault("industry"),
-            CompanySize = v.GetValueOrDefault("companySize"),
-            Description = v.GetValueOrDefault("description"),
-            Origin = "import",
-            RunAutomations = runAutomations,
+            },
         };
-        if (Invalid(change) is { } refused) return refused;
-        var updated = await _leads.UpdateAsync(row.RecordId!.Value, userId, organizationId, change, ct);
-        return updated.IsSuccess ? updated.Value.Id : updated.Error;
     }
 
-    private async Task<Result<Guid>> SaveContactAsync(ImportPlannedRow row, Guid? companyId, Guid userId, Guid? organizationId, CancellationToken ct)
+    /// <summary>Sends a row's request to its service. The id is of the record created or updated.</summary>
+    private async Task<Result<Guid>> SaveAsync(object request, Guid? recordId, Guid userId, Guid? organizationId, CancellationToken ct)
     {
-        var v = row.Values;
-        if (row.Action == ImportPlannedRow.Create)
+        static Result<Guid> Id<T>(Result<T> result, Func<T, Guid> id) => result.IsSuccess ? id(result.Value) : result.Error;
+        return request switch
         {
-            var create = new CreateContactRequest
-            {
-                Name = v["name"],
-                Email = v["email"],
-                Phone = v.GetValueOrDefault("phone"),
-                JobTitle = v.GetValueOrDefault("jobTitle"),
-                CompanyId = companyId,
-                Description = v.GetValueOrDefault("description"),
-                DoNotContact = v.ContainsKey("doNotContact"),
-            };
-            if (Invalid(create) is { } invalid) return invalid;
-            var created = await _contacts.CreateAsync(userId, organizationId, create, ct);
-            return created.IsSuccess ? created.Value.Id : created.Error;
-        }
-
-        var change = new UpdateContactRequest
-        {
-            Name = v.GetValueOrDefault("name"),
-            Email = v.GetValueOrDefault("email"),
-            Phone = v.GetValueOrDefault("phone"),
-            JobTitle = v.GetValueOrDefault("jobTitle"),
-            CompanyId = companyId,
-            Description = v.GetValueOrDefault("description"),
-            DoNotContact = v.ContainsKey("doNotContact") ? true : null,
+            CreateLeadRequest r => Id(await _leads.CreateAsync(userId, organizationId, r, ct), d => d.Id),
+            UpdateLeadRequest r => Id(await _leads.UpdateAsync(recordId!.Value, userId, organizationId, r, ct), d => d.Id),
+            CreateContactRequest r => Id(await _contacts.CreateAsync(userId, organizationId, r, ct), d => d.Id),
+            UpdateContactRequest r => Id(await _contacts.UpdateAsync(recordId!.Value, userId, organizationId, r, ct), d => d.Id),
+            CreateCompanyRequest r => Id(await _companies.CreateAsync(userId, organizationId, r, ct), d => d.Id),
+            UpdateCompanyRequest r => Id(await _companies.UpdateAsync(recordId!.Value, userId, organizationId, r, ct), d => d.Id),
+            _ => throw new ArgumentOutOfRangeException(nameof(request)),
         };
-        if (Invalid(change) is { } refused) return refused;
-        var updated = await _contacts.UpdateAsync(row.RecordId!.Value, userId, organizationId, change, ct);
-        return updated.IsSuccess ? updated.Value.Id : updated.Error;
-    }
-
-    private async Task<Result<Guid>> SaveCompanyAsync(ImportPlannedRow row, Guid userId, Guid? organizationId, CancellationToken ct)
-    {
-        var v = row.Values;
-        if (row.Action == ImportPlannedRow.Create)
-        {
-            var create = new CreateCompanyRequest
-            {
-                Name = v["name"],
-                Domain = v.GetValueOrDefault("domain"),
-                Website = v.GetValueOrDefault("website"),
-                Industry = v.GetValueOrDefault("industry"),
-                Size = v.GetValueOrDefault("size"),
-                Location = v.GetValueOrDefault("location"),
-                Description = v.GetValueOrDefault("description"),
-            };
-            if (Invalid(create) is { } invalid) return invalid;
-            var created = await _companies.CreateAsync(userId, organizationId, create, ct);
-            return created.IsSuccess ? created.Value.Id : created.Error;
-        }
-
-        var change = new UpdateCompanyRequest
-        {
-            Name = v.GetValueOrDefault("name"),
-            Domain = v.GetValueOrDefault("domain"),
-            Website = v.GetValueOrDefault("website"),
-            Industry = v.GetValueOrDefault("industry"),
-            Size = v.GetValueOrDefault("size"),
-            Location = v.GetValueOrDefault("location"),
-            Description = v.GetValueOrDefault("description"),
-        };
-        if (Invalid(change) is { } refused) return refused;
-        var updated = await _companies.UpdateAsync(row.RecordId!.Value, userId, organizationId, change, ct);
-        return updated.IsSuccess ? updated.Value.Id : updated.Error;
     }
 
     /// <summary>The company of this name: one already here, one an earlier row added, or a new one.</summary>
