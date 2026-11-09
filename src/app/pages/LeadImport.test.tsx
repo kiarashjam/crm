@@ -6,6 +6,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { ImportAnalysis, ImportResult } from '@/app/api/imports';
+import { ApiError } from '@/app/api/apiClient';
 
 const api = {
   analyzeImport: vi.fn(),
@@ -196,6 +197,30 @@ describe('importing leads', () => {
 
     await user.click(within(dialog).getByRole('button', { name: 'Undo import' }));
     await waitFor(() => expect(api.undoImport).toHaveBeenCalledWith('batch-1'));
+  });
+
+  it('says why the server refused the import, and keeps the checked file to try again', async () => {
+    api.runImport.mockRejectedValue(new ApiError('The column choices don\'t match the file\'s columns. Choose the columns again', 400, '/api/imports', true));
+    const { user } = await upload();
+    await user.click(screen.getByRole('button', { name: 'Check the file' }));
+    await user.click(await screen.findByRole('button', { name: 'Add 1 lead and update 1' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The column choices don\'t match the file\'s columns');
+    expect(screen.getByRole('button', { name: 'Add 1 lead and update 1' })).toBeInTheDocument();
+  });
+
+  it('does not offer the same file again when the connection drops during the import', async () => {
+    // The import keeps going on the server once it has started. Importing the file a
+    // second time from here could add its rows twice.
+    api.runImport.mockRejectedValue(new TypeError('Failed to fetch'));
+    const { user } = await upload();
+    await user.click(screen.getByRole('button', { name: 'Check the file' }));
+    await user.click(await screen.findByRole('button', { name: 'Add 1 lead and update 1' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/may still have imported the file: check Recent imports/);
+    expect(screen.queryByRole('button', { name: 'Add 1 lead and update 1' })).not.toBeInTheDocument();
+    // Recent imports is shown again, read afresh, where the import appears.
+    await waitFor(() => expect(api.listImports).toHaveBeenCalledTimes(2));
   });
 
   it('says why a file cannot be read', async () => {

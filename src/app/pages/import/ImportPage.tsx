@@ -19,7 +19,7 @@ import { Button } from '@/app/components/ui/button';
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { Label } from '@/app/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/app/components/ui/radio-group';
-import { servesDemoData } from '@/app/api/apiClient';
+import { ApiError, servesDemoData } from '@/app/api/apiClient';
 import { getLeadSources, getLeadStatuses } from '@/app/api';
 import type { LeadSource, LeadStatus } from '@/app/api/types';
 import {
@@ -55,6 +55,9 @@ const ACTION_BADGES: Record<ImportAction, { label: string; className: string }> 
 };
 
 const selectClass = 'h-10 w-full rounded-md border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900';
+
+const CONNECTION_LOST =
+  'The connection to the server was lost before the import finished. The server may still have imported the file: check Recent imports below before importing it again.';
 
 /** What still has to be chosen before the file can be checked, or null when nothing. */
 export function missingChoice(kind: ImportKind, columns: (string | null)[], duplicates: 'skip' | 'update'): string | null {
@@ -200,8 +203,20 @@ export default function ImportPage({ kind }: ImportPageProps) {
       if (changed > 0) toast.success(`Imported ${changed.toLocaleString()} ${changed === 1 ? info.one : info.many}`);
       if (done.failed > 0) toast.error(`${done.failed.toLocaleString()} rows were not imported`);
     } catch (e) {
-      setProblem(message(e, 'The import did not run.'));
-      setStep('check');
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
+        // Refused before anything was written (the file, the columns, a Viewer): say
+        // why, and keep the checked file here to change and try again.
+        setProblem(message(e, 'The import did not run.'));
+        setStep('check');
+        return;
+      }
+      // The connection dropped, or the server or the hosting in front of it stopped
+      // waiting. Once started, an import keeps going on the server, so it may well have
+      // run: importing the file again from here could add its rows twice. Recent
+      // imports shows it instead, still running or finished.
+      reset();
+      setProblem(CONNECTION_LOST);
+      setRefreshKey((k) => k + 1);
     }
   };
 
