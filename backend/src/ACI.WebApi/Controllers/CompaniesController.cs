@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
@@ -28,40 +29,104 @@ public class CompaniesController : ControllerBase
     }
 
     /// <summary>
-    /// Retrieves companies with pagination and optional search.
+    /// Retrieves companies with pagination, filters and sorting, all applied to the whole
+    /// workspace, each with its contact and deal counts.
     /// </summary>
     /// <param name="page">Page number (1-based). Default is 1.</param>
     /// <param name="pageSize">Number of items per page. Default is 20, max 100.</param>
     /// <param name="search">Optional search query.</param>
+    /// <param name="industry">Only companies in this industry, ignoring case.</param>
+    /// <param name="hasIndustry">False: only companies with no industry. True: only those with one.</param>
+    /// <param name="size">Only companies of this size, as stored ("11-50").</param>
+    /// <param name="sortBy">name (the default), createdAt, contacts or deals.</param>
+    /// <param name="sortDir">asc (the default) or desc.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of companies.</returns>
     /// <response code="200">Returns the paginated list of companies.</response>
     /// <response code="401">User is not authenticated.</response>
     [HttpGet]
-    [ProducesResponseType(typeof(PagedResult<CompanyDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PagedResult<CompanyListItemDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<PagedResult<CompanyDto>>> GetCompanies(
+    public async Task<ActionResult<PagedResult<CompanyListItemDto>>> GetCompanies(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
+        [FromQuery] string? industry = null,
+        [FromQuery] bool? hasIndustry = null,
+        [FromQuery] string? size = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
         // HP-11: Clamp pageSize to prevent overloading
         pageSize = Math.Clamp(pageSize, 1, 100);
-        
+
         var result = await _companyService.GetCompaniesPagedAsync(
-            userId.Value, 
-            _currentUser.CurrentOrganizationId, 
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
             page,
             pageSize,
-            search,
+            Options(search, industry, hasIndustry, size, sortBy, sortDir),
             ct);
-        
+
         return Ok(result);
     }
+
+    /// <summary>
+    /// The figures above the companies list: how many companies, with contacts, with deals,
+    /// added in the last 7 days, the deals' value per currency, and the industries they are in.
+    /// </summary>
+    /// <response code="200">The figures, over the whole workspace.</response>
+    [HttpGet("summary")]
+    [ProducesResponseType(typeof(CompanySummaryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<CompanySummaryDto>> GetSummary(CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return Ok(await _companyService.GetSummaryAsync(userId.Value, _currentUser.CurrentOrganizationId, ct));
+    }
+
+    /// <summary>
+    /// Every company the list shows with the same filters and order, as a CSV file. Takes
+    /// the list's parameters, less the page. X-Total-Count says how many match, and
+    /// X-Exported-Count how many the file holds (at most 50,000).
+    /// </summary>
+    /// <response code="200">The CSV file.</response>
+    [HttpGet("export")]
+    [Produces("text/csv")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult> Export(
+        [FromQuery] string? search = null,
+        [FromQuery] string? industry = null,
+        [FromQuery] bool? hasIndustry = null,
+        [FromQuery] string? size = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
+        CancellationToken ct = default)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var file = await _companyService.ExportAsync(
+            userId.Value, _currentUser.CurrentOrganizationId, Options(search, industry, hasIndustry, size, sortBy, sortDir), ct);
+        Response.Headers["X-Total-Count"] = file.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Response.Headers["X-Exported-Count"] = file.Exported.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return File(file.Content, "text/csv; charset=utf-8", file.FileName);
+    }
+
+    private static CompanyQueryOptions Options(string? search, string? industry, bool? hasIndustry, string? size, string? sortBy, string? sortDir) => new()
+    {
+        Search = search,
+        Industry = industry,
+        HasIndustry = hasIndustry,
+        Size = size,
+        SortBy = string.IsNullOrWhiteSpace(sortBy) ? "name" : sortBy,
+        SortDir = string.IsNullOrWhiteSpace(sortDir) ? "asc" : sortDir,
+    };
 
     /// <summary>
     /// Retrieves all companies for the authenticated user (non-paginated, for backward compatibility).

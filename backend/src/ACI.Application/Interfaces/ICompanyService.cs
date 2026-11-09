@@ -20,6 +20,15 @@ public interface ICompanyService
     /// <returns>A paginated list of companies.</returns>
     Task<PagedResult<CompanyDto>> GetCompaniesPagedAsync(Guid userId, Guid? organizationId, int page = 1, int pageSize = 20, string? search = null, CancellationToken ct = default);
 
+    /// <summary>One page of companies, each with its counts, with every filter and the order applied to the whole workspace.</summary>
+    Task<PagedResult<CompanyListItemDto>> GetCompaniesPagedAsync(Guid userId, Guid? organizationId, int page, int pageSize, CompanyQueryOptions options, CancellationToken ct = default);
+
+    /// <summary>The figures above the companies list, over the whole workspace.</summary>
+    Task<CompanySummaryDto> GetSummaryAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>Every company the list would show with these filters, as a CSV file.</summary>
+    Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, CompanyQueryOptions options, CancellationToken ct = default);
+
     /// <summary>
     /// Gets all companies for a user within an organization.
     /// </summary>
