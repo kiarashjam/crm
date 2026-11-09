@@ -690,8 +690,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
 
     /// <summary>
     /// Why the sequence behind a message has ended since the step queued it, or null while
-    /// it runs. Completed counts as running: the last step's email completes the
-    /// enrollment as soon as it is queued.
+    /// it runs. Only a stopped or removed enrollment has ended: a paused one keeps its
+    /// place, and a completed one finished the steps this email belongs to.
     /// </summary>
     private async Task<string?> SequenceStoppedAsync(OutboundMessage message, CancellationToken ct)
     {
