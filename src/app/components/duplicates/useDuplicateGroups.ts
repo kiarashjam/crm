@@ -77,6 +77,8 @@ export function useDuplicateGroups<T extends { id: string }>(
   const [loaded, setLoaded] = useState(false);
   const alive = useRef(true);
   const loading = useRef<Promise<void> | null>(null);
+  // Counts decisions, so a read that began before one cannot undo its hiding with old data.
+  const decisions = useRef(0);
 
   const read = useCallback(async () => {
     if (onServer && spec.scan) {
@@ -96,8 +98,9 @@ export function useDuplicateGroups<T extends { id: string }>(
 
   const refresh = useCallback(async () => {
     if (loading.current) return loading.current;
+    const startedAfter = decisions.current;
     const run = read()
-      .then(() => { if (alive.current) setJustDecided(new Set()); })
+      .then(() => { if (alive.current && startedAfter === decisions.current) setJustDecided(new Set()); })
       // Finding duplicates is a help, never a reason for the page to fail.
       .catch(() => undefined)
       .finally(() => {
@@ -142,6 +145,12 @@ export function useDuplicateGroups<T extends { id: string }>(
   }, [scanned, spec, records, decided, notSameHere, justDecided]);
   const notSameCount = hidden.length;
 
+  // Once a decision is saved, read again: after any read already running, which began
+  // before the decision and so may still hold the group.
+  const rereadAfterDecision = useCallback(() => {
+    void (loading.current ?? Promise.resolve()).then(() => refresh());
+  }, [refresh]);
+
   const clearNotSame = useCallback(() => {
     if (!onServer) {
       const next = new Set(notSameHere);
@@ -150,10 +159,11 @@ export function useDuplicateGroups<T extends { id: string }>(
       setNotSameHere(next);
       return;
     }
+    decisions.current++;
     void Promise.all(hidden.map((g) => clearNotSameOnServer(spec.kind, g.recordIds)))
       .catch((err: unknown) => { toast.error(err instanceof Error && err.message ? err.message : 'They could not be offered again.'); })
-      .finally(() => { void refresh(); });
-  }, [onServer, notSameHere, hidden, spec.kind, refresh]);
+      .finally(rereadAfterDecision);
+  }, [onServer, notSameHere, hidden, spec.kind, rereadAfterDecision]);
 
   const markNotSame = useCallback((keys: string[]) => {
     if (!onServer) {
@@ -165,14 +175,15 @@ export function useDuplicateGroups<T extends { id: string }>(
       });
       return;
     }
+    decisions.current++;
     setJustDecided((current) => new Set([...current, ...keys]));
     void Promise.all(keys.map((key) => markNotSameOnServer(spec.kind, idsOf(key))))
       .catch((err: unknown) => {
         toast.error(err instanceof Error && err.message ? err.message : 'The decision was not saved.');
         setJustDecided((current) => new Set([...current].filter((k) => !keys.includes(k))));
       })
-      .finally(() => { void refresh(); });
-  }, [onServer, spec.kind, refresh]);
+      .finally(rereadAfterDecision);
+  }, [onServer, spec.kind, rereadAfterDecision]);
 
   const extra = groups.reduce((n, g) => n + g.records.length - 1, 0);
   return { groups, loaded, notSameCount, clearNotSame, extra, refresh, markNotSame };

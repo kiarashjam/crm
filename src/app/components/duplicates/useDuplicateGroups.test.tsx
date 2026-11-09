@@ -82,6 +82,28 @@ describe('useDuplicateGroups against the server', () => {
     await waitFor(() => expect(result.current.groups).toHaveLength(1));
   });
 
+  it('keeps a group hidden when a read that began before the decision answers with it', async () => {
+    const group = { key: 'a|b', reason: 'Same phone', records: [marc, marcAtWork] };
+    let answerSlowRead!: (scan: DuplicateScan<Person>) => void;
+    let answerReread!: (scan: DuplicateScan<Person>) => void;
+    const scan = vi.fn()
+      .mockResolvedValueOnce({ groups: [group], notSame: [] })
+      .mockImplementationOnce(() => new Promise<DuplicateScan<Person>>((resolve) => { answerSlowRead = resolve; }))
+      .mockImplementationOnce(() => new Promise<DuplicateScan<Person>>((resolve) => { answerReread = resolve; }));
+    const { result } = renderHook(() => useDuplicateGroups(spec({ scan }), { delayMs: 0 }));
+    await waitFor(() => expect(result.current.groups).toHaveLength(1));
+
+    act(() => { void result.current.refresh(); });
+    act(() => result.current.markNotSame(['a|b']));
+    await act(async () => { answerSlowRead({ groups: [group], notSame: [] }); });
+
+    expect(result.current.groups).toHaveLength(0);
+    await waitFor(() => expect(scan).toHaveBeenCalledTimes(3));
+    await act(async () => { answerReread({ groups: [], notSame: [{ key: 'a|b', recordIds: ['a', 'b'] }] }); });
+    await waitFor(() => expect(result.current.notSameCount).toBe(1));
+    expect(result.current.groups).toHaveLength(0);
+  });
+
   it('shows the group again, and says why, when the decision could not be saved', async () => {
     server.markNotSame.mockRejectedValueOnce(new Error('A Viewer cannot change records.'));
     const scan: DuplicateScan<Person> = { groups: [{ key: 'a|b', reason: 'Same phone', records: [marc, marcAtWork] }], notSame: [] };
