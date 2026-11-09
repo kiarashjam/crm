@@ -101,8 +101,9 @@ public sealed class InboundEmailService : IInboundEmailService
         };
         message.RepliedAtUtc ??= now;
 
+        // Recorded first, so the same reply posted twice at once is written on the timeline once.
+        if (!await _messages.TryAddInboundAsync(inbound, ct)) return InboundReplyOutcome.AlreadyRecorded;
         inbound.ActivityId = await WriteTimelineAsync(message, reply, ct);
-        await _messages.AddInboundAsync(inbound, ct);
         await _messages.SaveAsync(ct);
 
         // They answered: the scheduled emails stop, as when someone logs their reply by hand.

@@ -20,7 +20,17 @@ public sealed class OutboxRepository : IOutboxRepository
     public async Task AddAsync(OutboundMessage message, CancellationToken ct = default)
     {
         _db.OutboundMessages.Add(message);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            // Left in the unit of work, a message that failed to save would be tried
+            // again by whatever this request saves next, and fail that too.
+            _db.Entry(message).State = EntityState.Detached;
+            throw;
+        }
     }
 
     public Task<OutboundMessage?> GetAsync(Guid id, CancellationToken ct = default) =>
@@ -164,9 +174,19 @@ public sealed class OutboxRepository : IOutboxRepository
     public Task<bool> InboundSeenAsync(Guid organizationId, string messageIdHeader, CancellationToken ct = default) =>
         _db.InboundEmails.AnyAsync(i => i.OrganizationId == organizationId && i.MessageIdHeader == messageIdHeader, ct);
 
-    public async Task AddInboundAsync(InboundEmail inbound, CancellationToken ct = default)
+    public async Task<bool> TryAddInboundAsync(InboundEmail inbound, CancellationToken ct = default)
     {
         _db.InboundEmails.Add(inbound);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            // The same reply posted twice at once: the other post took it in.
+            _db.Entry(inbound).State = EntityState.Detached;
+            return false;
+        }
     }
 }

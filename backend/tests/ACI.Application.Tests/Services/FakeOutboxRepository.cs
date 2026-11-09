@@ -86,9 +86,11 @@ internal sealed class FakeOutboxRepository : IOutboxRepository
     public Task<bool> InboundSeenAsync(Guid organizationId, string messageIdHeader, CancellationToken ct = default) =>
         Task.FromResult(Inbound.Any(i => i.OrganizationId == organizationId && i.MessageIdHeader == messageIdHeader));
 
-    public Task AddInboundAsync(InboundEmail inbound, CancellationToken ct = default)
+    public Task<bool> TryAddInboundAsync(InboundEmail inbound, CancellationToken ct = default)
     {
+        if (inbound.MessageIdHeader != null && Inbound.Any(i => i.OrganizationId == inbound.OrganizationId && i.MessageIdHeader == inbound.MessageIdHeader))
+            return Task.FromResult(false);
         Inbound.Add(inbound);
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 }

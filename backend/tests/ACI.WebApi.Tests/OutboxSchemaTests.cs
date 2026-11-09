@@ -169,6 +169,35 @@ public class OutboxSchemaTests
         }
     }
 
+    [SqlServerFact]
+    public async Task OnSqlServerTheSameReplyIsTakenInOnce()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using (SqlServerApp.Start(database)) { }
+            AppDbContext Db() => new(new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(SqlServerApp.ConnectionString(database)).Options);
+            var org = Guid.NewGuid();
+            var message = Guid.NewGuid();
+            InboundEmail Reply() => new()
+            {
+                Id = Guid.NewGuid(), OrganizationId = org, OutboundMessageId = message, MessageIdHeader = "<reply-1@mail.example.ch>",
+                FromAddress = "jean@example.ch", MatchedBy = "token", ReceivedAtUtc = DateTime.UtcNow,
+            };
+
+            (await new OutboxRepository(Db()).TryAddInboundAsync(Reply())).Should().BeTrue();
+            (await new OutboxRepository(Db()).TryAddInboundAsync(Reply())).Should().BeFalse("the unique index is what stops two posts at once");
+            var otherWorkspace = Reply();
+            otherWorkspace.OrganizationId = Guid.NewGuid();
+            (await new OutboxRepository(Db()).TryAddInboundAsync(otherWorkspace)).Should().BeTrue("the same Message-ID in another workspace is another row");
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
     private static async Task ShouldHaveTheOutboxSchemaAsync(string database)
     {
         foreach (var table in new[] { "OutboundMessages", "EmailSuppressions", "InboundEmails" })

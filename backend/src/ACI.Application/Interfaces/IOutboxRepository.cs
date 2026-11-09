@@ -57,5 +57,9 @@ public interface IOutboxRepository
     /// <summary>Whether a reply with this Message-ID has been taken in for the workspace already.</summary>
     Task<bool> InboundSeenAsync(Guid organizationId, string messageIdHeader, CancellationToken ct = default);
 
-    Task AddInboundAsync(InboundEmail inbound, CancellationToken ct = default);
+    /// <summary>
+    /// Records a reply taken in. False when the same reply (by its Message-ID) was recorded
+    /// by another post in the meantime.
+    /// </summary>
+    Task<bool> TryAddInboundAsync(InboundEmail inbound, CancellationToken ct = default);
 }
