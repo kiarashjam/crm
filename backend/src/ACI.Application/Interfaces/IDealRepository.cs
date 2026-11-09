@@ -39,7 +39,18 @@ public interface IDealRepository
     /// </summary>
     Task<bool> MergeIntoAsync(Guid keepId, Guid dropId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     
-    // Stage change history (HP-11)
-    Task AddStageChangeAsync(DealStageChange change, CancellationToken ct = default);
+    /// <summary>
+    /// The deal's stage history, newest first, with who made each change. Empty when the
+    /// deal is not one this person can see. Written with the deal itself (DealStageMoves).
+    /// </summary>
     Task<IReadOnlyList<DealStageChange>> GetStageChangesAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// For these deals, of those this person can see: when each came into the stage it is
+    /// in (null when no history says), and when it last moved stage.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, DealPaceInfo>> GetPaceAsync(Guid userId, Guid? organizationId, IEnumerable<Guid> dealIds, CancellationToken ct = default);
 }
+
+/// <summary>When a deal came into its stage, and when it last moved, from its stage history.</summary>
+public sealed record DealPaceInfo(DateTime? StageEnteredAtUtc, DateTime? LastMoveAtUtc);

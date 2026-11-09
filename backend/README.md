@@ -140,7 +140,10 @@ X-Organization-Id: your-org-guid
 |--------|----------|-------------|
 | `GET` | `/api/deals` | List deals |
 | `GET` | `/api/deals/search?q=` | Search deals |
-| `GET` | `/api/deals/{id}` | Get deal |
+| `GET` | `/api/deals/{id}` | Get deal (with time in stage and whether it is stale) |
+| `GET` | `/api/deals/board?pipelineId=&take=&sort=&search=&mine=&assigneeId=&unassigned=&minAmount=&maxAmount=&closeFrom=&closeTo=&staleOnly=` | The board: a pipeline's stages with the first cards of each, per-stage counts, money per currency, weighted value and stale deals, and the pipeline's figures |
+| `GET` | `/api/deals/board/column?column=&skip=` (+ the board's filters) | The next cards of one board column |
+| `GET` | `/api/deals/{id}/stage-history` | The stages a deal has been in, newest first |
 | `POST` | `/api/deals` | Create deal |
 | `PUT` | `/api/deals/{id}` | Update deal |
 | `DELETE` | `/api/deals/{id}` | Delete deal |
@@ -204,8 +207,8 @@ An import still running cannot be undone: both undo calls answer 409 until it ha
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET/POST/PUT/DELETE` | `/api/pipelines` | Manage pipelines |
-| `GET/POST/PUT/DELETE` | `/api/dealstages` | Manage deal stages |
+| `GET/POST/PUT/DELETE` | `/api/pipelines` | Manage pipelines (with their own stale-deal days) |
+| `GET/POST/PUT/DELETE` | `/api/dealstages` | Manage deal stages (won or lost, and a default probability). Making a stage won, lost or open again gives the deals that had its old outcome the new one |
 | `GET/POST/PUT/DELETE` | `/api/leadsources` | Manage lead sources |
 | `GET/POST/PUT/DELETE` | `/api/leadstatuses` | Manage lead statuses |
 

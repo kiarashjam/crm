@@ -1070,6 +1070,13 @@ try
                 IF COL_LENGTH('Organizations', 'Currency') IS NULL ALTER TABLE [Organizations] ADD [Currency] nvarchar(3) NOT NULL CONSTRAINT DF_Organizations_Currency DEFAULT N'CHF';
                 IF COL_LENGTH('Organizations', 'Locale') IS NULL ALTER TABLE [Organizations] ADD [Locale] nvarchar(35) NOT NULL CONSTRAINT DF_Organizations_Locale DEFAULT N'de-CH';
                 IF COL_LENGTH('Organizations', 'TimeZone') IS NULL ALTER TABLE [Organizations] ADD [TimeZone] nvarchar(64) NOT NULL CONSTRAINT DF_Organizations_TimeZone DEFAULT N'Europe/Zurich';
+                -- How the board judges a deal: after how many days without activity an
+                -- open deal is stale (the workspace's, which the default fills in for the
+                -- organisations already there, unless its pipeline has its own), and the
+                -- probability a stage gives the deals in it that have none of their own.
+                IF COL_LENGTH('Organizations', 'StaleDealDays') IS NULL ALTER TABLE [Organizations] ADD [StaleDealDays] int NOT NULL CONSTRAINT DF_Organizations_StaleDealDays DEFAULT 30;
+                IF COL_LENGTH('Pipelines', 'StaleDealDays') IS NULL ALTER TABLE [Pipelines] ADD [StaleDealDays] int NULL;
+                IF COL_LENGTH('DealStages', 'Probability') IS NULL ALTER TABLE [DealStages] ADD [Probability] int NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SalesTeams')
                 CREATE TABLE [SalesTeams] (
                     [Id] uniqueidentifier NOT NULL PRIMARY KEY,

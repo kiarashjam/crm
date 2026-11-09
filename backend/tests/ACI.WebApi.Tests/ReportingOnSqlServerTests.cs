@@ -108,6 +108,15 @@ public class ReportingOnSqlServerTests
                 db.SalesTeamMembers.Add(new SalesTeamMember { TeamId = teamId, UserId = ownerId });
                 db.Pipelines.Add(new Pipeline { Id = pipelineId, OrganizationId = org, Name = "Memberships" });
                 db.DealStages.Add(new DealStage { Id = stageId, PipelineId = pipelineId, Name = "Proposal", DisplayOrder = 1 });
+                // Weighted by its stage's 50%, as a deal with no probability of its own is.
+                var tourId = Guid.NewGuid();
+                db.DealStages.Add(new DealStage { Id = tourId, PipelineId = pipelineId, Name = "Tour", DisplayOrder = 2, Probability = 50 });
+                db.Deals.Add(new Deal
+                {
+                    Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, AssigneeId = ownerId, Name = "Tour deal", Value = "600",
+                    Currency = "CHF", ExpectedCloseDateUtc = month.AddMonths(1).AddDays(-1), PipelineId = pipelineId, DealStageId = tourId,
+                    CreatedAtUtc = month.AddDays(-10),
+                });
                 Deal D(string value, string? currency, bool? won = null, DateTime? closedAt = null, DateTime? closes = null, int? probability = null) => new()
                 {
                     Id = Guid.NewGuid(), UserId = ownerId, OrganizationId = org, AssigneeId = ownerId, Name = "Deal", Value = value,
@@ -135,7 +144,7 @@ public class ReportingOnSqlServerTests
                 summary.GetProperty("winRate").GetDouble().Should().Be(0.5, query);
                 summary.GetProperty("byStage")[0].GetProperty("stageName").GetString().Should().Be("Proposal", query);
                 summary.GetProperty("weighted").EnumerateArray().Single(r => r.GetProperty("currency").GetString() == "CHF")
-                    .GetProperty("value").GetDecimal().Should().Be(5000m, query);
+                    .GetProperty("value").GetDecimal().Should().Be(5300m, query);
                 summary.GetProperty("leads").GetProperty("active").GetInt32().Should().Be(1, query);
                 summary.GetProperty("leads").GetProperty("averageScore").GetDouble().Should().Be(30, query);
                 summary.GetProperty("activities").GetProperty("total").GetInt32().Should().Be(1, query);
@@ -151,7 +160,7 @@ public class ReportingOnSqlServerTests
             var forecast = await GetJson(owner, $"/api/reporting/forecast?from={month:yyyy-MM}&months=3");
             var rows = forecast.GetProperty("rows").EnumerateArray().ToList();
             rows.Single(r => r.GetProperty("month").GetString() == $"{month:yyyy-MM}" && r.GetProperty("currency").GetString() == "CHF")
-                .GetProperty("weighted").GetDecimal().Should().Be(5000m);
+                .GetProperty("weighted").GetDecimal().Should().Be(5300m);
             rows.Single(r => r.GetProperty("month").GetString() == $"{month:yyyy-MM}" && r.GetProperty("currency").GetString() == "CHF")
                 .GetProperty("wonValue").GetDecimal().Should().Be(4000m);
             rows.Single(r => r.GetProperty("month").GetString() == $"{month.AddMonths(2):yyyy-MM}" && r.GetProperty("currency").GetString() == "EUR")
@@ -164,7 +173,7 @@ public class ReportingOnSqlServerTests
             var saves = await GetJson(owner, $"/api/reporting/forecast-snapshots?year={month.Year}&month={month.Month}");
             saves.GetProperty("saves").GetArrayLength().Should().Be(2);
             saves.GetProperty("rows").EnumerateArray().Single(r => r.GetProperty("currency").GetString() == "CHF")
-                .GetProperty("weightedValue").GetDecimal().Should().Be(5000m);
+                .GetProperty("weightedValue").GetDecimal().Should().Be(5300m);
             saves.GetProperty("actual").EnumerateArray().Single().GetProperty("wonValue").GetDecimal().Should().Be(4000m);
         }
         finally

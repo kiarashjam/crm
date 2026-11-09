@@ -16,6 +16,8 @@ import {
   BarChart3,
   Lock,
   Unlock,
+  Clock,
+  Hourglass,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -24,12 +26,13 @@ import { RecordSkeleton } from '@/app/components/PageSkeleton';
 import DealLineItemsCard from '@/app/components/DealLineItemsCard';
 import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
+import StageHistoryCard from '@/app/components/StageHistoryCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDealById, updateDeal, deleteDeal, messages } from '@/app/api';
+import { getDealById, getDealStageHistory, updateDeal, deleteDeal, messages } from '@/app/api';
 import { getActivitiesByDeal, createActivity } from '@/app/api/activities';
 import { getTasksByDeal } from '@/app/api/tasks';
-import type { Deal, Activity, TaskItem } from '@/app/api/types';
+import type { Deal, Activity, TaskItem, DealStageChange } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Label } from '@/app/components/ui/label';
 import {
@@ -41,7 +44,7 @@ import {
 } from '@/app/components/ui/dialog';
 import { cn } from '@/app/components/ui/utils';
 import { UrgencyBadge, STAGE_COLORS } from './pipeline/DealCard';
-import { formatCloseDate, getDaysUntilClose } from './pipeline/utils';
+import { daysSince, formatCloseDate, formatDays, getDaysUntilClose } from './pipeline/utils';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
@@ -69,6 +72,10 @@ export default function DealDetail() {
   // Linked Tasks
   const [dealTasks, setDealTasks] = useState<TaskItem[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
+
+  // The stages it has been in, from the server's history
+  const [stageHistory, setStageHistory] = useState<DealStageChange[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   // Close deal dialog
   const [closeOpen, setCloseOpen] = useState(false);
@@ -100,6 +107,17 @@ export default function DealDetail() {
       .catch(() => setActivities([]))
       .finally(() => setActivitiesLoading(false));
   }, [id]);
+
+  // Load the stage history again whenever the deal's stage or outcome changes here.
+  const historyKey = `${deal?.dealStageId ?? deal?.stage ?? ''}|${deal?.isWon ?? ''}`;
+  useEffect(() => {
+    if (!id) return;
+    setHistoryLoading(true);
+    getDealStageHistory(id)
+      .then(setStageHistory)
+      .catch(() => setStageHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }, [id, historyKey]);
 
   // Load linked tasks
   useEffect(() => {
@@ -193,6 +211,8 @@ export default function DealDetail() {
 
   const stageName = deal?.dealStageName || deal?.stage || 'Qualification';
   const daysToClose = getDaysUntilClose(deal?.expectedCloseDateUtc, money.timeZone);
+  const daysInStage = daysSince(deal?.stageEnteredAtUtc);
+  const quietDays = daysSince(deal?.idleSinceUtc);
   const stageColors = STAGE_COLORS[stageName];
   const closeLabel = deal?.expectedCloseDateUtc ? formatCloseDate(deal.expectedCloseDateUtc) : null;
 
@@ -248,6 +268,14 @@ export default function DealDetail() {
                 {deal.isPrivate && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
                     <Lock className="h-3 w-3" aria-hidden /> Private
+                  </span>
+                )}
+                {deal.isStale && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                    title={deal.staleAfterDays ? `Stale after ${deal.staleAfterDays} days without activity` : undefined}
+                  >
+                    <Clock className="h-3 w-3" aria-hidden /> Stale{quietDays !== null ? `: no activity for ${formatDays(quietDays)}` : ''}
                   </span>
                 )}
               </>
@@ -323,6 +351,8 @@ export default function DealDetail() {
                 ? [{ label: 'Win probability', value: deal.probability, icon: BarChart3, tone: 'blue' as const, format: (n: number) => `${Math.round(n)}%` }]
                 : []),
               { label: 'Expected close', value: closeLabel ?? '—', icon: Calendar, tone: 'amber', hint: daysToClose === null ? undefined : daysToClose < 0 ? `${-daysToClose}d overdue` : `in ${daysToClose}d` },
+              // From the stage history; a deal from before it was kept does not say.
+              { label: 'In stage', value: daysInStage === null ? '—' : formatDays(daysInStage), icon: Hourglass, tone: 'violet', hint: daysInStage === null ? 'not recorded' : stageName },
               { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: activities[0] ? `last ${new Date(activities[0].createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'none yet' },
               { label: 'Tasks', value: dealTasks.filter((t) => t.status !== 'completed').length, icon: CheckCircle2, tone: 'violet', hint: `${dealTasks.length} linked` },
             ]}
@@ -349,6 +379,8 @@ export default function DealDetail() {
                   </ul>
                 )}
               </RecordCard>
+
+              <StageHistoryCard history={stageHistory} loading={historyLoading} index={1} />
 
               {/* Products & line items */}
               <DealLineItemsCard

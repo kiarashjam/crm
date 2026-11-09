@@ -210,6 +210,42 @@ public class ReportSummaryTests
             .Should().Be(HttpStatusCode.NotFound);
     }
 
+    /// <summary>
+    /// A stage's default probability weights the deals in it that have none of their own,
+    /// as the board weighs them; a deal's own probability still comes first.
+    /// </summary>
+    [Fact]
+    public async Task ADealWithoutAProbabilityIsWeightedByItsStages()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var org = await OrgAsync(factory);
+        var sales = Guid.NewGuid();
+        var tour = Guid.NewGuid();
+        var unsure = Guid.NewGuid();
+        var month = new DateTime(WorkspaceToday.Year, WorkspaceToday.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        await SeedAsync(org, db =>
+        {
+            db.Pipelines.Add(new Pipeline { Id = sales, OrganizationId = org.Id, Name = "Memberships" });
+            db.DealStages.Add(new DealStage { Id = tour, PipelineId = sales, Name = "Tour", DisplayOrder = 1, Probability = 40 });
+            db.DealStages.Add(new DealStage { Id = unsure, PipelineId = sales, Name = "Unsure", DisplayOrder = 2 });
+            db.Deals.AddRange(
+                Deal(org, "1000", "CHF", pipelineId: sales, stageId: tour, closes: month.AddMonths(1).AddDays(-1)),
+                Deal(org, "2000", "CHF", pipelineId: sales, stageId: tour, probability: 10, closes: month.AddMonths(1).AddDays(-1)),
+                Deal(org, "4000", "CHF", pipelineId: sales, stageId: unsure, closes: month.AddMonths(1).AddDays(-1)));
+        });
+
+        var summary = await GetJson(org.Owner, $"/api/reporting/summary?{OctoberQuery}");
+        var weighted = summary.GetProperty("weighted").EnumerateArray().Single(r => r.GetProperty("currency").GetString() == "CHF");
+        weighted.GetProperty("value").GetDecimal().Should().Be(600m, "1000 at the stage's 40%, and 2000 at its own 10%");
+        weighted.GetProperty("covered").GetInt32().Should().Be(2);
+        weighted.GetProperty("missing").GetInt32().Should().Be(1, "neither the deal nor its stage has a probability");
+        summary.GetProperty("byStage").EnumerateArray().Single(r => r.GetProperty("stageName").GetString() == "Tour")
+            .GetProperty("weighted").GetDecimal().Should().Be(600m);
+
+        var forecast = await GetJson(org.Owner, $"/api/reporting/forecast?from={month:yyyy-MM}&months=1");
+        forecast.GetProperty("rows")[0].GetProperty("weighted").GetDecimal().Should().Be(600m, "the forecast weighs deals the same way");
+    }
+
     [Fact]
     public async Task LeadsAreCountedByTheirCohortAndActiveLeadsLeaveOutConvertedOnes()
     {

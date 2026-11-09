@@ -278,7 +278,9 @@ public partial class ReportingService
         Stage = d.Stage,
         IsWon = d.IsWon,
         Amount = d.Amount,
-        Probability = d.Probability,
+        // The deal's own probability, or else its stage's default, as the board weighs it:
+        // set on a stage, a probability weights every deal there that has none of its own.
+        Probability = d.Probability ?? (d.DealStage != null ? d.DealStage.Probability : null),
         CreatedAtUtc = d.CreatedAtUtc,
         ClosedAtUtc = d.ClosedAtUtc,
         ExpectedCloseDateUtc = d.ExpectedCloseDateUtc,
@@ -307,8 +309,8 @@ public partial class ReportingService
     }
 
     /// <summary>
-    /// Weighted value per currency, from the deals that have a probability. A deal with
-    /// none is counted as missing, never given an invented one.
+    /// Weighted value per currency, from the deals that have a probability, their own or
+    /// their stage's. A deal with neither is counted as missing, never given an invented one.
     /// </summary>
     private static async Task<IReadOnlyList<WeightedRowDto>> WeightedAsync(IQueryable<DealFacts> open, CancellationToken ct)
     {

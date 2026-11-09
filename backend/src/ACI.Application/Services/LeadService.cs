@@ -22,6 +22,7 @@ public class LeadService : ILeadService
     private readonly IOutboundWebhookPublisher? _webhooks;
     private readonly IContactRelationshipRepository? _relationships;
     private readonly IOrganizationRepository? _organizations;
+    private readonly IDealStageRepository? _stages;
     private readonly ILogger<LeadService> _logger;
 
     public LeadService(
@@ -36,7 +37,8 @@ public class LeadService : ILeadService
         IAutomationEngine? automations = null,
         IOutboundWebhookPublisher? webhooks = null,
         IContactRelationshipRepository? relationships = null,
-        IOrganizationRepository? organizations = null)
+        IOrganizationRepository? organizations = null,
+        IDealStageRepository? stages = null)
     {
         _repository = repository;
         _companyRepository = companyRepository;
@@ -50,6 +52,7 @@ public class LeadService : ILeadService
         _webhooks = webhooks;
         _relationships = relationships;
         _organizations = organizations;
+        _stages = stages;
     }
 
     /// <inheritdoc />
@@ -721,6 +724,13 @@ public class LeadService : ILeadService
                 CreatedAtUtc = DateTime.UtcNow,
             };
             DealMoney.SetAmount(deal, dealAmount);
+            // As a deal created on the board: the stage decides its pipeline and stage
+            // name, and its history starts with the stage it was converted into.
+            if (request.DealStageId is Guid convertedStageId && _stages != null && organizationId is Guid stageOrg
+                && await _stages.GetByIdAsync(convertedStageId, stageOrg, ct) is { } stage)
+                DealStageMoves.Place(deal, stage, deal.CreatedAtUtc);
+            if (DealStageMoves.Entered(deal, null, null, null, userId, deal.CreatedAtUtc) is { } entered)
+                deal.StageChanges.Add(entered);
             await _dealRepository.AddAsync(deal, ct);
             dealId = deal.Id;
             

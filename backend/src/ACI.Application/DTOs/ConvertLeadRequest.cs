@@ -44,7 +44,7 @@ public record ConvertLeadRequest
     /// <summary>
     /// Stage for the new deal (legacy, prefer DealStageId).
     /// </summary>
-    [StringLength(50, ErrorMessage = "Deal stage cannot exceed 50 characters")]
+    [StringLength(128, ErrorMessage = "Deal stage cannot exceed 128 characters")]
     public string? DealStage { get; init; }
 
     /// <summary>

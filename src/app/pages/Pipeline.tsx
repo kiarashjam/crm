@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import {
@@ -48,9 +48,10 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDeals, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
+import { getDeals, getDealBoard, getDealBoardColumn, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
 import { getActivitiesByDeal, createActivity } from '@/app/api/activities';
-import type { Deal, Company, Contact, Pipeline, Activity } from '@/app/api/types';
+import type { Deal, Company, Contact, Pipeline, Activity, DealBoard, DealBoardColumn, DealBoardQuery } from '@/app/api/types';
+import { useDebounce } from '@/app/hooks/useDebounce';
 import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -80,9 +81,9 @@ import { cn } from '@/app/components/ui/utils';
 // Import extracted components and utilities
 import { DroppableStageColumn } from './pipeline/DroppableStageColumn';
 import { STAGE_COLORS_MAP } from './pipeline/config';
-import { getStageList, dealOutcome, groupDealsByStage, getDaysUntilClose, formatCloseDate, UrgencyBadge } from './pipeline/utils';
+import { getStageList, dealOutcome, daysSince, formatDays, getDaysUntilClose, formatCloseDate, UrgencyBadge } from './pipeline/utils';
 import { AMOUNT_HINT, amountInput, amountOf, currencyOptions, parseMoneyInput } from '@/app/lib/money';
-import { dateOnlyKey, todayKeyIn } from '@/app/lib/zonedTime';
+import { dateOnlyKey } from '@/app/lib/zonedTime';
 import { useMoney } from '@/app/hooks/useMoney';
 import { DealCard } from './pipeline/DealCard';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
@@ -98,14 +99,26 @@ import {
 } from '@/app/components/views';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 
+/** Cards per column in each page of the board. */
+const BOARD_PAGE = 25;
+
 export default function Pipeline() {
   const { isReadOnly } = useOrg();
   const money = useMoney();
+  // Every deal, for the table, list and card layouts; read only when one of them is open.
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [allDealsLoaded, setAllDealsLoaded] = useState(false);
+  // The board and the figures above it, from the server, a page of cards per stage.
+  const [board, setBoard] = useState<DealBoard | null>(null);
+  const [loadingMore, setLoadingMore] = useState<string | null>(null);
+  const [boardSort, setBoardSort] = useState<NonNullable<DealBoardQuery['sort']>>('close');
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [pipelinesLoaded, setPipelinesLoaded] = useState(false);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
+  // How this person likes deals shown: the board, a table, a list or cards, saved for them.
+  const view = useViewPreference('deals', { layouts: ['board', 'table', 'list', 'grid'] });
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -148,6 +161,7 @@ export default function Pipeline() {
   const [filterValueMax, setFilterValueMax] = useState('');
   const [filterCloseDateFrom, setFilterCloseDateFrom] = useState('');
   const [filterCloseDateTo, setFilterCloseDateTo] = useState('');
+  const [filterStale, setFilterStale] = useState(false);
 
   // HP-7 & HP-8: Tasks linked to deals
   const [allTasks, setAllTasks] = useState<TaskItemType[]>([]);
@@ -186,54 +200,57 @@ export default function Pipeline() {
     return deals.filter((d) => (d.pipelineId ?? fallbackPipelineId) === selectedPipelineId);
   }, [deals, pipelines, selectedPipelineId]);
 
-  // Calculate deal statistics
+  // The figures above the board: the pipeline's, worked out by the server over all its
+  // deals, whatever the filters. They were added up here from every deal downloaded.
+  const summary = board?.summary;
   const dealStats = useMemo(() => {
-    const total = pipelineDeals.length;
-    const won = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'won');
-    const lost = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'lost');
-    const active = pipelineDeals.filter(d => dealOutcome(d, stageList) === 'open');
-
-    // Totalled per currency, from each deal's stored amount. The board stripped each
-    // value's text to digits and added everything up, so CHF 40,000 and EUR 30,000
-    // showed as one "CHF 70,000".
-    const activeTotals = money.totals(active);
-    const wonTotals = money.totals(won);
-
-    const winRate = (won.length + lost.length) > 0
-      ? Math.round((won.length / (won.length + lost.length)) * 100)
-      : 0;
-
-    // Overdue: due before today on the workspace's calendar. A close date is the day
-    // that was picked, so it is compared as that day.
-    const today = todayKeyIn(money.timeZone);
-    const closeDay = (d: Deal) => (d.expectedCloseDateUtc ? dateOnlyKey(d.expectedCloseDateUtc) : '');
-    const overdue = active.filter(d => closeDay(d) !== '' && closeDay(d) < today).length;
-
-    // Closing this week
-    const weekOut = new Date(`${today}T00:00:00Z`);
-    weekOut.setUTCDate(weekOut.getUTCDate() + 7);
-    const inAWeek = weekOut.toISOString().slice(0, 10);
-    const closingThisWeek = active.filter(d => {
-      if (!d.expectedCloseDateUtc) return false;
-      const day = dateOnlyKey(d.expectedCloseDateUtc);
-      return day >= today && day <= inAWeek;
-    }).length;
-
+    // Per currency, never across. A currency whose deals have no readable amount adds nothing.
+    const withAmounts = (rows: { currency: string; value: number; count: number; unreadable: number }[] = []) =>
+      rows.map((r) => ({ currency: r.currency, value: r.value, count: r.count - r.unreadable })).filter((r) => r.count > 0);
     return {
-      total, won: won.length, lost: lost.length, active: active.length,
-      activeTotals, wonTotals, winRate, overdue, closingThisWeek,
+      total: summary?.total ?? 0,
+      won: summary?.won ?? 0,
+      lost: summary?.lost ?? 0,
+      active: summary?.open ?? 0,
+      activeTotals: withAmounts(summary?.openTotals),
+      wonTotals: withAmounts(summary?.wonTotals),
+      weighted: summary?.weighted ?? [],
+      winRate: summary?.winRate === undefined ? 0 : Math.round(summary.winRate * 100),
+      overdue: summary?.overdue ?? 0,
+      closingThisWeek: summary?.closingThisWeek ?? 0,
+      stale: summary?.stale ?? 0,
     };
-  }, [pipelineDeals, stageList, money]);
+  }, [summary]);
 
-  // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee)
+  // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee). The board
+  // sends these to the server; the table, list and card layouts filter every deal here.
   const currentUserId = useMemo(() => getCurrentUser()?.id, []);
+  // Typed filters wait for a pause in the typing, so each keystroke is not a request.
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const debouncedMin = useDebounce(filterValueMin, 300);
+  const debouncedMax = useDebounce(filterValueMax, 300);
+  const boardQuery = useMemo<DealBoardQuery>(() => ({
+    pipelineId: selectedPipelineId ?? undefined,
+    take: BOARD_PAGE,
+    sort: boardSort,
+    search: debouncedSearch.trim() || undefined,
+    mine: filterMyDeals || undefined,
+    assigneeId: filterAssignee !== 'all' && filterAssignee !== 'unassigned' ? filterAssignee : undefined,
+    unassigned: filterAssignee === 'unassigned' || undefined,
+    minAmount: parseMoneyInput(debouncedMin) ?? undefined,
+    maxAmount: parseMoneyInput(debouncedMax) ?? undefined,
+    closeFrom: filterCloseDateFrom || undefined,
+    closeTo: filterCloseDateTo || undefined,
+    staleOnly: filterStale || undefined,
+  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, debouncedMin, debouncedMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
+
   const filteredDeals = useMemo(() => {
     let result = [...pipelineDeals];
-    
+
     // Search filter
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(d => 
+      result = result.filter(d =>
         d.name.toLowerCase().includes(q) ||
         d.value.toLowerCase().includes(q) ||
         (d.contactName?.toLowerCase().includes(q)) ||
@@ -242,7 +259,7 @@ export default function Pipeline() {
         (contacts.find(c => c.id === d.contactId)?.name.toLowerCase().includes(q))
       );
     }
-    
+
     // Stage filter
     if (filterStage !== 'all') {
       result = result.filter(d => {
@@ -250,12 +267,13 @@ export default function Pipeline() {
         return stage === filterStage;
       });
     }
-    
-    // HP-7: My Deals filter
+
+    // HP-7: My Deals. The board also counts a deal nobody owns that I created; a deal's
+    // creator is not sent to the browser, so here it is the deals I own.
     if (filterMyDeals && currentUserId) {
       result = result.filter(d => d.assigneeId === currentUserId);
     }
-    
+
     // HP-10: Assignee filter
     if (filterAssignee !== 'all') {
       if (filterAssignee === 'unassigned') {
@@ -264,45 +282,94 @@ export default function Pipeline() {
         result = result.filter(d => d.assigneeId === filterAssignee);
       }
     }
-    
+
     // HP-10: Value range filter, on the stored amounts. A deal with none is outside any range.
     const min = parseMoneyInput(filterValueMin);
     if (min !== null) result = result.filter(d => (amountOf(d) ?? Number.NaN) >= min);
     const max = parseMoneyInput(filterValueMax);
     if (max !== null) result = result.filter(d => (amountOf(d) ?? Number.NaN) <= max);
 
-    // HP-10: Expected close date range filter
+    // HP-10: Expected close date range filter, by the day picked.
     if (filterCloseDateFrom) {
-      const from = new Date(filterCloseDateFrom);
-      result = result.filter(d => d.expectedCloseDateUtc && new Date(d.expectedCloseDateUtc) >= from);
+      result = result.filter(d => d.expectedCloseDateUtc && dateOnlyKey(d.expectedCloseDateUtc) >= filterCloseDateFrom);
     }
     if (filterCloseDateTo) {
-      const to = new Date(filterCloseDateTo);
-      to.setHours(23, 59, 59, 999);
-      result = result.filter(d => d.expectedCloseDateUtc && new Date(d.expectedCloseDateUtc) <= to);
+      result = result.filter(d => d.expectedCloseDateUtc && dateOnlyKey(d.expectedCloseDateUtc) <= filterCloseDateTo);
     }
-    
+
+    if (filterStale) result = result.filter(d => d.isStale);
+
     return result;
-  }, [pipelineDeals, searchQuery, filterStage, contacts, stageList, filterMyDeals, currentUserId, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo]);
+  }, [pipelineDeals, searchQuery, filterStage, contacts, stageList, filterMyDeals, currentUserId, filterAssignee, filterValueMin, filterValueMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
 
-  const dealsByStage = groupDealsByStage(filteredDeals, stageList);
+  // The board's columns; picking a stage shows that one alone.
+  const boardColumns = useMemo(() => {
+    const columns = board?.columns ?? [];
+    return filterStage === 'all' ? columns : columns.filter((c) => c.name === filterStage);
+  }, [board, filterStage]);
 
-  /** The board again, quietly, after duplicates were merged into one deal. */
-  const reloadDeals = () => {
+  // A later answer for older filters must not replace the board for newer ones.
+  const boardRequest = useRef(0);
+  const reloadBoard = useCallback(async () => {
+    const request = ++boardRequest.current;
+    try {
+      const next = await getDealBoard(boardQuery);
+      if (request === boardRequest.current) setBoard(next);
+    } catch {
+      if (request === boardRequest.current) toast.error(messages.errors.loadFailed);
+    } finally {
+      if (request === boardRequest.current) setLoading(false);
+    }
+  }, [boardQuery]);
+
+  useEffect(() => {
+    if (pipelinesLoaded) void reloadBoard();
+  }, [pipelinesLoaded, reloadBoard]);
+
+  /** Every deal, for the table, list and card layouts. */
+  const reloadDeals = useCallback(() => {
     getDeals()
-      .then(setDeals)
+      .then((list) => { setDeals(list); setAllDealsLoaded(true); })
       .catch(() => toast.error(messages.errors.loadFailed));
+  }, []);
+
+  useEffect(() => {
+    if (view.layout !== 'board' && !allDealsLoaded) reloadDeals();
+  }, [view.layout, allDealsLoaded, reloadDeals]);
+
+  /** The board again after a change, and every deal too if a layout reads them. */
+  const refresh = () => {
+    void reloadBoard();
+    if (allDealsLoaded) reloadDeals();
   };
 
-  // Every deal, not a page: the paged endpoint caps a page at 100, so a board read
-  // from it silently dropped the rest.
+  /** The next cards of one column, with the board's filters and order. */
+  const loadMore = async (column: DealBoardColumn) => {
+    setLoadingMore(column.key);
+    try {
+      const page = await getDealBoardColumn(boardQuery, column.key, column.deals.length);
+      setBoard((prev) => prev && {
+        ...prev,
+        columns: prev.columns.map((c) => c.key !== column.key ? c : {
+          ...c,
+          deals: [...c.deals, ...page.deals.filter((d) => !c.deals.some((x) => x.id === d.id))],
+          hasMore: page.hasMore,
+        }),
+      });
+    } catch {
+      toast.error(messages.errors.loadFailed);
+    } finally {
+      setLoadingMore(null);
+    }
+  };
+
+  // The pipelines first: the board is drawn for one of them.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([getDeals(), getContacts(), getPipelines(), getTasks()])
-      .then(([dealsData, contactsData, pipelinesData, tasksData]) => {
+    Promise.all([getContacts(), getPipelines(), getTasks()])
+      .then(([contactsData, pipelinesData, tasksData]) => {
         if (!cancelled) {
-          setDeals(dealsData);
           setContacts(contactsData);
           setPipelines(pipelinesData ?? []);
           setAllTasks(tasksData ?? []);
@@ -310,7 +377,7 @@ export default function Pipeline() {
         }
       })
       .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => { if (!cancelled) setPipelinesLoaded(true); });
     return () => { cancelled = true; };
   }, []);
 
@@ -355,15 +422,16 @@ export default function Pipeline() {
     }
   }, [editDeal]);
 
-  // Drawn by count: a bar per stage cannot hold money in more than one currency.
-  const funnelData = dealsByStage.map(({ stageName, deals: stageDeals }) => ({
-    name: stageName,
-    count: stageDeals.length,
-    fill: STAGE_COLORS_MAP[stageName]?.bar ?? '#94a3b8',
+  // Drawn by count: a bar per stage cannot hold money in more than one currency. The
+  // count is the stage's, from the server, not the cards loaded so far.
+  const funnelData = boardColumns.map((column) => ({
+    name: column.name,
+    count: column.count,
+    fill: STAGE_COLORS_MAP[column.name]?.bar ?? '#94a3b8',
   }));
 
   const handleMoveStage = async (dealId: string, newStageId: string, newStageName: string) => {
-    const deal = deals.find((d) => d.id === dealId);
+    const deal = board?.columns.flatMap((c) => c.deals).find((d) => d.id === dealId) ?? deals.find((d) => d.id === dealId);
     const currentStageId = deal?.dealStageId ?? deal?.stage ?? '';
     if (deal && currentStageId === newStageId) return;
     const target = stageList.find((s) => s.id === newStageId);
@@ -376,6 +444,8 @@ export default function Pipeline() {
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === dealId ? updated : d)));
         toast.success(messages.success.dealMoved);
+        // The columns' counts, money and stale deals are the server's to work out again.
+        refresh();
       } else {
         toast.error(messages.errors.generic);
       }
@@ -391,6 +461,7 @@ export default function Pipeline() {
       const ok = await deleteDeal(deleteConfirmDeal.id);
       if (ok) {
         setDeals((prev) => prev.filter((d) => d.id !== deleteConfirmDeal.id));
+        refresh();
         toast.success(messages.success.dealDeleted);
         setDeleteConfirmDeal(null);
         if (detailDeal?.id === deleteConfirmDeal.id) setDetailDeal(null);
@@ -441,6 +512,7 @@ export default function Pipeline() {
       });
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === editDeal.id ? updated : d)));
+        refresh();
         toast.success(messages.success.dealUpdated);
         setEditDeal(null);
         if (detailDeal?.id === editDeal.id) setDetailDeal(updated);
@@ -517,6 +589,7 @@ export default function Pipeline() {
       });
       if (created) {
         setDeals((prev) => [created, ...prev]);
+        refresh();
         toast.success(messages.success.dealCreated);
         setCreateOpen(false);
         const pipelineId = selectedPipelineId ?? pipelines[0]?.id ?? '';
@@ -583,6 +656,7 @@ export default function Pipeline() {
       });
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === closeDeal.id ? updated : d)));
+        refresh();
         toast.success(closeAsWon ? 'Deal marked as Won!' : 'Deal marked as Lost');
         setCloseDeal(null);
         setCloseReason('');
@@ -631,8 +705,15 @@ export default function Pipeline() {
   // in, and names the others beside it rather than adding them in.
   const [mainOpen, ...otherOpen] = dealStats.activeTotals;
   const openCurrency = mainOpen?.currency ?? money.currency;
-  // How this person likes deals shown: the board, a table, a list or cards, saved for them.
-  const view = useViewPreference('deals', { layouts: ['board', 'table', 'list', 'grid'] });
+  // The open pipeline weighted by each deal's probability, or its stage's, per currency.
+  const weightedText = dealStats.weighted.some((w) => w.covered > 0)
+    ? money.formatTotals(dealStats.weighted.filter((w) => w.covered > 0), 'never')
+    : null;
+  // Every layout but the board filters every deal here; the board's are counted by the server.
+  const hasDeals = dealStats.total > 0;
+  const shownCount = view.layout === 'board' ? (board?.count ?? 0) : filteredDeals.length;
+  const filtersActive = !!(searchQuery || filterStage !== 'all' || filterMyDeals || filterAssignee !== 'all' || filterValueMin
+    || filterValueMax || filterCloseDateFrom || filterCloseDateTo || filterStale);
   const stagePill = (deal: Deal) => {
     const name = dealStageName(deal);
     const outcome = dealOutcome(deal, stageList);
@@ -676,6 +757,7 @@ export default function Pipeline() {
           <InitialsAvatar name={d.name} size="sm" />
           <span className="truncate">{d.name}</span>
           {d.isPrivate && <span className="shrink-0 rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-600">Private</span>}
+          {d.isStale && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 text-[10px] font-semibold text-amber-800">Stale</span>}
         </span>
       ),
     },
@@ -686,6 +768,10 @@ export default function Pipeline() {
     { id: 'owner', label: 'Owner', byDefault: false, cell: (d) => d.assigneeName || '—' },
     { id: 'probability', label: 'Probability', numeric: true, byDefault: false, cell: (d) => (d.probability == null ? '—' : `${d.probability}%`) },
     { id: 'close', label: 'Close date', cell: closeDate },
+    {
+      id: 'inStage', label: 'In stage', byDefault: false,
+      cell: (d) => { const days = daysSince(d.stageEnteredAtUtc); return days === null ? '—' : formatDays(days); },
+    },
     { id: 'tasks', label: 'Tasks', numeric: true, byDefault: false, cell: (d) => taskCountsByDeal[d.id] || '—' },
   ];
   /** Edit and delete, the same on every layout. */
@@ -718,6 +804,7 @@ export default function Pipeline() {
       label: 'Total Pipeline Value', value: mainOpen?.value ?? 0, icon: DollarSign, tone: 'emerald',
       hint: [
         otherOpen.length > 0 ? `and ${money.formatTotals(otherOpen, 'never')}` : null,
+        weightedText ? `${weightedText} weighted` : null,
         wonText ? `${wonText} won` : null,
       ].filter(Boolean).join(' · ') || undefined,
       format: (n) => money.format(n, openCurrency, 'never'),
@@ -739,6 +826,15 @@ export default function Pipeline() {
     dealStats.overdue > 0
       ? { label: 'Overdue Deals', value: dealStats.overdue, icon: AlertCircle, tone: 'rose', hint: 'action needed' }
       : { label: 'All on track!', value: dealStats.overdue, icon: CheckCircle2, tone: 'emerald', hint: 'none overdue' },
+    ...(board && board.staleAfterDays > 0
+      ? [{
+        label: 'Stale Deals', value: dealStats.stale, icon: Clock, tone: dealStats.stale > 0 ? 'amber' as const : 'slate' as const,
+        hint: `no activity for ${board.staleAfterDays}+ days`,
+        onClick: () => setFilterStale((on) => !on),
+        pressed: filterStale,
+        actionLabel: `Stale deals, ${dealStats.stale}. Activate to show only the stale deals.`,
+      }]
+      : []),
   ];
 
   const detailContact = detailDeal?.contactId ? contacts.find((c) => c.id === detailDeal.contactId) : undefined;
@@ -754,7 +850,7 @@ export default function Pipeline() {
             tone="violet"
             title="Deals"
             subtitle={loading ? 'Loading your pipeline…' : 'Track opportunities from qualification to close'}
-            badges={!loading && deals.length > 0 && (
+            badges={!loading && hasDeals && (
               <>
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse motion-reduce:animate-none" aria-hidden />
@@ -772,13 +868,14 @@ export default function Pipeline() {
                 New Deal
               </Button>
             )}
-            stats={!loading && deals.length > 0 ? dealHeroStats : undefined}
+            stats={!loading && hasDeals ? dealHeroStats : undefined}
           />
 
-          <DuplicateMerge spec={DEAL_DUPLICATES} onMerged={reloadDeals} />
+          {/* The board is the server's now: a merge reloads it, not only the full list. */}
+          <DuplicateMerge spec={DEAL_DUPLICATES} onMerged={refresh} />
 
           {/* Action Alert Banner */}
-          {!loading && deals.length > 0 && dealStats.overdue > 0 && (
+          {!loading && hasDeals && dealStats.overdue > 0 && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -813,7 +910,7 @@ export default function Pipeline() {
           )}
 
           {/* Search and filter bar */}
-          {!loading && deals.length > 0 && (
+          {!loading && hasDeals && (
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -912,6 +1009,38 @@ export default function Pipeline() {
                   My Deals
                 </button>
 
+                {board && board.staleAfterDays > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterStale(!filterStale)}
+                    aria-pressed={filterStale}
+                    title={`Open deals with no activity for ${board.staleAfterDays} days or more`}
+                    className={cn(
+                      'relative h-11 px-4 rounded-xl border shadow-sm font-medium text-sm transition-all duration-300',
+                      filterStale
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 border-amber-400/50 text-white'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700'
+                    )}
+                  >
+                    <Clock className="w-4 h-4 inline mr-1.5" />
+                    Stale
+                  </button>
+                )}
+
+                {view.layout === 'board' && (
+                  <Select value={boardSort} onValueChange={(v) => setBoardSort(v as NonNullable<DealBoardQuery['sort']>)}>
+                    <SelectTrigger aria-label="Order cards by" className="relative h-11 w-full sm:w-[170px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl border border-slate-200 shadow-xl">
+                      <SelectItem value="close" className="rounded-lg">Closing soonest</SelectItem>
+                      <SelectItem value="value" className="rounded-lg">Largest first</SelectItem>
+                      <SelectItem value="created" className="rounded-lg">Newest first</SelectItem>
+                      <SelectItem value="name" className="rounded-lg">By name</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
+
                 {/* HP-10: Assignee filter */}
                 {orgMembers.length > 0 && (
                   <Select value={filterAssignee} onValueChange={setFilterAssignee}>
@@ -976,7 +1105,7 @@ export default function Pipeline() {
               </div>
 
               {/* Active Filter Pills */}
-              {(searchQuery || filterStage !== 'all' || filterMyDeals || filterAssignee !== 'all' || filterValueMin || filterValueMax || filterCloseDateFrom || filterCloseDateTo) && (
+              {filtersActive && (
                 <div className="relative mt-4 flex flex-wrap items-center gap-2">
                   <span className="text-xs text-slate-500 font-medium">Active filters:</span>
                   {searchQuery && (
@@ -1026,6 +1155,15 @@ export default function Pipeline() {
                       </button>
                     </span>
                   )}
+                  {filterStale && (
+                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                      <Clock className="w-3 h-3" />
+                      Stale
+                      <button type="button" onClick={() => setFilterStale(false)} aria-label="Remove stale filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
                   {(filterCloseDateFrom || filterCloseDateTo) && (
                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium border border-cyan-200">
                       <Calendar className="w-3 h-3" />
@@ -1036,7 +1174,7 @@ export default function Pipeline() {
                     </span>
                   )}
                   <span className="text-xs text-slate-500 ml-2">
-                    {filteredDeals.length} of {deals.length} deals
+                    {shownCount} of {view.layout === 'board' ? dealStats.total : pipelineDeals.length} deals
                   </span>
                 </div>
               )}
@@ -1045,7 +1183,7 @@ export default function Pipeline() {
 
         {loading ? (
           <KanbanSkeleton columns={5} />
-        ) : deals.length === 0 ? (
+        ) : !hasDeals ? (
           /* Empty State - matching Leads page style */
           <div className="w-full">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1101,7 +1239,7 @@ export default function Pipeline() {
               </div>
             </div>
           </div>
-        ) : filteredDeals.length === 0 && (searchQuery || filterStage !== 'all') ? (
+        ) : shownCount === 0 && filtersActive ? (
           /* No results state */
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
@@ -1117,7 +1255,10 @@ export default function Pipeline() {
             </div>
             <Button 
               variant="outline" 
-              onClick={() => { setSearchQuery(''); setFilterStage('all'); }}
+              onClick={() => {
+                setSearchQuery(''); setFilterStage('all'); setFilterMyDeals(false); setFilterAssignee('all');
+                setFilterValueMin(''); setFilterValueMax(''); setFilterCloseDateFrom(''); setFilterCloseDateTo(''); setFilterStale(false);
+              }}
               className="shrink-0 h-11 px-6 rounded-xl border-2 hover:bg-slate-50"
             >
               Clear all filters
@@ -1191,7 +1332,7 @@ export default function Pipeline() {
               <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500">
                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100">
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>{filteredDeals.length} deals</span>
+                  <span>{shownCount} deals</span>
                 </div>
               </div>
             </div>
@@ -1204,13 +1345,23 @@ export default function Pipeline() {
                   animate={{ opacity: 1 }}
                   className="flex-1 min-h-0 flex gap-5 overflow-x-auto overflow-y-hidden pb-6 -mx-2 px-2"
                 >
-                  {dealsByStage.map(({ stageId: colStageId, stageName: colStageName, deals: stageDeals }, index) => (
+                  {boardColumns.map((column, index) => (
                     // The column rises in; the deal cards in it are drag sources, so they keep their own motion.
-                    <StaggerItem key={colStageId} index={index}>
+                    <StaggerItem key={column.key} index={index}>
                       <DroppableStageColumn
-                        stageId={colStageId}
-                        stageName={colStageName}
-                        deals={stageDeals}
+                        stageId={column.key}
+                        stageName={column.name}
+                        deals={column.deals}
+                        count={column.count}
+                        totals={column.totals}
+                        weighted={column.weighted}
+                        probability={column.probability}
+                        stale={column.stale}
+                        hasMore={column.hasMore}
+                        loadingMore={loadingMore === column.key}
+                        onLoadMore={() => loadMore(column)}
+                        // Nothing is moved to "No stage": it holds deals in none of the stages.
+                        acceptsDrops={column.key !== 'unset'}
                         contacts={contacts}
                         stageList={stageList}
                         onMoveStage={handleMoveStage}

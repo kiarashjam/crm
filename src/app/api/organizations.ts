@@ -14,6 +14,8 @@ export interface Organization {
   locale?: string;
   /** IANA zone the workspace's days and months begin in, e.g. "Europe/Zurich". */
   timeZone?: string;
+  /** Days without activity after which an open deal is stale, unless its pipeline says otherwise; 0 never. Older servers send none. */
+  staleDealDays?: number;
 }
 
 /** Role ids as persisted by the backend (OrgMemberRole). */
@@ -88,7 +90,7 @@ export async function createOrganization(name: string): Promise<Organization | n
  */
 export async function updateOrganizationSettings(
   id: string,
-  settings: { currency?: string; locale?: string; timeZone?: string },
+  settings: { currency?: string; locale?: string; timeZone?: string; staleDealDays?: number },
 ): Promise<Organization | null> {
   const org = await authFetchJson<Organization>(`/api/organizations/${id}/settings`, {
     method: 'PUT',

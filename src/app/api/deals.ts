@@ -1,8 +1,13 @@
-import type { Deal, PagedResult, PaginationParams } from './types';
+import type {
+  Deal, DealBoard, DealBoardColumn, DealBoardQuery, DealBoardSummary, DealStageChange, PagedResult, PaginationParams,
+} from './types';
+import type { MoneyRow, WeightedRow } from './reporting';
 import { mockDeals } from './mockData';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { DEFAULT_CURRENCY, parseMoneyInput } from '@/app/lib/money';
+import { getCurrentUser } from '@/app/lib/auth';
+import { demoBoard, demoBoardColumn } from './dealBoardDemo';
 
 const dealStore = createMockStore<Deal>({
   storageKey: 'crm.mock.deals.v1',
@@ -47,6 +52,8 @@ type DealRaw = {
   createdAtUtc?: string | null; updatedAtUtc?: string | null;
   closedReason?: string | null; closedAtUtc?: string | null;
   isPrivate?: boolean | null;
+  stageEnteredAtUtc?: string | null; idleSinceUtc?: string | null;
+  isStale?: boolean | null; staleAfterDays?: number | null;
 };
 function mapDeal(d: DealRaw): Deal {
   return {
@@ -77,6 +84,10 @@ function mapDeal(d: DealRaw): Deal {
     closedReason: d.closedReason ?? undefined,
     closedAtUtc: d.closedAtUtc ?? undefined,
     isPrivate: d.isPrivate ?? false,
+    stageEnteredAtUtc: d.stageEnteredAtUtc ?? undefined,
+    idleSinceUtc: d.idleSinceUtc ?? undefined,
+    isStale: d.isStale ?? undefined,
+    staleAfterDays: d.staleAfterDays ?? undefined,
   };
 }
 
@@ -249,4 +260,94 @@ export async function deleteDeal(id: string): Promise<boolean> {
   }
   await delay(200);
   return dealStore.remove(id);
+}
+
+type BoardColumnRaw = Omit<DealBoardColumn, 'deals' | 'dealStageId' | 'probability'> & {
+  dealStageId?: string | null; probability?: number | null; deals: DealRaw[];
+};
+type BoardRaw = Omit<DealBoard, 'columns' | 'pipelineId' | 'pipelineName' | 'summary'> & {
+  pipelineId?: string | null; pipelineName?: string | null; columns: BoardColumnRaw[];
+  summary: Omit<DealBoardSummary, 'winRate'> & { winRate?: number | null };
+};
+
+function boardParams(query: DealBoardQuery, extra: Record<string, string | number> = {}): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries({ ...query, ...extra })) {
+    if (value === undefined || value === null || value === '' || value === false) continue;
+    params.set(key, String(value));
+  }
+  return params.toString();
+}
+
+function mapColumn(c: BoardColumnRaw): DealBoardColumn {
+  return {
+    ...c,
+    dealStageId: c.dealStageId ?? undefined,
+    probability: c.probability ?? undefined,
+    totals: (c.totals ?? []) as MoneyRow[],
+    weighted: (c.weighted ?? []) as WeightedRow[],
+    deals: (c.deals ?? []).map(mapDeal),
+  };
+}
+
+function demoCurrency(): string {
+  return DEFAULT_CURRENCY;
+}
+
+/**
+ * The board for one pipeline: its stages with the first cards of each, every stage's
+ * count, money per currency, weighted value and stale deals, and the pipeline's figures.
+ * The filters narrow the columns; the summary is the whole pipeline. In demo mode it is
+ * worked out here from this browser's deals, by the same rules.
+ */
+export async function getDealBoard(query: DealBoardQuery = {}): Promise<DealBoard> {
+  if (!servesDemoData()) {
+    const raw = await authFetchJson<BoardRaw>(`/api/deals/board?${boardParams(query)}`);
+    return {
+      ...raw,
+      pipelineId: raw.pipelineId ?? undefined,
+      pipelineName: raw.pipelineName ?? undefined,
+      columns: (raw.columns ?? []).map(mapColumn),
+      summary: { ...raw.summary, winRate: raw.summary.winRate ?? undefined },
+    };
+  }
+  await delay(150);
+  return demoBoard(getStored() ?? mockDeals.map(withAmount), query, demoCurrency(), getCurrentUser()?.id);
+}
+
+/** The next cards of one board column, after the first `skip`, with the board's filters and order. */
+export async function getDealBoardColumn(query: DealBoardQuery, column: string, skip: number): Promise<{ deals: Deal[]; hasMore: boolean }> {
+  if (!servesDemoData()) {
+    const raw = await authFetchJson<{ key: string; deals: DealRaw[]; hasMore: boolean }>(
+      `/api/deals/board/column?${boardParams(query, { column, skip })}`);
+    return { deals: (raw.deals ?? []).map(mapDeal), hasMore: !!raw.hasMore };
+  }
+  await delay(100);
+  return demoBoardColumn(getStored() ?? mockDeals.map(withAmount), query, column, skip, getCurrentUser()?.id);
+}
+
+type StageChangeRaw = Omit<DealStageChange, 'fromStageId' | 'fromStageName' | 'toStageId' | 'toStageName' | 'changedByName' | 'leftAtUtc'> & {
+  fromStageId?: string | null; fromStageName?: string | null; toStageId?: string | null; toStageName?: string | null;
+  changedByName?: string | null; leftAtUtc?: string | null;
+};
+
+/**
+ * The stages a deal has been in, newest first: when it came into each, from where, who
+ * moved it and when it left. Demo deals keep no history.
+ */
+export async function getDealStageHistory(id: string): Promise<DealStageChange[]> {
+  if (servesDemoData()) return [];
+  const list = await authFetchJson<StageChangeRaw[]>(`/api/deals/${id}/stage-history`);
+  return (Array.isArray(list) ? list : []).map((c) => ({
+    id: c.id,
+    fromStageId: c.fromStageId ?? undefined,
+    fromStageName: c.fromStageName ?? undefined,
+    toStageId: c.toStageId ?? undefined,
+    toStageName: c.toStageName ?? undefined,
+    changedByUserId: c.changedByUserId,
+    changedByName: c.changedByName ?? undefined,
+    changedAtUtc: c.changedAtUtc,
+    leftAtUtc: c.leftAtUtc ?? undefined,
+    isCreation: !!c.isCreation,
+  }));
 }

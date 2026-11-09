@@ -51,7 +51,7 @@ public class DealStageService : IDealStageService
         return Result.Success(Map(entity));
     }
 
-    public async Task<Result<DealStageDto>> CreateAsync(Guid pipelineId, Guid organizationId, string name, int displayOrder, bool isWon, bool isLost, CancellationToken ct = default)
+    public async Task<Result<DealStageDto>> CreateAsync(Guid pipelineId, Guid organizationId, string name, int displayOrder, bool isWon, bool isLost, int? probability = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Creating deal stage for pipeline {PipelineId} with name {Name}", pipelineId, name);
 
@@ -67,6 +67,7 @@ public class DealStageService : IDealStageService
             _logger.LogWarning("Deal stage name is required");
             return Result.Failure<DealStageDto>(DomainErrors.DealStage.NameRequired);
         }
+        if (probability is < 0 or > 100) return Result.Failure<DealStageDto>(DomainErrors.DealStage.InvalidProbability);
 
         var entity = new DealStage
         {
@@ -76,6 +77,7 @@ public class DealStageService : IDealStageService
             DisplayOrder = displayOrder,
             IsWon = isWon,
             IsLost = isLost,
+            Probability = probability,
         };
         entity = await _repository.AddAsync(entity, ct);
 
@@ -83,7 +85,7 @@ public class DealStageService : IDealStageService
         return Result.Success(Map(entity));
     }
 
-    public async Task<Result<DealStageDto>> UpdateAsync(Guid id, Guid organizationId, string? name, int? displayOrder, bool? isWon, bool? isLost, CancellationToken ct = default)
+    public async Task<Result<DealStageDto>> UpdateAsync(Guid id, Guid organizationId, string? name, int? displayOrder, bool? isWon, bool? isLost, int? probability = null, bool clearProbability = false, CancellationToken ct = default)
     {
         _logger.LogInformation("Updating deal stage {DealStageId} for organization {OrganizationId}", id, organizationId);
 
@@ -104,9 +106,32 @@ public class DealStageService : IDealStageService
             existing.Name = name.Trim();
         }
 
+        if (probability is < 0 or > 100) return Result.Failure<DealStageDto>(DomainErrors.DealStage.InvalidProbability);
+
+        var outcomeBefore = DealStageMoves.OutcomeOf(existing);
         if (displayOrder.HasValue) existing.DisplayOrder = displayOrder.Value;
         if (isWon.HasValue) existing.IsWon = isWon.Value;
         if (isLost.HasValue) existing.IsLost = isLost.Value;
+        var outcomeAfter = DealStageMoves.OutcomeOf(existing);
+        if (outcomeAfter != outcomeBefore)
+        {
+            // The deals that had the outcome the stage gave take the one it gives now, saved
+            // with it, as moving each of them into such a stage would. The board counts an
+            // open deal in a won stage as won and the reports read the deal's own outcome,
+            // so a stage made the won stage in Settings left every deal in it won on the
+            // board and open in the reports. A deal closed the other way on its own page
+            // keeps its outcome. No automation runs: a stage relabelled is not a deal won.
+            var now = DateTime.UtcNow;
+            foreach (var deal in await _repository.GetDealsWithOutcomeAsync(existing.Id, outcomeBefore, ct))
+            {
+                deal.IsWon = outcomeAfter;
+                deal.ClosedAtUtc = outcomeAfter == null ? null : now;
+            }
+        }
+        // Every open deal in the stage without a probability of its own is re-weighted at
+        // once: those deals read the stage's, rather than having been given a copy of it.
+        if (clearProbability) existing.Probability = null;
+        else if (probability.HasValue) existing.Probability = probability.Value;
 
         existing = await _repository.UpdateAsync(existing, organizationId, ct);
         if (existing == null)
@@ -147,5 +172,5 @@ public class DealStageService : IDealStageService
         return Result.Success();
     }
 
-    private static DealStageDto Map(DealStage e) => new DealStageDto(e.Id, e.PipelineId, e.Name, e.DisplayOrder, e.IsWon, e.IsLost);
+    private static DealStageDto Map(DealStage e) => new DealStageDto(e.Id, e.PipelineId, e.Name, e.DisplayOrder, e.IsWon, e.IsLost, e.Probability);
 }
