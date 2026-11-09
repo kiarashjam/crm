@@ -44,4 +44,13 @@ public interface IDealRepository
     /// deal is not one this person can see. Written with the deal itself (DealStageMoves).
     /// </summary>
     Task<IReadOnlyList<DealStageChange>> GetStageChangesAsync(Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// For these deals, of those this person can see: when each came into the stage it is
+    /// in (null when no history says), and when it last moved stage.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, DealPaceInfo>> GetPaceAsync(Guid userId, Guid? organizationId, IEnumerable<Guid> dealIds, CancellationToken ct = default);
 }
+
+/// <summary>When a deal came into its stage, and when it last moved, from its stage history.</summary>
+public sealed record DealPaceInfo(DateTime? StageEnteredAtUtc, DateTime? LastMoveAtUtc);

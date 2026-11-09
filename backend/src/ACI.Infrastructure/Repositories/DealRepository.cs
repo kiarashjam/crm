@@ -202,6 +202,17 @@ public sealed class DealRepository : IDealRepository
     private static bool IsBlankAmount(Deal deal) =>
         deal.Amount == 0m || (deal.Amount == null && string.IsNullOrWhiteSpace(deal.Value));
 
+    public async Task<IReadOnlyDictionary<Guid, DealPaceInfo>> GetPaceAsync(Guid userId, Guid? organizationId, IEnumerable<Guid> dealIds, CancellationToken ct = default)
+    {
+        var ids = dealIds.Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<Guid, DealPaceInfo>();
+        var rows = await FilterByUserAndOrg(_db.Deals.AsNoTracking(), userId, organizationId)
+            .Where(d => ids.Contains(d.Id))
+            .PaceOf(_db, userId, organizationId)
+            .ToListAsync(ct);
+        return rows.ToDictionary(r => r.DealId, r => new DealPaceInfo(r.StageEnteredAtUtc, r.LastMoveAtUtc));
+    }
+
     public async Task<IReadOnlyList<DealStageChange>> GetStageChangesAsync(
         Guid dealId, Guid userId, Guid? organizationId, CancellationToken ct = default)
     {

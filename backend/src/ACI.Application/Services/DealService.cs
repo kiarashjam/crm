@@ -88,7 +88,12 @@ public class DealService : IDealService
             "Retrieved {Count} deals for user {UserId}",
             list.Count, userId);
 
-        return list.Select(d => Map(d, lastByDeal.TryGetValue(d.Id, out var last) ? last : null)).ToList();
+        // The table, list and card layouts of the board show how each deal is moving too.
+        var pace = await _repository.GetPaceAsync(userId, organizationId, list.Select(d => d.Id), ct);
+        var staleDays = await WorkspaceStaleDaysAsync(organizationId, ct);
+        var now = DateTime.UtcNow;
+        return list.Select(d => Map(d, lastByDeal.TryGetValue(d.Id, out var last) ? last : null,
+            pace.GetValueOrDefault(d.Id), staleDays, now)).ToList();
     }
 
     /// <inheritdoc />
@@ -140,8 +145,10 @@ public class DealService : IDealService
 
         var lastByDeal = await _activityRepository.GetLastActivityByDealIdsAsync(
             userId, organizationId, new[] { id }, ct);
-        
-        return Map(entity, lastByDeal.TryGetValue(id, out var last) ? last : null);
+        var pace = await _repository.GetPaceAsync(userId, organizationId, new[] { id }, ct);
+
+        return Map(entity, lastByDeal.TryGetValue(id, out var last) ? last : null,
+            pace.GetValueOrDefault(id), await WorkspaceStaleDaysAsync(organizationId, ct), DateTime.UtcNow);
     }
 
     /// <inheritdoc />
@@ -519,6 +526,29 @@ public class DealService : IDealService
         if (_organizations == null) return false;
         var role = await _organizations.GetMemberRoleAsync(userId, org, ct);
         return role is Domain.Enums.OrgMemberRole.Owner or Domain.Enums.OrgMemberRole.Manager;
+    }
+
+    /// <summary>After how many quiet days the workspace's deals are stale, unless their pipeline says otherwise.</summary>
+    private async Task<int> WorkspaceStaleDaysAsync(Guid? organizationId, CancellationToken ct)
+    {
+        if (organizationId is not Guid org || _organizations == null) return StaleDeals.DefaultDays;
+        return (await _organizations.GetByIdAsync(org, ct))?.StaleDealDays ?? StaleDeals.DefaultDays;
+    }
+
+    /// <summary>A deal with how it is moving: when it came into its stage, when it was last worked on, and whether it has gone stale.</summary>
+    private static DealDto Map(Deal e, DateTime? lastActivityAtUtc, DealPaceInfo? pace, int workspaceStaleDays, DateTime now)
+    {
+        var idleSince = StaleDeals.IdleSince(e.CreatedAtUtc, lastActivityAtUtc, pace?.LastMoveAtUtc);
+        var staleDays = StaleDeals.DaysFor(e.Pipeline?.StaleDealDays, workspaceStaleDays);
+        // Open: not marked won or lost, and not in a won or lost stage.
+        var open = e.IsWon == null && e.DealStage is not { IsWon: true } and not { IsLost: true };
+        return Map(e, lastActivityAtUtc) with
+        {
+            StageEnteredAtUtc = pace?.StageEnteredAtUtc,
+            IdleSinceUtc = idleSince,
+            IsStale = StaleDeals.IsStale(open, idleSince, staleDays, now),
+            StaleAfterDays = staleDays,
+        };
     }
 
     private static DealDto Map(Deal e, DateTime? lastActivityAtUtc) =>

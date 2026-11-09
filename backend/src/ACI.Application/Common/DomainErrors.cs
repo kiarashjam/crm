@@ -701,6 +701,18 @@ public static class DomainErrors
     /// <summary>
     /// DealStage-related errors.
     /// </summary>
+    /// <summary>
+    /// The deals board.
+    /// </summary>
+    public static class DealBoard
+    {
+        public static readonly Error ColumnNotFound = new(
+            "DealBoardColumn.NotFound", "That column is not one of this board's stages.");
+
+        public static readonly Error InvalidSort = new(
+            "DealBoard.InvalidSort", "Cards are sorted by close, value, created or name.");
+    }
+
     public static class DealStage
     {
         public static readonly Error NotFound = new(

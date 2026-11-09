@@ -18,4 +18,20 @@ public static class StaleDeals
 
     /// <summary>The days that apply to a pipeline's deals: its own when it has them, else the workspace's. 0 is never.</summary>
     public static int DaysFor(int? pipelineDays, int workspaceDays) => pipelineDays ?? workspaceDays;
+
+    /// <summary>
+    /// Whether a deal nothing has happened to since <paramref name="idleSinceUtc"/> is stale:
+    /// still open, and quiet for longer than the days that apply. 0 days is never.
+    /// </summary>
+    public static bool IsStale(bool open, DateTime idleSinceUtc, int staleAfterDays, DateTime nowUtc) =>
+        open && staleAfterDays > 0 && idleSinceUtc < nowUtc.AddDays(-staleAfterDays);
+
+    /// <summary>The last time anything happened to a deal: made, worked on, or moved.</summary>
+    public static DateTime IdleSince(DateTime createdAtUtc, DateTime? lastActivityAtUtc, DateTime? lastMoveAtUtc)
+    {
+        var latest = createdAtUtc;
+        if (lastActivityAtUtc is DateTime activity && activity > latest) latest = activity;
+        if (lastMoveAtUtc is DateTime move && move > latest) latest = move;
+        return latest;
+    }
 }

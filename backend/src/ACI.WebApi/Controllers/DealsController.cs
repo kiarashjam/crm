@@ -16,14 +16,16 @@ namespace ACI.WebApi.Controllers;
 public class DealsController : ControllerBase
 {
     private readonly IDealService _dealService;
+    private readonly IDealBoardService _board;
     private readonly ICurrentUserService _currentUser;
 
     /// <summary>
     /// Initializes a new instance of the DealsController.
     /// </summary>
-    public DealsController(IDealService dealService, ICurrentUserService currentUser)
+    public DealsController(IDealService dealService, IDealBoardService board, ICurrentUserService currentUser)
     {
         _dealService = dealService;
+        _board = board;
         _currentUser = currentUser;
     }
 
@@ -237,6 +239,52 @@ public class DealsController : ControllerBase
             ct);
         
         return result.ToNoContentResult();
+    }
+
+    /// <summary>
+    /// The deals board for one pipeline: its stages, the first cards in each, and each
+    /// stage's count, money per currency, weighted value and stale deals.
+    /// </summary>
+    /// <remarks>
+    /// The filters (search, owner, amount, close date, stale) narrow the columns; the
+    /// summary is the whole pipeline. Without a pipeline, the workspace's first. A
+    /// workspace without pipelines gets the default stages.
+    /// </remarks>
+    /// <response code="200">The board.</response>
+    /// <response code="400">An unknown sort.</response>
+    /// <response code="404">The pipeline is not one of this workspace's.</response>
+    [HttpGet("board")]
+    [ProducesResponseType(typeof(DealBoardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DealBoardDto>> GetBoard([FromQuery] DealBoardQuery query, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await _board.GetBoardAsync(userId.Value, _currentUser.CurrentOrganizationId, query, ct);
+        return result.ToActionResult();
+    }
+
+    /// <summary>More cards of one board column, after the first <paramref name="skip"/>, with the board's filters and order.</summary>
+    /// <param name="column">The column's key, as the board gave it.</param>
+    /// <param name="skip">Cards already shown.</param>
+    /// <param name="query">The board's pipeline, filters, order and page size.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <response code="200">The next cards.</response>
+    /// <response code="404">The pipeline, or the column, is not on this workspace's board.</response>
+    [HttpGet("board/column")]
+    [ProducesResponseType(typeof(DealBoardColumnPageDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DealBoardColumnPageDto>> GetBoardColumn(
+        [FromQuery] string column, [FromQuery] int skip, [FromQuery] DealBoardQuery query, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var result = await _board.GetColumnAsync(userId.Value, _currentUser.CurrentOrganizationId, query, column ?? string.Empty, skip, ct);
+        return result.ToActionResult();
     }
 
     /// <summary>
