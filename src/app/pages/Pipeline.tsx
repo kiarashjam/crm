@@ -871,7 +871,8 @@ export default function Pipeline() {
             stats={!loading && hasDeals ? dealHeroStats : undefined}
           />
 
-          <DuplicateMerge spec={DEAL_DUPLICATES} onMerged={reloadDeals} />
+          {/* The board is the server's now: a merge reloads it, not only the full list. */}
+          <DuplicateMerge spec={DEAL_DUPLICATES} onMerged={refresh} />
 
           {/* Action Alert Banner */}
           {!loading && hasDeals && dealStats.overdue > 0 && (

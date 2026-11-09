@@ -3,7 +3,7 @@
 // to download every deal and add them up here, so a column could only total the cards
 // it had.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { Deal, DealBoard, DealBoardColumn } from '@/app/api/types';
 import { formatMoney } from '@/app/lib/money';
@@ -17,7 +17,12 @@ vi.mock('@/app/api', async () => ({ ...(await vi.importActual<typeof import('@/a
 vi.mock('@/app/api/activities', () => ({ getActivitiesByDeal: async () => [], createActivity: vi.fn() }));
 vi.mock('@/app/api/tasks', () => ({ getTasks: async () => [], createTask: vi.fn() }));
 vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
-vi.mock('@/app/components/duplicates', () => ({ DuplicateMerge: () => null, DEAL_DUPLICATES: {} }));
+// The duplicate finder above the board: kept here is what it calls after a merge.
+const merge = vi.hoisted(() => ({ onMerged: undefined as undefined | (() => void) }));
+vi.mock('@/app/components/duplicates', () => ({
+  DuplicateMerge: (props: { onMerged?: () => void }) => { merge.onMerged = props.onMerged; return null; },
+  DEAL_DUPLICATES: {},
+}));
 
 const org = vi.hoisted(() => ({ id: 'org-1', name: 'Pavillon 46', ownerUserId: 'u', isOwner: true, role: 0, currency: 'CHF', locale: 'de-CH', timeZone: 'Europe/Zurich' }));
 vi.mock('@/app/contexts/OrgContext', () => ({
@@ -157,6 +162,15 @@ describe('the board from the server', () => {
 
     expect(screen.getByText(new RegExp(`${chf(30000)} weighted`))).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Stale deals, 4/ })).toBeInTheDocument();
+  });
+
+  it('reads the board again after duplicates are merged, so the deal folded away leaves it', async () => {
+    await show();
+    const before = api.getDealBoard.mock.calls.length;
+
+    act(() => merge.onMerged?.());
+
+    await waitFor(() => expect(api.getDealBoard.mock.calls.length).toBeGreaterThan(before));
   });
 
   it('reads the board again after a deal is changed, so its stage figures stay true', async () => {
