@@ -1,5 +1,6 @@
 import { User, Clock, Globe } from 'lucide-react';
 import type { UserSettings, UpdateUserSettingsRequest, TimezoneOption, LanguageOption } from '@/app/api/types';
+import { useRegional } from '@/app/hooks/useMoney';
 
 export interface ProfileSectionProps {
   settings: UserSettings;
@@ -14,6 +15,7 @@ export function ProfileSection({
   timezones,
   languages,
 }: ProfileSectionProps) {
+  const workspace = useRegional();
   return (
     <div className="p-6 space-y-8">
       <div>
@@ -95,6 +97,12 @@ export function ProfileSection({
               <option key={tz.id} value={tz.id}>{tz.displayName}</option>
             ))}
           </select>
+          {/* Nothing reads this one yet. Without saying so, it looked as if reports would
+              count days in it; they count them in the workspace's zone. */}
+          <p className="mt-1.5 text-xs text-slate-500">
+            Saved for later. Reports, forecasts and lists by day count days in the workspace's time zone,{' '}
+            {workspace.timeZone.replace(/_/g, ' ')}.
+          </p>
         </div>
 
         <div>
