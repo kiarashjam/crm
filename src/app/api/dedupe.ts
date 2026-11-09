@@ -68,9 +68,10 @@ export interface MatchRule<T> {
 
 /**
  * Records that any rule links, directly or through one another, form a group. A
- * record is in at most one group.
+ * record is in at most one group. With `maxShared`, a value more records share than
+ * that links none of them, as on the server (DuplicateRules.MaxShared).
  */
-export function groupDuplicates<T extends { id: string }>(records: T[], rules: MatchRule<T>[]): DuplicateGroup<T>[] {
+export function groupDuplicates<T extends { id: string }>(records: T[], rules: MatchRule<T>[], maxShared = Infinity): DuplicateGroup<T>[] {
   const parent = new Map<string, string>();
   const find = (id: string): string => {
     let root = id;
@@ -106,7 +107,7 @@ export function groupDuplicates<T extends { id: string }>(records: T[], rules: M
       else buckets.set(k, [r]);
     }
     for (const list of buckets.values()) {
-      if (list.length < 2) continue;
+      if (list.length < 2 || list.length > maxShared) continue;
       list.forEach((a, i) => {
         for (const b of list.slice(i + 1)) {
           if (!rule.same || rule.same(a, b)) union(a.id, b.id, rule.reason);
@@ -153,6 +154,20 @@ function personRules<T extends Person>(): MatchRule<T>[] {
 }
 
 /**
+ * More contacts or companies than this sharing one phone, name or domain (an office
+ * switchboard, a common name) says nothing about any two of them. The server's own
+ * limit (DuplicateRules.MaxShared), so demo mode and the assistant offer what the
+ * Duplicates page does.
+ */
+const MAX_SHARED = 50;
+
+/** A name as the server matches it (MatchKeys.Name): one letter says nothing. */
+const nameKey = (s?: string | null) => {
+  const name = normalizeName(s);
+  return name.length > 1 ? name : '';
+};
+
+/**
  * Contacts, as the server finds them (DuplicateRules): the same email, the same phone
  * however it is written, or the same name when neither phone nor company disagrees.
  */
@@ -162,14 +177,14 @@ function contactRules<T extends Person>(): MatchRule<T>[] {
     { reason: 'Same phone', key: (p) => normalizePhone(p.phone) },
     {
       reason: 'Same name',
-      key: (p) => normalizeName(p.name),
+      key: (p) => nameKey(p.name),
       same: (a, b) => !conflicts(normalizePhone(a.phone), normalizePhone(b.phone)) && !conflicts(company(a), company(b)),
     },
   ];
 }
 
 export function duplicateContactGroups<T extends Person>(contacts: T[]): DuplicateGroup<T>[] {
-  return groupDuplicates(contacts, contactRules<T>());
+  return groupDuplicates(contacts, contactRules<T>(), MAX_SHARED);
 }
 
 export function duplicateLeadGroups<T extends Person>(leads: T[]): DuplicateGroup<T>[] {
@@ -182,8 +197,8 @@ const domainOf = (c: CompanyLike) => normalizeDomain(c.domain || c.website);
 export function duplicateCompanyGroups<T extends CompanyLike>(companies: T[]): DuplicateGroup<T>[] {
   return groupDuplicates(companies, [
     { reason: 'Same domain', key: domainOf },
-    { reason: 'Same name', key: (c) => normalizeName(c.name), same: (a, b) => !conflicts(domainOf(a), domainOf(b)) },
-  ]);
+    { reason: 'Same name', key: (c) => nameKey(c.name), same: (a, b) => !conflicts(domainOf(a), domainOf(b)) },
+  ], MAX_SHARED);
 }
 
 type DealLike = { id: string; name?: string | null; companyId?: string | null; contactId?: string | null; isWon?: boolean | null };

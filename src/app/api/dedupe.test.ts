@@ -45,6 +45,28 @@ describe('finding duplicates', () => {
     ]);
   });
 
+  it('leaves out a phone, a name or a domain more than fifty share, as the server does', () => {
+    // A hotel's switchboard on fifty-one contacts says nothing about any two of them; two
+    // of them on it with one name are still one person.
+    const switchboard = '+41 33 123 45 67';
+    const colleagues = Array.from({ length: 49 }, (_, i) => ({ id: `c${i}`, name: `Colleague ${i}`, email: `c${i}@bellevue.ch`, phone: switchboard }));
+    const groups = duplicateContactGroups([
+      ...colleagues,
+      { id: 'anna1', name: 'Anna Keller', email: 'anna@bellevue.ch', phone: switchboard },
+      { id: 'anna2', name: 'Anna Keller', email: 'a.keller@bellevue.ch', phone: '033 123 45 67' },
+    ]);
+    expect(groups.map((g) => [g.records.map((r) => r.id), g.reason])).toEqual([[['anna1', 'anna2'], 'Same name']]);
+    expect(duplicateContactGroups(colleagues.slice(0, 2)).map((g) => g.reason)).toEqual(['Same phone']);
+
+    const branches = Array.from({ length: 51 }, (_, i) => ({ id: `b${i}`, name: `Branch ${i}`, domain: 'bank.ch' }));
+    expect(duplicateCompanyGroups(branches)).toEqual([]);
+    // One letter is no name to match on, as on the server.
+    expect(duplicateContactGroups([
+      { id: 'x', name: 'A', email: 'x@one.ch' },
+      { id: 'y', name: 'a', email: 'y@two.ch' },
+    ])).toEqual([]);
+  });
+
   it('does not offer two contacts who share a name but have different phones or companies', () => {
     expect(duplicateContactGroups([
       { id: 'a', name: 'Alex Meier', email: 'alex@one.ch', phone: '079 111 22 33' },
