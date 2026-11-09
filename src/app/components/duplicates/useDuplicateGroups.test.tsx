@@ -90,7 +90,10 @@ describe('useDuplicateGroups against the server', () => {
       .mockResolvedValueOnce({ groups: [group], notSame: [] })
       .mockImplementationOnce(() => new Promise<DuplicateScan<Person>>((resolve) => { answerSlowRead = resolve; }))
       .mockImplementationOnce(() => new Promise<DuplicateScan<Person>>((resolve) => { answerReread = resolve; }));
-    const { result } = renderHook(() => useDuplicateGroups(spec({ scan }), { delayMs: 0 }));
+    // One kind for every render, as the pages' kinds are. A new one each render read again
+    // on its own, used up the answers above, and made this test fail now and then.
+    const kind = spec({ scan });
+    const { result } = renderHook(() => useDuplicateGroups(kind, { delayMs: 0 }));
     await waitFor(() => expect(result.current.groups).toHaveLength(1));
 
     act(() => { void result.current.refresh(); });
@@ -101,6 +104,44 @@ describe('useDuplicateGroups against the server', () => {
     await waitFor(() => expect(scan).toHaveBeenCalledTimes(3));
     await act(async () => { answerReread({ groups: [], notSame: [{ key: 'a|b', recordIds: ['a', 'b'] }] }); });
     await waitFor(() => expect(result.current.notSameCount).toBe(1));
+    expect(result.current.groups).toHaveLength(0);
+  });
+
+  it('keeps a group hidden while its decision is still being saved, when an earlier one answers first', async () => {
+    const first = { key: 'a|b', reason: 'Same phone', records: [marc, marcAtWork] };
+    const second = { key: 'c|d', reason: 'Same name', records: [{ ...marc, id: 'c' }, { ...marcAtWork, id: 'd' }] };
+    let saveFirst!: () => void;
+    let saveSecond!: () => void;
+    server.markNotSame
+      .mockImplementationOnce(() => new Promise<undefined>((resolve) => { saveFirst = () => resolve(undefined); }))
+      .mockImplementationOnce(() => new Promise<undefined>((resolve) => { saveSecond = () => resolve(undefined); }));
+    let answerAfterFirst!: (scan: DuplicateScan<Person>) => void;
+    const scan = vi.fn()
+      .mockResolvedValueOnce({ groups: [first, second], notSame: [] })
+      // Read once the first decision is saved, while the second is still on its way.
+      .mockImplementationOnce(() => new Promise<DuplicateScan<Person>>((resolve) => { answerAfterFirst = resolve; }))
+      .mockResolvedValue({ groups: [], notSame: [{ key: 'a|b', recordIds: ['a', 'b'] }, { key: 'c|d', recordIds: ['c', 'd'] }] });
+    // One kind for every render, as the pages' kinds are: a new one would read again each time.
+    const kind = spec({ scan });
+    const { result } = renderHook(() => useDuplicateGroups(kind, { delayMs: 0 }));
+    await waitFor(() => expect(result.current.groups).toHaveLength(2));
+
+    // Two quick "not the same" clicks: the second is saved after the first.
+    act(() => result.current.markNotSame(['a|b']));
+    act(() => result.current.markNotSame(['c|d']));
+    expect(result.current.groups).toHaveLength(0);
+    await act(async () => { saveFirst(); });
+    await waitFor(() => expect(scan).toHaveBeenCalledTimes(2));
+    await act(async () => { answerAfterFirst({ groups: [second], notSame: [{ key: 'a|b', recordIds: ['a', 'b'] }] }); });
+    // That read's answer is on screen (the first group is counted as decided)...
+    await waitFor(() => expect(result.current.notSameCount).toBe(1));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    // ...and the second group, whose decision it could not know yet, stays hidden.
+    expect(result.current.groups).toHaveLength(0);
+
+    await act(async () => { saveSecond(); });
+    await waitFor(() => expect(result.current.notSameCount).toBe(2));
     expect(result.current.groups).toHaveLength(0);
   });
 
