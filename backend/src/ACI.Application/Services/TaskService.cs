@@ -236,8 +236,10 @@ public class TaskService : ITaskService
             };
             
             entity = await _repository.AddAsync(entity, ct);
-            // A task made for someone else tells them, whoever or whatever made it.
-            await _notifier.TaskAssignedAsync(entity, userId, request.MadeBy, ct);
+            // A task made for someone else tells them, whoever or whatever made it, unless
+            // a rule made it for an imported row (see CreateTaskRequest.FromImport).
+            if (!request.FromImport)
+                await _notifier.TaskAssignedAsync(entity, userId, request.MadeBy, ct);
 
             _logger.LogInformation("Successfully created task {TaskId} with title '{Title}'", entity.Id, entity.Title);
             return Map(entity);

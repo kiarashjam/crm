@@ -83,4 +83,12 @@ public record CreateTaskRequest
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public string? MadeBy { get; init; }
+
+    /// <summary>
+    /// Made by a rule for a row of an import. The task is the assignee's to do, but
+    /// nobody's bell is told: an import is not new work arriving, and a line per row
+    /// buried the bell. Not bindable from a request body.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool FromImport { get; init; }
 }

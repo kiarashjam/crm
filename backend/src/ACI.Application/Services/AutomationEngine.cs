@@ -164,6 +164,7 @@ public sealed class AutomationEngine : IAutomationEngine
             AssigneeId = await OwnerAsync(evt, ct),
             // The rep it goes to hears it came from this rule, not from whoever set it off.
             MadeBy = $"the automation \"{rule.Name}\"",
+            FromImport = evt.FromImport,
         }, ct);
     }
 

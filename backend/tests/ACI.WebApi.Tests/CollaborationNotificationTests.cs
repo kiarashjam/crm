@@ -333,6 +333,34 @@ public class CollaborationNotificationTests
     }
 
     [Fact]
+    public async Task TasksARuleMakesForImportedRowsDoNotFillTheBell()
+    {
+        // Routing gives each imported row to Anna, and a rule makes a call task for each:
+        // the tasks are hers to do, but one bell line per row would bury the bell.
+        using var team = await TeamAsync();
+        await Ok(await team.Marc.PostAsync("/api/lead-ops/assignment", Body(new
+        {
+            id = Guid.Empty, name = "Everything to Anna", kind = "roundrobin", priority = 1,
+            sourceMatch = (string?)null, territoryId = (Guid?)null, queueId = (Guid?)null,
+            memberUserIds = new[] { team.AnnaId }, isActive = true,
+        })), "add the routing rule");
+        await Ok(await team.Marc.PostAsync("/api/automations", Body(new
+        {
+            name = "Call new leads", trigger = "lead.created", enabled = true,
+            actions = new object[] { new { type = "create_task", config = new { title = "Call within the day", dueInDays = "0" } } },
+        })), "add the rule");
+
+        await Ok(await team.Marc.PostAsync("/api/leads", Body(new
+        {
+            name = "Jean Dupont", email = "jean@example.ch", status = "New", origin = "import", runAutomations = true,
+        })), "import a row");
+
+        (await team.Factory.Services.Read(db => db.TaskItems.Single(t => t.Title == "Call within the day").AssigneeId))
+            .Should().Be(team.AnnaId, "the rule still made the task, for the rep the row went to");
+        (await BellAsync(team.Anna)).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task LeadsARuleHandsOutWhenAnImportMovesThemOnDoNotFillTheBellEither()
     {
         using var team = await TeamAsync();
