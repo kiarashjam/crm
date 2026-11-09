@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { servesDemoData } from '@/app/api/apiClient';
 import { isOrgAdmin, type InviteDto, type JoinRequestDto, type OrgMemberDto } from '@/app/api/organizations';
 import { RegionalSettingsCard } from './RegionalSettingsCard';
+import { EmailSendingCard } from './EmailSendingCard';
 
 export interface OrganizationSectionProps {
   organizations: { id: string; name: string; isOwner: boolean; role?: number }[];
@@ -90,6 +91,8 @@ export function OrganizationSection({
       )}
 
       <RegionalSettingsCard />
+
+      <EmailSendingCard />
 
       {!servesDemoData() && isOrgAdmin(currentOrg) && (
         <>

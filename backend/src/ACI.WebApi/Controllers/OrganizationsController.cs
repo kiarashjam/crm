@@ -1,5 +1,6 @@
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Application.Services;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -119,6 +120,29 @@ public class OrganizationsController : ControllerBase
 
         var result = await _organizationService.UpdateSettingsAsync(id, userId.Value, request, ct);
         return result.ToActionResult();
+    }
+
+    /// <summary>
+    /// Who the workspace's email goes out from: its own address, whether the mail service
+    /// has verified its domain (until then the shared address is used), and whether
+    /// replies come back into the CRM.
+    /// </summary>
+    [HttpGet("{id:guid}/email")]
+    public async Task<ActionResult<EmailSendingDto>> GetEmailSending(Guid id, [FromServices] IEmailSendingService email, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await email.GetAsync(id, userId.Value, ct)).ToActionResult();
+    }
+
+    /// <summary>Sets or clears the workspace's own sending address (owner or manager).</summary>
+    [HttpPut("{id:guid}/email")]
+    public async Task<ActionResult<EmailSendingDto>> UpdateEmailSending(
+        Guid id, [FromBody] UpdateEmailSendingRequest request, [FromServices] IEmailSendingService email, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await email.UpdateAsync(id, userId.Value, request, ct)).ToActionResult();
     }
 
     /// <summary>
