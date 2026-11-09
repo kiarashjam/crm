@@ -41,6 +41,9 @@ const STEPS: { step: Step; label: string }[] = [
 /** How many rows a table shows at once; the counts above it cover them all. */
 const ROWS_SHOWN = 200;
 
+/** The largest file the server imports (ImportService.MaxFileMegabytes). */
+const MAX_FILE_MB = 5;
+
 const SEPARATOR_NAMES: Record<ImportAnalysis['separator'], string> = {
   semicolon: 'semicolons',
   comma: 'commas',
@@ -153,6 +156,12 @@ export default function ImportPage({ kind }: ImportPageProps) {
 
   const handleFile = async (picked: File) => {
     setProblem(null);
+    if (picked.size > MAX_FILE_MB * 1024 * 1024) {
+      // The server refuses it anyway, but one much larger never reaches the importer: the
+      // request limit in front of it turns it away with a bare status that says nothing.
+      setProblem(`The file is larger than ${MAX_FILE_MB} MB. Split it into smaller files and import them one after another.`);
+      return;
+    }
     setBusy('reading');
     try {
       const read = await readImportFile(picked);
@@ -301,7 +310,7 @@ export default function ImportPage({ kind }: ImportPageProps) {
                   <FileSpreadsheet className="mx-auto mb-4 h-10 w-10 text-slate-500" aria-hidden />
                   <h3 className="mb-1 text-lg font-semibold text-slate-800">Drop a spreadsheet saved as CSV here</h3>
                   <p className="mb-4 text-sm text-slate-500">
-                    Columns separated by semicolons (as Excel saves in Switzerland), commas or tabs. Up to 2,000 rows a file.
+                    Columns separated by semicolons (as Excel saves in Switzerland), commas or tabs. Up to 2,000 rows and {MAX_FILE_MB} MB a file.
                   </p>
                   <Button onClick={() => fileInput.current?.click()} disabled={busy === 'reading'} className="gap-2 bg-orange-600 hover:bg-orange-500">
                     {busy === 'reading' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Upload className="h-4 w-4" aria-hidden />}

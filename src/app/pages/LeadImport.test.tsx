@@ -223,6 +223,15 @@ describe('importing leads', () => {
     await waitFor(() => expect(api.listImports).toHaveBeenCalledTimes(2));
   });
 
+  it('turns away a file larger than the server takes, saying so, without sending it', async () => {
+    const view = render(<MemoryRouter><LeadImport /></MemoryRouter>);
+    const big = new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'everyone.csv', { type: 'text/csv' });
+    fireEvent.change(view.container.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [big] } });
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('The file is larger than 5 MB');
+    expect(api.analyzeImport).not.toHaveBeenCalled();
+  });
+
   it('says why a file cannot be read', async () => {
     api.analyzeImport.mockRejectedValue(new Error('Row 3 opens a quoted cell that never closes'));
     const view = render(<MemoryRouter><LeadImport /></MemoryRouter>);
