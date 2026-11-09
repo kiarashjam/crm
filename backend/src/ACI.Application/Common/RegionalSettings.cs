@@ -88,10 +88,19 @@ public static partial class RegionalSettings
     /// The zone a workspace's days and months are counted in: its own, or the default
     /// when it names none this host knows.
     /// </summary>
+    /// <remarks>
+    /// A Windows host without ICU (Windows Server 2019 and older) knows zones only by their
+    /// Windows names, so the default is also looked up by its Windows name there rather
+    /// than falling through to UTC, which is where every month began before.
+    /// </remarks>
     public static TimeZoneInfo ZoneOf(string? id) =>
-        TimeZoneInfo.TryFindSystemTimeZoneById((id ?? string.Empty).Trim(), out var zone)
-            ? zone
-            : TimeZoneInfo.TryFindSystemTimeZoneById(DefaultTimeZone, out var fallback) ? fallback : TimeZoneInfo.Utc;
+        TimeZoneInfo.TryFindSystemTimeZoneById((id ?? string.Empty).Trim(), out var zone) ? zone
+        : TimeZoneInfo.TryFindSystemTimeZoneById(DefaultTimeZone, out var fallback) ? fallback
+        : TimeZoneInfo.TryFindSystemTimeZoneById(DefaultTimeZoneWindowsName, out var windows) ? windows
+        : TimeZoneInfo.Utc;
+
+    /// <summary>The Windows name of <see cref="DefaultTimeZone"/>.</summary>
+    private const string DefaultTimeZoneWindowsName = "W. Europe Standard Time";
 
     /// <summary>The calendar day it is in <paramref name="zone"/> at <paramref name="utcNow"/>.</summary>
     public static DateOnly TodayIn(TimeZoneInfo zone, DateTime utcNow) =>
