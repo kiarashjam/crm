@@ -25,6 +25,7 @@ public class TaskServiceTests
         _sut = new TaskService(
             _taskRepositoryMock.Object,
             WorkspaceRecordsMock.InWorkspace().Object,
+            Mock.Of<ICollaborationNotifier>(),
             _loggerMock.Object);
     }
 

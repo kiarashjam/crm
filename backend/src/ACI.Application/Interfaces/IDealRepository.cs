@@ -21,6 +21,12 @@ public interface IDealRepository
     
     // Non-paginated methods (for backward compatibility)
     Task<IReadOnlyList<Deal>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <summary>
+    /// Deals still owing something, the person's own (see WorkScope) or the whole team's:
+    /// open ones, and lost ones with no reason recorded. Soonest to close first, at most
+    /// <paramref name="take"/>.
+    /// </summary>
+    Task<IReadOnlyList<Deal>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default);
     Task<IReadOnlyList<Deal>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null);
     
     // Single item methods

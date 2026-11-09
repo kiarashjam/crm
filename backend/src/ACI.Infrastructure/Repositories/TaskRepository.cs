@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
@@ -91,9 +92,11 @@ public sealed class TaskRepository : ITaskRepository
         string? status = null,
         string? priority = null,
         bool? overdueOnly = null,
+        bool mineOnly = false,
         CancellationToken ct = default)
     {
         var query = FilterByUserAndOrg(_db.TaskItems, userId, organizationId);
+        if (mineOnly) query = query.Where(WorkScope.TaskOf(userId));
         query = ApplySearch(query, search);
         query = ApplyStatusFilter(query, status);
         query = ApplyPriorityFilter(query, priority);
@@ -111,6 +114,26 @@ public sealed class TaskRepository : ITaskRepository
     public async Task<IReadOnlyList<TaskItem>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await OrderTasks(IncludeRelations(FilterByUserAndOrg(_db.TaskItems, userId, organizationId)))
             .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<TaskItem>> GetMineAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        await OrderTasks(IncludeRelations(FilterByUserAndOrg(_db.TaskItems, userId, organizationId).Where(WorkScope.TaskOf(userId))))
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<TaskItem>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.TaskItems.AsNoTracking(), userId, organizationId)
+            .Where(t => t.Status != Domain.Enums.TaskStatus.Completed && t.Status != Domain.Enums.TaskStatus.Cancelled && !t.Completed);
+        if (mineOnly) query = query.Where(WorkScope.TaskOf(userId));
+        return await OrderTasks(IncludeRelations(query)).Take(take).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<TaskItem>> GetDueBetweenAsync(Guid userId, Guid? organizationId, DateTime fromUtc, DateTime toUtc, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.TaskItems.AsNoTracking(), userId, organizationId)
+            .Where(t => t.DueDateUtc >= fromUtc && t.DueDateUtc < toUtc && t.Status != Domain.Enums.TaskStatus.Cancelled);
+        if (mineOnly) query = query.Where(WorkScope.TaskOf(userId));
+        return await IncludeRelations(query).OrderBy(t => t.DueDateUtc).ThenBy(t => t.Id).Take(take).ToListAsync(ct);
+    }
 
     public async Task<IReadOnlyList<TaskItem>> GetByUserIdAsync(Guid userId, Guid? organizationId, bool? overdueOnly, CancellationToken ct = default)
     {

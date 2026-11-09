@@ -21,6 +21,17 @@ public interface ILeadRepository
     
     // Non-paginated methods (for backward compatibility)
     Task<IReadOnlyList<Lead>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    /// <summary>
+    /// Leads not converted yet, the person's own (see WorkScope) or the whole team's,
+    /// the ones touched most lately first: at most <paramref name="take"/>.
+    /// </summary>
+    Task<IReadOnlyList<Lead>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default);
+    /// <summary>
+    /// Leads whose pipeline's meeting date is in one of <paramref name="months"/> ("2026-11"),
+    /// matched as text in SQL, which the caller narrows to days by reading the date itself.
+    /// The person's own (see WorkScope) or the team's, at most <paramref name="take"/>.
+    /// </summary>
+    Task<IReadOnlyList<Lead>> GetWithMeetingInMonthsAsync(Guid userId, Guid? organizationId, IReadOnlyList<string> months, bool mineOnly, int take, CancellationToken ct = default);
     Task<IReadOnlyList<Lead>> SearchAsync(Guid userId, Guid? organizationId, string query, CancellationToken ct = default, int? take = null);
     
     // Single item methods

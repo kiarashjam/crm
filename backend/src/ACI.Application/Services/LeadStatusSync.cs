@@ -34,7 +34,8 @@ public interface ILeadStatusSync
     /// <param name="changedByUserId">Who the history credits; null when nobody in the workspace did it (a counterparty declining).</param>
     /// <param name="plan">The decision from <see cref="SettleAsync"/>, when the move came from it.</param>
     /// <param name="runAutomations">False for an import that was not asked to run them: the history still records the move.</param>
-    Task AnnounceAsync(Lead lead, string? fromStatus, Guid actorUserId, Guid? changedByUserId, Plan? plan, CancellationToken ct = default, bool runAutomations = true);
+    /// <param name="fromImport">The move came from an import row, which the automations are told of.</param>
+    Task AnnounceAsync(Lead lead, string? fromStatus, Guid actorUserId, Guid? changedByUserId, Plan? plan, CancellationToken ct = default, bool runAutomations = true, bool fromImport = false);
 
     /// <summary>
     /// For a writer outside the lead editor that has already changed the pipeline:
@@ -100,7 +101,7 @@ public sealed class LeadStatusSync : ILeadStatusSync
         return plan;
     }
 
-    public async Task AnnounceAsync(Lead lead, string? fromStatus, Guid actorUserId, Guid? changedByUserId, Plan? plan, CancellationToken ct = default, bool runAutomations = true)
+    public async Task AnnounceAsync(Lead lead, string? fromStatus, Guid actorUserId, Guid? changedByUserId, Plan? plan, CancellationToken ct = default, bool runAutomations = true, bool fromImport = false)
     {
         if (string.Equals(fromStatus, lead.Status, StringComparison.Ordinal)) return;
 
@@ -141,7 +142,7 @@ public sealed class LeadStatusSync : ILeadStatusSync
         {
             await _automations.DispatchAsync("lead.status_changed", new AutomationEvent(
                 lead.OrganizationId, actorUserId, $"{lead.Id}:{lead.Status}", lead.Name,
-                LeadId: lead.Id, Email: lead.Email, AssigneeId: lead.AssignedToUserId), ct);
+                LeadId: lead.Id, Email: lead.Email, AssigneeId: lead.AssignedToUserId, FromImport: fromImport), ct);
         }
     }
 

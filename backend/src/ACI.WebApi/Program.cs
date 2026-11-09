@@ -293,6 +293,9 @@ try
     builder.Services.AddScoped<ITaskService, TaskService>();
     builder.Services.AddScoped<IActivityService, ActivityService>();
     builder.Services.AddScoped<INotificationService, NotificationService>();
+    builder.Services.AddScoped<ICollaborationNotifier, CollaborationNotifier>();
+    builder.Services.AddScoped<IWorkQueueService, WorkQueueService>();
+    builder.Services.AddScoped<ICalendarService, CalendarService>();
     builder.Services.AddScoped<IAuditService, AuditService>();
     builder.Services.AddScoped<IAttachmentService, AttachmentService>();
     builder.Services.AddScoped<ICustomFieldService, CustomFieldService>();
@@ -1599,6 +1602,54 @@ try
                     ALTER TABLE [Activities] ADD [UpdatedAtUtc] datetime2 NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Activities') AND name = 'UpdatedByUserId')
                     ALTER TABLE [Activities] ADD [UpdatedByUserId] uniqueidentifier NULL;
+                -- How a call or meeting went, how long it took, and who reached out.
+                IF COL_LENGTH('Activities', 'Outcome') IS NULL ALTER TABLE [Activities] ADD [Outcome] nvarchar(32) NULL;
+                IF COL_LENGTH('Activities', 'DurationMinutes') IS NULL ALTER TABLE [Activities] ADD [DurationMinutes] int NULL;
+                IF COL_LENGTH('Activities', 'Direction') IS NULL ALTER TABLE [Activities] ADD [Direction] nvarchar(16) NULL;
+            ");
+
+            // When an activity happened, as against when it was logged. The activities
+            // already there were logged as they happened, as far as anyone recorded, so they
+            // take their logged time, inside the transaction that adds the column. The
+            // default covers a row written by an instance still running the previous code
+            // during a deploy, which knows nothing of the column.
+            // Filling it touches every activity in one transaction, which on the Basic
+            // database tier can outlast a command's default 30 seconds. A timeout never
+            // reaches the CATCH: the transaction stayed open on its pooled connection,
+            // holding the table. So the batch has longer, and XACT_ABORT rolls back
+            // whatever stops it.
+            var commandTimeout = db.Database.GetCommandTimeout();
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(@"
+                SET XACT_ABORT ON;
+                IF COL_LENGTH('Activities', 'OccurredAtUtc') IS NULL
+                BEGIN
+                BEGIN TRY
+                    BEGIN TRANSACTION;
+                    ALTER TABLE [Activities] ADD [OccurredAtUtc] datetime2 NULL;
+                    EXEC(N'
+                        UPDATE [Activities] SET [OccurredAtUtc] = [CreatedAtUtc];
+                        ALTER TABLE [Activities] ALTER COLUMN [OccurredAtUtc] datetime2 NOT NULL;
+                        ALTER TABLE [Activities] ADD CONSTRAINT [DF_Activities_OccurredAtUtc] DEFAULT SYSUTCDATETIME() FOR [OccurredAtUtc];');
+                    COMMIT TRANSACTION;
+                END TRY
+                BEGIN CATCH
+                    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+                    THROW;
+                END CATCH;
+                END
+            ");
+            }
+            finally
+            {
+                db.Database.SetCommandTimeout(commandTimeout);
+            }
+            // In a batch of its own, after the column it covers exists.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Activities_OrganizationId_OccurredAtUtc' AND object_id = OBJECT_ID('Activities'))
+                    CREATE INDEX [IX_Activities_OrganizationId_OccurredAtUtc] ON [Activities] ([OrganizationId], [OccurredAtUtc]);
             ");
             
             // Fix TaskItems table columns

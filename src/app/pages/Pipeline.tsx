@@ -98,6 +98,9 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { StaggerItem } from '@/app/components/motion/Stagger';
+import { ActivityFactsFields } from '@/app/components/ActivityFactsFields';
+import { withActivity } from '@/app/components/RecordActivity';
+import { activityFactsLine, activityTime, factsPayload, factsProblem, EMPTY_FACTS, type ActivityFactsDraft } from '@/app/lib/activityFacts';
 
 /** Cards per column in each page of the board. */
 const BOARD_PAGE = 25;
@@ -183,7 +186,7 @@ export default function Pipeline() {
   // Deal activities state
   const [dealActivities, setDealActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
+  const [activityForm, setActivityForm] = useState<{ type: string; subject: string; body: string; facts?: ActivityFactsDraft }>({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
   
   // Search and Filter state
@@ -619,21 +622,26 @@ export default function Pipeline() {
         subject: activityForm.subject.trim(),
         body: activityForm.body.trim() || undefined,
         dealId: detailDeal.id,
+        ...factsPayload(activityForm.type, activityForm.facts),
       });
       if (activity) {
-        setDealActivities((prev) => [activity, ...prev]);
+        setDealActivities((prev) => withActivity(prev, activity));
         setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
-        // Update the deal's lastActivityAtUtc in local state
+        // The deal's last activity moves to when this happened, and never back: a
+        // call logged late for last week does not undo what has happened since.
+        const happened = activityTime(activity);
+        const later = (current?: string | null) =>
+          current && Date.parse(current) >= Date.parse(happened) ? current : happened;
         setDeals((prev) =>
           prev.map((d) =>
             d.id === detailDeal.id
-              ? { ...d, lastActivityAtUtc: activity.createdAt }
+              ? { ...d, lastActivityAtUtc: later(d.lastActivityAtUtc) }
               : d
           )
         );
         setDetailDeal((prev) =>
-          prev ? { ...prev, lastActivityAtUtc: activity.createdAt } : prev
+          prev ? { ...prev, lastActivityAtUtc: later(prev.lastActivityAtUtc) } : prev
         );
       } else {
         toast.error('Failed to log activity');
@@ -1620,11 +1628,17 @@ export default function Pipeline() {
                       className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md bg-white resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
                       rows={2}
                     />
+                    <ActivityFactsFields
+                      className="mt-2 sm:grid-cols-2"
+                      type={activityForm.type}
+                      value={activityForm.facts ?? EMPTY_FACTS}
+                      onChange={(facts) => setActivityForm((f) => ({ ...f, facts }))}
+                    />
                     <div className="flex justify-end mt-2">
                       <Button
                         type="submit"
                         size="sm"
-                        disabled={savingActivity || !activityForm.subject.trim()}
+                        disabled={savingActivity || !activityForm.subject.trim() || !!factsProblem(activityForm.type, activityForm.facts)}
                         className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
                       >
                         {savingActivity ? (
@@ -1690,7 +1704,7 @@ export default function Pipeline() {
                               <div>
                                 <p className="text-sm font-medium text-slate-800 truncate">{activity.subject || activity.type}</p>
                                 <p className="text-xs text-slate-500">
-                                  {activity.type} • {new Date(activity.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {activity.type}{activityFactsLine(activity) && <> • {activityFactsLine(activity)}</>} • {new Date(activityTime(activity)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                                 </p>
                               </div>
                             </div>

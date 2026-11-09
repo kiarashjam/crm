@@ -50,7 +50,8 @@ import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { RecordCard } from '@/app/components/RecordCard';
-import { ActivityLogForm, ActivityRow } from '@/app/components/RecordActivity';
+import { ActivityLogForm, ActivityRow, withActivity, type ActivityDraft } from '@/app/components/RecordActivity';
+import { activityTime, factsPayload } from '@/app/lib/activityFacts';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { currencyOf } from '@/app/lib/money';
 import { useMoney } from '@/app/hooks/useMoney';
@@ -66,7 +67,7 @@ export default function DealDetail() {
   // Activities
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
-  const [activityForm, setActivityForm] = useState({ type: 'note', subject: '', body: '' });
+  const [activityForm, setActivityForm] = useState<ActivityDraft>({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
 
   // Linked Tasks
@@ -139,14 +140,16 @@ export default function DealDetail() {
         subject: activityForm.subject.trim(),
         body: activityForm.body.trim() || undefined,
         dealId: deal.id,
+        ...factsPayload(activityForm.type, activityForm.facts),
       });
       if (activity) {
-        setActivities((prev) => [activity, ...prev]);
+        setActivities((prev) => withActivity(prev, activity));
         setActivityForm({ type: 'note', subject: '', body: '' });
         toast.success('Activity logged');
       }
-    } catch {
-      toast.error('Failed to log activity');
+    } catch (err) {
+      // The server says what it refused, a time in the future say, rather than only that it failed.
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to log activity');
     } finally {
       setSavingActivity(false);
     }
@@ -353,7 +356,7 @@ export default function DealDetail() {
               { label: 'Expected close', value: closeLabel ?? '—', icon: Calendar, tone: 'amber', hint: daysToClose === null ? undefined : daysToClose < 0 ? `${-daysToClose}d overdue` : `in ${daysToClose}d` },
               // From the stage history; a deal from before it was kept does not say.
               { label: 'In stage', value: daysInStage === null ? '—' : formatDays(daysInStage), icon: Hourglass, tone: 'violet', hint: daysInStage === null ? 'not recorded' : stageName },
-              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: activities[0] ? `last ${new Date(activities[0].createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'none yet' },
+              { label: 'Activities', value: activities.length, icon: ActivityIcon, tone: 'sky', hint: activities[0] ? `last ${new Date(activityTime(activities[0])).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'none yet' },
               { label: 'Tasks', value: dealTasks.filter((t) => t.status !== 'completed').length, icon: CheckCircle2, tone: 'violet', hint: `${dealTasks.length} linked` },
             ]}
           />

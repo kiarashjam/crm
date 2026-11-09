@@ -16,6 +16,7 @@ import { getDeals } from './deals';
 import { getLeads } from './leads';
 import { getActivities } from './activities';
 import { getCurrentUser } from '@/app/lib/auth';
+import { activityTime } from '@/app/lib/activityFacts';
 import { amountOf, DEFAULT_CURRENCY } from '@/app/lib/money';
 
 export interface DemoRecords {
@@ -217,7 +218,7 @@ export function summariseForDemo(records: DemoRecords, filters: ReportFilters): 
   }
 
   const logged = records.activities
-    .filter((a) => (a.type || '').toLowerCase() !== 'system' && inRange(a.createdAt, from, to))
+    .filter((a) => (a.type || '').toLowerCase() !== 'system' && inRange(activityTime(a), from, to))
     .filter((a) => filters.scope !== 'me' || !a.createdByUserId || a.createdByUserId === me);
   const bucket = bucketFor(from, to);
   // As on the server: a close date is matched to the period's days on this
@@ -264,7 +265,7 @@ export function summariseForDemo(records: DemoRecords, filters: ReportFilters): 
     activities: {
       total: logged.length,
       byType: countBy(logged, (a) => (a.type || '').toLowerCase()),
-      series: series(logged.map((a) => a.createdAt), from, to, bucket),
+      series: series(logged.map((a) => activityTime(a)), from, to, bucket),
     },
   };
 }

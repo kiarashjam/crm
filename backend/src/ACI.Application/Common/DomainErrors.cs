@@ -451,6 +451,12 @@ public static class DomainErrors
     /// <summary>
     /// Deal-related errors.
     /// </summary>
+    public static class Calendar
+    {
+        public static readonly Error InvalidRange = new(
+            "Calendar.InvalidRange", "A calendar reads up to 45 days at a time, from a start before its end.");
+    }
+
     public static class Deal
     {
         public static readonly Error NotFound = new(
@@ -528,6 +534,33 @@ public static class DomainErrors
         
         public static readonly Error RelatedEntityNotFound = new(
             "Activity.RelatedEntityNotFound", "The related entity was not found");
+
+        public static readonly Error OccurredAhead = new(
+            "Activity.OccurredAhead",
+            "An activity is something that has happened, so it cannot be dated in the future. Plan what is ahead as a task.");
+
+        public static readonly Error OccurredTooEarly = new(
+            "Activity.OccurredTooEarly", "That date is too long ago to be when this happened. Check the year.");
+
+        public static Error NoOutcome(string type) => new(
+            "Activity.NoOutcome", $"A {Kind(type)} has no outcome. Outcomes are for calls and meetings.");
+
+        public static Error InvalidOutcome(string type, IReadOnlyList<string> allowed) => new(
+            "Activity.InvalidOutcome", $"A {Kind(type)} outcome is one of: {string.Join(", ", allowed)}");
+
+        public static Error NoDuration(string type) => new(
+            "Activity.NoDuration", $"A {Kind(type)} has no duration. Durations are for calls and meetings.");
+
+        public static readonly Error InvalidDuration = new(
+            "Activity.InvalidDuration", $"The duration is in minutes, from 0 to {ActivityFacts.MaxDurationMinutes}.");
+
+        public static Error NoDirection(string type) => new(
+            "Activity.NoDirection", $"A {Kind(type)} has no direction. Inbound and outbound are for calls and emails.");
+
+        public static readonly Error InvalidDirection = new(
+            "Activity.InvalidDirection", "The direction is inbound or outbound.");
+
+        private static string Kind(string type) => type.Replace('_', ' ');
     }
 
     /// <summary>

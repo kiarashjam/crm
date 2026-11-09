@@ -117,6 +117,7 @@ public class AppDbContext : DbContext
         StampDealAmounts();
         StampImportBatch();
         StampContactKeys();
+        StampActivityTimes();
         await RecordDependents.RemoveAsync(this, cancellationToken);
         var events = RecordsAuditTrail ? await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -138,6 +139,7 @@ public class AppDbContext : DbContext
         StampDealAmounts();
         StampImportBatch();
         StampContactKeys();
+        StampActivityTimes();
         RecordDependents.Remove(this);
         var events = RecordsAuditTrail ? AuditTrail.Capture(this, _currentUser) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -199,6 +201,18 @@ public class AppDbContext : DbContext
             var contact = entry.Entity;
             contact.PhoneKey = MatchKeys.Phone(contact.Phone);
             contact.NameKey = MatchKeys.Name(contact.Name) ?? "";
+        }
+    }
+
+    // An activity saved without the time it happened (the lead status sync's own lines, a
+    // merge, a test, anything written before the field existed) happened when it was
+    // logged: that is all anyone recorded about it.
+    private void StampActivityTimes()
+    {
+        foreach (var entry in ChangeTracker.Entries<Activity>())
+        {
+            if (entry.State != EntityState.Added || entry.Entity.OccurredAtUtc != default) continue;
+            entry.Entity.OccurredAtUtc = entry.Entity.CreatedAtUtc != default ? entry.Entity.CreatedAtUtc : DateTime.UtcNow;
         }
     }
 

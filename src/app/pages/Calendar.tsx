@@ -1,6 +1,7 @@
-// Unified calendar view — events and reservations overlaid on a month grid.
+// The calendar: a rep's tasks and meetings, and the club's events and reservations, on
+// one month grid.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CalendarDays,
@@ -8,7 +9,11 @@ import {
   ChevronRight,
   CalendarHeart,
   CalendarClock,
+  CheckCircle2,
+  ListTodo,
   Loader2,
+  RotateCw,
+  Users,
 } from 'lucide-react';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
@@ -16,9 +21,15 @@ import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { Button } from '@/app/components/ui/button';
 import { getEvents, type ClubEvent } from '@/app/api/events';
 import { getReservations, type Reservation } from '@/app/api/reservations';
+import { getCalendar, type CalendarEntry } from '@/app/api/calendar';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
+import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
+import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { useWorkScope } from '@/app/lib/workScope';
+import { OUTCOME_LABELS } from '@/app/lib/activityFacts';
+import { cn } from '@/app/components/ui/utils';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -27,6 +38,19 @@ function startOfMonth(d: Date): Date {
 }
 function endOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+}
+/** The six weeks on the grid for a month: from the Sunday on or before its first day. */
+function gridCells(month: Date): Date[] {
+  const first = startOfMonth(month);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  const cells: Date[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    cells.push(d);
+  }
+  return cells;
 }
 function isSameDay(a: Date, b: Date): boolean {
   return (
@@ -49,43 +73,101 @@ function formatTime(iso: string): string {
   }
 }
 
+/**
+ * The local day an entry falls on. A lead's meeting date is a day with no time, so it
+ * stays on that day wherever the viewer is; anything else is on the day of its time here.
+ */
+function dayKeyOf(entry: CalendarEntry): string {
+  if (entry.allDay && entry.day) {
+    const [y, m, d] = entry.day.split('-').map(Number);
+    return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1).toDateString();
+  }
+  return new Date(entry.startUtc).toDateString();
+}
+
+const STATUS_WORDS: Record<string, string> = {
+  todo: 'To do',
+  in_progress: 'In progress',
+  completed: 'Done',
+  held: 'Held',
+  missed: 'They did not come',
+};
+function statusWord(status?: string): string | null {
+  if (!status) return null;
+  return STATUS_WORDS[status] ?? OUTCOME_LABELS[status] ?? status.replace(/_/g, ' ');
+}
+
+const CHIP: Record<CalendarEntry['kind'], string> = {
+  task: 'bg-amber-100 text-amber-800',
+  meeting: 'bg-violet-100 text-violet-700',
+  lead_meeting: 'bg-sky-100 text-sky-700',
+};
+
 export default function Calendar() {
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [clubFailed, setClubFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
   const [cursor, setCursor] = useState<Date>(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
+  // My tasks and meetings by default; the team's one switch away. The club's events and
+  // reservations are the whole club's either way.
+  const inWorkspace = !!useOrgOptional()?.currentOrgId;
+  const [scope, setScope] = useWorkScope('calendar');
+  const [entries, setEntries] = useState<CalendarEntry[]>([]);
+  const [entriesState, setEntriesState] = useState<'loading' | 'ready' | 'failed'>('loading');
+  const [truncated, setTruncated] = useState(false);
 
-  const load = async () => {
+  // An outage used to leave an empty month that read as "nothing booked tonight".
+  const loadClub = useCallback(async () => {
     try {
       const [e, r] = await Promise.all([getEvents(), getReservations()]);
       setEvents(e);
       setReservations(r);
+      setClubFailed(false);
+    } catch {
+      setClubFailed(true);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void load();
   }, []);
 
+  useEffect(() => {
+    void loadClub();
+  }, [loadClub]);
+
   // Build the visible 6-week grid.
-  const grid = useMemo(() => {
-    const first = startOfMonth(cursor);
-    const last = endOfMonth(cursor);
-    const firstWeekday = first.getDay();
-    const start = new Date(first);
-    start.setDate(first.getDate() - firstWeekday);
-    const cells: Date[] = [];
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      cells.push(d);
+  const grid = useMemo(() => ({ cells: gridCells(cursor), monthStart: startOfMonth(cursor), monthEnd: endOfMonth(cursor) }), [cursor]);
+
+  // Only the latest read lands: a slow answer for the month or scope just left must not
+  // replace the one on show.
+  const latestRead = useRef(0);
+  const loadEntries = useCallback(async () => {
+    const read = ++latestRead.current;
+    const from = grid.cells[0]!;
+    const to = new Date(grid.cells[grid.cells.length - 1]!);
+    to.setDate(to.getDate() + 1);
+    setEntriesState('loading');
+    try {
+      const page = await getCalendar(from, to, inWorkspace ? scope : 'mine');
+      if (read !== latestRead.current) return;
+      setEntries(page.entries);
+      setTruncated(page.truncated);
+      setEntriesState('ready');
+    } catch {
+      if (read !== latestRead.current) return;
+      // What the last read held is for another month or scope: shown beside "could not
+      // be loaded", it read as this one's.
+      setEntries([]);
+      setTruncated(false);
+      setEntriesState('failed');
     }
-    return { cells, monthStart: first, monthEnd: last };
-  }, [cursor]);
+  }, [grid, scope, inWorkspace]);
+
+  useEffect(() => {
+    void loadEntries();
+  }, [loadEntries]);
 
   const eventsByDay = useMemo(() => {
     const m = new Map<string, ClubEvent[]>();
@@ -109,22 +191,43 @@ export default function Calendar() {
     return m;
   }, [reservations]);
 
-  const selectedEvents = useMemo(
-    () => eventsByDay.get(selectedDay.toDateString()) ?? [],
-    [eventsByDay, selectedDay],
-  );
-  const selectedReservations = useMemo(
-    () => reservationsByDay.get(selectedDay.toDateString()) ?? [],
-    [reservationsByDay, selectedDay],
-  );
+  const entriesByDay = useMemo(() => {
+    const m = new Map<string, CalendarEntry[]>();
+    for (const entry of entries) {
+      const k = dayKeyOf(entry);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(entry);
+    }
+    // All-day first, then by time.
+    for (const list of m.values()) list.sort((a, b) => Number(b.allDay) - Number(a.allDay) || a.startUtc.localeCompare(b.startUtc));
+    return m;
+  }, [entries]);
 
-  const goPrev = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1));
-  const goNext = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1));
+  const selectedKey = selectedDay.toDateString();
+  const selectedEvents = useMemo(() => eventsByDay.get(selectedKey) ?? [], [eventsByDay, selectedKey]);
+  const selectedReservations = useMemo(() => reservationsByDay.get(selectedKey) ?? [], [reservationsByDay, selectedKey]);
+  const selectedEntries = useMemo(() => entriesByDay.get(selectedKey) ?? [], [entriesByDay, selectedKey]);
+  const selectedMeetings = selectedEntries.filter((e) => e.kind !== 'task');
+  const selectedTasks = selectedEntries.filter((e) => e.kind === 'task');
+
+  // Tasks and meetings are read for the six weeks on the grid, so a selected day left off
+  // it would read as having none: it moves to the same date in the month gone to.
+  const goMonth = (step: number) => {
+    const next = new Date(cursor.getFullYear(), cursor.getMonth() + step, 1);
+    setCursor(next);
+    if (!gridCells(next).some((d) => isSameDay(d, selectedDay))) {
+      setSelectedDay(new Date(next.getFullYear(), next.getMonth(), Math.min(selectedDay.getDate(), endOfMonth(next).getDate())));
+    }
+  };
+  const goPrev = () => goMonth(-1);
+  const goNext = () => goMonth(1);
   const goToday = () => {
     const now = new Date();
     setCursor(startOfMonth(now));
     setSelectedDay(now);
   };
+
+  const mine = !inWorkspace || scope === 'mine';
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -139,7 +242,10 @@ export default function Calendar() {
             icon={CalendarDays}
             tone="cyan"
             title="Calendar"
-            subtitle="Events and reservations across the club, on a single grid."
+            subtitle={mine
+              ? 'Your tasks and meetings, with the club’s events and reservations, on a single grid.'
+              : 'The team’s tasks and meetings, with the club’s events and reservations, on a single grid.'}
+            actions={inWorkspace ? <WorkScopeToggle value={scope} onChange={setScope} mineLabel="Mine" teamLabel="Team" /> : undefined}
           />
 
           {loading ? (
@@ -165,6 +271,42 @@ export default function Calendar() {
                   </div>
                 </div>
 
+                {(clubFailed || entriesState === 'failed') && (
+                  <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                    <span>
+                      {clubFailed && entriesState === 'failed'
+                        ? 'Nothing could be loaded: tasks, meetings, events and reservations are all missing here.'
+                        : clubFailed
+                          ? 'Events and reservations could not be loaded, so they are missing here.'
+                          : 'Tasks and meetings could not be loaded, so they are missing here.'}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (clubFailed) void loadClub();
+                        if (entriesState === 'failed') void loadEntries();
+                      }}
+                    >
+                      <RotateCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                      Try again
+                    </Button>
+                  </div>
+                )}
+
+                <ul className="mb-2 flex flex-wrap gap-3 text-[11px] text-slate-600" aria-label="Key">
+                  <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden="true" />Tasks</li>
+                  <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-400" aria-hidden="true" />Meetings</li>
+                  <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-sky-400" aria-hidden="true" />Leads’ meetings</li>
+                  <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-pink-400" aria-hidden="true" />Events</li>
+                  <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" />Reservations</li>
+                  {entriesState === 'loading' && (
+                    <li className="flex items-center gap-1 text-slate-500" role="status">
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />Loading tasks and meetings
+                    </li>
+                  )}
+                </ul>
+
                 <div className="grid grid-cols-7 gap-1 mb-2">
                   {WEEKDAYS.map((w) => (
                     <div
@@ -181,13 +323,29 @@ export default function Calendar() {
                     const inMonth = d.getMonth() === cursor.getMonth();
                     const isToday = isSameDay(d, new Date());
                     const isSelected = isSameDay(d, selectedDay);
-                    const evs = eventsByDay.get(d.toDateString()) ?? [];
-                    const rsvs = reservationsByDay.get(d.toDateString()) ?? [];
+                    const key = d.toDateString();
+                    const evs = eventsByDay.get(key) ?? [];
+                    const rsvs = reservationsByDay.get(key) ?? [];
+                    const sales = entriesByDay.get(key) ?? [];
+                    const chips = [
+                      ...sales.map((entry) => ({
+                        key: `${entry.kind}-${entry.id}`,
+                        tone: CHIP[entry.kind],
+                        text: entry.allDay ? entry.title : `${formatTime(entry.startUtc)} ${entry.title}`,
+                        done: entry.status === 'completed',
+                      })),
+                      ...evs.map((e) => ({ key: `event-${e.id}`, tone: 'bg-pink-100 text-pink-700', text: `${e.coverEmoji} ${e.name}`, done: false })),
+                      ...rsvs.map((r) => ({
+                        key: `rsv-${r.id}`, tone: 'bg-emerald-100 text-emerald-700',
+                        text: `${r.memberName.split(' ')[0]} · ${r.resourceName.split(' ')[0]}`, done: false,
+                      })),
+                    ];
                     return (
                       <button
                         type="button"
                         key={i}
                         onClick={() => setSelectedDay(d)}
+                        aria-label={`${d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}${chips.length ? `, ${chips.length} on the calendar` : ''}`}
                         className={`min-h-[72px] rounded-lg p-1.5 text-left transition border ${
                           isSelected
                             ? 'border-cyan-400 ring-2 ring-cyan-200 bg-cyan-50'
@@ -204,32 +362,22 @@ export default function Calendar() {
                           {d.getDate()}
                         </div>
                         <div className="space-y-0.5">
-                          {evs.slice(0, 2).map((e) => (
-                            <div
-                              key={e.id}
-                              className="text-[10px] truncate px-1.5 py-0.5 rounded bg-pink-100 text-pink-700"
-                            >
-                              {e.coverEmoji} {e.name}
+                          {chips.slice(0, 2).map((chip) => (
+                            <div key={chip.key} className={cn('text-[10px] truncate px-1.5 py-0.5 rounded', chip.tone, chip.done && 'line-through opacity-70')}>
+                              {chip.text}
                             </div>
                           ))}
-                          {rsvs.slice(0, 2 - Math.min(2, evs.length)).map((r) => (
-                            <div
-                              key={r.id}
-                              className="text-[10px] truncate px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700"
-                            >
-                              {r.memberName.split(' ')[0]} · {r.resourceName.split(' ')[0]}
-                            </div>
-                          ))}
-                          {evs.length + rsvs.length > 2 && (
-                            <div className="text-[10px] text-slate-500">
-                              +{evs.length + rsvs.length - 2} more
-                            </div>
+                          {chips.length > 2 && (
+                            <div className="text-[10px] text-slate-500">+{chips.length - 2} more</div>
                           )}
                         </div>
                       </button>
                     );
                   })}
                 </div>
+                {truncated && (
+                  <p className="mt-2 text-xs text-slate-500">These weeks hold more than the calendar can show at once, so some tasks or meetings are missing.</p>
+                )}
               </StaggerItem>
 
               {/* Day detail */}
@@ -243,6 +391,62 @@ export default function Calendar() {
                     day: 'numeric',
                   })}
                 </h2>
+
+                <section className="mb-5">
+                  <h3 className="text-sm font-semibold text-slate-700 inline-flex items-center gap-2 mb-2">
+                    <Users className="w-4 h-4 text-violet-600" /> Meetings ({selectedMeetings.length})
+                  </h3>
+                  {selectedMeetings.length === 0 ? (
+                    <p className="text-xs text-slate-500">No meetings.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {selectedMeetings.map((m, index) => (
+                        <StaggerItem as="li" key={`${m.kind}-${m.id}`} index={index}>
+                          <Link
+                            to={m.link}
+                            className={cn('block rounded-lg px-3 py-2 transition', m.kind === 'lead_meeting' ? 'bg-sky-50 hover:bg-sky-100' : 'bg-violet-50 hover:bg-violet-100')}
+                          >
+                            <p className="text-sm font-medium text-slate-900 truncate">{m.title}</p>
+                            <p className="text-xs text-slate-500">
+                              {m.allDay ? 'Planned for the day' : formatTime(m.startUtc)}
+                              {m.endUtc && <> – {formatTime(m.endUtc)}</>}
+                              {statusWord(m.status) && <> · {statusWord(m.status)}</>}
+                              {m.detail && <> · {m.detail}</>}
+                              {m.who && <> · {m.who}</>}
+                            </p>
+                          </Link>
+                        </StaggerItem>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                <section className="mb-5">
+                  <h3 className="text-sm font-semibold text-slate-700 inline-flex items-center gap-2 mb-2">
+                    <ListTodo className="w-4 h-4 text-amber-600" /> Tasks ({selectedTasks.length})
+                  </h3>
+                  {selectedTasks.length === 0 ? (
+                    <p className="text-xs text-slate-500">No tasks due.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {selectedTasks.map((t, index) => (
+                        <StaggerItem as="li" key={t.id} index={index}>
+                          <Link to={t.link} className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 transition hover:bg-amber-100">
+                            {t.status === 'completed' && <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-label="Done" />}
+                            <div className="min-w-0 flex-1">
+                              <p className={cn('text-sm font-medium text-slate-900 truncate', t.status === 'completed' && 'line-through opacity-70')}>{t.title}</p>
+                              <p className="text-xs text-slate-500">
+                                Due {formatTime(t.startUtc)}
+                                {t.detail && <> · {t.detail}</>}
+                                {t.who && <> · {t.who}</>}
+                              </p>
+                            </div>
+                          </Link>
+                        </StaggerItem>
+                      ))}
+                    </ul>
+                  )}
+                </section>
 
                 <section className="mb-5">
                   <h3 className="text-sm font-semibold text-slate-700 inline-flex items-center gap-2 mb-2">

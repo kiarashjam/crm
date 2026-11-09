@@ -9,7 +9,12 @@ public interface ILeadAutomation
     Task PrepareNewAsync(Lead lead, CancellationToken ct = default);
     Task RecordStatusAsync(Lead lead, string? fromStatus, string toStatus, Guid actorId, CancellationToken ct = default);
     Task RescoreAsync(Lead lead, CancellationToken ct = default);
-    Task MarkFirstResponseAsync(Guid leadId, Guid userId, Guid? organizationId, string activityType, CancellationToken ct = default);
+    /// <summary>
+    /// Someone answered the lead: a call, meeting or email logged on it. The first response
+    /// and "last contacted" are when that happened (<paramref name="occurredAtUtc"/>), not
+    /// when it was written down, and never later than now.
+    /// </summary>
+    Task MarkFirstResponseAsync(Guid leadId, Guid userId, Guid? organizationId, string activityType, DateTime? occurredAtUtc = null, CancellationToken ct = default);
 }
 
 public sealed class LeadAutomation : ILeadAutomation
@@ -65,7 +70,7 @@ public sealed class LeadAutomation : ILeadAutomation
         lead.LeadScore = LeadScoreCalculator.Score(lead, rules);
     }
 
-    public async Task MarkFirstResponseAsync(Guid leadId, Guid userId, Guid? organizationId, string activityType, CancellationToken ct = default)
+    public async Task MarkFirstResponseAsync(Guid leadId, Guid userId, Guid? organizationId, string activityType, DateTime? occurredAtUtc = null, CancellationToken ct = default)
     {
         if (!ResponseTypes.Contains(activityType)) return;
         var lead = await _ops.GetLeadAsync(leadId, ct);
@@ -73,10 +78,14 @@ public sealed class LeadAutomation : ILeadAutomation
         if (organizationId != null && lead.OrganizationId != organizationId) return;
 
         var now = DateTime.UtcNow;
-        lead.LastContactedAt = now;
+        var when = occurredAtUtc is DateTime at && at < now ? at : now;
+        // A call logged late, for yesterday, does not make yesterday's later call older.
+        if (lead.LastContactedAt is not DateTime last || when > last) lead.LastContactedAt = when;
         if (lead.FirstResponseAtUtc == null)
         {
-            lead.FirstResponseAtUtc = now;
+            // Spoken to before the lead was entered (met at a fair, then typed in): the
+            // answer came as soon as there was a lead to answer.
+            lead.FirstResponseAtUtc = when < lead.CreatedAtUtc ? lead.CreatedAtUtc : when;
             lead.SlaBreached = false;
         }
         await RescoreAsync(lead, ct);

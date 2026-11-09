@@ -37,7 +37,7 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-type DealRaw = {
+export type DealRaw = {
   id: string; name: string; value: string;
   amount?: number | null;
   currency?: string | null; stage?: string | null;
@@ -55,7 +55,7 @@ type DealRaw = {
   stageEnteredAtUtc?: string | null; idleSinceUtc?: string | null;
   isStale?: boolean | null; staleAfterDays?: number | null;
 };
-function mapDeal(d: DealRaw): Deal {
+export function mapDeal(d: DealRaw): Deal {
   return {
     id: d.id,
     name: d.name,

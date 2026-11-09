@@ -303,6 +303,13 @@ export interface Activity {
   leadId?: string;
   participants?: string;
   createdAt: string;
+  /** When it happened, which can be before it was logged (createdAt). See lib/activityFacts. */
+  occurredAt?: string;
+  /** How a call or meeting went, e.g. "no_answer". */
+  outcome?: string;
+  durationMinutes?: number;
+  /** Who reached out, for a call or an email. */
+  direction?: 'inbound' | 'outbound';
   updatedAt?: string;
   contactName?: string;
   dealName?: string;

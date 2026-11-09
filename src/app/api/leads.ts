@@ -16,7 +16,7 @@ const leadStore = createMockStore<Lead>({
   idOf: (l) => l.id,
 });
 
-type LeadRaw = {
+export type LeadRaw = {
   id: string;
   name: string;
   email: string;
@@ -54,7 +54,7 @@ type LeadRaw = {
   relationships?: ContactRelationship[] | null;
 };
 
-function mapLead(d: LeadRaw): Lead {
+export function mapLead(d: LeadRaw): Lead {
   return {
     id: d.id,
     name: d.name,

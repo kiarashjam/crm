@@ -1,4 +1,6 @@
 import type { Activity, PagedResult } from './types';
+import { factsProblem, type ActivityDirection, type ActivityFactsPayload } from '@/app/lib/activityFacts';
+import { toLocalInputValue } from '@/app/lib/dateInputs';
 import { mockActivities } from './mockData';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
@@ -31,9 +33,14 @@ interface ActivityRaw {
   createdByUserId?: string | null;
   createdByName?: string | null;
   createdByEmail?: string | null;
+  occurredAtUtc?: string | null;
+  outcome?: string | null;
+  durationMinutes?: number | null;
+  direction?: string | null;
 }
 
 function mapActivity(d: ActivityRaw): Activity {
+  const createdAt = d.createdAt || d.createdAtUtc || new Date().toISOString();
   return {
     id: d.id,
     type: d.type,
@@ -43,7 +50,11 @@ function mapActivity(d: ActivityRaw): Activity {
     dealId: d.dealId ?? undefined,
     leadId: d.leadId ?? undefined,
     participants: d.participants ?? undefined,
-    createdAt: d.createdAt || d.createdAtUtc || new Date().toISOString(),
+    createdAt,
+    occurredAt: d.occurredAtUtc || createdAt,
+    outcome: d.outcome ?? undefined,
+    durationMinutes: typeof d.durationMinutes === 'number' ? d.durationMinutes : undefined,
+    direction: d.direction === 'inbound' || d.direction === 'outbound' ? d.direction : undefined,
     updatedAt: d.updatedAtUtc ?? undefined,
     contactName: d.contactName ?? undefined,
     dealName: d.dealName ?? undefined,
@@ -190,8 +201,39 @@ export async function getOrgMemberActivityCounts(): Promise<Record<string, numbe
   return {};
 }
 
+export interface CreateActivityParams extends ActivityFactsPayload {
+  type: string;
+  subject?: string;
+  body?: string;
+  contactId?: string;
+  dealId?: string;
+  leadId?: string;
+  participants?: string;
+}
+
+export interface UpdateActivityParams extends ActivityFactsPayload {
+  type?: string;
+  subject?: string;
+  body?: string;
+  participants?: string;
+  clearOutcome?: boolean;
+  clearDuration?: boolean;
+  clearDirection?: boolean;
+}
+
+/** Demo mode refuses what the server would, so a form that works here works there too. */
+function refuseLikeTheServer(type: string, facts: ActivityFactsPayload): void {
+  const problem = factsProblem(type, {
+    when: facts.occurredAtUtc ? toLocalInputValue(facts.occurredAtUtc) : '',
+    outcome: facts.outcome ?? '',
+    direction: facts.direction ?? '',
+    duration: facts.durationMinutes === undefined ? '' : String(facts.durationMinutes),
+  });
+  if (problem) throw new Error(problem);
+}
+
 /** Create an activity. */
-export async function createActivity(params: { type: string; subject?: string; body?: string; contactId?: string; dealId?: string; leadId?: string; participants?: string }): Promise<Activity | null> {
+export async function createActivity(params: CreateActivityParams): Promise<Activity | null> {
   if (!servesDemoData()) {
     const activity = await authFetchJson<ActivityRaw>('/api/activities', {
       method: 'POST',
@@ -200,6 +242,8 @@ export async function createActivity(params: { type: string; subject?: string; b
     return activity ? mapActivity(activity) : null;
   }
   await delay(200);
+  refuseLikeTheServer(params.type, params);
+  const now = new Date().toISOString();
   const created: Activity = {
     id: mockId('act'),
     type: params.type,
@@ -209,7 +253,11 @@ export async function createActivity(params: { type: string; subject?: string; b
     dealId: params.dealId,
     leadId: params.leadId,
     participants: params.participants,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    occurredAt: params.occurredAtUtc ?? now,
+    outcome: params.outcome,
+    durationMinutes: params.durationMinutes,
+    direction: params.direction as ActivityDirection | undefined,
     updatedAt: undefined,
     contactName: undefined,
     dealName: undefined,
@@ -219,7 +267,7 @@ export async function createActivity(params: { type: string; subject?: string; b
 }
 
 /** Update an activity. */
-export async function updateActivity(id: string, params: { type?: string; subject?: string; body?: string; participants?: string }): Promise<Activity | null> {
+export async function updateActivity(id: string, params: UpdateActivityParams): Promise<Activity | null> {
   if (!servesDemoData()) {
     const activity = await authFetchJson<ActivityRaw>(`/api/activities/${id}`, {
       method: 'PUT',
@@ -228,11 +276,17 @@ export async function updateActivity(id: string, params: { type?: string; subjec
     return activity ? mapActivity(activity) : null;
   }
   await delay(200);
+  const current = activityStore.byId(id);
+  refuseLikeTheServer(params.type ?? current?.type ?? 'note', params);
   return activityStore.update(id, {
     ...(params.type !== undefined ? { type: params.type } : {}),
     ...(params.subject !== undefined ? { subject: params.subject } : {}),
     ...(params.body !== undefined ? { body: params.body } : {}),
     ...(params.participants !== undefined ? { participants: params.participants } : {}),
+    ...(params.occurredAtUtc !== undefined ? { occurredAt: params.occurredAtUtc } : {}),
+    ...(params.outcome !== undefined ? { outcome: params.outcome } : params.clearOutcome ? { outcome: undefined } : {}),
+    ...(params.durationMinutes !== undefined ? { durationMinutes: params.durationMinutes } : params.clearDuration ? { durationMinutes: undefined } : {}),
+    ...(params.direction !== undefined ? { direction: params.direction } : params.clearDirection ? { direction: undefined } : {}),
     updatedAt: new Date().toISOString(),
   });
 }

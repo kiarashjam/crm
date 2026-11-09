@@ -95,10 +95,16 @@ import {
 import { Checkbox } from '@/app/components/ui/checkbox';
 import { cn } from '@/app/components/ui/utils';
 import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
+import { useWorkScope } from '@/app/lib/workScope';
+import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [stats, setStats] = useState<TaskStats | null>(null);
+  // My tasks by default: given to me, or made by me and given to nobody. The team's are
+  // one switch away, and the choice is remembered. A personal workspace is all mine.
+  const [scope, setScope] = useWorkScope('tasks');
+  const inWorkspace = !!getCurrentOrganizationId();
   const [loading, setLoading] = useState(true);
   usePageLoading(loading);
   // How this person likes tasks shown: the board, grouped list or a table, saved for them.
@@ -156,8 +162,8 @@ export default function Tasks() {
     try {
       const orgId = getCurrentOrganizationId();
       const [taskList, taskStats, leadList, dealList, contactList, memberList] = await Promise.all([
-        getTasks(),
-        getTaskStats(),
+        getTasks({ scope }),
+        getTaskStats(scope),
         getLeads(),
         getDeals(),
         getContacts(),
@@ -174,7 +180,7 @@ export default function Tasks() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     loadData();
@@ -405,7 +411,7 @@ export default function Tasks() {
           await logTaskActivity(updated, 'updated', changes.length > 0 ? `Changed: ${changes.join(', ')}` : undefined);
           toast.success(messages.success.taskUpdated);
           setDialogOpen(false);
-          getTaskStats().then(setStats);
+          getTaskStats(scope).then(setStats);
         } else {
           toast.error(messages.errors.generic);
         }
@@ -430,7 +436,7 @@ export default function Tasks() {
           await logTaskActivity(created, 'created', `New task "${created.title}" created with status ${statusConfig[created.status].label}`);
           toast.success(messages.success.taskCreated);
           setDialogOpen(false);
-          getTaskStats().then(setStats);
+          getTaskStats(scope).then(setStats);
         } else {
           toast.error(messages.errors.generic);
         }
@@ -458,7 +464,7 @@ export default function Tasks() {
         }
         toast.success(messages.success.taskDeleted);
         setDeleteConfirmTask(null);
-        getTaskStats().then(setStats);
+        getTaskStats(scope).then(setStats);
       } else {
         toast.error(messages.errors.generic);
       }
@@ -487,7 +493,7 @@ export default function Tasks() {
       // Log activity
       await logTaskActivity(updated, 'status changed', `Status changed from ${statusConfig[oldStatus].label} to ${statusConfig[newStatus].label}`);
       toast.success(`Task moved to ${statusConfig[newStatus].label}`);
-      getTaskStats().then(setStats);
+      getTaskStats(scope).then(setStats);
     } else {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
       toast.error(messages.errors.generic);
@@ -629,7 +635,7 @@ export default function Tasks() {
         setQuickAddTitle('');
         setQuickAddColumn(null);
         toast.success('Task added');
-        getTaskStats().then(setStats);
+        getTaskStats(scope).then(setStats);
       }
     } catch {
       toast.error(messages.errors.generic);
@@ -822,7 +828,7 @@ export default function Tasks() {
         setDetailTask(updated);
         // Log activity
         await logTaskActivity(updated, 'updated', 'Task details were modified');
-        getTaskStats().then(setStats);
+        getTaskStats(scope).then(setStats);
         return updated;
       }
       return null;
@@ -857,9 +863,12 @@ export default function Tasks() {
             icon={ListTodo}
             tone="amber"
             title="Task Manager"
-            subtitle="Organize, prioritize, and track your work efficiently"
+            subtitle={inWorkspace && scope === 'team'
+              ? "Everyone's tasks in this workspace"
+              : 'Your tasks: given to you, or made by you and given to nobody'}
             actions={
               <>
+                {inWorkspace && <WorkScopeToggle value={scope} onChange={setScope} mineLabel="My tasks" teamLabel="Team" />}
                 <ViewSwitcher view={view} columns={columnChoices(taskColumns)} />
 
                 {/* HP-9: Bulk mode toggle (list and table) */}

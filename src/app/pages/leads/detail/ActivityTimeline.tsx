@@ -8,6 +8,7 @@ import { cn } from '@/app/components/ui/utils';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { useRegional } from '@/app/hooks/useMoney';
 import { daysBetween, dayKeyIn, formatDay, todayKeyIn } from '@/app/lib/zonedTime';
+import { activityFactsLine, activityTime } from '@/app/lib/activityFacts';
 
 interface TypeStyle {
   icon: typeof Phone;
@@ -87,10 +88,11 @@ export function ActivityTimeline({
   const reduce = useMotionPreference();
   const { timeZone } = useRegional();
   const groups = useMemo(() => {
-    const sorted = [...activities].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // By when each thing happened: a call logged tonight for this morning sits in the morning.
+    const sorted = [...activities].sort((a, b) => Date.parse(activityTime(b)) - Date.parse(activityTime(a)));
     const map = new Map<string, { day: string; items: Activity[] }>();
     for (const a of sorted) {
-      const day = dayKeyIn(a.createdAt, timeZone);
+      const day = dayKeyIn(activityTime(a), timeZone);
       const existing = map.get(day);
       if (existing) existing.items.push(a);
       else map.set(day, { day, items: [a] });
@@ -138,7 +140,8 @@ export function ActivityTimeline({
               const s = styleFor(activity.type);
               const Icon = s.icon;
               const isSystem = activity.type === 'system';
-              const created = new Date(activity.createdAt);
+              const created = new Date(activityTime(activity));
+              const facts = activityFactsLine(activity);
               const creatorInitial = activity.createdByName?.trim().charAt(0).toUpperCase();
               return (
                 <motion.li
@@ -181,6 +184,7 @@ export function ActivityTimeline({
                       </div>
                       <span className="shrink-0 text-xs text-slate-500">{timeLabel(created, timeZone)}</span>
                     </div>
+                    {facts && <p className="mt-1 text-xs font-medium text-slate-500">{facts}</p>}
                     {activity.body && (
                       <p className={cn(
                         'mt-1.5 whitespace-pre-wrap text-sm',

@@ -15,7 +15,9 @@ public sealed record AutomationEvent(
     Guid? DealId = null,
     Guid? TaskId = null,
     string? Email = null,
-    Guid? AssigneeId = null);
+    Guid? AssigneeId = null,
+    // A row of an import the person importing asked to run the rules for.
+    bool FromImport = false);
 
 public interface IAutomationEngine
 {
@@ -49,6 +51,7 @@ public sealed class AutomationEngine : IAutomationEngine
     private readonly ISequenceRepository _targets;
     private readonly IOrganizationRepository _organizations;
     private readonly ILogger<AutomationEngine> _logger;
+    private readonly ICollaborationNotifier? _notifier;
 
     public AutomationEngine(
         IAutomationRepository rules,
@@ -60,7 +63,8 @@ public sealed class AutomationEngine : IAutomationEngine
         ISequenceService sequences,
         ISequenceRepository targets,
         IOrganizationRepository organizations,
-        ILogger<AutomationEngine> logger)
+        ILogger<AutomationEngine> logger,
+        ICollaborationNotifier? notifier = null)
     {
         _rules = rules;
         _tasks = tasks;
@@ -72,6 +76,7 @@ public sealed class AutomationEngine : IAutomationEngine
         _targets = targets;
         _organizations = organizations;
         _logger = logger;
+        _notifier = notifier;
     }
 
     public async Task DispatchAsync(string trigger, AutomationEvent evt, CancellationToken ct = default)
@@ -120,13 +125,13 @@ public sealed class AutomationEngine : IAutomationEngine
             switch (type)
             {
                 case "create_task":
-                    await CreateTaskAsync(config, evt, ct);
+                    await CreateTaskAsync(rule, config, evt, ct);
                     break;
                 case "notify":
                     await NotifyAsync(rule, config, evt, ct);
                     break;
                 case "assign":
-                    await AssignAsync(config, evt, ct);
+                    await AssignAsync(rule, config, evt, ct);
                     break;
                 case "send_email":
                     await SendAsync(rule, config, evt, ct);
@@ -138,7 +143,7 @@ public sealed class AutomationEngine : IAutomationEngine
         }
     }
 
-    private async Task CreateTaskAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    private async Task CreateTaskAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
         var title = Value(config, "title");
         if (string.IsNullOrWhiteSpace(title)) title = "Follow up";
@@ -154,6 +159,9 @@ public sealed class AutomationEngine : IAutomationEngine
             LeadId = evt.LeadId,
             DealId = evt.DealId,
             AssigneeId = await OwnerAsync(evt, ct),
+            // The rep it goes to hears it came from this rule, not from whoever set it off.
+            MadeBy = $"the automation \"{rule.Name}\"",
+            FromImport = evt.FromImport,
         }, ct);
     }
 
@@ -178,7 +186,17 @@ public sealed class AutomationEngine : IAutomationEngine
         return null;
     }
 
-    private async Task NotifyAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    /// <summary>
+    /// The rep a rule hands a lead or deal to hears so, and that the rule did it; they
+    /// used to find out only by opening it. Not for an imported row: an import is not
+    /// new work arriving, and one line per row would bury the bell.
+    /// </summary>
+    private Task TellNewOwnerAsync(AutomationRule rule, string recordType, Guid recordId, string recordName, Guid ownerId, AutomationEvent evt, CancellationToken ct) =>
+        _notifier == null || evt.FromImport
+            ? Task.CompletedTask
+            : _notifier.RecordAssignedAsync(recordType, recordId, recordName, evt.OrganizationId, ownerId, evt.ActorUserId, $"the automation \"{rule.Name}\"", ct);
+
+    private async Task NotifyAsync(AutomationRule rule,IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
         var recipient = evt.AssigneeId ?? evt.ActorUserId;
         var message = Value(config, "message");
@@ -188,7 +206,7 @@ public sealed class AutomationEngine : IAutomationEngine
             "system", rule.Name, message, link, SourceKey: $"auto:{rule.Id}:{evt.SourceKey}"), ct);
     }
 
-    private async Task AssignAsync(IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
+    private async Task AssignAsync(AutomationRule rule, IReadOnlyDictionary<string, string> config, AutomationEvent evt, CancellationToken ct)
     {
         if (!Guid.TryParse(Value(config, "userId"), out var userId)) return;
         // Checked when the rule runs, not only when it was saved: the person may have left since.
@@ -196,17 +214,23 @@ public sealed class AutomationEngine : IAutomationEngine
             || await _organizations.GetMemberRoleAsync(userId, organizationId, ct) == null) return;
         if (evt.LeadId is Guid leadId)
         {
+            var before = (await _targets.TargetStateAsync("lead", leadId, evt.OrganizationId, ct)).OwnerUserId;
             // AssignAsync, not UpdateAsync: the general update does not copy the assignee,
             // so this action used to save the lead unchanged.
-            await _leads.AssignAsync(leadId, evt.ActorUserId, evt.OrganizationId, userId, ct);
+            var lead = await _leads.AssignAsync(leadId, evt.ActorUserId, evt.OrganizationId, userId, ct);
+            if (lead != null && before != userId)
+                await TellNewOwnerAsync(rule, RecordTypes.Lead, leadId, lead.Name, userId, evt, ct);
         }
         else if (evt.DealId is Guid dealId)
         {
             var deal = await _deals.GetByIdAsync(dealId, evt.ActorUserId, evt.OrganizationId, ct);
             if (deal == null) return;
+            var before = deal.AssigneeId;
             deal.AssigneeId = userId;
             deal.UpdatedAtUtc = DateTime.UtcNow;
             await _deals.UpdateAsync(deal, evt.ActorUserId, evt.OrganizationId, ct);
+            if (before != userId)
+                await TellNewOwnerAsync(rule, RecordTypes.Deal, dealId, deal.Name, userId, evt, ct);
         }
     }
 

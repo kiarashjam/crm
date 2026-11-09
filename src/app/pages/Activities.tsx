@@ -59,6 +59,11 @@ import {
 import { useMoney } from '@/app/hooks/useMoney';
 import { dayKeyIn, todayKeyIn } from '@/app/lib/zonedTime';
 import { formatDate, formatRelativeDate, getDateGroup } from './activities/utils';
+import { ActivityFactsFields } from '@/app/components/ActivityFactsFields';
+import { withActivity } from '@/app/components/RecordActivity';
+import {
+  activityFactsLine, activityTime, factsDraftOf, factsPayload, factsProblem, factsUpdatePayload, EMPTY_FACTS, type ActivityFactsDraft,
+} from '@/app/lib/activityFacts';
 
 const ACTIVITY_TYPES = [
   { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-700', borderColor: 'border-emerald-200' },
@@ -73,6 +78,16 @@ const ACTIVITY_TYPES = [
 ] as const;
 
 type ActivityFilter = 'all' | 'contact' | 'deal' | 'lead';
+
+const EMPTY_FORM: {
+  type: string;
+  subject: string;
+  body: string;
+  contactId: string;
+  dealId: string;
+  participants: string;
+  facts: ActivityFactsDraft;
+} = { type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '', facts: EMPTY_FACTS };
 
 export default function Activities() {
   const money = useMoney();
@@ -92,14 +107,7 @@ export default function Activities() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
-  const [form, setForm] = useState({
-    type: 'note',
-    subject: '',
-    body: '',
-    contactId: '',
-    dealId: '',
-    participants: '',
-  });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deleteConfirmActivity, setDeleteConfirmActivity] = useState<Activity | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -244,12 +252,12 @@ export default function Activities() {
     
     // Activities today, on the workspace's calendar like the "Today" heading below.
     const today = todayKeyIn(money.timeZone);
-    const todayCount = activities.filter(a => dayKeyIn(a.createdAt, money.timeZone) === today).length;
+    const todayCount = activities.filter(a => dayKeyIn(activityTime(a), money.timeZone) === today).length;
     
     // Activities this week
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    const thisWeek = activities.filter(a => new Date(a.createdAt) >= oneWeekAgo).length;
+    const thisWeek = activities.filter(a => new Date(activityTime(a)) >= oneWeekAgo).length;
     
     // With contacts
     const withContacts = activities.filter(a => a.contactId).length;
@@ -296,7 +304,7 @@ export default function Activities() {
   const groupedActivities = useMemo(() => {
     const groups: Record<string, Activity[]> = {};
     filteredActivities.forEach(activity => {
-      const group = getDateGroup(activity.createdAt, money.timeZone);
+      const group = getDateGroup(activityTime(activity), money.timeZone);
       if (!groups[group]) groups[group] = [];
       groups[group].push(activity);
     });
@@ -309,6 +317,11 @@ export default function Activities() {
       toast.error(messages.validation.subjectOrBodyRequired);
       return;
     }
+    const problem = factsProblem(form.type, form.facts);
+    if (problem) {
+      toast.error(problem);
+      return;
+    }
     setSaving(true);
     try {
       // HP-2: Handle edit vs create
@@ -318,13 +331,14 @@ export default function Activities() {
           subject: form.subject.trim() || undefined,
           body: form.body.trim() || undefined,
           participants: form.participants.trim() || undefined,
+          ...factsUpdatePayload(form.type, form.facts, factsDraftOf(editingActivity)),
         });
         if (updated) {
           setActivities((prev) => prev.map((a) => a.id === updated.id ? updated : a));
           toast.success('Activity updated successfully');
           setDialogOpen(false);
           setEditingActivity(null);
-          setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '' });
+          setForm(EMPTY_FORM);
         } else {
           toast.error(messages.errors.generic);
         }
@@ -337,19 +351,21 @@ export default function Activities() {
           dealId: form.dealId || undefined,
           leadId: (filter === 'lead' && filterLeadId) ? filterLeadId : undefined,
           participants: form.participants.trim() || undefined,
+          ...factsPayload(form.type, form.facts),
         });
         if (created) {
-          setActivities((prev) => [created, ...prev]);
+          setActivities((prev) => withActivity(prev, created));
           toast.success(messages.success.activityLogged);
           setDialogOpen(false);
-          setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '' });
+          setForm(EMPTY_FORM);
           if (filter !== 'all') loadData();
         } else {
           toast.error(messages.errors.generic);
         }
       }
-    } catch {
-      toast.error(messages.errors.generic);
+    } catch (err) {
+      // The server says what it refused rather than only that something went wrong.
+      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
     } finally {
       setSaving(false);
     }
@@ -365,6 +381,7 @@ export default function Activities() {
       contactId: activity.contactId || '',
       dealId: activity.dealId || '',
       participants: activity.participants || '',
+      facts: factsDraftOf(activity),
     });
     setDialogOpen(true);
   };
@@ -409,7 +426,7 @@ export default function Activities() {
           [a.subject, a.body, a.contactName, a.dealName, a.leadName]
             .some((v) => (v || '').toLowerCase().includes(q)));
       }
-      rows.sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt));
+      rows.sort((x, y) => Date.parse(activityTime(y)) - Date.parse(activityTime(x)));
       if (rows.length === 0) { toast.error('No activities to export'); return; }
 
       if (format === 'csv') {
@@ -430,7 +447,7 @@ export default function Activities() {
   // Quick log activity with preset type
   const quickLogActivity = (type: string) => {
     setEditingActivity(null);
-    setForm({ type, subject: '', body: '', contactId: '', dealId: '', participants: '' });
+    setForm({ ...EMPTY_FORM, type });
     setDialogOpen(true);
   };
 
@@ -541,12 +558,15 @@ export default function Activities() {
                 </span>
                 <span className="text-xs text-slate-500 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  {formatRelativeDate(activity.createdAt, money.timeZone)}
+                  {formatRelativeDate(activityTime(activity), money.timeZone)}
                 </span>
                 {activity.updatedAt && (
                   <span className="text-xs text-slate-500 italic">(edited)</span>
                 )}
               </div>
+              {activityFactsLine(activity) && (
+                <p className="mb-1 text-xs font-medium text-slate-500">{activityFactsLine(activity)}</p>
+              )}
 
               {/* Subject */}
               {activity.subject && (
@@ -583,7 +603,7 @@ export default function Activities() {
         {/* Footer with timestamp and creator */}
         <div className="px-4 py-2 bg-slate-50/50 border-t border-slate-100">
           <p className="text-xs text-slate-500">
-            {formatDate(activity.createdAt, money.timeZone)}
+            {formatDate(activityTime(activity), money.timeZone)}
             {activity.createdByName && <> &middot; by {activity.createdByName}</>}
           </p>
         </div>
@@ -614,8 +634,9 @@ export default function Activities() {
     { id: 'linked', label: 'About', cell: (a) => activityLinks(a) ?? '—' },
     { id: 'note', label: 'Note', byDefault: false, className: 'max-w-xs', cell: (a) => (a.body ? <span className="line-clamp-1">{a.body}</span> : '—') },
     { id: 'participants', label: 'Participants', byDefault: false, cell: (a) => a.participants || '—' },
+    { id: 'how', label: 'How it went', byDefault: false, cell: (a) => activityFactsLine(a) || '—' },
     { id: 'by', label: 'By', cell: (a) => a.createdByName || '—' },
-    { id: 'when', label: 'When', cell: (a) => <span className="whitespace-nowrap" title={formatDate(a.createdAt, money.timeZone)}>{formatRelativeDate(a.createdAt, money.timeZone)}</span> },
+    { id: 'when', label: 'When', cell: (a) => <span className="whitespace-nowrap" title={formatDate(activityTime(a), money.timeZone)}>{formatRelativeDate(activityTime(a), money.timeZone)}</span> },
   ];
 
   const activityHeroStats: PageStat[] = [
@@ -691,7 +712,7 @@ export default function Activities() {
                 </DropdownMenu>
 
                 <WriteOnly>
-                  <Button onClick={() => { setEditingActivity(null); setForm({ type: 'note', subject: '', body: '', contactId: '', dealId: '', participants: '' }); setDialogOpen(true); }} className={heroPrimary('sky')}>
+                  <Button onClick={() => { setEditingActivity(null); setForm(EMPTY_FORM); setDialogOpen(true); }} className={heroPrimary('sky')}>
                     <Plus className="h-4 w-4" />
                     Log Activity
                   </Button>
@@ -1195,6 +1216,17 @@ export default function Activities() {
                 className="bg-slate-50/50 border-slate-200 focus:bg-white focus:border-indigo-300 focus:ring-indigo-100 transition-all resize-none"
               />
             </div>
+
+            {/* When it happened, and for a call or meeting how it went */}
+            <ActivityFactsFields
+              type={form.type}
+              value={form.facts}
+              onChange={(facts) => setForm((f) => ({ ...f, facts }))}
+              isEdit={!!editingActivity}
+            />
+            {factsProblem(form.type, form.facts) && (
+              <p role="alert" className="text-xs text-rose-600">{factsProblem(form.type, form.facts)}</p>
+            )}
 
             {/* HP-6: Participants field — shown for call, meeting, video, demo */}
             {['call', 'meeting', 'video', 'demo'].includes(form.type) && (

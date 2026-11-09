@@ -14,12 +14,14 @@ public class TaskService : ITaskService
 {
     private readonly ITaskRepository _repository;
     private readonly IWorkspaceRecords _records;
+    private readonly ICollaborationNotifier _notifier;
     private readonly ILogger<TaskService> _logger;
 
-    public TaskService(ITaskRepository repository, IWorkspaceRecords records, ILogger<TaskService> logger)
+    public TaskService(ITaskRepository repository, IWorkspaceRecords records, ICollaborationNotifier notifier, ILogger<TaskService> logger)
     {
         _repository = repository;
         _records = records;
+        _notifier = notifier;
         _logger = logger;
     }
 
@@ -38,14 +40,15 @@ public class TaskService : ITaskService
 
         var skip = (page - 1) * pageSize;
         var (items, totalCount) = await _repository.GetPagedAsync(
-            userId, 
-            organizationId, 
-            skip, 
-            pageSize, 
-            search, 
-            filters?.Status, 
-            filters?.Priority, 
-            filters?.OverdueOnly, 
+            userId,
+            organizationId,
+            skip,
+            pageSize,
+            search,
+            filters?.Status,
+            filters?.Priority,
+            filters?.OverdueOnly,
+            WorkScope.IsMine(filters?.Scope),
             ct);
 
         _logger.LogDebug("Retrieved {Count} of {Total} tasks for user {UserId}", items.Count, totalCount, userId);
@@ -68,7 +71,9 @@ public class TaskService : ITaskService
         
         // Guard against null filters
         filters ??= new TaskFilterParams();
-        
+        // "My work": the caller's tasks, as WorkScope reads them, rather than the team's.
+        var mine = WorkScope.IsMine(filters.Scope);
+
         IReadOnlyList<TaskItem> list;
         
         // Filter by lead if specified
@@ -91,6 +96,16 @@ public class TaskService : ITaskService
         {
             list = await _repository.GetByAssigneeIdAsync(assigneeGuid, userId, organizationId, ct);
         }
+        // Only the caller's work: read as such, then narrowed like the team's below.
+        else if (mine)
+        {
+            list = await _repository.GetMineAsync(userId, organizationId, ct);
+            if (!string.IsNullOrEmpty(filters.Status) && TryParseStatus(filters.Status, out var myStatus))
+                list = list.Where(t => t.Status == myStatus).ToList();
+            else if (filters.OverdueOnly == true)
+                list = list.Where(t => t.Status != Domain.Enums.TaskStatus.Completed && t.Status != Domain.Enums.TaskStatus.Cancelled
+                    && t.DueDateUtc != null && t.DueDateUtc < DateTime.UtcNow).ToList();
+        }
         // Filter by status if specified
         else if (!string.IsNullOrEmpty(filters.Status) && TryParseStatus(filters.Status, out var taskStatus))
         {
@@ -102,6 +117,12 @@ public class TaskService : ITaskService
             list = filters.OverdueOnly == true
                 ? await _repository.GetByUserIdAsync(userId, organizationId, true, ct)
                 : await _repository.GetByUserIdAsync(userId, organizationId, ct);
+        }
+        // A record's tasks asked for as "mine" are only the caller's among them.
+        if (mine)
+        {
+            var isMine = WorkScope.TaskOf(userId).Compile();
+            list = list.Where(isMine).ToList();
         }
         
         // Apply priority filter if specified
@@ -215,7 +236,11 @@ public class TaskService : ITaskService
             };
             
             entity = await _repository.AddAsync(entity, ct);
-            
+            // A task made for someone else tells them, whoever or whatever made it, unless
+            // a rule made it for an imported row (see CreateTaskRequest.FromImport).
+            if (!request.FromImport)
+                await _notifier.TaskAssignedAsync(entity, userId, request.MadeBy, ct);
+
             _logger.LogInformation("Successfully created task {TaskId} with title '{Title}'", entity.Id, entity.Title);
             return Map(entity);
         }
@@ -253,7 +278,8 @@ public class TaskService : ITaskService
             request.ClearAssignee == true ? null : request.AssigneeId ?? existing.AssigneeId,
             userId, organizationId, ct);
         if (links.IsFailure) return links.Error;
-        
+        var assigneeBefore = existing.AssigneeId;
+
         try
         {
             // Update title if provided (reject empty/whitespace titles)
@@ -361,7 +387,9 @@ public class TaskService : ITaskService
                 _logger.LogWarning("Task {TaskId} update returned null", id);
                 return DomainErrors.Task.NotFound;
             }
-            
+            if (existing.AssigneeId != assigneeBefore)
+                await _notifier.TaskAssignedAsync(existing, userId, null, ct);
+
             _logger.LogInformation("Successfully updated task {TaskId}", id);
             return Map(existing);
         }
@@ -434,46 +462,60 @@ public class TaskService : ITaskService
 
     /// <inheritdoc />
     public async Task<Result<TaskDto>> AssignTaskAsync(
-        Guid id, 
-        Guid userId, 
-        Guid? organizationId, 
-        Guid? assigneeId, 
+        Guid id,
+        Guid userId,
+        Guid? organizationId,
+        Guid? assigneeId,
         CancellationToken ct = default)
     {
+        var (result, handedOver) = await AssignAsync(id, userId, organizationId, assigneeId, ct);
+        if (handedOver != null) await _notifier.TaskAssignedAsync(handedOver, userId, null, ct);
+        return result;
+    }
+
+    /// <summary>
+    /// Gives the task to <paramref name="assigneeId"/>. Also returns the task when that
+    /// is a change of hands, for the caller to tell the new assignee: one at a time, or
+    /// all at once after a bulk change.
+    /// </summary>
+    private async Task<(Result<TaskDto> Result, TaskItem? HandedOver)> AssignAsync(
+        Guid id, Guid userId, Guid? organizationId, Guid? assigneeId, CancellationToken ct)
+    {
         _logger.LogInformation("Assigning task {TaskId} to user {AssigneeId}", id, assigneeId);
-        
+
         var existing = await _repository.GetByIdWithRelationsAsync(id, userId, organizationId, ct);
-        
+
         if (existing == null)
         {
             _logger.LogWarning("Task {TaskId} not found for assignment", id);
-            return DomainErrors.Task.NotFound;
+            return (DomainErrors.Task.NotFound, null);
         }
 
         var links = await CheckLinksAsync(existing, existing.LeadId, existing.DealId, existing.ContactId, assigneeId, userId, organizationId, ct);
-        if (links.IsFailure) return links.Error;
-        
+        if (links.IsFailure) return (links.Error, null);
+        var assigneeBefore = existing.AssigneeId;
+
         try
         {
             existing.AssigneeId = assigneeId;
             existing.UpdatedAtUtc = DateTime.UtcNow;
             existing.UpdatedByUserId = userId;
-            
+
             existing = await _repository.UpdateAsync(existing, userId, organizationId, ct);
-            
+
             if (existing == null)
             {
                 _logger.LogWarning("Task {TaskId} assignment returned null", id);
-                return DomainErrors.Task.NotFound;
+                return (DomainErrors.Task.NotFound, null);
             }
-            
+
             _logger.LogInformation("Successfully assigned task {TaskId} to user {AssigneeId}", id, assigneeId);
-            return Map(existing);
+            return (Map(existing), assigneeId != null && assigneeId != assigneeBefore ? existing : null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error assigning task {TaskId}", id);
-            return DomainErrors.General.ServerError;
+            return (DomainErrors.General.ServerError, null);
         }
     }
 
@@ -597,14 +639,27 @@ public class TaskService : ITaskService
     }
 
     /// <inheritdoc />
+    public async Task<(IReadOnlyList<TaskDto> Items, bool More)> GetOpenWorkAsync(
+        Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        // One more than asked for says whether the list was cut short.
+        var tasks = await _repository.GetOpenAsync(userId, organizationId, mineOnly, take + 1, ct);
+        return (tasks.Take(take).Select(Map).ToList(), tasks.Count > take);
+    }
+
+    /// <inheritdoc />
     public async Task<TaskStatsDto> GetStatsAsync(
-        Guid userId, 
-        Guid? organizationId, 
+        Guid userId,
+        Guid? organizationId,
+        string? scope = null,
         CancellationToken ct = default)
     {
         _logger.LogDebug("Getting task stats for user {UserId}", userId);
-        
-        var tasks = await _repository.GetByUserIdAsync(userId, organizationId, ct);
+
+        // The figures above the list count what the list shows: my tasks, or the team's.
+        var tasks = WorkScope.IsMine(scope)
+            ? await _repository.GetMineAsync(userId, organizationId, ct)
+            : await _repository.GetByUserIdAsync(userId, organizationId, ct);
         var now = DateTime.UtcNow;
         var today = now.Date;
         
@@ -726,23 +781,32 @@ public class TaskService : ITaskService
 
         int succeeded = 0;
         int failed = 0;
+        var handedOver = new List<TaskItem>();
 
         foreach (var taskId in request.TaskIds)
         {
             try
             {
-                Result result = request.Action.ToLowerInvariant() switch
+                Result result;
+                if (action == "assignee")
                 {
-                    "status" when request.Status != null => 
-                        await UpdateStatusAsync(taskId, userId, organizationId, request.Status, ct),
-                    "priority" when request.Priority != null =>
-                        await UpdatePriorityAsync(taskId, userId, organizationId, request.Priority, ct),
-                    "assignee" =>
-                        await AssignTaskAsync(taskId, userId, organizationId, request.AssigneeId, ct),
-                    "delete" =>
-                        await DeleteAsync(taskId, userId, organizationId, ct),
-                    _ => DomainErrors.General.ValidationError
-                };
+                    var (assigned, task) = await AssignAsync(taskId, userId, organizationId, request.AssigneeId, ct);
+                    if (task != null) handedOver.Add(task);
+                    result = assigned;
+                }
+                else
+                {
+                    result = action switch
+                    {
+                        "status" when request.Status != null =>
+                            await UpdateStatusAsync(taskId, userId, organizationId, request.Status, ct),
+                        "priority" when request.Priority != null =>
+                            await UpdatePriorityAsync(taskId, userId, organizationId, request.Priority, ct),
+                        "delete" =>
+                            await DeleteAsync(taskId, userId, organizationId, ct),
+                        _ => DomainErrors.General.ValidationError
+                    };
+                }
 
                 if (result.IsSuccess) succeeded++;
                 else failed++;
@@ -752,6 +816,10 @@ public class TaskService : ITaskService
                 failed++;
             }
         }
+
+        // One notification for the lot, not one per task handed over.
+        if (request.AssigneeId is Guid newAssignee && handedOver.Count > 0)
+            await _notifier.TasksAssignedAsync(newAssignee, handedOver, userId, ct);
 
         _logger.LogInformation("Bulk {Action} completed: {Succeeded}/{Total} succeeded", 
             request.Action, succeeded, request.TaskIds.Length);

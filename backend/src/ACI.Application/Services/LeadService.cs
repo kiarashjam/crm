@@ -23,6 +23,7 @@ public class LeadService : ILeadService
     private readonly IContactRelationshipRepository? _relationships;
     private readonly IOrganizationRepository? _organizations;
     private readonly IDealStageRepository? _stages;
+    private readonly ICollaborationNotifier? _notifier;
     private readonly ILogger<LeadService> _logger;
 
     public LeadService(
@@ -38,7 +39,8 @@ public class LeadService : ILeadService
         IOutboundWebhookPublisher? webhooks = null,
         IContactRelationshipRepository? relationships = null,
         IOrganizationRepository? organizations = null,
-        IDealStageRepository? stages = null)
+        IDealStageRepository? stages = null,
+        ICollaborationNotifier? notifier = null)
     {
         _repository = repository;
         _companyRepository = companyRepository;
@@ -53,6 +55,7 @@ public class LeadService : ILeadService
         _relationships = relationships;
         _organizations = organizations;
         _stages = stages;
+        _notifier = notifier;
     }
 
     /// <inheritdoc />
@@ -101,6 +104,16 @@ public class LeadService : ILeadService
             list.Count, userId);
 
         return await MapWithRelationshipsAsync(list, userId, organizationId, ct);
+    }
+
+    /// <inheritdoc />
+    public async Task<(IReadOnlyList<LeadDto> Items, bool More)> GetOpenWorkAsync(
+        Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        // One more than asked for says whether the list was cut short.
+        var leads = await _repository.GetOpenAsync(userId, organizationId, mineOnly, take + 1, ct);
+        var items = await MapWithRelationshipsAsync(leads.Take(take).ToList(), userId, organizationId, ct);
+        return (items, leads.Count > take);
     }
 
     /// <inheritdoc />
@@ -251,6 +264,10 @@ public class LeadService : ILeadService
         entity = await _repository.AddAsync(entity, ct);
         await _automation.RecordStatusAsync(entity, null, entity.Status, userId, ct);
         await _contactRepository.EnsurePersonContactAsync(entity, ct);
+        // A new lead has an owner only when routing gave it one: the rep it went to hears
+        // so, rather than finding it later. An imported row is not new work arriving.
+        if (_notifier != null && !request.IsImport)
+            await _notifier.RecordAssignedAsync(RecordTypes.Lead, entity.Id, entity.Name, organizationId, entity.AssignedToUserId, userId, "lead routing", ct);
 
         _logger.LogInformation(
             "Lead {LeadId} created successfully for user {UserId}",
@@ -262,7 +279,8 @@ public class LeadService : ILeadService
         if (_automations != null && (!request.IsImport || request.RunAutomations))
         {
             await _automations.DispatchAsync("lead.created", new AutomationEvent(
-                organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId), ct);
+                organizationId, userId, entity.Id.ToString(), entity.Name, LeadId: entity.Id, Email: entity.Email, AssigneeId: entity.AssignedToUserId,
+                FromImport: request.IsImport), ct);
         }
         if (_webhooks != null && !request.IsImport)
             await _webhooks.QueueAsync(organizationId, "lead.created", new { entity.Id, entity.Name, entity.Email }, ct);
@@ -390,7 +408,7 @@ public class LeadService : ILeadService
         await _contactRepository.EnsurePersonContactAsync(updated, ct);
         if (!string.Equals(previousStatus, updated.Status, StringComparison.Ordinal))
             await _statusSync.AnnounceAsync(updated, previousStatus, userId, userId, plan, ct,
-                runAutomations: !request.IsImport || request.RunAutomations);
+                runAutomations: !request.IsImport || request.RunAutomations, fromImport: request.IsImport);
 
         _logger.LogInformation(
             "Lead {LeadId} updated successfully",
@@ -416,6 +434,7 @@ public class LeadService : ILeadService
         var links = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { AssigneeId = assignedToUserId }, ct);
         if (links.IsFailure) return links.Error;
 
+        var ownerBefore = (await _repository.GetByIdAsync(id, userId, organizationId, ct))?.AssignedToUserId;
         var updated = await _repository.AssignAsync(id, userId, organizationId, assignedToUserId, ct);
 
         if (updated == null)
@@ -423,6 +442,8 @@ public class LeadService : ILeadService
             _logger.LogWarning("Lead assignment failed: Lead {LeadId} not found", id);
             return DomainErrors.Lead.NotFound;
         }
+        if (_notifier != null && updated.AssignedToUserId != ownerBefore)
+            await _notifier.RecordAssignedAsync(RecordTypes.Lead, updated.Id, updated.Name, organizationId, updated.AssignedToUserId, userId, null, ct);
 
         return Map(updated);
     }

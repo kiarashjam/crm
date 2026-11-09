@@ -89,9 +89,16 @@ public interface ITaskService
     Task<Result> DeleteAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets task statistics for the dashboard.
+    /// Gets task statistics for the dashboard: the caller's own tasks when
+    /// <paramref name="scope"/> is "mine" (see WorkScope), else the team's.
     /// </summary>
-    Task<TaskStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+    Task<TaskStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, string? scope = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Open tasks, the caller's own or the whole team's, soonest due first: at most
+    /// <paramref name="take"/>, and whether there were more.
+    /// </summary>
+    Task<(IReadOnlyList<TaskDto> Items, bool More)> GetOpenWorkAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default);
 
     /// <summary>
     /// Bulk updates multiple tasks (status, priority, assignee, or delete).
@@ -129,7 +136,9 @@ public record TaskFilterParams(
     string? LeadId = null,
     string? DealId = null,
     string? ContactId = null,
-    string? Priority = null
+    string? Priority = null,
+    // "mine" for the caller's own work (see WorkScope); otherwise the team's.
+    string? Scope = null
 );
 
 /// <summary>

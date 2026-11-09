@@ -22,15 +22,17 @@ public class TasksController : ControllerBase
     private readonly ITaskService _taskService;
     private readonly ICurrentUserService _currentUser;
     private readonly AppDbContext _db;
+    private readonly ICollaborationNotifier _notifier;
 
     /// <summary>
     /// Initializes a new instance of the TasksController.
     /// </summary>
-    public TasksController(ITaskService taskService, ICurrentUserService currentUser, AppDbContext db)
+    public TasksController(ITaskService taskService, ICurrentUserService currentUser, AppDbContext db, ICollaborationNotifier notifier)
     {
         _taskService = taskService;
         _currentUser = currentUser;
         _db = db;
+        _notifier = notifier;
     }
 
     /// <summary>
@@ -42,6 +44,7 @@ public class TasksController : ControllerBase
     /// <param name="overdueOnly">Filter to only overdue tasks.</param>
     /// <param name="status">Filter by status: todo, in_progress, completed, cancelled.</param>
     /// <param name="priority">Filter by priority: none, low, medium, high.</param>
+    /// <param name="scope">"mine" for the caller's own work: given to them, or made by them and given to nobody. Otherwise the team's.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of tasks matching the filters.</returns>
     /// <response code="200">Returns the paginated list of tasks.</response>
@@ -56,18 +59,20 @@ public class TasksController : ControllerBase
         [FromQuery] bool? overdueOnly = null, 
         [FromQuery] string? status = null,
         [FromQuery] string? priority = null,
+        [FromQuery] string? scope = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
-        
+
         var filters = new TaskFilterParams(
             OverdueOnly: overdueOnly,
             Status: status,
-            Priority: priority
+            Priority: priority,
+            Scope: scope
         );
         
         var result = await _taskService.GetPagedAsync(
@@ -92,6 +97,7 @@ public class TasksController : ControllerBase
     /// <param name="leadId">Filter by linked lead ID.</param>
     /// <param name="dealId">Filter by linked deal ID.</param>
     /// <param name="contactId">Filter by linked contact ID.</param>
+    /// <param name="scope">"mine" for the caller's own work; otherwise the team's.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A list of tasks matching the filters.</returns>
     /// <response code="200">Returns the list of tasks.</response>
@@ -107,11 +113,12 @@ public class TasksController : ControllerBase
         [FromQuery] string? leadId,
         [FromQuery] string? dealId,
         [FromQuery] string? contactId,
+        [FromQuery] string? scope = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
         var filters = new TaskFilterParams(
             OverdueOnly: overdueOnly,
             Status: status,
@@ -119,7 +126,8 @@ public class TasksController : ControllerBase
             AssigneeId: assigneeId,
             LeadId: leadId,
             DealId: dealId,
-            ContactId: contactId
+            ContactId: contactId,
+            Scope: scope
         );
         
         var list = await _taskService.GetTasksAsync(
@@ -242,6 +250,7 @@ public class TasksController : ControllerBase
     /// <summary>
     /// Retrieves task statistics for the dashboard.
     /// </summary>
+    /// <param name="scope">"mine" to count the caller's own tasks; otherwise the team's.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Task statistics.</returns>
     /// <response code="200">Returns the task statistics.</response>
@@ -249,14 +258,15 @@ public class TasksController : ControllerBase
     [HttpGet("stats")]
     [ProducesResponseType(typeof(TaskStatsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<TaskStatsDto>> GetStats(CancellationToken ct)
+    public async Task<ActionResult<TaskStatsDto>> GetStats([FromQuery] string? scope, CancellationToken ct)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
+
         var stats = await _taskService.GetStatsAsync(
-            userId.Value, 
-            _currentUser.CurrentOrganizationId, 
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
+            scope,
             ct);
         
         return Ok(stats);
@@ -566,6 +576,10 @@ public class TasksController : ControllerBase
 
         _db.TaskComments.Add(comment);
         await _db.SaveChangesAsync(ct);
+
+        // Whoever works the task, whoever made it, and anyone the comment @mentions hear of it.
+        var task = await _db.TaskItems.AsNoTracking().FirstAsync(t => t.Id == id, ct);
+        await _notifier.TaskCommentedAsync(task, comment.Id, comment.Body, userId.Value, ct);
 
         // Reload with Author
         var author = await _db.Users.FindAsync(new object[] { userId.Value }, ct);

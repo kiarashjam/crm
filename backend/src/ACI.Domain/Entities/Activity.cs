@@ -15,6 +15,24 @@ public class Activity : Common.BaseEntity
     public Guid? DealId { get; set; }
     public Guid? LeadId { get; set; }
     public string? Participants { get; set; }
+
+    /// <summary>
+    /// When it happened. A call made this morning and written down tonight happened this
+    /// morning, and the timeline, "last activity" and the first-response clock go by this.
+    /// The moment it was written down is <see cref="CreatedAtUtc"/>. Never ahead of the
+    /// time it is logged: what is planned is a task.
+    /// </summary>
+    public DateTime OccurredAtUtc { get; set; }
+
+    /// <summary>How a call or a meeting went, from <c>ActivityFacts</c>: "no_answer", "no_show"…</summary>
+    public string? Outcome { get; set; }
+
+    /// <summary>How long a call or a meeting took, in minutes.</summary>
+    public int? DurationMinutes { get; set; }
+
+    /// <summary>"inbound" or "outbound", for a call or an email: who reached out to whom.</summary>
+    public string? Direction { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
     public Guid? UpdatedByUserId { get; set; }
