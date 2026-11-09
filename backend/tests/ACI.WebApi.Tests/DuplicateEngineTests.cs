@@ -130,6 +130,34 @@ public class DuplicateEngineTests
     }
 
     [Fact]
+    public async Task ASwitchboardMorePeopleShareThanTheRulesAllowRaisesNoQuestionOnTheContactPageEither()
+    {
+        var t = await TeamAsync();
+        using var _ = t.Factory;
+        const string switchboard = "+41 33 123 45 67";
+        // More people than DuplicateRules.MaxShared give the hotel's main number: two of
+        // them share a name, and a third of that name has a mobile of her own.
+        var anna = await AddContactAsync(t, "Anna Keller", "anna@bellevue.ch", switchboard);
+        var annaAgain = await AddContactAsync(t, "Anna Keller", "a.keller@bellevue.ch", "033 123 45 67");
+        var otherAnna = await AddContactAsync(t, "Anna Keller", "anna.keller@gmail.com", "+41 79 555 55 55");
+        var colleagues = new List<Guid>();
+        for (var i = 0; i < 49; i++)
+            colleagues.Add(await AddContactAsync(t, $"Colleague {i:00}", $"colleague{i}@bellevue.ch", switchboard));
+
+        var scan = await GetJson(t.Owner, "/api/duplicates/contacts");
+        var group = scan.GetProperty("groups").EnumerateArray().Should().ContainSingle(
+            "the switchboard links nobody; only the two Annas on it look like one person").Subject;
+        Ids(group).Should().BeEquivalentTo(new[] { anna, annaAgain });
+
+        // The contact page asks about the same people, and no more.
+        (await GetJson(t.Owner, $"/api/contacts/{colleagues[0]}/lookalikes")).GetArrayLength()
+            .Should().Be(0, "a colleague on the switchboard is not asked about the other fifty");
+        (await GetJson(t.Owner, $"/api/contacts/{anna}/lookalikes")).EnumerateArray().Select(l => l.GetProperty("id").GetGuid())
+            .Should().Equal(new[] { annaAgain }, "the Anna with her own mobile has a phone that disagrees");
+        (await GetJson(t.Owner, $"/api/contacts/{otherAnna}/lookalikes")).GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
     public async Task ADecisionNamesTwoToFiftyRecordsOfThisWorkspace_AndAViewerCannotMakeOne()
     {
         var t = await TeamAsync();

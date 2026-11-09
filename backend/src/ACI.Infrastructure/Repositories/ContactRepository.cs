@@ -457,8 +457,25 @@ public sealed class ContactRepository : IContactRepository
         var email = self.Email;
         var phone = self.Phone;
         var name = self.Name;
-        var others = await FilterByUserAndOrg(_db.Contacts.AsNoTracking(), contact.UserId, contact.OrganizationId)
-            .Where(c => c.Id != contact.Id && !c.IsArchived
+        var active = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), contact.UserId, contact.OrganizationId).Where(c => !c.IsArchived);
+        // A phone or a name more people share than DuplicateRules.MaxShared (an office
+        // switchboard, a very common name) says nothing about any two of them, and the
+        // Duplicates page leaves it out. Asked here anyway, the page asked about each
+        // colleague on the switchboard in turn, one "keep them separate" after another.
+        // The value still counts when it disagrees, as it does on the Duplicates page.
+        var tooCommon = new HashSet<string>();
+        if (phone != null && await active.CountAsync(c => c.PhoneKey == phone, ct) > DuplicateRules.MaxShared)
+        {
+            phone = null;
+            tooCommon.Add(DuplicateRules.SamePhone);
+        }
+        if (name != null && await active.CountAsync(c => c.NameKey == name, ct) > DuplicateRules.MaxShared)
+        {
+            name = null;
+            tooCommon.Add(DuplicateRules.SameName);
+        }
+        var others = await active
+            .Where(c => c.Id != contact.Id
                 && ((email != null && c.Email.Trim().ToLower() == email)
                     || (phone != null && c.PhoneKey == phone)
                     || (name != null && c.NameKey == name)))
@@ -477,7 +494,8 @@ public sealed class ContactRepository : IContactRepository
 
         return others
             .Where(o => !notSame.Contains(o.Id))
-            .Select(o => (Other: o, Reasons: DuplicateRules.Matches(self, DuplicateRules.PersonOf(o.Id, o.Email, o.Phone, o.Name, o.CompanyId))))
+            .Select(o => (Other: o, Reasons: DuplicateRules.Matches(self, DuplicateRules.PersonOf(o.Id, o.Email, o.Phone, o.Name, o.CompanyId))
+                .Where(reason => !tooCommon.Contains(reason)).ToList()))
             .Where(x => x.Reasons.Count > 0)
             .OrderByDescending(x => x.Reasons.Count)
             .ThenBy(x => x.Reasons.Contains(DuplicateRules.SameEmail) ? 0 : 1)
