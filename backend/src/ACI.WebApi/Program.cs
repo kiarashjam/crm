@@ -1601,7 +1601,17 @@ try
             // take their logged time, inside the transaction that adds the column. The
             // default covers a row written by an instance still running the previous code
             // during a deploy, which knows nothing of the column.
-            await db.Database.ExecuteSqlRawAsync(@"
+            // Filling it touches every activity in one transaction, which on the Basic
+            // database tier can outlast a command's default 30 seconds. A timeout never
+            // reaches the CATCH: the transaction stayed open on its pooled connection,
+            // holding the table. So the batch has longer, and XACT_ABORT rolls back
+            // whatever stops it.
+            var commandTimeout = db.Database.GetCommandTimeout();
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(@"
+                SET XACT_ABORT ON;
                 IF COL_LENGTH('Activities', 'OccurredAtUtc') IS NULL
                 BEGIN
                 BEGIN TRY
@@ -1619,6 +1629,11 @@ try
                 END CATCH;
                 END
             ");
+            }
+            finally
+            {
+                db.Database.SetCommandTimeout(commandTimeout);
+            }
             // In a batch of its own, after the column it covers exists.
             await db.Database.ExecuteSqlRawAsync(@"
                 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Activities_OrganizationId_OccurredAtUtc' AND object_id = OBJECT_ID('Activities'))

@@ -53,6 +53,22 @@ public class ActivitySchemaTests
     }
 
     [Fact]
+    public void FillingOccurredAtUtcHasTimeAndCannotLeaveTheTableLocked()
+    {
+        // The fill touches every activity in one transaction. On the Basic database tier
+        // that can outlast a command's default 30 seconds, and a timeout never reaches the
+        // CATCH: the transaction stayed open on its pooled connection, holding the table.
+        var ddl = ClubSchemaTests.ProgramDdl();
+        var guard = ddl.IndexOf(OccurredGuard, StringComparison.Ordinal);
+        var call = ddl.LastIndexOf("ExecuteSqlRawAsync", guard, StringComparison.Ordinal);
+        var callBefore = ddl.LastIndexOf("ExecuteSqlRawAsync", call - 1, StringComparison.Ordinal);
+
+        var timeout = ddl.IndexOf("SetCommandTimeout(TimeSpan.FromMinutes(", callBefore, StringComparison.Ordinal);
+        timeout.Should().BeInRange(callBefore, call, "the batch is given longer than the default before it runs");
+        ddl[call..guard].Should().Contain("SET XACT_ABORT ON;", "a timeout then rolls the transaction back");
+    }
+
+    [Fact]
     public void TheBatchThatAddsOccurredAtUtcIsValidTSql()
     {
         var batch = ClubSchemaTests.Between(ClubSchemaTests.ProgramDdl(), OccurredGuard, "\");");
