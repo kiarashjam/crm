@@ -107,8 +107,8 @@ export function RegionalSettingsCard() {
       <p className="text-sm text-slate-600 mb-4">
         New deals are priced in this currency unless someone picks another. Deals keep the currency they were
         priced in: changing it converts nothing. Amounts are written in the number format, and reports,
-        forecasts and lists by day count days and months in the time zone. Club pages keep the club currency
-        set in Hospitality settings.
+        forecasts, deal close dates and the activity lists count days and months in the time zone. Club pages
+        keep the club currency set in Hospitality settings.
       </p>
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="block text-sm font-medium text-slate-700">

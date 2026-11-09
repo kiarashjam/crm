@@ -1,5 +1,5 @@
-// Settings > Profile offers a personal time zone that nothing reads yet. It says which
-// zone days are counted in instead: the workspace's.
+// Settings > Profile offers a personal time zone, which times the weekly report digest.
+// It says so, and which zone days are counted in everywhere else: the workspace's.
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { UserSettings } from '@/app/api/types';
@@ -11,7 +11,7 @@ vi.mock('@/app/contexts/OrgContext', () => ({
 const { ProfileSection } = await import('./ProfileSection');
 
 describe('Settings > Profile > Timezone', () => {
-  it("says that days are counted in the workspace's time zone, not in this one", () => {
+  it("says this zone times the digest and days are counted in the workspace's, not that it does nothing", () => {
     render(
       <ProfileSection
         settings={{ timezone: 'Europe/Zurich', language: 'en' } as UserSettings}
@@ -21,6 +21,10 @@ describe('Settings > Profile > Timezone', () => {
       />,
     );
 
-    expect(screen.getByText(/Saved for later\. Reports, forecasts and lists by day count days in the workspace's time zone, America\/New York\./)).toBeInTheDocument();
+    // WeeklyDigestService sends the digest at 07:00 on Monday in this zone, as Settings >
+    // Notifications says; "Saved for later" told people it did nothing.
+    expect(screen.getByText(/weekly report digest goes out on Monday from 7:00 in this time zone/)).toBeInTheDocument();
+    expect(screen.getByText(/count days in the workspace's time zone, America\/New York\./)).toBeInTheDocument();
+    expect(screen.queryByText(/saved for later/i)).toBeNull();
   });
 });

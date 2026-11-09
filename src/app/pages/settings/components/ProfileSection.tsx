@@ -97,10 +97,12 @@ export function ProfileSection({
               <option key={tz.id} value={tz.id}>{tz.displayName}</option>
             ))}
           </select>
-          {/* Nothing reads this one yet. Without saying so, it looked as if reports would
-              count days in it; they count them in the workspace's zone. */}
+          {/* This zone times the weekly report digest, as Notifications says. Without saying
+              which zone does what, it looked as if reports counted days in it; they count
+              them in the workspace's zone. */}
           <p className="mt-1.5 text-xs text-slate-500">
-            Saved for later. Reports, forecasts and lists by day count days in the workspace's time zone,{' '}
+            Your weekly report digest goes out on Monday from 7:00 in this time zone. Reports, forecasts and
+            the activity lists count days in the workspace's time zone,{' '}
             {workspace.timeZone.replace(/_/g, ' ')}.
           </p>
         </div>

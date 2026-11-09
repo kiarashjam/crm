@@ -98,6 +98,14 @@ describe('the workspace currency, number format and time zone', () => {
     expect(screen.getByLabelText('Time zone')).toHaveValue('Europe/Stockholm');
   });
 
+  it('names the pages that count days in the zone rather than every list', () => {
+    // The Tasks page and the Calendar still count days on the viewer's clock.
+    render(<RegionalSettingsCard />);
+
+    expect(screen.getByText(/reports, forecasts, deal close dates and the activity lists count days and months in the time zone/)).toBeInTheDocument();
+    expect(screen.queryByText(/lists by day/)).toBeNull();
+  });
+
   it('is not offered in the demo, which has no server to keep it', () => {
     state.demo = true;
     const { container } = render(<RegionalSettingsCard />);
