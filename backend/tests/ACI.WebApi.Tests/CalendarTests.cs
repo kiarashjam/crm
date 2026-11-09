@@ -167,6 +167,47 @@ public class CalendarTests
         found.Select(l => l.Name).Should().Equal("Meeting in November");
     }
 
+    [SqlServerFact]
+    public async Task ALeadsMeetingIsPickedOutByItsOwnDateOnSqlServer()
+    {
+        // The match is SQL text there: quotes and the colon inside a LIKE pattern.
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (rep, repId) = await SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                db.Leads.AddRange(
+                    new Lead
+                    {
+                        Id = Guid.Parse("00000000-0000-0000-0000-000000000001"), UserId = repId, Name = "First called in November",
+                        Email = "first@example.ch", Status = "New", CreatedAtUtc = DateTime.UtcNow,
+                        PipelineState = """{"outreachDate":"2026-11-03","meetingDate":"2027-03-10"}""",
+                    },
+                    new Lead
+                    {
+                        Id = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"), UserId = repId, Name = "Meeting in November",
+                        Email = "meeting@example.ch", Status = "New", CreatedAtUtc = DateTime.UtcNow,
+                        PipelineState = """{ "outreachDate": "2026-10-20", "meetingDate": "2026-11-12" }""",
+                    });
+                await db.SaveChangesAsync();
+            }
+
+            using var read = app.Services.CreateScope();
+            var found = await read.ServiceProvider.GetRequiredService<ILeadRepository>()
+                .GetWithMeetingInMonthsAsync(repId, null, ["2026-11"], mineOnly: false, take: 1);
+
+            found.Select(l => l.Name).Should().Equal("Meeting in November");
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
