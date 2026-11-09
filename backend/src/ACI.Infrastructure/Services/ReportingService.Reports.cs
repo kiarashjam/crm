@@ -523,7 +523,7 @@ public partial class ReportingService
         };
         var from = window.FromUtc;
         var to = window.ToUtc;
-        var logged = activities.Where(a => a.Type.ToLower() != "system" && a.CreatedAtUtc >= from && a.CreatedAtUtc < to);
+        var logged = activities.Where(a => a.Type.ToLower() != "system" && a.OccurredAtUtc >= from && a.OccurredAtUtc < to);
 
         var byType = await logged
             .GroupBy(a => a.Type.ToLower())
@@ -535,7 +535,7 @@ public partial class ReportingService
             byType.Select(t => new CountRowDto(t.Type, t.Count))
                 .OrderByDescending(t => t.Count).ThenBy(t => t.Key, StringComparer.Ordinal)
                 .ToList(),
-            await SeriesAsync(logged.Select(a => a.CreatedAtUtc), window, ct));
+            await SeriesAsync(logged.Select(a => a.OccurredAtUtc), window, ct));
     }
 
     /// <summary>

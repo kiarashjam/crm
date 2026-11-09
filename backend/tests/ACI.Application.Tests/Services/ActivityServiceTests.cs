@@ -27,7 +27,7 @@ public class ActivityServiceTests
         _dealRepositoryMock = new Mock<IDealRepository>();
         _loggerMock = new Mock<ILogger<ActivityService>>();
         var automation = new Mock<ILeadAutomation>();
-        automation.Setup(a => a.MarkFirstResponseAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        automation.Setup(a => a.MarkFirstResponseAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         var sequences = new Mock<ISequenceRepository>();
         sequences.Setup(s => s.StopOpenForTargetAsync(It.IsAny<Guid?>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))

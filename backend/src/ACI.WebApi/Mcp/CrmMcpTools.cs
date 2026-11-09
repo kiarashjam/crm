@@ -521,10 +521,18 @@ public sealed class CrmMcpTools
     private static string FormatActivity(ActivityDto activity)
     {
         var who = activity.LeadName ?? activity.DealName ?? activity.ContactName ?? "unlinked";
-        var when = activity.CreatedAtUtc.ToString("yyyy-MM-dd");
+        // When it happened, which a call logged late is not the day it was written down.
+        var when = (activity.OccurredAtUtc ?? activity.CreatedAtUtc).ToString("yyyy-MM-dd");
         var subject = string.IsNullOrWhiteSpace(activity.Subject) ? activity.Type : activity.Subject;
+        var facts = new[]
+        {
+            activity.Direction,
+            activity.Outcome?.Replace('_', ' '),
+            activity.DurationMinutes is int minutes ? $"{minutes} min" : null,
+        }.Where(f => !string.IsNullOrWhiteSpace(f)).ToList();
+        var how = facts.Count == 0 ? "" : $" · {string.Join(", ", facts)}";
         var text = string.IsNullOrWhiteSpace(activity.Body) ? "" : " recorded text: " + Clip(activity.Body);
-        return $"{when} · {activity.Type} · {subject} · {who} · id {activity.Id}{text}";
+        return $"{when} · {activity.Type}{how} · {subject} · {who} · id {activity.Id}{text}";
     }
 
     private static string Clip(string value)

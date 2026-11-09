@@ -14,6 +14,8 @@ internal sealed class ActivityConfiguration : IEntityTypeConfiguration<Activity>
         builder.Property(e => e.Subject).HasMaxLength(512);
         builder.Property(e => e.Body).HasColumnType("nvarchar(max)");
         builder.Property(e => e.Participants).HasMaxLength(1024);
+        builder.Property(e => e.Outcome).HasMaxLength(32);
+        builder.Property(e => e.Direction).HasMaxLength(16);
         builder.HasOne(e => e.User).WithMany(u => u.Activities).HasForeignKey(e => e.UserId);
         builder.HasOne(e => e.Organization).WithMany().HasForeignKey(e => e.OrganizationId).IsRequired(false);
         builder.HasOne(e => e.Contact).WithMany(c => c.Activities).HasForeignKey(e => e.ContactId);
@@ -23,5 +25,7 @@ internal sealed class ActivityConfiguration : IEntityTypeConfiguration<Activity>
         builder.HasIndex(e => e.OrganizationId);
         builder.HasIndex(e => e.LeadId);
         builder.HasIndex(e => new { e.OrganizationId, e.LeadId });
+        // The feed and the calendar read a workspace's activities by when they happened.
+        builder.HasIndex(e => new { e.OrganizationId, e.OccurredAtUtc });
     }
 }

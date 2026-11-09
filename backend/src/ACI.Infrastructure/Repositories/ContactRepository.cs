@@ -74,11 +74,11 @@ public sealed class ContactRepository : IContactRepository
         {
             case ContactQueryOptions.Recent:
                 var recentSince = now.AddDays(-ContactQueryOptions.RecentDays);
-                query = query.Where(c => activities.Any(a => a.ContactId == c.Id && a.CreatedAtUtc >= recentSince));
+                query = query.Where(c => activities.Any(a => a.ContactId == c.Id && a.OccurredAtUtc >= recentSince));
                 break;
             case ContactQueryOptions.Quiet:
                 var quietSince = now.AddDays(-ContactQueryOptions.QuietDays);
-                query = query.Where(c => !activities.Any(a => a.ContactId == c.Id && a.CreatedAtUtc >= quietSince));
+                query = query.Where(c => !activities.Any(a => a.ContactId == c.Id && a.OccurredAtUtc >= quietSince));
                 break;
         }
 
@@ -95,9 +95,9 @@ public sealed class ContactRepository : IContactRepository
                 : query.OrderBy(c => c.CreatedAtUtc).ThenBy(c => c.Name).ThenBy(c => c.Id),
             // Never contacted counts as longest ago: last when the most recent come first.
             "lastactivity" => desc
-                ? query.OrderByDescending(c => activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.CreatedAtUtc))
+                ? query.OrderByDescending(c => activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.OccurredAtUtc))
                     .ThenBy(c => c.Name).ThenBy(c => c.Id)
-                : query.OrderBy(c => activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.CreatedAtUtc))
+                : query.OrderBy(c => activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.OccurredAtUtc))
                     .ThenBy(c => c.Name).ThenBy(c => c.Id),
             _ => desc
                 ? query.OrderByDescending(c => c.Name).ThenBy(c => c.Id)
@@ -144,8 +144,8 @@ public sealed class ContactRepository : IContactRepository
                 AddedLast7Days = g.Count(c => c.CreatedAtUtc >= weekAgo),
             })
             .FirstOrDefaultAsync(ct);
-        var recentlyActive = await active.CountAsync(c => activities.Any(a => a.ContactId == c.Id && a.CreatedAtUtc >= recentSince), ct);
-        var quiet = await active.CountAsync(c => !activities.Any(a => a.ContactId == c.Id && a.CreatedAtUtc >= quietSince), ct);
+        var recentlyActive = await active.CountAsync(c => activities.Any(a => a.ContactId == c.Id && a.OccurredAtUtc >= recentSince), ct);
+        var quiet = await active.CountAsync(c => !activities.Any(a => a.ContactId == c.Id && a.OccurredAtUtc >= quietSince), ct);
         var archived = await all.CountAsync(c => c.IsArchived, ct);
 
         return new ContactStatsDto(
@@ -168,7 +168,7 @@ public sealed class ContactRepository : IContactRepository
                 c.Company != null ? c.Company.Name : null,
                 c.DoNotContact,
                 c.IsArchived,
-                activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.CreatedAtUtc),
+                activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.OccurredAtUtc),
                 c.CreatedAtUtc))
             .ToListAsync(ct);
         return (rows, total);

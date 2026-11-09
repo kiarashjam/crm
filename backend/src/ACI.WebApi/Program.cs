@@ -1587,6 +1587,39 @@ try
                     ALTER TABLE [Activities] ADD [UpdatedAtUtc] datetime2 NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Activities') AND name = 'UpdatedByUserId')
                     ALTER TABLE [Activities] ADD [UpdatedByUserId] uniqueidentifier NULL;
+                -- How a call or meeting went, how long it took, and who reached out.
+                IF COL_LENGTH('Activities', 'Outcome') IS NULL ALTER TABLE [Activities] ADD [Outcome] nvarchar(32) NULL;
+                IF COL_LENGTH('Activities', 'DurationMinutes') IS NULL ALTER TABLE [Activities] ADD [DurationMinutes] int NULL;
+                IF COL_LENGTH('Activities', 'Direction') IS NULL ALTER TABLE [Activities] ADD [Direction] nvarchar(16) NULL;
+            ");
+
+            // When an activity happened, as against when it was logged. The activities
+            // already there were logged as they happened, as far as anyone recorded, so they
+            // take their logged time, inside the transaction that adds the column. The
+            // default covers a row written by an instance still running the previous code
+            // during a deploy, which knows nothing of the column.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH('Activities', 'OccurredAtUtc') IS NULL
+                BEGIN
+                BEGIN TRY
+                    BEGIN TRANSACTION;
+                    ALTER TABLE [Activities] ADD [OccurredAtUtc] datetime2 NULL;
+                    EXEC(N'
+                        UPDATE [Activities] SET [OccurredAtUtc] = [CreatedAtUtc];
+                        ALTER TABLE [Activities] ALTER COLUMN [OccurredAtUtc] datetime2 NOT NULL;
+                        ALTER TABLE [Activities] ADD CONSTRAINT [DF_Activities_OccurredAtUtc] DEFAULT SYSUTCDATETIME() FOR [OccurredAtUtc];');
+                    COMMIT TRANSACTION;
+                END TRY
+                BEGIN CATCH
+                    IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+                    THROW;
+                END CATCH;
+                END
+            ");
+            // In a batch of its own, after the column it covers exists.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Activities_OrganizationId_OccurredAtUtc' AND object_id = OBJECT_ID('Activities'))
+                    CREATE INDEX [IX_Activities_OrganizationId_OccurredAtUtc] ON [Activities] ([OrganizationId], [OccurredAtUtc]);
             ");
             
             // Fix TaskItems table columns

@@ -158,6 +158,13 @@ public class ActivityService : IActivityService
             return DomainErrors.Activity.InvalidType;
         }
         
+        var now = DateTime.UtcNow;
+        var occurredAt = request.OccurredAtUtc is DateTime at ? ActivityFacts.Utc(at) : now;
+        var outcome = ActivityFacts.Word(request.Outcome);
+        var direction = ActivityFacts.Word(request.Direction);
+        var facts = ActivityFacts.Check(activityType, occurredAt, outcome, request.DurationMinutes, direction, now);
+        if (facts.IsFailure) return facts.Error;
+
         // Validate that at least one related entity is specified
         if (!request.LeadId.HasValue && !request.ContactId.HasValue && !request.DealId.HasValue)
         {
@@ -215,12 +222,18 @@ public class ActivityService : IActivityService
                 DealId = request.DealId,
                 LeadId = request.LeadId,
                 Participants = request.Participants,
-                CreatedAtUtc = DateTime.UtcNow,
+                OccurredAtUtc = occurredAt,
+                Outcome = outcome,
+                DurationMinutes = request.DurationMinutes,
+                Direction = direction,
+                CreatedAtUtc = now,
             };
             
             entity = await _repository.AddAsync(entity, ct);
-            if (entity.LeadId.HasValue && !request.IsAutomated)
-                await _automation.MarkFirstResponseAsync(entity.LeadId.Value, userId, organizationId, entity.Type, ct);
+            // An email they sent us, or a call of theirs nobody answered, is not the team
+            // answering them: the first-response clock keeps running.
+            if (entity.LeadId.HasValue && !request.IsAutomated && ActivityFacts.IsOurResponse(entity.Type, entity.Direction, entity.Outcome))
+                await _automation.MarkFirstResponseAsync(entity.LeadId.Value, userId, organizationId, entity.Type, entity.OccurredAtUtc, ct);
             if (!request.IsAutomated && ReplyTypes.Contains(entity.Type))
                 await StopSequencesAfterReplyAsync(organizationId, entity, ct);
 
@@ -284,13 +297,31 @@ public class ActivityService : IActivityService
 
         try
         {
-            if (request.Type != null)
+            var activityType = (request.Type ?? existing.Type).ToLowerInvariant();
+            if (request.Type != null && !ValidActivityTypes.Contains(activityType))
+                return DomainErrors.Activity.InvalidType;
+
+            var occurredAt = request.OccurredAtUtc is DateTime at ? ActivityFacts.Utc(at) : existing.OccurredAtUtc;
+            var outcome = request.ClearOutcome == true ? null : ActivityFacts.Word(request.Outcome) ?? existing.Outcome;
+            var duration = request.ClearDuration == true ? null : request.DurationMinutes ?? existing.DurationMinutes;
+            var direction = request.ClearDirection == true ? null : ActivityFacts.Word(request.Direction) ?? existing.Direction;
+            // A call changed into a note keeps no outcome, duration or direction: the note
+            // has none of them. Only what this edit did not send is dropped this way; a
+            // value sent with the new kind that it cannot carry is refused below.
+            if (!string.Equals(activityType, existing.Type, StringComparison.OrdinalIgnoreCase))
             {
-                var activityType = request.Type.ToLowerInvariant();
-                if (!ValidActivityTypes.Contains(activityType))
-                    return DomainErrors.Activity.InvalidType;
-                existing.Type = activityType;
+                if (ActivityFacts.Word(request.Outcome) == null && outcome != null && !ActivityFacts.OutcomesFor(activityType).Contains(outcome)) outcome = null;
+                if (request.DurationMinutes == null && !ActivityFacts.HasDuration(activityType)) duration = null;
+                if (ActivityFacts.Word(request.Direction) == null && !ActivityFacts.HasDirection(activityType)) direction = null;
             }
+            var facts = ActivityFacts.Check(activityType, occurredAt, outcome, duration, direction, DateTime.UtcNow);
+            if (facts.IsFailure) return facts.Error;
+
+            existing.Type = activityType;
+            existing.OccurredAtUtc = occurredAt;
+            existing.Outcome = outcome;
+            existing.DurationMinutes = duration;
+            existing.Direction = direction;
             if (request.Subject != null) existing.Subject = request.Subject;
             if (request.Body != null) existing.Body = request.Body;
             if (request.Participants != null) existing.Participants = request.Participants;
@@ -360,6 +391,10 @@ public class ActivityService : IActivityService
             e.Lead?.Name,
             e.UserId,
             e.User?.Name,
-            e.User?.Email
+            e.User?.Email,
+            e.OccurredAtUtc,
+            e.Outcome,
+            e.DurationMinutes,
+            e.Direction
         );
 }

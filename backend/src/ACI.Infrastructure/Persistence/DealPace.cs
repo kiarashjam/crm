@@ -23,9 +23,9 @@ public sealed class DealPaceRow
 /// </summary>
 /// <remarks>
 /// <para>
-/// A deal is worked on when an activity is logged on it (a call, a note, an email, the
-/// app's own timeline lines among them, as the board's "last activity" counts them) or
-/// when it moves stage. One with neither since a moment, and created before it, has sat
+/// A deal is worked on when an activity happens on it (a call, a note, an email, the
+/// app's own timeline lines among them, as the board's "last activity" counts them, by
+/// when they happened rather than when they were written down) or when it moves stage. One with neither since a moment, and created before it, has sat
 /// idle since then: <see cref="IdleSince"/> finds those in SQL, so a stage's stale count
 /// covers every deal in it, not only the ones on screen.
 /// </para>
@@ -52,7 +52,7 @@ public static class DealPace
         {
             DealId = d.Id,
             CreatedAtUtc = d.CreatedAtUtc,
-            LastActivityAtUtc = activities.Where(a => a.DealId == d.Id).Max(a => (DateTime?)a.CreatedAtUtc),
+            LastActivityAtUtc = activities.Where(a => a.DealId == d.Id).Max(a => (DateTime?)a.OccurredAtUtc),
             LastMoveAtUtc = db.DealStageChanges.Where(c => c.DealId == d.Id).Max(c => (DateTime?)c.ChangedAtUtc),
             // Into the stage it is in: by id, or for a deal known only by its stage's name, by that name.
             StageEnteredAtUtc = db.DealStageChanges
@@ -72,7 +72,7 @@ public static class DealPace
     {
         var activities = ActivitiesIn(db, userId, organizationId);
         return deals.Where(d => d.CreatedAtUtc < cutoff
-            && !activities.Any(a => a.DealId == d.Id && a.CreatedAtUtc >= cutoff)
+            && !activities.Any(a => a.DealId == d.Id && a.OccurredAtUtc >= cutoff)
             && !db.DealStageChanges.Any(c => c.DealId == d.Id && c.ChangedAtUtc >= cutoff));
     }
 }

@@ -53,6 +53,27 @@ public record CreateActivityRequest
     public string? Participants { get; init; }
 
     /// <summary>
+    /// When it happened, if not just now: a call made this morning and logged tonight.
+    /// Never in the future. Defaults to the moment it is logged.
+    /// </summary>
+    public DateTime? OccurredAtUtc { get; init; }
+
+    /// <summary>
+    /// How a call went (connected, no_answer, left_voicemail, left_message, busy,
+    /// wrong_number) or a meeting, video call or demo (completed, no_show, rescheduled,
+    /// cancelled). Other kinds have none.
+    /// </summary>
+    [StringLength(32)]
+    public string? Outcome { get; init; }
+
+    /// <summary>How long a call, meeting, video call or demo took, in minutes (0 to 1440).</summary>
+    public int? DurationMinutes { get; init; }
+
+    /// <summary>inbound or outbound, for a call or an email.</summary>
+    [StringLength(16)]
+    public string? Direction { get; init; }
+
+    /// <summary>
     /// Logged by the system on someone's behalf — a sequence email — rather than
     /// done by a person. Such activity is recorded, but it is not a "first
     /// response": an automated day-0 email used to clear the response deadline, so
