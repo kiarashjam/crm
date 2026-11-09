@@ -61,7 +61,9 @@ try
             policy.WithOrigins(browserOrigins)
                 .AllowAnyHeader()
                 .AllowAnyMethod()
-                .AllowCredentials();
+                .AllowCredentials()
+                // The list exports say how many rows matched and how many the file holds.
+                .WithExposedHeaders("X-Total-Count", "X-Exported-Count");
         });
         // Claude and other MCP hosts call /mcp from their own origins, including preflight OPTIONS.
         options.AddPolicy("Mcp", policy =>

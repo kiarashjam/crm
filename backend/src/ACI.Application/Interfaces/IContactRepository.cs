@@ -1,3 +1,5 @@
+using ACI.Application.Common;
+using ACI.Application.DTOs;
 using ACI.Domain.Entities;
 
 namespace ACI.Application.Interfaces;
@@ -5,15 +7,24 @@ namespace ACI.Application.Interfaces;
 public interface IContactRepository
 {
     // Paginated methods
+    /// <summary>One page of the workspace's contacts, filtered and sorted as asked, with the total that match.</summary>
     Task<(IReadOnlyList<Contact> Items, int TotalCount)> GetPagedAsync(
-        Guid userId, 
-        Guid? organizationId, 
-        int skip, 
-        int take, 
-        string? search = null,
-        bool includeArchived = false,
-        Guid? companyId = null, 
+        Guid userId,
+        Guid? organizationId,
+        int skip,
+        int take,
+        ContactQueryOptions options,
         CancellationToken ct = default);
+
+    /// <summary>The figures above the contacts list, over the whole workspace.</summary>
+    Task<ContactStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Every contact the list would show with these filters, in its order, at most
+    /// <paramref name="max"/> of them, and how many match in all.
+    /// </summary>
+    Task<(IReadOnlyList<ContactExportRow> Rows, int Total)> GetExportRowsAsync(
+        Guid userId, Guid? organizationId, ContactQueryOptions options, int max, CancellationToken ct = default);
     
     Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, bool includeArchived = false, CancellationToken ct = default);
     
@@ -79,3 +90,15 @@ public interface IContactRepository
 
 /// <summary>What an unsubscribe touched, so the outreach still scheduled to them can be stopped.</summary>
 public sealed record DoNotContactMarked(IReadOnlyList<Guid> ContactIds, IReadOnlyList<Guid> LeadIds);
+
+/// <summary>One contact as the export writes it.</summary>
+public sealed record ContactExportRow(
+    string Name,
+    string Email,
+    string? Phone,
+    string? JobTitle,
+    string? CompanyName,
+    bool DoNotContact,
+    bool IsArchived,
+    DateTime? LastActivityAtUtc,
+    DateTime CreatedAtUtc);

@@ -28,8 +28,11 @@ public class ContactService : IContactService
         _logger = logger;
     }
 
+    /// <summary>The most rows one export writes: plenty for a workspace, and a bound on one request.</summary>
+    public const int MaxExportRows = 50_000;
+
     /// <inheritdoc />
-    public async Task<PagedResult<ContactDto>> GetContactsPagedAsync(
+    public Task<PagedResult<ContactDto>> GetContactsPagedAsync(
         Guid userId, 
         Guid? organizationId, 
         int page = 1, 
@@ -37,14 +40,29 @@ public class ContactService : IContactService
         string? search = null,
         bool includeArchived = false,
         Guid? companyId = null, 
+        CancellationToken ct = default) =>
+        GetContactsPagedAsync(userId, organizationId, page, pageSize, new ContactQueryOptions
+        {
+            Search = search,
+            Status = includeArchived ? ContactQueryOptions.All : ContactQueryOptions.Active,
+            CompanyId = companyId,
+        }, ct);
+
+    /// <inheritdoc />
+    public async Task<PagedResult<ContactDto>> GetContactsPagedAsync(
+        Guid userId,
+        Guid? organizationId,
+        int page,
+        int pageSize,
+        ContactQueryOptions options,
         CancellationToken ct = default)
     {
         _logger.LogDebug(
-            "Getting paged contacts for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}', companyId {CompanyId}",
-            userId, organizationId, page, pageSize, search, companyId);
+            "Getting paged contacts for user {UserId}, organization {OrganizationId}, page {Page}, pageSize {PageSize}, search '{Search}', status {Status}",
+            userId, organizationId, page, pageSize, options.Search, options.NormalizedStatus);
 
-        var skip = (page - 1) * pageSize;
-        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, search, includeArchived, companyId, ct);
+        var skip = (Math.Max(page, 1) - 1) * pageSize;
+        var (items, totalCount) = await _repository.GetPagedAsync(userId, organizationId, skip, pageSize, options, ct);
         
         var lastByContact = await _activityRepository.GetLastActivityByContactIdsAsync(
             userId, organizationId, items.Select(c => c.Id), ct);
@@ -55,7 +73,27 @@ public class ContactService : IContactService
             "Retrieved {Count} of {Total} contacts for user {UserId} (page {Page})",
             items.Count, totalCount, userId, page);
 
-        return PagedResult<ContactDto>.Create(dtos, totalCount, page, pageSize);
+        return PagedResult<ContactDto>.Create(dtos, totalCount, Math.Max(page, 1), pageSize);
+    }
+
+    /// <inheritdoc />
+    public Task<ContactStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
+        _repository.GetStatsAsync(userId, organizationId, ct);
+
+    /// <inheritdoc />
+    public async Task<ExportFile> ExportAsync(Guid userId, Guid? organizationId, ContactQueryOptions options, CancellationToken ct = default)
+    {
+        // The rows the list would show, all of them: the page used to export the twenty
+        // contacts on screen.
+        var (rows, total) = await _repository.GetExportRowsAsync(userId, organizationId, options, MaxExportRows, ct);
+        var csv = new CsvExport("Name", "Email", "Phone", "Job title", "Company", "Do not contact", "Archived", "Last activity (UTC)", "Added (UTC)");
+        foreach (var r in rows)
+        {
+            csv.Row(r.Name, r.Email, r.Phone, r.JobTitle, r.CompanyName, CsvExport.YesNo(r.DoNotContact), CsvExport.YesNo(r.IsArchived),
+                CsvExport.Utc(r.LastActivityAtUtc), CsvExport.Utc(r.CreatedAtUtc));
+        }
+        _logger.LogInformation("Exported {Count} of {Total} contacts for user {UserId}", rows.Count, total, userId);
+        return new ExportFile($"contacts-{DateTime.UtcNow:yyyy-MM-dd}.csv", csv.ToBytes(), rows.Count, total);
     }
 
     /// <inheritdoc />

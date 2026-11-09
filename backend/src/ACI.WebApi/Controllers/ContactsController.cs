@@ -1,3 +1,4 @@
+using ACI.Application.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
@@ -28,13 +29,18 @@ public class ContactsController : ControllerBase
     }
 
     /// <summary>
-    /// Retrieves contacts with pagination and optional search.
+    /// Retrieves contacts with pagination, filters and sorting, all applied to the whole workspace.
     /// </summary>
     /// <param name="page">Page number (1-based). Default is 1.</param>
     /// <param name="pageSize">Number of items per page. Default is 20, max 100.</param>
     /// <param name="search">Optional search query.</param>
-    /// <param name="includeArchived">Whether to include archived contacts. Default is false.</param>
-    /// <param name="companyId">Optional company ID to filter contacts by.</param>
+    /// <param name="includeArchived">From before <paramref name="status"/>: true is the same as status "all".</param>
+    /// <param name="companyId">Only the contacts at this company.</param>
+    /// <param name="status">"active" (the default), "archived" or "all".</param>
+    /// <param name="hasCompany">True: only contacts at a company. False: only those at none.</param>
+    /// <param name="activity">"recent": activity in the last 30 days. "quiet": none in the last 90 days.</param>
+    /// <param name="sortBy">name (the default), email, lastActivity or createdAt.</param>
+    /// <param name="sortDir">asc (the default) or desc.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>A paginated list of contacts.</returns>
     /// <response code="200">Returns the paginated list of contacts.</response>
@@ -47,26 +53,90 @@ public class ContactsController : ControllerBase
         [FromQuery] int pageSize = 20,
         [FromQuery] string? search = null,
         [FromQuery] bool includeArchived = false,
-        [FromQuery] Guid? companyId = null, 
+        [FromQuery] Guid? companyId = null,
+        [FromQuery] string? status = null,
+        [FromQuery] bool? hasCompany = null,
+        [FromQuery] string? activity = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
         CancellationToken ct = default)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
 
         pageSize = Math.Clamp(pageSize, 1, 100);
-        
+
         var result = await _contactService.GetContactsPagedAsync(
-            userId.Value, 
-            _currentUser.CurrentOrganizationId, 
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
             page,
             pageSize,
-            search,
-            includeArchived,
-            companyId, 
+            Options(search, includeArchived, companyId, status, hasCompany, activity, sortBy, sortDir),
             ct);
-        
+
         return Ok(result);
     }
+
+    /// <summary>
+    /// The figures above the contacts list: how many contacts, with a company, with a phone,
+    /// active in the last 30 days, quiet for 90, added in the last 7, and archived.
+    /// </summary>
+    /// <response code="200">The figures, over the whole workspace.</response>
+    [HttpGet("stats")]
+    [ProducesResponseType(typeof(ContactStatsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<ContactStatsDto>> GetStats(CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return Ok(await _contactService.GetStatsAsync(userId.Value, _currentUser.CurrentOrganizationId, ct));
+    }
+
+    /// <summary>
+    /// Every contact the list shows with the same filters and order, as a CSV file. Takes the
+    /// list's parameters, less the page. X-Total-Count says how many match, and
+    /// X-Exported-Count how many the file holds (at most 50,000).
+    /// </summary>
+    /// <response code="200">The CSV file.</response>
+    [HttpGet("export")]
+    [Produces("text/csv")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult> Export(
+        [FromQuery] string? search = null,
+        [FromQuery] bool includeArchived = false,
+        [FromQuery] Guid? companyId = null,
+        [FromQuery] string? status = null,
+        [FromQuery] bool? hasCompany = null,
+        [FromQuery] string? activity = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null,
+        CancellationToken ct = default)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        var file = await _contactService.ExportAsync(
+            userId.Value,
+            _currentUser.CurrentOrganizationId,
+            Options(search, includeArchived, companyId, status, hasCompany, activity, sortBy, sortDir),
+            ct);
+        Response.Headers["X-Total-Count"] = file.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Response.Headers["X-Exported-Count"] = file.Exported.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return File(file.Content, "text/csv; charset=utf-8", file.FileName);
+    }
+
+    private static ContactQueryOptions Options(
+        string? search, bool includeArchived, Guid? companyId, string? status, bool? hasCompany, string? activity, string? sortBy, string? sortDir) => new()
+    {
+        Search = search,
+        // A status, when sent, decides; includeArchived is what older clients send.
+        Status = !string.IsNullOrWhiteSpace(status) ? status : includeArchived ? ContactQueryOptions.All : ContactQueryOptions.Active,
+        CompanyId = companyId,
+        HasCompany = hasCompany,
+        Activity = activity,
+        SortBy = string.IsNullOrWhiteSpace(sortBy) ? "name" : sortBy,
+        SortDir = string.IsNullOrWhiteSpace(sortDir) ? "asc" : sortDir,
+    };
 
     /// <summary>
     /// Retrieves all contacts for the authenticated user (non-paginated, for backward compatibility).

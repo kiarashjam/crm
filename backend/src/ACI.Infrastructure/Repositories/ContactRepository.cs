@@ -1,3 +1,5 @@
+using ACI.Application.Common;
+using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using ACI.Infrastructure.Persistence;
@@ -33,30 +35,143 @@ public sealed class ContactRepository : IContactRepository
             (c.Company != null && c.Company.Name.ToLower().Contains(q)));
     }
 
+    /// <summary>
+    /// The activities the caller can see, which is what a contact's "last activity" counts:
+    /// one on a private deal they cannot open is left out, as in ActivityRepository.
+    /// </summary>
+    private IQueryable<Activity> ActivitiesSeenBy(Guid userId, Guid? organizationId)
+    {
+        var visibleDeals = _db.Deals.VisibleTo(_db, userId, organizationId);
+        var inWorkspace = organizationId == null
+            ? _db.Activities.Where(a => a.UserId == userId && a.OrganizationId == null)
+            : _db.Activities.Where(a => a.OrganizationId == organizationId);
+        return inWorkspace.Where(a => a.DealId == null || visibleDeals.Any(d => d.Id == a.DealId));
+    }
+
+    /// <summary>
+    /// The contacts list's filters and order, applied to the whole workspace in the database.
+    /// The page used to filter and sort the twenty contacts it had been sent, so a company
+    /// filter missed everyone on later pages and "recently active" reordered only the
+    /// alphabetically first twenty.
+    /// </summary>
+    private IQueryable<Contact> Query(Guid userId, Guid? organizationId, ContactQueryOptions options)
+    {
+        var query = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
+        query = options.NormalizedStatus switch
+        {
+            ContactQueryOptions.Archived => query.Where(c => c.IsArchived),
+            ContactQueryOptions.All => query,
+            _ => query.Where(c => !c.IsArchived),
+        };
+        if (options.CompanyId is Guid companyId) query = query.Where(c => c.CompanyId == companyId);
+        else if (options.HasCompany == true) query = query.Where(c => c.CompanyId != null);
+        else if (options.HasCompany == false) query = query.Where(c => c.CompanyId == null);
+        query = ApplySearch(query, options.Search);
+
+        var activities = ActivitiesSeenBy(userId, organizationId);
+        var now = DateTime.UtcNow;
+        switch (options.Activity?.Trim().ToLowerInvariant())
+        {
+            case ContactQueryOptions.Recent:
+                var recentSince = now.AddDays(-ContactQueryOptions.RecentDays);
+                query = query.Where(c => activities.Any(a => a.ContactId == c.Id && a.CreatedAtUtc >= recentSince));
+                break;
+            case ContactQueryOptions.Quiet:
+                var quietSince = now.AddDays(-ContactQueryOptions.QuietDays);
+                query = query.Where(c => !activities.Any(a => a.ContactId == c.Id && a.CreatedAtUtc >= quietSince));
+                break;
+        }
+
+        // Every order ends on the id, so a page boundary falls in the same place each time
+        // and nobody is shown twice or skipped between pages.
+        var desc = string.Equals(options.SortDir?.Trim(), "desc", StringComparison.OrdinalIgnoreCase);
+        return (options.SortBy?.Trim().ToLowerInvariant()) switch
+        {
+            "email" => desc
+                ? query.OrderByDescending(c => c.Email).ThenBy(c => c.Id)
+                : query.OrderBy(c => c.Email).ThenBy(c => c.Id),
+            "createdat" => desc
+                ? query.OrderByDescending(c => c.CreatedAtUtc).ThenBy(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => c.CreatedAtUtc).ThenBy(c => c.Name).ThenBy(c => c.Id),
+            // Never contacted counts as longest ago: last when the most recent come first.
+            "lastactivity" => desc
+                ? query.OrderByDescending(c => activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.CreatedAtUtc))
+                    .ThenBy(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.CreatedAtUtc))
+                    .ThenBy(c => c.Name).ThenBy(c => c.Id),
+            _ => desc
+                ? query.OrderByDescending(c => c.Name).ThenBy(c => c.Id)
+                : query.OrderBy(c => c.Name).ThenBy(c => c.Id),
+        };
+    }
+
     public async Task<(IReadOnlyList<Contact> Items, int TotalCount)> GetPagedAsync(
-        Guid userId, 
-        Guid? organizationId, 
-        int skip, 
-        int take, 
-        string? search = null,
-        bool includeArchived = false,
-        Guid? companyId = null, 
+        Guid userId,
+        Guid? organizationId,
+        int skip,
+        int take,
+        ContactQueryOptions options,
         CancellationToken ct = default)
     {
-        var query = FilterByUserAndOrg(_db.Contacts, userId, organizationId);
-        if (!includeArchived) query = query.Where(c => !c.IsArchived);
-        if (companyId.HasValue) query = query.Where(c => c.CompanyId == companyId.Value);
-        query = ApplySearch(query, search);
-        
+        var query = Query(userId, organizationId, options);
         var totalCount = await query.CountAsync(ct);
         var items = await query
             .Include(c => c.Company)
-            .OrderBy(c => c.Name)
             .Skip(skip)
             .Take(take)
             .ToListAsync(ct);
-        
         return (items, totalCount);
+    }
+
+    public async Task<ContactStatsDto> GetStatsAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var weekAgo = now.AddDays(-7);
+        var recentSince = now.AddDays(-ContactQueryOptions.RecentDays);
+        var quietSince = now.AddDays(-ContactQueryOptions.QuietDays);
+        var all = FilterByUserAndOrg(_db.Contacts.AsNoTracking(), userId, organizationId);
+        var active = all.Where(c => !c.IsArchived);
+        var activities = ActivitiesSeenBy(userId, organizationId);
+
+        // One grouped query for the plain counts; the two that read activities are their own.
+        var row = await active
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Total = g.Count(),
+                WithCompany = g.Count(c => c.CompanyId != null),
+                WithPhone = g.Count(c => c.Phone != null && c.Phone.Trim() != ""),
+                AddedLast7Days = g.Count(c => c.CreatedAtUtc >= weekAgo),
+            })
+            .FirstOrDefaultAsync(ct);
+        var recentlyActive = await active.CountAsync(c => activities.Any(a => a.ContactId == c.Id && a.CreatedAtUtc >= recentSince), ct);
+        var quiet = await active.CountAsync(c => !activities.Any(a => a.ContactId == c.Id && a.CreatedAtUtc >= quietSince), ct);
+        var archived = await all.CountAsync(c => c.IsArchived, ct);
+
+        return new ContactStatsDto(
+            row?.Total ?? 0, row?.WithCompany ?? 0, row?.WithPhone ?? 0, recentlyActive, quiet, row?.AddedLast7Days ?? 0, archived);
+    }
+
+    public async Task<(IReadOnlyList<ContactExportRow> Rows, int Total)> GetExportRowsAsync(
+        Guid userId, Guid? organizationId, ContactQueryOptions options, int max, CancellationToken ct = default)
+    {
+        var query = Query(userId, organizationId, options);
+        var total = await query.CountAsync(ct);
+        var activities = ActivitiesSeenBy(userId, organizationId);
+        var rows = await query
+            .Take(max)
+            .Select(c => new ContactExportRow(
+                c.Name,
+                c.Email,
+                c.Phone,
+                c.JobTitle,
+                c.Company != null ? c.Company.Name : null,
+                c.DoNotContact,
+                c.IsArchived,
+                activities.Where(a => a.ContactId == c.Id).Max(a => (DateTime?)a.CreatedAtUtc),
+                c.CreatedAtUtc))
+            .ToListAsync(ct);
+        return (rows, total);
     }
 
     public async Task<int> CountAsync(Guid userId, Guid? organizationId, string? search = null, bool includeArchived = false, CancellationToken ct = default)
