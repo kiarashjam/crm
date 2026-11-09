@@ -39,6 +39,19 @@ function startOfMonth(d: Date): Date {
 function endOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0);
 }
+/** The six weeks on the grid for a month: from the Sunday on or before its first day. */
+function gridCells(month: Date): Date[] {
+  const first = startOfMonth(month);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  const cells: Date[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    cells.push(d);
+  }
+  return cells;
+}
 function isSameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -125,20 +138,7 @@ export default function Calendar() {
   }, [loadClub]);
 
   // Build the visible 6-week grid.
-  const grid = useMemo(() => {
-    const first = startOfMonth(cursor);
-    const last = endOfMonth(cursor);
-    const firstWeekday = first.getDay();
-    const start = new Date(first);
-    start.setDate(first.getDate() - firstWeekday);
-    const cells: Date[] = [];
-    for (let i = 0; i < 42; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      cells.push(d);
-    }
-    return { cells, monthStart: first, monthEnd: last };
-  }, [cursor]);
+  const grid = useMemo(() => ({ cells: gridCells(cursor), monthStart: startOfMonth(cursor), monthEnd: endOfMonth(cursor) }), [cursor]);
 
   // Only the latest read lands: a slow answer for the month or scope just left must not
   // replace the one on show.
@@ -156,7 +156,12 @@ export default function Calendar() {
       setTruncated(page.truncated);
       setEntriesState('ready');
     } catch {
-      if (read === latestRead.current) setEntriesState('failed');
+      if (read !== latestRead.current) return;
+      // What the last read held is for another month or scope: shown beside "could not
+      // be loaded", it read as this one's.
+      setEntries([]);
+      setTruncated(false);
+      setEntriesState('failed');
     }
   }, [grid, scope, inWorkspace]);
 
@@ -205,8 +210,17 @@ export default function Calendar() {
   const selectedMeetings = selectedEntries.filter((e) => e.kind !== 'task');
   const selectedTasks = selectedEntries.filter((e) => e.kind === 'task');
 
-  const goPrev = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1));
-  const goNext = () => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1));
+  // Tasks and meetings are read for the six weeks on the grid, so a selected day left off
+  // it would read as having none: it moves to the same date in the month gone to.
+  const goMonth = (step: number) => {
+    const next = new Date(cursor.getFullYear(), cursor.getMonth() + step, 1);
+    setCursor(next);
+    if (!gridCells(next).some((d) => isSameDay(d, selectedDay))) {
+      setSelectedDay(new Date(next.getFullYear(), next.getMonth(), Math.min(selectedDay.getDate(), endOfMonth(next).getDate())));
+    }
+  };
+  const goPrev = () => goMonth(-1);
+  const goNext = () => goMonth(1);
   const goToday = () => {
     const now = new Date();
     setCursor(startOfMonth(now));

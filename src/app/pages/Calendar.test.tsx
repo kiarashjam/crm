@@ -120,6 +120,34 @@ describe('a rep’s tasks and meetings on the calendar', () => {
     await waitFor(() => expect(api.calendar).toHaveBeenLastCalledWith(new Date(2026, 10, 29), new Date(2027, 0, 10), 'mine'));
   });
 
+  it('moves the day on show into the month gone to, instead of leaving it off the grid read', async () => {
+    // The tasks and meetings read are the six weeks on the grid: 9 November, left
+    // selected on the way to December, said "No tasks due" though it has one.
+    show();
+    await screen.findByText('Tour of the club');
+    api.calendar.mockImplementation(async () => ({
+      scope: 'mine', truncated: false,
+      entries: [{ kind: 'task', id: 't-dec', title: 'December call', startUtc: new Date(2026, 11, 9, 10).toISOString(), allDay: false, link: '/tasks/t-dec' }],
+    }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next month' }));
+
+    const december = within(detail());
+    expect(await december.findByText('December call')).toBeInTheDocument();
+    expect(december.getByRole('heading', { level: 2 })).toHaveTextContent('December 9');
+  });
+
+  it('keeps a day still on the new grid where it is', async () => {
+    show();
+    await screen.findByText('Tour of the club');
+    await userEvent.click(day(/November 30\b/));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next month' }));
+
+    // December's grid starts on Sunday 29 November.
+    expect(within(detail()).getByRole('heading', { level: 2 })).toHaveTextContent('November 30');
+  });
+
   it("keeps a lead's meeting date on its day wherever the viewer is", async () => {
     // West of Greenwich, the first moment of 12 November in UTC is still 11 November.
     vi.stubEnv('TZ', 'America/Los_Angeles');
@@ -156,6 +184,19 @@ describe('when part of the calendar cannot be loaded', () => {
 
     expect(await screen.findByText('Tour of the club')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it("does not leave the last read's entries up when the next read fails", async () => {
+    // Switched to the team and refused: my own meetings stayed up under "The team's
+    // tasks and meetings", beside a message saying they could not be loaded.
+    show();
+    await screen.findByText('Tour of the club');
+    api.calendar.mockRejectedValueOnce(new Error('offline'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Team' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Tasks and meetings could not be loaded, so they are missing here.');
+    expect(screen.queryByText('Tour of the club')).not.toBeInTheDocument();
   });
 
   it('does not let a late answer for the month just left replace the one on show', async () => {
