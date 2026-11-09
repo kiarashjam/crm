@@ -55,18 +55,21 @@ export function UndoImportDialog({ kind, batch, onClose, onUndone }: UndoDialogP
   const [undoing, setUndoing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // By id: the page passes a new object each time it renders, and reading the plan again
+  // then would blank the dialog while someone reads it.
+  const batchId = batch?.id;
   useEffect(() => {
     setPlan(null);
     setError(null);
-    if (!batch) return;
+    if (!batchId) return;
     let current = true;
     setLoading(true);
-    previewUndo(batch.id)
+    previewUndo(batchId)
       .then((p) => { if (current) setPlan(p); })
       .catch((e: unknown) => { if (current) setError(e instanceof Error ? e.message : 'Could not check what undoing would remove'); })
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [batch]);
+  }, [batchId]);
 
   const total = plan ? plan.leads + plan.contacts + plan.companies : 0;
 
