@@ -160,6 +160,23 @@ public class OutboxServiceTests
         _notifications.Verify(n => n.CreateAsync(Rep, Org, It.Is<CreateNotificationRequest>(r => r.Title == "An email was not sent"), It.IsAny<CancellationToken>()));
     }
 
+    [Fact]
+    public async Task AnEmailAboutALeadDeletedWhileItWaitedDoesNotGo()
+    {
+        // Queued, then the lead erased (or its import undone) before the next attempt.
+        var service = Service();
+        var queued = (await service.QueueEmailAsync(Email() with { LeadId = Lead, CountsAsResponse = true })).Value;
+        _targets.Setup(t => t.TargetStateAsync("lead", Lead, Org, It.IsAny<CancellationToken>())).ReturnsAsync(SequenceTargetState.Missing);
+
+        await DispatchAsync(service);
+
+        _sent.Should().BeEmpty();
+        queued.Status.Should().Be(OutboundStatuses.Cancelled);
+        queued.LastError.Should().Be("The lead it was for has been deleted, so it was not sent.");
+        _notifications.Verify(n => n.CreateAsync(Rep, Org, It.Is<CreateNotificationRequest>(r => r.Title == "An email was not sent"), It.IsAny<CancellationToken>()));
+        _activities.Verify(a => a.CreateAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CreateActivityRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ── how it is written and addressed ─────────────────────────────────────────
 
     [Fact]

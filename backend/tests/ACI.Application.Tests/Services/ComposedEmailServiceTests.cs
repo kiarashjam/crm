@@ -1,5 +1,6 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
+using ACI.Application.Interfaces;
 using ACI.Application.Services;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -16,6 +17,7 @@ public class ComposedEmailServiceTests
     private static readonly Guid Org = Guid.NewGuid();
     private static readonly Guid Rep = Guid.NewGuid();
     private readonly Mock<IOutbox> _outbox = new();
+    private readonly Mock<IWorkspaceRecords> _records = WorkspaceRecordsMock.InWorkspace();
     private OutboundEmailRequest? _queued;
 
     private ComposedEmailService Service(OutboxAttempt? attempt = null, Error? refusal = null)
@@ -34,7 +36,7 @@ public class ComposedEmailServiceTests
             });
         _outbox.Setup(o => o.SendNowAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(attempt ?? new OutboxAttempt(OutboxAttemptResult.Sent));
-        return new ComposedEmailService(_outbox.Object, NullLogger<ComposedEmailService>.Instance);
+        return new ComposedEmailService(_outbox.Object, _records.Object, NullLogger<ComposedEmailService>.Instance);
     }
 
     [Fact]
@@ -57,6 +59,25 @@ public class ComposedEmailServiceTests
         _queued.CountsAsResponse.Should().BeTrue();
         _queued.PersonWaiting.Should().BeTrue();
         _outbox.Verify(o => o.SendNowAsync(It.IsAny<OutboundMessage>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("lead", "Link.LeadNotFound")]
+    [InlineData("contact", "Link.ContactNotFound")]
+    [InlineData("deal", "Link.DealNotFound")]
+    public async Task ARecordThatIsNotTheWorkspacesIsRefused_AndNothingIsQueued(string type, string code)
+    {
+        // Its fields would fill the placeholders and its timeline would get the entry,
+        // so another workspace's record, or a private deal the sender cannot open, is out.
+        var id = Guid.NewGuid();
+        _records.Setup(r => r.ExistsAsync(type, id, Rep, Org, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var request = new SendEmailRequest("jean@example.ch", null, null, "Hello {{name}}", "Hi",
+            LeadId: type == "lead" ? id : null, ContactId: type == "contact" ? id : null, DealId: type == "deal" ? id : null);
+
+        var result = await Service().SendAsync(Org, request, Rep);
+
+        result.Error.Code.Should().Be(code);
+        _outbox.Verify(o => o.QueueEmailAsync(It.IsAny<OutboundEmailRequest>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

@@ -112,6 +112,24 @@ public class ComposedEmailTests
     }
 
     [Fact]
+    public async Task AnEmailAboutAnotherWorkspacesLeadIsRefused_AndNothingIsQueued()
+    {
+        await using var factory = new WithMailServer();
+        var (theirs, _) = await Member(factory, "other@elsewhere.ch");
+        var hidden = await LeadAsync(theirs, "Hélène Secret", "helene@secret.example");
+        var (client, _) = await Member(factory);
+
+        // Its timeline would get the entry and its name would fill {{firstName}}.
+        var res = await client.PostAsync("/api/email/send", Body(new { to = "jean@example.ch", subject = "Hello {{firstName|there}}", body = "Hi", leadId = hidden }));
+
+        var body = await res.Content.ReadAsStringAsync();
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest, body);
+        body.Should().Contain("Link.LeadNotFound").And.NotContain("Hélène");
+        factory.Mail.Attempts.Should().BeEmpty();
+        (await factory.Services.Read(db => db.OutboundMessages.Count())).Should().Be(0);
+    }
+
+    [Fact]
     public async Task WhenTheServerDoesNotTakeItYet_ItIsQueuedAndRetried_NotLost()
     {
         await using var factory = new WithMailServer();

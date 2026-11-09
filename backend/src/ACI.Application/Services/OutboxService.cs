@@ -356,6 +356,19 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         var cc = Addresses(Split(message.Cc));
         var bcc = Addresses(Split(message.Bcc));
 
+        // The person it was for may have been deleted while it waited, after an erasure
+        // request, say, or with the import that brought them in undone. A message about
+        // someone the workspace no longer holds does not go.
+        if (await GoneAsync(message, ct) is { } gone)
+        {
+            Stop(message, OutboundStatuses.Cancelled, gone);
+            await _messages.SaveAsync(ct);
+            _logger.LogInformation("Outbox email {MessageId} was not sent: {Reason}", message.Id, gone);
+            if (!personWaiting && message.CountsAsResponse)
+                await TellCreatorAsync(message, "An email was not sent", gone, ct);
+            return new OutboxAttempt(OutboxAttemptResult.Suppressed, gone, "Email.RecordGone");
+        }
+
         // Asked again at the moment it goes: someone may have unsubscribed or bounced
         // since it was queued, and a "stop" has to win over a message already waiting.
         if (message.OrganizationId is Guid org
@@ -645,6 +658,17 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             return new Error(DomainErrors.Contact.DoNotContact.Code, "This person is marked do not contact, so nothing was sent.");
         if (await _messages.FindSuppressionAsync(organizationId, addresses, ct) is { } suppressed)
             return new Error("Email.Suppressed", $"{suppressed.Email} {SuppressedBecause(suppressed)}, so email to it is suppressed and nothing was sent.");
+        return null;
+    }
+
+    /// <summary>Why the lead or contact a message is about no longer counts, or null while it does.</summary>
+    private async Task<string?> GoneAsync(OutboundMessage message, CancellationToken ct)
+    {
+        if (message.OrganizationId is not Guid org) return null;
+        if (message.LeadId is Guid leadId && await _targets.TargetStateAsync("lead", leadId, org, ct) is { Exists: false })
+            return "The lead it was for has been deleted, so it was not sent.";
+        if (message.ContactId is Guid contactId && await _targets.TargetStateAsync("contact", contactId, org, ct) is { Exists: false })
+            return "The contact it was for has been deleted, so it was not sent.";
         return null;
     }
 

@@ -1,5 +1,6 @@
 using ACI.Application.Common;
 using ACI.Application.DTOs;
+using ACI.Application.Interfaces;
 using ACI.Domain.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -36,11 +37,13 @@ public sealed class ComposedEmailService : IComposedEmailService
     public const int MaxBodyLength = 50_000;
 
     private readonly IOutbox _outbox;
+    private readonly IWorkspaceRecords _records;
     private readonly ILogger<ComposedEmailService> _logger;
 
-    public ComposedEmailService(IOutbox outbox, ILogger<ComposedEmailService> logger)
+    public ComposedEmailService(IOutbox outbox, IWorkspaceRecords records, ILogger<ComposedEmailService> logger)
     {
         _outbox = outbox;
+        _records = records;
         _logger = logger;
     }
 
@@ -69,6 +72,12 @@ public sealed class ComposedEmailService : IComposedEmailService
         var body = request.Body ?? "";
         if (body.Length > MaxBodyLength)
             return new Error("Email.BodyTooLong", $"The message can be at most {MaxBodyLength:N0} characters.");
+
+        // The record it is about fills the placeholders and gets the timeline entry, so it
+        // has to be one of this workspace's that the sender can open (a private deal too).
+        var links = await _records.CheckLinksAsync(sentByUserId, organizationId,
+            new RecordLinks { LeadId = request.LeadId, ContactId = request.ContactId, DealId = request.DealId }, ct);
+        if (links.IsFailure) return links.Error;
 
         // Do not contact, unsubscribes and bounces are checked by the outbox, on the
         // server. The composer only hid its button on a contact's page, so the lead page,
