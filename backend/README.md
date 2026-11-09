@@ -217,7 +217,9 @@ against the suppression list (do not contact, unsubscribes, and addresses the ma
 reported as bounced or complaining) when it is queued and again when it goes, has its
 placeholders filled (`{{firstName}}`, `{{lastName}}`, `{{name}}`, `{{email}}`, `{{company}}`,
 `{{senderName}}`, `{{workspace}}`, each with an optional `{{name|fallback}}`), carries its
-own Message-ID, and is written once on the record's timeline when it has gone.
+own Message-ID, and is written once on the record's timeline when it has gone. The lead,
+contact or deal an email is about must be one of the workspace's that the sender can open;
+an email whose lead or contact is deleted while it waits is cancelled, not sent.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
