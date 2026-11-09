@@ -101,7 +101,7 @@ public sealed record ImportResultDto(
 /// <summary>A past import.</summary>
 /// <param name="FinishedAtUtc">Null while it runs, or when the server stopped part way through.</param>
 /// <param name="Remaining">How many records it created are still here.</param>
-/// <param name="Running">Started a few minutes ago and not finished: still running, so it cannot be undone yet.</param>
+/// <param name="Running">Not finished, and saved rows in the last few minutes: still running, so it cannot be undone yet.</param>
 /// <param name="CanUndo">Whether the caller may undo it now, and it has records left to undo.</param>
 public sealed record ImportBatchDto(
     Guid Id,

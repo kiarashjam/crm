@@ -84,7 +84,7 @@ export interface ImportBatch {
   removed: number;
   /** Records it created that are still here. */
   remaining: number;
-  /** Started a few minutes ago and not finished, so it cannot be undone yet. */
+  /** Not finished, and saved rows in the last few minutes: still running, so it cannot be undone yet. */
   running: boolean;
   canUndo: boolean;
 }

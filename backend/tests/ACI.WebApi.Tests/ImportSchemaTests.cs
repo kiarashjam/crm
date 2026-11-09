@@ -52,6 +52,36 @@ public class ImportSchemaTests
         ddl.Should().Contain($"CREATE INDEX [IX_{table}_ImportBatchId] ON [{table}] ([ImportBatchId])");
     }
 
+    [Fact]
+    public void ABatchTableMadeBeforeLastSavedAtUtcIsGivenItByAGuardedAlter()
+    {
+        var ddl = ClubSchemaTests.ProgramDdl();
+        var guard = ddl.IndexOf("IF COL_LENGTH(N'dbo.ImportBatches', N'LastSavedAtUtc') IS NULL", StringComparison.Ordinal);
+        guard.Should().BeGreaterThan(-1, "a database made with the first version of the table has no LastSavedAtUtc, and only an ALTER gives it one");
+        var alter = ddl.IndexOf("ALTER TABLE [ImportBatches] ADD [LastSavedAtUtc] datetime2 NULL", guard, StringComparison.Ordinal);
+        alter.Should().BeGreaterThan(guard);
+        ddl[guard..alter].Should().NotContain(";", "the ALTER belongs to that IF");
+    }
+
+    [SqlServerFact]
+    public async Task ABatchTableMadeBeforeLastSavedAtUtcIsGivenItOnStart()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using (SqlServerApp.Start(database)) { }
+            await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [ImportBatches] DROP COLUMN [LastSavedAtUtc]");
+
+            using (SqlServerApp.Start(database))
+                (await SqlServerApp.ScalarAsync(database, "SELECT COL_LENGTH(N'dbo.ImportBatches', N'LastSavedAtUtc')")).Should().NotBeNull();
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
     [SqlServerFact]
     public async Task ANewDatabaseHasTheImportSchema()
     {

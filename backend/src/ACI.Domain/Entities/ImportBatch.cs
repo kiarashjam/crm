@@ -37,6 +37,12 @@ public class ImportBatch : Common.BaseEntity
 
     public DateTime StartedAtUtc { get; set; }
 
+    /// <summary>
+    /// When it last saved a run of rows, with the counts so far. It moves every few seconds
+    /// while the import runs, so a long import is told apart from one the server stopped.
+    /// </summary>
+    public DateTime? LastSavedAtUtc { get; set; }
+
     /// <summary>When the last row was done. Null while it runs, or if the server stopped part way.</summary>
     public DateTime? FinishedAtUtc { get; set; }
 

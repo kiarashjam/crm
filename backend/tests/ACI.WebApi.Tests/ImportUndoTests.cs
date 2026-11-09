@@ -132,15 +132,20 @@ public class ImportUndoTests
     }
 
     /// <summary>A batch as an import leaves it part way through, with leads it has saved.</summary>
+    private static Task<(Guid Batch, Guid[] Leads)> UnfinishedAsync(
+        CustomWebApplicationFactory factory, Guid userId, Guid orgId, DateTime started, params TimeSpan?[] customValuesAfter) =>
+        UnfinishedAsync(factory, userId, orgId, started, lastSaved: null, customValuesAfter);
+
+    /// <param name="lastSaved">When it last saved a run of rows; null when it never got that far.</param>
     private static async Task<(Guid Batch, Guid[] Leads)> UnfinishedAsync(
-        CustomWebApplicationFactory factory, Guid userId, Guid orgId, DateTime started, params TimeSpan?[] customValuesAfter)
+        CustomWebApplicationFactory factory, Guid userId, Guid orgId, DateTime started, DateTime? lastSaved, params TimeSpan?[] customValuesAfter)
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var batch = new ImportBatch
         {
             Id = Guid.NewGuid(), OrganizationId = orgId, UserId = userId, EntityType = "lead", FileName = "big.csv",
-            TotalRows = 2000, StartedAtUtc = started,
+            TotalRows = 2000, StartedAtUtc = started, LastSavedAtUtc = lastSaved,
         };
         db.ImportBatches.Add(batch);
         var leads = new List<Guid>();
@@ -179,6 +184,37 @@ public class ImportUndoTests
         var listed = (await OkJson(await client.GetAsync("/api/imports"), "imports")).EnumerateArray().Single();
         listed.GetProperty("running").GetBoolean().Should().BeTrue();
         listed.GetProperty("canUndo").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task AnImportStillSavingRowsIsRunningHoweverLongAgoItStarted()
+    {
+        // Leads whose automations send an email each can take much longer than ten minutes
+        // to import. Going by the start alone, such an import was called stopped part way
+        // while it was still adding rows, and could be undone under its own feet.
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, userId, orgId) = await WorkspaceAsync(factory);
+        var now = DateTime.UtcNow;
+        var (batchId, _) = await UnfinishedAsync(factory, userId, orgId, now.AddMinutes(-40), lastSaved: now.AddMinutes(-1), (TimeSpan?)null);
+
+        var listed = (await OkJson(await client.GetAsync("/api/imports"), "imports")).EnumerateArray().Single();
+        listed.GetProperty("running").GetBoolean().Should().BeTrue("it saved a run of rows a minute ago");
+        listed.GetProperty("canUndo").GetBoolean().Should().BeFalse();
+        (await client.PostAsync($"/api/imports/{batchId}/undo", null)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await factory.Services.Read(db => db.Leads.Count())).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AnImportThatStoppedSavingRowsHasStopped()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        var (client, userId, orgId) = await WorkspaceAsync(factory);
+        var now = DateTime.UtcNow;
+        await UnfinishedAsync(factory, userId, orgId, now.AddHours(-3), lastSaved: now.AddHours(-2), (TimeSpan?)null);
+
+        var listed = (await OkJson(await client.GetAsync("/api/imports"), "imports")).EnumerateArray().Single();
+        listed.GetProperty("running").GetBoolean().Should().BeFalse("nothing has been saved for two hours");
+        listed.GetProperty("canUndo").GetBoolean().Should().BeTrue();
     }
 
     [Fact]

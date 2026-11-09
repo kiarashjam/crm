@@ -1708,11 +1708,16 @@ try
                     [SkippedCount] int NOT NULL,
                     [FailedCount] int NOT NULL,
                     [StartedAtUtc] datetime2 NOT NULL,
+                    [LastSavedAtUtc] datetime2 NULL,
                     [FinishedAtUtc] datetime2 NULL,
                     [UndoneAtUtc] datetime2 NULL,
                     [UndoneByUserId] uniqueidentifier NULL,
                     [RemovedCount] int NOT NULL
                 );
+                -- LastSavedAtUtc came after the first version of this table; a database
+                -- made with that version is given it here.
+                IF COL_LENGTH(N'dbo.ImportBatches', N'LastSavedAtUtc') IS NULL
+                    ALTER TABLE [ImportBatches] ADD [LastSavedAtUtc] datetime2 NULL;
                 IF COL_LENGTH(N'dbo.Leads', N'ImportBatchId') IS NULL
                     ALTER TABLE [Leads] ADD [ImportBatchId] uniqueidentifier NULL;
                 IF COL_LENGTH(N'dbo.Contacts', N'ImportBatchId') IS NULL

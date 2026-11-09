@@ -45,13 +45,19 @@ public sealed class ImportService : IImportService
     private const int RowsPerTransaction = 50;
 
     /// <summary>
-    /// An import not finished this long after it started has stopped (the server restarted
-    /// part way), rather than still running. A full file takes a minute or two.
+    /// An unfinished import that has saved nothing for this long has stopped (the server
+    /// restarted part way), rather than still running. It saves after every run of rows,
+    /// which takes seconds, or a minute or two when each lead's automations send an email.
     /// </summary>
+    /// <remarks>
+    /// Counted from its last save, not from its start: such an import can take far longer
+    /// than this in all, and counted from the start it was called stopped, and could be
+    /// undone, while it was still adding rows.
+    /// </remarks>
     private static readonly TimeSpan StillRunningFor = TimeSpan.FromMinutes(10);
 
     private static bool Running(ImportBatch batch) =>
-        batch.FinishedAtUtc == null && batch.StartedAtUtc > DateTime.UtcNow - StillRunningFor;
+        batch.FinishedAtUtc == null && (batch.LastSavedAtUtc ?? batch.StartedAtUtc) > DateTime.UtcNow - StillRunningFor;
 
     private readonly IImportRepository _imports;
     private readonly ILeadService _leads;
@@ -172,6 +178,8 @@ public sealed class ImportService : IImportService
         _logger.LogInformation("Import {BatchId}: {Rows} {Kind} rows from {FileName} for user {UserId}",
             batch.Id, file.Rows.Count, kind, batch.FileName, userId);
 
+        // The rows done so far, from the top of the plan; the ones after it are untouched.
+        var done = 0;
         using (_imports.StampNewRecords(batch.Id))
         {
             try
@@ -212,14 +220,28 @@ public sealed class ImportService : IImportService
                             row.Fail("Not saved: the database turned this part of the file away. Import these rows again");
                         }
                     }
+
+                    // How far it has got, saved with the time: the list of imports shows the
+                    // rows so far, and tells this import, still saving, from one the server
+                    // stopped (see Running).
+                    done += run.Length;
+                    Count(batch, plan.Take(done));
+                    batch.LastSavedAtUtc = DateTime.UtcNow;
+                    try
+                    {
+                        await _imports.SaveBatchAsync(batch, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Only the progress shown is lost, not the rows; the next run saves it again.
+                        _logger.LogWarning(ex, "Import {BatchId}: progress after row {Row} could not be saved", batch.Id, run[^1].Row);
+                        _imports.Forget();
+                    }
                 }
             }
             finally
             {
-                batch.CreatedCount = plan.Count(r => r.Action == ImportPlannedRow.Create);
-                batch.UpdatedCount = plan.Count(r => r.Action == ImportPlannedRow.Update);
-                batch.SkippedCount = plan.Count(r => r.Action == ImportPlannedRow.Skip);
-                batch.FailedCount = plan.Count(r => r.Action == ImportPlannedRow.Error);
+                Count(batch, plan.Take(done));
                 batch.FinishedAtUtc = DateTime.UtcNow;
                 await _imports.SaveBatchAsync(batch, CancellationToken.None);
             }
@@ -504,6 +526,16 @@ public sealed class ImportService : IImportService
             if (!used.Contains("email")) return DomainErrors.Import.FieldRequired("the email address");
         }
         return mapped;
+    }
+
+    /// <summary>The batch's counts for the rows done so far.</summary>
+    private static void Count(ImportBatch batch, IEnumerable<ImportPlannedRow> done)
+    {
+        var rows = done.ToList();
+        batch.CreatedCount = rows.Count(r => r.Action == ImportPlannedRow.Create);
+        batch.UpdatedCount = rows.Count(r => r.Action == ImportPlannedRow.Update);
+        batch.SkippedCount = rows.Count(r => r.Action == ImportPlannedRow.Skip);
+        batch.FailedCount = rows.Count(r => r.Action == ImportPlannedRow.Error);
     }
 
     private static ImportResultDto Outcome(Guid? batchId, bool dryRun, string kind, CsvFile file, IReadOnlyList<ImportPlannedRow> plan) => new(
