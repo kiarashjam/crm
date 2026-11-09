@@ -286,6 +286,7 @@ try
     builder.Services.AddScoped<INotificationService, NotificationService>();
     builder.Services.AddScoped<ICollaborationNotifier, CollaborationNotifier>();
     builder.Services.AddScoped<IWorkQueueService, WorkQueueService>();
+    builder.Services.AddScoped<ICalendarService, CalendarService>();
     builder.Services.AddScoped<IAuditService, AuditService>();
     builder.Services.AddScoped<IAttachmentService, AttachmentService>();
     builder.Services.AddScoped<ICustomFieldService, CustomFieldService>();

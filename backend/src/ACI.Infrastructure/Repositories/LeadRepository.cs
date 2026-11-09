@@ -159,6 +159,22 @@ public sealed class LeadRepository : ILeadRepository
             query.OrderByDescending(l => l.UpdatedAtUtc ?? l.CreatedAtUtc).ThenBy(l => l.Id).Take(take), ct);
     }
 
+    public async Task<IReadOnlyList<Lead>> GetWithMeetingInMonthsAsync(Guid userId, Guid? organizationId, IReadOnlyList<string> months, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        if (months.Count == 0) return Array.Empty<Lead>();
+        // At most three months on a calendar page; the last is repeated so the query has
+        // one shape. Matched as text in SQL, so a date in another field of the same month
+        // gets through here, and the caller reads the meeting date itself.
+        var m1 = months[0];
+        var m2 = months.Count > 1 ? months[1] : m1;
+        var m3 = months.Count > 2 ? months[2] : m2;
+        var query = FilterByUserAndOrg(_db.Leads.AsNoTracking(), userId, organizationId)
+            .Where(l => l.PipelineState != null && l.PipelineState.Contains("meetingDate")
+                && (l.PipelineState.Contains(m1) || l.PipelineState.Contains(m2) || l.PipelineState.Contains(m3)));
+        if (mineOnly) query = query.Where(WorkScope.LeadOf(userId));
+        return await query.Include(l => l.AssignedToUser).OrderBy(l => l.Id).Take(take).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<Lead>> GetByUserIdAsync(Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await MaterializeListAsync(
             ApplySort(

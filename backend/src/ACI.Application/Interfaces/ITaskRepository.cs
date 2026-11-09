@@ -21,6 +21,8 @@ public interface ITaskRepository
     Task<IReadOnlyList<TaskItem>> GetMineAsync(Guid userId, Guid? organizationId, CancellationToken ct = default);
     /// <summary>Open tasks, the person's own or the whole team's, soonest due first: at most <paramref name="take"/>.</summary>
     Task<IReadOnlyList<TaskItem>> GetOpenAsync(Guid userId, Guid? organizationId, bool mineOnly, int take, CancellationToken ct = default);
+    /// <summary>Tasks due in [<paramref name="fromUtc"/>, <paramref name="toUtc"/>), less cancelled ones, by due time: at most <paramref name="take"/>.</summary>
+    Task<IReadOnlyList<TaskItem>> GetDueBetweenAsync(Guid userId, Guid? organizationId, DateTime fromUtc, DateTime toUtc, bool mineOnly, int take, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByUserIdAsync(Guid userId, Guid? organizationId, bool? overdueOnly, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByAssigneeIdAsync(Guid assigneeId, Guid userId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<TaskItem>> GetByStatusAsync(Guid userId, Guid? organizationId, ACI.Domain.Enums.TaskStatus status, CancellationToken ct = default);

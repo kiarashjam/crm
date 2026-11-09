@@ -451,6 +451,12 @@ public static class DomainErrors
     /// <summary>
     /// Deal-related errors.
     /// </summary>
+    public static class Calendar
+    {
+        public static readonly Error InvalidRange = new(
+            "Calendar.InvalidRange", "A calendar reads up to 45 days at a time, from a start before its end.");
+    }
+
     public static class Deal
     {
         public static readonly Error NotFound = new(

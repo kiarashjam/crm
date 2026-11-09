@@ -106,6 +106,16 @@ public sealed class ActivityRepository : IActivityRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Activity>> GetMeetingsBetweenAsync(Guid userId, Guid? organizationId, DateTime fromUtc, DateTime toUtc, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId)
+            .Where(a => a.OccurredAtUtc >= fromUtc && a.OccurredAtUtc < toUtc
+                && (a.Type == "meeting" || a.Type == "video" || a.Type == "demo"));
+        // A meeting of mine is one I logged: I was there.
+        if (mineOnly) query = query.Where(a => a.UserId == userId);
+        return await IncludeRelated(query).OrderBy(a => a.OccurredAtUtc).ThenBy(a => a.Id).Take(take).ToListAsync(ct);
+    }
+
     public async Task<Activity?> GetByIdAsync(Guid id, Guid userId, Guid? organizationId, CancellationToken ct = default) =>
         await IncludeRelated(FilterByUserAndOrg(_db.Activities.AsNoTracking(), userId, organizationId)).FirstOrDefaultAsync(a => a.Id == id, ct);
 

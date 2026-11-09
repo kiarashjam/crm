@@ -127,6 +127,14 @@ public sealed class TaskRepository : ITaskRepository
         return await OrderTasks(IncludeRelations(query)).Take(take).ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<TaskItem>> GetDueBetweenAsync(Guid userId, Guid? organizationId, DateTime fromUtc, DateTime toUtc, bool mineOnly, int take, CancellationToken ct = default)
+    {
+        var query = FilterByUserAndOrg(_db.TaskItems.AsNoTracking(), userId, organizationId)
+            .Where(t => t.DueDateUtc >= fromUtc && t.DueDateUtc < toUtc && t.Status != Domain.Enums.TaskStatus.Cancelled);
+        if (mineOnly) query = query.Where(WorkScope.TaskOf(userId));
+        return await IncludeRelations(query).OrderBy(t => t.DueDateUtc).ThenBy(t => t.Id).Take(take).ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<TaskItem>> GetByUserIdAsync(Guid userId, Guid? organizationId, bool? overdueOnly, CancellationToken ct = default)
     {
         var query = IncludeRelations(FilterByUserAndOrg(_db.TaskItems, userId, organizationId));
