@@ -400,6 +400,22 @@ public static class DomainErrors
     }
 
     /// <summary>
+    /// Errors for the team's "not the same" decisions on duplicates. Not "Duplicate.": a code
+    /// with that word in it is answered as a conflict (409), and these are bad requests.
+    /// </summary>
+    public static class Dedupe
+    {
+        public static readonly Error InvalidKind = new(
+            "Dedupe.InvalidKind", "Unknown kind of record. Use one of: " + string.Join(", ", ACI.Domain.Entities.DuplicateKinds.All));
+
+        public static Error RecordCount(int max) => new(
+            "Dedupe.RecordCount", $"Name between two and {max} different records");
+
+        public static readonly Error RecordsNotInWorkspace = new(
+            "Dedupe.RecordsNotInWorkspace", "Some of these records were not found in this workspace");
+    }
+
+    /// <summary>
     /// Errors for the records a write links to and the person it assigns. None ends in
     /// ".NotFound": the request is at fault, so they are 400s, and an id from another
     /// workspace reads exactly like one that does not exist.

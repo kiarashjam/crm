@@ -437,21 +437,17 @@ public class ContactService : IContactService
         return Result.Success();
     }
 
+    // "Same" as the duplicate rules read it (MatchKeys): one address in any case, one
+    // number however it is written, one name with or without accents and extra spaces.
     private static IReadOnlyList<ContactFieldComparisonDto> Compare(Contact yours, Contact theirs) =>
     [
-        Field("Name", yours.Name, theirs.Name, Normalize(yours.Name) == Normalize(theirs.Name)),
-        Field("Email", yours.Email, theirs.Email, yours.Email.Trim().ToLowerInvariant() == theirs.Email.Trim().ToLowerInvariant()),
-        Field("Phone", yours.Phone, theirs.Phone, Digits(yours.Phone) == Digits(theirs.Phone) && Digits(yours.Phone).Length >= 7),
+        Field("Name", yours.Name, theirs.Name, MatchKeys.Name(yours.Name) is { } name && name == MatchKeys.Name(theirs.Name)),
+        Field("Email", yours.Email, theirs.Email, MatchKeys.Email(yours.Email) is { } email && email == MatchKeys.Email(theirs.Email)),
+        Field("Phone", yours.Phone, theirs.Phone, MatchKeys.Phone(yours.Phone) is { } phone && phone == MatchKeys.Phone(theirs.Phone)),
     ];
 
     private static ContactFieldComparisonDto Field(string name, string? yours, string? theirs, bool same) =>
         new(name, string.IsNullOrWhiteSpace(yours) ? null : yours.Trim(), string.IsNullOrWhiteSpace(theirs) ? null : theirs.Trim(), same);
-
-    private static string Normalize(string? value) =>
-        string.Join(' ', (value ?? "").Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
-
-    private static string Digits(string? value) =>
-        new string((value ?? "").Where(char.IsDigit).ToArray());
 
     private static ContactDto Map(Contact e, DateTime? lastActivityAtUtc = null) =>
         new ContactDto(

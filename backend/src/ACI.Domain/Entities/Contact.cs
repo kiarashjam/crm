@@ -38,6 +38,20 @@ public class Contact : Common.BaseEntity
     /// </summary>
     public Guid? ImportBatchId { get; set; }
 
+    /// <summary>
+    /// The phone as duplicates are matched on it: its last nine digits, so "+41 79 123 45 67"
+    /// and "079 123 45 67" are one number. Null when it has fewer than seven digits. Written
+    /// on every save (AppDbContext), never by hand.
+    /// </summary>
+    public string? PhoneKey { get; set; }
+
+    /// <summary>
+    /// The name as duplicates are matched on it: lower case, no accents, single spaces. Empty
+    /// when the name is too short to match on; null only on a row from before the column,
+    /// until start-up fills it. Written on every save (AppDbContext), never by hand.
+    /// </summary>
+    public string? NameKey { get; set; }
+
     public User User { get; set; } = null!;
     public User? UpdatedByUser { get; set; }
     public User? ArchivedByUser { get; set; }

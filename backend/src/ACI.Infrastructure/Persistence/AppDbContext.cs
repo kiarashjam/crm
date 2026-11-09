@@ -70,6 +70,7 @@ public class AppDbContext : DbContext
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
+    public DbSet<DuplicateDecision> DuplicateDecisions => Set<DuplicateDecision>();
 
     /// <summary>
     /// Whether saving writes audit lines. Off only while an organization is copied: its
@@ -112,6 +113,7 @@ public class AppDbContext : DbContext
         StampClubDocumentVersions();
         StampDealAmounts();
         StampImportBatch();
+        StampContactKeys();
         await RecordDependents.RemoveAsync(this, cancellationToken);
         var events = RecordsAuditTrail ? await AuditTrail.CaptureAsync(this, _currentUser, cancellationToken) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -132,6 +134,7 @@ public class AppDbContext : DbContext
         StampClubDocumentVersions();
         StampDealAmounts();
         StampImportBatch();
+        StampContactKeys();
         RecordDependents.Remove(this);
         var events = RecordsAuditTrail ? AuditTrail.Capture(this, _currentUser) : Array.Empty<AuditEvent>();
         AuditEvents.AddRange(events);
@@ -180,6 +183,19 @@ public class AppDbContext : DbContext
             }
             else
                 deal.Amount = MoneyText.StoredAmount(deal.Value);
+        }
+    }
+
+    // The keys duplicates are matched on (Contact.PhoneKey, NameKey), written from the phone
+    // and the name on every save, whoever saves: the API, an import, a merge, the cloner.
+    private void StampContactKeys()
+    {
+        foreach (var entry in ChangeTracker.Entries<Contact>())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified)) continue;
+            var contact = entry.Entity;
+            contact.PhoneKey = MatchKeys.Phone(contact.Phone);
+            contact.NameKey = MatchKeys.Name(contact.Name) ?? "";
         }
     }
 

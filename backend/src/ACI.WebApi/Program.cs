@@ -274,6 +274,7 @@ try
     builder.Services.AddScoped<IComposedEmailService, ComposedEmailService>();
     builder.Services.AddScoped<IContractService, ContractService>();
     builder.Services.AddScoped<ICompanyService, CompanyService>();
+    builder.Services.AddScoped<IDuplicateService, DuplicateService>();
     builder.Services.AddScoped<IProductService, ProductService>();
     builder.Services.AddScoped<IAutomationService, AutomationService>();
     builder.Services.AddScoped<IAutomationEngine, AutomationEngine>();
@@ -1764,6 +1765,57 @@ try
                         CREATE INDEX [IX_Companies_ImportBatchId] ON [Companies] ([ImportBatchId]);
                 END TRY BEGIN CATCH END CATCH;
             ");
+
+            // Duplicates (see DuplicateService). Contacts carry the keys they are matched on, and
+            // the team's "not the same" decisions are kept in DuplicateDecisions. The contact
+            // indexes go in a batch of their own, after the columns they cover exist, each
+            // guarded and caught on its own as above.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.Contacts', N'PhoneKey') IS NULL
+                    ALTER TABLE [Contacts] ADD [PhoneKey] nvarchar(16) NULL;
+                IF COL_LENGTH(N'dbo.Contacts', N'NameKey') IS NULL
+                    ALTER TABLE [Contacts] ADD [NameKey] nvarchar(256) NULL;
+                IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'DuplicateDecisions')
+                BEGIN
+                    CREATE TABLE [DuplicateDecisions] (
+                        [Id] uniqueidentifier NOT NULL,
+                        [OrganizationId] uniqueidentifier NULL,
+                        [UserId] uniqueidentifier NOT NULL,
+                        [Kind] nvarchar(16) NOT NULL,
+                        [RecordIdA] uniqueidentifier NOT NULL,
+                        [RecordIdB] uniqueidentifier NOT NULL,
+                        [CreatedAtUtc] datetime2 NOT NULL,
+                        CONSTRAINT [PK_DuplicateDecisions] PRIMARY KEY ([Id]),
+                        CONSTRAINT [FK_DuplicateDecisions_Organizations_OrganizationId] FOREIGN KEY ([OrganizationId])
+                            REFERENCES [Organizations] ([Id]),
+                        CONSTRAINT [FK_DuplicateDecisions_Users_UserId] FOREIGN KEY ([UserId])
+                            REFERENCES [Users] ([Id])
+                    );
+                    CREATE INDEX [IX_DuplicateDecisions_OrganizationId_Kind] ON [DuplicateDecisions] ([OrganizationId], [Kind]);
+                    CREATE INDEX [IX_DuplicateDecisions_UserId] ON [DuplicateDecisions] ([UserId]);
+                END;
+            ");
+            await db.Database.ExecuteSqlRawAsync(@"
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Contacts_OrganizationId_PhoneKey')
+                        CREATE INDEX [IX_Contacts_OrganizationId_PhoneKey] ON [Contacts] ([OrganizationId], [PhoneKey]);
+                END TRY BEGIN CATCH END CATCH;
+                BEGIN TRY
+                    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Contacts_OrganizationId_NameKey')
+                        CREATE INDEX [IX_Contacts_OrganizationId_NameKey] ON [Contacts] ([OrganizationId], [NameKey]);
+                END TRY BEGIN CATCH END CATCH;
+            ");
+            // The match keys of contacts saved before those columns (see ContactMatchKeys). On
+            // its own: a failure is logged and retried on the next start.
+            try
+            {
+                var keyed = await ACI.WebApi.ContactMatchKeys.FillMissingAsync(db);
+                if (keyed > 0) Log.Information("Gave {Count} contacts the keys duplicates are matched on", keyed);
+            }
+            catch (Exception keysEx)
+            {
+                Log.Warning(keysEx, "Could not give older contacts their duplicate-matching keys; it will be retried on the next start");
+            }
             await db.Database.ExecuteSqlRawAsync(@"
                 -- Add missing columns to Templates table if they don't exist
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Templates') AND name = 'IsSystemTemplate')

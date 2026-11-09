@@ -449,17 +449,40 @@ public sealed class ContactRepository : IContactRepository
 
     public async Task<IReadOnlyList<Contact>> FindLookalikesAsync(Contact contact, CancellationToken ct = default)
     {
-        var name = NormalizeName(contact.Name);
-        var email = contact.Email.Trim().ToLowerInvariant();
-        var phone = Digits(contact.Phone);
-
+        // The same rules as the Duplicates page (DuplicateRules), on the indexed keys: this
+        // runs on every contact page, and it used to read the whole workspace each time.
+        // It also compared every digit of the phones, so "+41 79 123 45 67" and
+        // "079 123 45 67" never matched.
+        var self = DuplicateRules.PersonOf(contact.Id, contact.Email, contact.Phone, contact.Name, contact.CompanyId);
+        var email = self.Email;
+        var phone = self.Phone;
+        var name = self.Name;
         var others = await FilterByUserAndOrg(_db.Contacts.AsNoTracking(), contact.UserId, contact.OrganizationId)
-            .Where(c => c.Id != contact.Id && !c.IsArchived)
+            .Where(c => c.Id != contact.Id && !c.IsArchived
+                && ((email != null && c.Email.Trim().ToLower() == email)
+                    || (phone != null && c.PhoneKey == phone)
+                    || (name != null && c.NameKey == name)))
+            .OrderBy(c => c.Name).ThenBy(c => c.Id)
+            .Take(DuplicateRules.MaxShared)
             .ToListAsync(ct);
+        if (others.Count == 0) return others;
+
+        // Not offered again once someone in the workspace said they are not the same.
+        var decisions = _db.DuplicateDecisions.AsNoTracking().Where(d => d.Kind == DuplicateKinds.Contacts
+            && (d.RecordIdA == contact.Id || d.RecordIdB == contact.Id));
+        decisions = contact.OrganizationId == null
+            ? decisions.Where(d => d.UserId == contact.UserId && d.OrganizationId == null)
+            : decisions.Where(d => d.OrganizationId == contact.OrganizationId);
+        var notSame = (await decisions.Select(d => d.RecordIdA == contact.Id ? d.RecordIdB : d.RecordIdA).ToListAsync(ct)).ToHashSet();
 
         return others
-            .Where(other => IsLookalike(name, email, phone, other))
+            .Where(o => !notSame.Contains(o.Id))
+            .Select(o => (Other: o, Reasons: DuplicateRules.Matches(self, DuplicateRules.PersonOf(o.Id, o.Email, o.Phone, o.Name, o.CompanyId))))
+            .Where(x => x.Reasons.Count > 0)
+            .OrderByDescending(x => x.Reasons.Count)
+            .ThenBy(x => x.Reasons.Contains(DuplicateRules.SameEmail) ? 0 : 1)
             .Take(5)
+            .Select(x => x.Other)
             .ToList();
     }
 
@@ -634,20 +657,4 @@ public sealed class ContactRepository : IContactRepository
         tracked.ConvertedToContactId = contactId;
         lead.ConvertedToContactId = contactId;
     }
-
-    private static bool IsLookalike(string name, string email, string phone, Contact other)
-    {
-        var sameName = name.Length > 1 && NormalizeName(other.Name) == name;
-        var sameEmail = email.Length > 0 && other.Email.Trim().ToLowerInvariant() == email;
-        var otherPhone = Digits(other.Phone);
-        var samePhone = phone.Length >= 7 && otherPhone == phone;
-        var score = (sameEmail ? 2 : 0) + (sameName ? 1 : 0) + (samePhone ? 1 : 0);
-        return score >= 2;
-    }
-
-    private static string NormalizeName(string? value) =>
-        string.Join(' ', (value ?? "").Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries));
-
-    private static string Digits(string? value) =>
-        new string((value ?? "").Where(char.IsDigit).ToArray());
 }
