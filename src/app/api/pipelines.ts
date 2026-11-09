@@ -1,14 +1,21 @@
 import type { Pipeline } from './types';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 
-type PipelineRaw = { id: string; organizationId: string; name: string; displayOrder: number; dealStages?: { id: string; pipelineId: string; name: string; displayOrder: number; isWon: boolean; isLost: boolean }[] };
+type PipelineRaw = {
+  id: string; organizationId: string; name: string; displayOrder: number; staleDealDays?: number | null;
+  dealStages?: { id: string; pipelineId: string; name: string; displayOrder: number; isWon: boolean; isLost: boolean; probability?: number | null }[];
+};
 function mapPipeline(p: PipelineRaw): Pipeline {
   return {
     id: p.id,
     organizationId: p.organizationId,
     name: p.name,
     displayOrder: p.displayOrder,
-    dealStages: p.dealStages?.map((s) => ({ id: s.id, pipelineId: s.pipelineId, name: s.name, displayOrder: s.displayOrder, isWon: s.isWon, isLost: s.isLost })),
+    staleDealDays: p.staleDealDays ?? undefined,
+    dealStages: p.dealStages?.map((s) => ({
+      id: s.id, pipelineId: s.pipelineId, name: s.name, displayOrder: s.displayOrder, isWon: s.isWon, isLost: s.isLost,
+      probability: s.probability ?? undefined,
+    })),
   };
 }
 
@@ -40,8 +47,14 @@ export async function createPipeline(params: { name: string; displayOrder?: numb
   return p ? mapPipeline(p) : null;
 }
 
-/** Update a pipeline (Owner/Manager only). */
-export async function updatePipeline(id: string, params: { name?: string; displayOrder?: number }): Promise<Pipeline | null> {
+/**
+ * Update a pipeline (Owner/Manager only). `staleDealDays` sets its own (0 never);
+ * `followWorkspaceStaleDays` drops it, so the workspace's applies.
+ */
+export async function updatePipeline(
+  id: string,
+  params: { name?: string; displayOrder?: number; staleDealDays?: number; followWorkspaceStaleDays?: boolean },
+): Promise<Pipeline | null> {
   if (servesDemoData()) return null;
   const p = await authFetchJson<PipelineRaw>(`/api/pipelines/${id}`, {
     method: 'PUT',
