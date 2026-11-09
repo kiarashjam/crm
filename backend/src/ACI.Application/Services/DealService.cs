@@ -143,12 +143,7 @@ public class DealService : IDealService
             return DomainErrors.Deal.NotFound;
         }
 
-        var lastByDeal = await _activityRepository.GetLastActivityByDealIdsAsync(
-            userId, organizationId, new[] { id }, ct);
-        var pace = await _repository.GetPaceAsync(userId, organizationId, new[] { id }, ct);
-
-        return Map(entity, lastByDeal.TryGetValue(id, out var last) ? last : null,
-            pace.GetValueOrDefault(id), await WorkspaceStaleDaysAsync(organizationId, ct), DateTime.UtcNow);
+        return await MapWithPaceAsync(entity, userId, organizationId, ct);
     }
 
     /// <inheritdoc />
@@ -227,7 +222,7 @@ public class DealService : IDealService
             "Deal {DealId} created successfully for user {UserId}",
             entity.Id, userId);
 
-        return Map(entity, null);
+        return await MapSavedAsync(entity, userId, organizationId, ct);
     }
 
     /// <inheritdoc />
@@ -404,7 +399,7 @@ public class DealService : IDealService
             "Deal {DealId} updated successfully",
             id);
 
-        return Map(updated, null);
+        return await MapSavedAsync(updated, userId, organizationId, ct);
     }
 
     /// <inheritdoc />
@@ -533,6 +528,30 @@ public class DealService : IDealService
     {
         if (organizationId is not Guid org || _organizations == null) return StaleDeals.DefaultDays;
         return (await _organizations.GetByIdAsync(org, ct))?.StaleDealDays ?? StaleDeals.DefaultDays;
+    }
+
+    /// <summary>A deal as reading it returns it: its last activity, when it came into its stage, and whether it has gone stale.</summary>
+    private async Task<DealDto> MapWithPaceAsync(Deal deal, Guid userId, Guid? organizationId, CancellationToken ct)
+    {
+        var lastByDeal = await _activityRepository.GetLastActivityByDealIdsAsync(userId, organizationId, new[] { deal.Id }, ct);
+        var pace = await _repository.GetPaceAsync(userId, organizationId, new[] { deal.Id }, ct);
+        return Map(deal, lastByDeal.TryGetValue(deal.Id, out var last) ? last : null,
+            pace.GetValueOrDefault(deal.Id), await WorkspaceStaleDaysAsync(organizationId, ct), DateTime.UtcNow);
+    }
+
+    /// <summary>
+    /// A deal just created or saved, answered as reading it would be. Answered bare, a
+    /// save said no history knew when the deal came into its stage right after writing
+    /// that very line, and called a stale deal fresh: the deal page took the answer and
+    /// showed "not recorded" and no stale flag until it was opened again.
+    /// </summary>
+    private async Task<DealDto> MapSavedAsync(Deal saved, Guid userId, Guid? organizationId, CancellationToken ct)
+    {
+        // Read again for what the save may have changed around it: the pipeline whose
+        // stale days apply, and the owner, company and stage names it shows. Someone who
+        // can no longer see it (an owner who handed a private deal on) gets it as saved.
+        var deal = await _repository.GetByIdAsync(saved.Id, userId, organizationId, ct) ?? saved;
+        return await MapWithPaceAsync(deal, userId, organizationId, ct);
     }
 
     /// <summary>A deal with how it is moving: when it came into its stage, when it was last worked on, and whether it has gone stale.</summary>

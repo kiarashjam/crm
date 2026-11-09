@@ -26,6 +26,10 @@ public class DealServiceTests
         _dealRepositoryMock
             .Setup(r => r.GetPaceAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, DealPaceInfo>());
+        // Nothing logged on them either; a save answers with the deal as a read does.
+        _activityRepositoryMock
+            .Setup(r => r.GetLastActivityByDealIdsAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DateTime>());
 
         _sut = new DealService(
             _dealRepositoryMock.Object,

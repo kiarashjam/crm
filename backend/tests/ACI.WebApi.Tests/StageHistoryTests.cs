@@ -209,6 +209,44 @@ public class StageHistoryTests
         (await HistoryAsync(board.Owner, deal)).Should().ContainSingle();
     }
 
+    /// <summary>
+    /// The deal page shows what a save answers. Answered without the history, a close
+    /// said "not recorded" for the time in stage right after writing the move, and a
+    /// stale deal lost its flag when it was only made private.
+    /// </summary>
+    [Fact]
+    public async Task ASaveAnswersWithTheDealsTimeInStageAndWhetherItIsStale()
+    {
+        using var board = await BoardAsync();
+        var created = await Json(await board.Owner.PostAsync("/api/deals", Body(new { name = "Gala", amount = 100, dealStageId = board.Proposal })));
+        created.GetProperty("stageEnteredAtUtc").GetDateTime().Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1),
+            "it came into Proposal as it was created");
+        created.GetProperty("staleAfterDays").GetInt32().Should().Be(30);
+        created.GetProperty("dealStageName").GetString().Should().Be("Proposal");
+
+        var closed = await Json(await board.Owner.PutAsync($"/api/deals/{created.GetProperty("id").GetGuid()}", Body(new { isWon = true })));
+        closed.GetProperty("dealStageName").GetString().Should().Be("Signed");
+        closed.GetProperty("stageEnteredAtUtc").GetDateTime().Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1),
+            "the close has just moved it into Signed, and written so");
+        closed.GetProperty("isStale").GetBoolean().Should().BeFalse();
+
+        // Nothing has happened to this one for forty days; an edit is not something happening to it.
+        var quiet = Guid.NewGuid();
+        using (var scope = board.Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Deals.Add(new Deal
+            {
+                Id = quiet, UserId = board.OwnerId, OrganizationId = board.Org, Name = "Quiet club", Value = "500", Amount = 500m, Currency = "CHF",
+                PipelineId = board.Pipeline, DealStageId = board.Qualification, Stage = "Qualification", CreatedAtUtc = DateTime.UtcNow.AddDays(-40),
+            });
+            await db.SaveChangesAsync();
+        }
+        var madePrivate = await Json(await board.Owner.PutAsync($"/api/deals/{quiet}", Body(new { isPrivate = true })));
+        madePrivate.GetProperty("isStale").GetBoolean().Should().BeTrue();
+        madePrivate.GetProperty("idleSinceUtc").GetDateTime().Should().BeCloseTo(DateTime.UtcNow.AddDays(-40), TimeSpan.FromMinutes(5));
+    }
+
     [Fact]
     public async Task TheLinesAreStoredWithTheDealsTheyDescribe()
     {
