@@ -416,9 +416,16 @@ function leadSuggestion(step: NextAction, lead: SuggestableLead): WorkSuggestion
   }, canWrite ? LEAD_BRIEF[step.kind] ?? null : null);
 }
 
+/** "Same phone · Same name", as the group's reason reads, as a sentence: "They have the same phone and the same name". */
+function sharedSentence(reason: string | undefined, fallback: string): string {
+  const parts = (reason ?? '').split('·').map((part) => part.trim().toLowerCase().replace(/^same /, 'the same ')).filter(Boolean);
+  if (parts.length === 0) return fallback;
+  return `They have ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`}`;
+}
+
 function duplicateSuggestions(
   kind: 'contacts' | 'companies',
-  groups: { records: { id: string; name?: string | null; email?: string | null; doNotContact?: boolean | null }[] }[],
+  groups: { reason?: string; records: { id: string; name?: string | null; email?: string | null; doNotContact?: boolean | null }[] }[],
 ): WorkSuggestion[] {
   const people = kind === 'contacts';
   const rows: WorkSuggestion[] = [];
@@ -432,15 +439,23 @@ function duplicateSuggestions(
       ?? first;
     const rest = records.filter((record) => record.id !== primary.id);
     const kept = primary.name?.trim() || (people ? 'the contact with an email' : 'the first company');
+    // Who goes, by name, and why: the merge is one click from this line, and people who
+    // only share a phone (a household's landline, a switchboard) can be two people.
+    const describe = (record: (typeof rest)[number]) => {
+      const name = record.name?.trim();
+      const email = record.email?.trim();
+      return name && email ? `${name} (${email})` : name || email || 'a record with no name';
+    };
+    const going = rest.slice(0, 3).map(describe).join('; ') + (rest.length > 3 ? `; and ${rest.length - 3} more` : '');
     rows.push({
       key: index === 0 ? `duplicates:${kind}` : `duplicates:${kind}:${primary.id}`,
       href: '/duplicates',
       name: primary.name?.trim() || (people ? 'Duplicate contacts' : 'Duplicate companies'),
       list: 'Duplicates',
-      action: `Merge ${rest.length} duplicate${rest.length === 1 ? '' : 's'} into ${kept}.`,
+      action: `Merge ${rest.length} duplicate${rest.length === 1 ? '' : 's'} into ${kept}: ${going}.`,
       because: people
-        ? 'They share an email or a name. The record with an email is kept.'
-        : 'They share a domain or a name. The first record in the group is kept.',
+        ? `${sharedSentence(group.reason, 'They share an email, a phone or a name')}. The record with an email is kept.`
+        : `${sharedSentence(group.reason, 'They share a domain or a name')}. The first record in the group is kept.`,
       priority: 62,
       mergeKind: kind,
       mergePrimaryId: primary.id,

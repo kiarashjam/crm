@@ -164,6 +164,23 @@ describe('collectWork', () => {
     expect(collectWork({ contacts, notSame: ['c1|c2'] }, now, 10).map((item) => item.key)).not.toContain('duplicates:contacts');
   });
 
+  it('names who a merge would fold in, and why they look alike, before the one-click merge', () => {
+    // Two people on one household landline: the merge is one click from this line.
+    const contacts = [
+      { id: 'c1', name: 'Anna Keller', email: 'anna@keller.ch', phone: '044 123 45 67' },
+      { id: 'c2', name: 'Marc Keller', email: 'marc@keller.ch', phone: '+41 44 123 45 67' },
+    ];
+    const merge = collectWork({ contacts }, now, 10).find((item) => item.key === 'duplicates:contacts');
+    expect(merge?.action).toBe('Merge 1 duplicate into Anna Keller: Marc Keller (marc@keller.ch).');
+    expect(merge?.because).toBe('They have the same phone. The record with an email is kept.');
+
+    const twice = collectWork({ contacts: [
+      { id: 'm1', name: 'Marc Dubois', email: 'marc@gmail.com', phone: '+41 79 123 45 67' },
+      { id: 'm2', name: 'Marc Dubois', email: 'm.dubois@firm.ch', phone: '079 123 45 67' },
+    ] }, now, 10).find((item) => item.key === 'duplicates:contacts');
+    expect(twice?.because).toBe('They have the same phone and the same name. The record with an email is kept.');
+  });
+
   it('asks for a way to reach a lead before calling, and does not draft a message', () => {
     const ranked = collectWork({ leads: [{ id: 'l1', name: 'Ada' }] }, now);
     expect(ranked[0]?.action).toMatch(/no way to reach/);
