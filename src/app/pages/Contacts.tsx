@@ -4,7 +4,7 @@ import {
   Search, Plus, Pencil, Trash2, Building2, Mail, Phone, Briefcase,
   User, X, SlidersHorizontal, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Activity as ActivityIcon,
   MessageSquare, Clock, Users, Sparkles, Paperclip, BarChart3, AlertCircle,
-  ExternalLink, Archive, ArchiveRestore, Upload
+  ExternalLink, Archive, ArchiveRestore, Upload, Download
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -12,9 +12,11 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import ExportCsvButton from '@/app/components/ExportCsvButton';
 import { getContactsPaged, createContact, updateContact, deleteContact, getCompanies, getDealsPaged, messages } from '@/app/api';
-import { archiveContact, unarchiveContact } from '@/app/api/contacts';
+import {
+  archiveContact, unarchiveContact, exportContacts, getContactStats,
+  type ContactActivity, type ContactListFilters, type ContactSortField, type ContactStats, type ContactStatus,
+} from '@/app/api/contacts';
 import { getTasks } from '@/app/api/tasks';
 import type { Contact, Company, Deal, TaskItem } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
@@ -62,6 +64,16 @@ import {
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useMoney } from '@/app/hooks/useMoney';
 
+const SORTS: ContactSortField[] = ['name', 'email', 'lastActivity', 'createdAt'];
+
+/** "lastActivity-desc" from the address or the sort menu; anything else is name A-Z. */
+function parseSort(value: string | null): [ContactSortField, 'asc' | 'desc'] {
+  const [field, dir] = (value ?? '').split('-');
+  return SORTS.includes(field as ContactSortField)
+    ? [field as ContactSortField, dir === 'desc' ? 'desc' : 'asc']
+    : ['name', 'asc'];
+}
+
 export default function Contacts() {
   const money = useMoney();
   const navigate = useNavigate();
@@ -71,8 +83,19 @@ export default function Contacts() {
   const currentPage = Number(searchParams.get('page')) || 1;
   const pageSize = Number(searchParams.get('pageSize')) || 20;
   const searchFromUrl = searchParams.get('search') || '';
+  // The filters and the order are in the address too, so a filtered list survives a
+  // reload and can be shared, and the server applies them to every contact.
+  const statusParam = searchParams.get('status');
+  const status: ContactStatus = statusParam === 'archived' || statusParam === 'all' ? statusParam : 'active';
+  const filterCompany = searchParams.get('company') || 'all';
+  const activityParam = searchParams.get('activity');
+  const filterActivity: 'all' | ContactActivity = activityParam === 'recent' || activityParam === 'quiet' ? activityParam : 'all';
+  const [sortField, sortDirection] = parseSort(searchParams.get('sort'));
   
   const [contacts, setContacts] = useState<Contact[]>([]);
+  // The figures above the list, over the whole workspace (null until read, or if they could not be).
+  const [stats, setStats] = useState<ContactStats | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
   // HP-9: Deals linked to contacts
   const [allDeals, setAllDeals] = useState<Deal[]>([]);
@@ -98,12 +121,32 @@ export default function Contacts() {
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   
-  // Filter & Sort state (client-side for additional filters)
-  const [filterCompany, setFilterCompany] = useState<string>('all');
-  const [filterActivity, setFilterActivity] = useState<'all' | 'recent' | 'inactive'>('all');
-  const [sortField, setSortField] = useState<'name' | 'email' | 'lastActivity' | 'createdAt'>('name');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showFilters, setShowFilters] = useState(false);
+
+  /** Change one filter in the address, back on the first page: page 3 of another list means nothing. */
+  const setListParam = (key: string, value: string | null) => {
+    const params = new URLSearchParams(searchParams);
+    if (value === null) params.delete(key);
+    else params.set(key, value);
+    params.set('page', '1');
+    setSearchParams(params);
+  };
+  const setStatus = (next: ContactStatus) => setListParam('status', next === 'active' ? null : next);
+  const setFilterCompany = (next: string) => setListParam('company', next === 'all' ? null : next);
+  const setFilterActivity = (next: 'all' | ContactActivity) => setListParam('activity', next === 'all' ? null : next);
+  const setSort = (field: ContactSortField, dir: 'asc' | 'desc') =>
+    setListParam('sort', field === 'name' && dir === 'asc' ? null : `${field}-${dir}`);
+
+  // What the server is asked for, the list and the export alike.
+  const listFilters = useMemo<ContactListFilters>(() => ({
+    search: debouncedSearch || undefined,
+    status,
+    companyId: ['all', 'some', 'none'].includes(filterCompany) ? undefined : filterCompany,
+    hasCompany: filterCompany === 'some' ? true : filterCompany === 'none' ? false : undefined,
+    activity: filterActivity === 'all' ? undefined : filterActivity,
+    sortBy: sortField,
+    sortDir: sortDirection,
+  }), [debouncedSearch, status, filterCompany, filterActivity, sortField, sortDirection]);
 
   // Debounce search input
   useEffect(() => {
@@ -130,13 +173,16 @@ export default function Contacts() {
     if (loadedOnceRef.current) setRefreshing(true);
     else setLoading(true);
     try {
-      const [pagedResult, companiesData, dealsResult, tasksResult] = await Promise.all([
-        getContactsPaged({ page: currentPage, pageSize, search: debouncedSearch || undefined }),
+      const [pagedResult, statsData, companiesData, dealsResult, tasksResult] = await Promise.all([
+        getContactsPaged({ page: currentPage, pageSize, ...listFilters }),
+        // The figures help; the page still works without them.
+        getContactStats().catch(() => null),
         getCompanies(),
         getDealsPaged({ page: 1, pageSize: 100 }), // server clamps to max 100
         getTasks(), // HP-12: Load all tasks for contact visibility
       ]);
       setContacts(pagedResult.items);
+      setStats(statsData);
       setTotalCount(pagedResult.totalCount);
       setTotalPages(pagedResult.totalPages);
       setCompanies(companiesData);
@@ -150,7 +196,7 @@ export default function Contacts() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [currentPage, pageSize, debouncedSearch]);
+  }, [currentPage, pageSize, listFilters]);
 
   useEffect(() => {
     fetchContacts();
@@ -170,111 +216,6 @@ export default function Contacts() {
     setSearchParams(params);
   };
 
-  // Calculate contact statistics
-  const contactStats = useMemo(() => {
-    const total = contacts.length;
-    const withCompany = contacts.filter(c => c.companyId).length;
-    const withPhone = contacts.filter(c => c.phone).length;
-    
-    // Calculate recently active (within 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentlyActive = contacts.filter(c => {
-      if (!c.lastActivityAtUtc) return false;
-      return new Date(c.lastActivityAtUtc) >= thirtyDaysAgo;
-    }).length;
-    
-    // Calculate contacts added this week
-    const startOfWeek = new Date();
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
-    const thisWeek = contacts.filter(c => {
-      if (!c.createdAtUtc) return false;
-      return new Date(c.createdAtUtc) >= startOfWeek;
-    }).length;
-    
-    // Inactive contacts (no activity in 90 days)
-    const ninetyDaysAgo = new Date();
-    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    const inactive = contacts.filter(c => {
-      if (!c.lastActivityAtUtc) return true;
-      return new Date(c.lastActivityAtUtc) < ninetyDaysAgo;
-    }).length;
-    
-    return { total, withCompany, withPhone, recentlyActive, thisWeek, inactive };
-  }, [contacts]);
-
-  const filteredContacts = useMemo(() => {
-    let result = [...contacts];
-    
-    // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.email.toLowerCase().includes(q) ||
-          (c.phone && c.phone.includes(q)) ||
-          (c.jobTitle && c.jobTitle.toLowerCase().includes(q))
-      );
-    }
-    
-    // Company filter
-    if (filterCompany !== 'all') {
-      if (filterCompany === 'none') {
-        result = result.filter(c => !c.companyId);
-      } else if (filterCompany === 'some') {
-        result = result.filter(c => !!c.companyId);
-      } else {
-        result = result.filter(c => c.companyId === filterCompany);
-      }
-    }
-    
-    // Activity filter
-    if (filterActivity !== 'all') {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
-      if (filterActivity === 'recent') {
-        result = result.filter(c => {
-          if (!c.lastActivityAtUtc) return false;
-          return new Date(c.lastActivityAtUtc) >= thirtyDaysAgo;
-        });
-      } else if (filterActivity === 'inactive') {
-        result = result.filter(c => {
-          if (!c.lastActivityAtUtc) return true;
-          return new Date(c.lastActivityAtUtc) < thirtyDaysAgo;
-        });
-      }
-    }
-    
-    // Sorting
-    result.sort((a, b) => {
-      let comparison = 0;
-      switch (sortField) {
-        case 'name':
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case 'email':
-          comparison = a.email.localeCompare(b.email);
-          break;
-        case 'lastActivity':
-          const aDate = a.lastActivityAtUtc ? new Date(a.lastActivityAtUtc).getTime() : 0;
-          const bDate = b.lastActivityAtUtc ? new Date(b.lastActivityAtUtc).getTime() : 0;
-          comparison = aDate - bDate;
-          break;
-        case 'createdAt':
-          const aCreated = a.createdAtUtc ? new Date(a.createdAtUtc).getTime() : 0;
-          const bCreated = b.createdAtUtc ? new Date(b.createdAtUtc).getTime() : 0;
-          comparison = aCreated - bCreated;
-          break;
-      }
-      return sortDirection === 'asc' ? comparison : -comparison;
-    });
-    
-    return result;
-  }, [contacts, searchQuery, filterCompany, filterActivity, sortField, sortDirection]);
-
   // Count active filters
   const activeFilterCount = [
     filterCompany !== 'all',
@@ -283,9 +224,28 @@ export default function Contacts() {
 
   // Clear all filters
   const clearFilters = () => {
-    setFilterCompany('all');
-    setFilterActivity('all');
+    const params = new URLSearchParams(searchParams);
+    for (const key of ['company', 'activity', 'status', 'search']) params.delete(key);
+    params.set('page', '1');
+    setSearchParams(params);
     setSearchQuery('');
+  };
+  const filtered = activeFilterCount > 0 || status !== 'active' || !!debouncedSearch;
+
+  // Every contact the list shows with these filters, written by the server: the page used
+  // to export the twenty on screen.
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const result = await exportContacts(listFilters);
+      if (!result) toast.success('Contacts exported');
+      else if (result.exported < result.total) toast.success(`Exported the first ${result.exported.toLocaleString()} of ${result.total.toLocaleString()} contacts`);
+      else toast.success(`Exported ${result.exported.toLocaleString()} contact${result.exported === 1 ? '' : 's'}`);
+    } catch (error) {
+      toast.error(error instanceof Error && error.message ? error.message : 'The export failed');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const openCreate = () => {
@@ -509,28 +469,35 @@ export default function Contacts() {
     </WriteOnly>
   );
 
-  const contactHeroStats: PageStat[] = [
-    { label: 'Total Contacts', value: contactStats.total, icon: BarChart3, tone: 'emerald' },
+  const contactHeroStats: PageStat[] | undefined = stats ? [
+    { label: 'Total Contacts', value: stats.total, icon: BarChart3, tone: 'emerald' },
     {
-      label: 'With Company', value: contactStats.withCompany, icon: Building2, tone: 'violet', pressed: filterCompany === 'some',
-      onClick: () => { setFilterCompany((current) => (current === 'some' ? 'all' : 'some')); setShowFilters(true); },
+      label: 'With Company', value: stats.withCompany, icon: Building2, tone: 'violet', pressed: filterCompany === 'some',
+      onClick: () => { setFilterCompany(filterCompany === 'some' ? 'all' : 'some'); setShowFilters(true); },
       actionLabel: filterCompany === 'some'
-        ? `With a company, ${contactStats.withCompany}. Filter is on. Activate to show every contact.`
-        : `With a company, ${contactStats.withCompany}. Activate to show only contacts with a company.`,
+        ? `With a company, ${stats.withCompany}. Filter is on. Activate to show every contact.`
+        : `With a company, ${stats.withCompany}. Activate to show only contacts with a company.`,
     },
     {
-      label: 'Active (30d)', value: contactStats.recentlyActive, icon: ActivityIcon, tone: 'teal',
+      label: 'Active (30d)', value: stats.activeLast30Days, icon: ActivityIcon, tone: 'teal', pressed: filterActivity === 'recent',
       onClick: () => { setFilterActivity('recent'); setShowFilters(true); },
-      actionLabel: `Active in the last 30 days, ${contactStats.recentlyActive}. Activate to show recently active contacts.`,
+      actionLabel: `Active in the last 30 days, ${stats.activeLast30Days}. Activate to show recently active contacts.`,
     },
     {
-      label: 'Need Attention', value: contactStats.inactive, icon: Clock, tone: 'amber', hint: 'quiet 90d+',
-      onClick: () => { setFilterActivity('inactive'); setShowFilters(true); },
-      actionLabel: `Need attention, ${contactStats.inactive}. No activity in 90 days. Activate to show inactive contacts.`,
+      label: 'Need Attention', value: stats.quietOver90Days, icon: Clock, tone: 'amber', hint: 'quiet 90d+', pressed: filterActivity === 'quiet',
+      onClick: () => { setFilterActivity('quiet'); setShowFilters(true); },
+      actionLabel: `Need attention, ${stats.quietOver90Days}. No activity in 90 days. Activate to show them.`,
     },
-    { label: 'This Week', value: contactStats.thisWeek, icon: Calendar, tone: 'blue', hint: 'added' },
-    { label: 'With Phone', value: contactStats.withPhone, icon: Phone, tone: 'cyan' },
-  ];
+    { label: 'This Week', value: stats.addedLast7Days, icon: Calendar, tone: 'blue', hint: 'added, last 7 days' },
+    { label: 'With Phone', value: stats.withPhone, icon: Phone, tone: 'cyan' },
+    {
+      label: 'Archived', value: stats.archived, icon: Archive, tone: 'slate', pressed: status === 'archived',
+      onClick: () => setStatus(status === 'archived' ? 'active' : 'archived'),
+      actionLabel: status === 'archived'
+        ? `Archived, ${stats.archived}. Showing archived contacts. Activate to show active ones.`
+        : `Archived, ${stats.archived}. Activate to show archived contacts, to restore one.`,
+    },
+  ] : undefined;
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -544,19 +511,17 @@ export default function Contacts() {
             subtitle={loading ? 'Loading…' : refreshing ? 'Updating…' : 'Manage your business relationships'}
             actions={
               <>
-                <ExportCsvButton
-                  rows={filteredContacts}
-                  filename="contacts"
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { void handleExport(); }}
+                  disabled={exporting || loading}
                   className={heroSecondary}
-                  columns={[
-                    { header: 'Name', value: (c) => c.name },
-                    { header: 'Email', value: (c) => c.email },
-                    { header: 'Phone', value: (c) => c.phone },
-                    { header: 'Job Title', value: (c) => c.jobTitle },
-                    { header: 'Company', value: (c) => c.companyName },
-                    { header: 'Created', value: (c) => c.createdAtUtc },
-                  ]}
-                />
+                  aria-label="Export the contacts this list shows"
+                >
+                  <Download className="h-4 w-4" /> {exporting ? 'Exporting…' : 'Export'}
+                </Button>
                 <WriteOnly>
                   <Button onClick={() => navigate('/contacts/import')} variant="outline" className={heroSecondary} aria-label="Import">
                     <Upload className="h-4 w-4" />
@@ -569,24 +534,24 @@ export default function Contacts() {
                 </WriteOnly>
               </>
             }
-            stats={!loading && contacts.length > 0 ? contactHeroStats : undefined}
+            stats={!loading ? contactHeroStats : undefined}
           >
             {/* Quick insight: contacts that have gone quiet. */}
-            {!loading && contacts.length > 0 && contactStats.inactive > 3 && (
+            {!loading && stats && stats.quietOver90Days > 3 && filterActivity !== 'quiet' && (
               <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2">
                 <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 sm:mt-0" aria-hidden />
                   <p className="min-w-0 text-sm text-amber-700">
                     <span className="font-semibold text-amber-800">Re-engagement Opportunity</span>
                     {' · '}
-                    {contactStats.inactive} contacts haven't had activity in over 90 days.
+                    {stats.quietOver90Days} contacts haven't had activity in over 90 days.
                     <span className="hidden sm:inline"> Consider reaching out to maintain relationships.</span>
                   </p>
                 </div>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => { setFilterActivity('inactive'); setShowFilters(true); }}
+                  onClick={() => { setFilterActivity('quiet'); setShowFilters(true); }}
                   className="h-8 shrink-0 rounded-lg border-amber-300 bg-white/70 text-amber-700 hover:bg-amber-100"
                 >
                   View Inactive
@@ -633,6 +598,22 @@ export default function Contacts() {
 
             {/* Filter & Sort Controls */}
             <div className="flex flex-wrap items-center gap-2">
+              {/* Which contacts: archived ones can be found again here, and restored. */}
+              <div role="group" aria-label="Show contacts" className="flex h-11 items-center rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                {(['active', 'archived', 'all'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={status === value}
+                    onClick={() => setStatus(value)}
+                    className={`h-full rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                      status === value ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-700'
+                    }`}
+                  >
+                    {value === 'active' ? 'Active' : value === 'archived' ? 'Archived' : 'All'}
+                  </button>
+                ))}
+              </div>
               {/* Filter Button - Enhanced */}
               <div className="relative group/btn">
                 <div className={`absolute inset-0 rounded-xl blur-lg transition-all duration-300 ${
@@ -669,9 +650,8 @@ export default function Contacts() {
                 <Select
                   value={`${sortField}-${sortDirection}`}
                   onValueChange={(v) => {
-                    const [field, dir] = v.split('-') as [typeof sortField, typeof sortDirection];
-                    setSortField(field);
-                    setSortDirection(dir);
+                    const [field, dir] = parseSort(v);
+                    setSort(field, dir);
                   }}
                 >
                   <SelectTrigger aria-label="Sort contacts by" className="relative h-11 w-[180px] rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-violet-50 hover:border-violet-300 focus:border-violet-300 focus:ring-2 focus:ring-violet-200/60 transition-all duration-300">
@@ -767,7 +747,7 @@ export default function Contacts() {
                     <ActivityIcon className="w-3.5 h-3.5" />
                     Activity
                   </label>
-                  <Select value={filterActivity} onValueChange={(v) => setFilterActivity(v as typeof filterActivity)}>
+                  <Select value={filterActivity} onValueChange={(v) => setFilterActivity(v as 'all' | ContactActivity)}>
                     <SelectTrigger aria-label="Activity" className="h-10 rounded-lg border-slate-200 bg-white text-slate-800 shadow-sm hover:border-emerald-300 transition-colors">
                       <SelectValue placeholder="All activity" />
                     </SelectTrigger>
@@ -779,7 +759,7 @@ export default function Contacts() {
                           Recently active (30d)
                         </span>
                       </SelectItem>
-                      <SelectItem value="inactive">
+                      <SelectItem value="quiet">
                         <span className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-amber-500" />
                           Inactive (90+ days)
@@ -808,9 +788,18 @@ export default function Contacts() {
           )}
 
           {/* Active Filter Pills */}
-          {(activeFilterCount > 0 || searchQuery) && (
+          {(activeFilterCount > 0 || searchQuery || status !== 'active') && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <span className="text-xs text-slate-500">Showing:</span>
+              {status !== 'active' && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
+                  <Archive className="w-3 h-3" />
+                  {status === 'archived' ? 'Archived' : 'Active and archived'}
+                  <button type="button" onClick={() => setStatus('active')} aria-label="Show active contacts only" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              )}
               {searchQuery && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200">
                   <Search className="w-3 h-3" />
@@ -832,14 +821,14 @@ export default function Contacts() {
               {filterActivity !== 'all' && (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
                   <ActivityIcon className="w-3 h-3" />
-                  {filterActivity === 'recent' ? 'Recently Active' : 'Inactive'}
+                  {filterActivity === 'recent' ? 'Recently Active' : 'Quiet 90+ days'}
                   <button type="button" onClick={() => setFilterActivity('all')} aria-label="Remove activity filter" className="-my-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-emerald-100 hover:text-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
                     <X className="w-3 h-3" />
                   </button>
                 </span>
               )}
               <span className="text-xs text-slate-500">
-                {filteredContacts.length} of {contacts.length} contacts
+                {totalCount.toLocaleString()} {totalCount === 1 ? 'contact' : 'contacts'}
               </span>
             </div>
           )}
@@ -847,7 +836,7 @@ export default function Contacts() {
 
         {loading ? (
           <ContentSkeleton rows={6} />
-        ) : contacts.length === 0 ? (
+        ) : contacts.length === 0 && !filtered && (stats?.total ?? 0) === 0 ? (
           /* Enhanced Empty State */
           <div className="w-full">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -903,14 +892,16 @@ export default function Contacts() {
               </div>
             </div>
           </div>
-        ) : filteredContacts.length === 0 ? (
+        ) : contacts.length === 0 ? (
           /* No results state */
           <div className="flex items-center gap-3 p-6 rounded-xl bg-white border border-slate-200">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center">
               <Search className="w-6 h-6 text-slate-500" />
             </div>
             <div className="flex-1">
-              <p className="text-sm font-medium text-slate-700">No contacts match your filters</p>
+              <p className="text-sm font-medium text-slate-700">
+                {status === 'archived' && activeFilterCount === 0 && !debouncedSearch ? 'No archived contacts' : 'No contacts match your filters'}
+              </p>
               <p className="text-xs text-slate-500 mt-0.5">Try adjusting your search or filter criteria</p>
             </div>
             <Button variant="outline" size="sm" onClick={clearFilters}>
@@ -923,7 +914,7 @@ export default function Contacts() {
           {view.layout === 'list' ? (
             <RecordList
               label="Contacts"
-              items={filteredContacts}
+              items={contacts}
               view={view}
               getKey={(c) => c.id}
               onOpen={openContact}
@@ -936,7 +927,7 @@ export default function Contacts() {
           ) : view.layout === 'table' ? (
             <RecordTable
               label="Contacts"
-              items={filteredContacts}
+              items={contacts}
               view={view}
               getKey={(c) => c.id}
               onOpen={openContact}
@@ -946,7 +937,7 @@ export default function Contacts() {
           ) : (
           /* Contact Cards Grid */
           <div className={`grid sm:grid-cols-2 lg:grid-cols-3 ${gridDensity(view, 'gap-4', 'gap-3 xl:grid-cols-4')}`}>
-            {filteredContacts.map((contact, index) => {
+            {contacts.map((contact, index) => {
               const company = contact.companyId ? companyName(contact.companyId) : null;
               const initials = getInitials(contact.name);
               const gradient = getAvatarGradient(contact.name);
