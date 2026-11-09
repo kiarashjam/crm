@@ -1,6 +1,6 @@
 // Past imports and their undo.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import type { ImportBatch } from '@/app/api/imports';
 
 const api = { listImports: vi.fn(), previewUndo: vi.fn(), undoImport: vi.fn() };
@@ -45,6 +45,40 @@ describe('past imports', () => {
 
     expect(await screen.findByText(/Stopped part way through/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+  });
+
+  it('looks again while one is running, so its undo appears once it has finished', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      api.listImports
+        .mockResolvedValueOnce([batch({ finishedAtUtc: null, running: true, canUndo: false })])
+        .mockResolvedValue([batch({})]);
+
+      render(<RecentImports kind="lead" refreshKey={0} />);
+      expect(await screen.findByText('Still running. It can be undone once it has finished.')).toBeInTheDocument();
+      await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+
+      expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument();
+      expect(screen.queryByText(/Still running/)).not.toBeInTheDocument();
+      expect(api.listImports).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('asks once when nothing is running', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      api.listImports.mockResolvedValue([batch({})]);
+
+      render(<RecentImports kind="lead" refreshKey={0} />);
+      expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument();
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+      expect(api.listImports).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

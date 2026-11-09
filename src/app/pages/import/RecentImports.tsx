@@ -22,6 +22,9 @@ import { IMPORT_KINDS, count } from './importKinds';
 
 const KEPT_SHOWN = 10;
 
+/** How soon the list looks again while an import in it is still running. */
+const RUNNING_RECHECK_MS = 10_000;
+
 /** "798 leads, the 798 contacts made for them and 12 companies". */
 export function removalSummary(kind: ImportKind, undo: Pick<ImportUndo, 'leads' | 'contacts' | 'companies'>): string {
   const parts: string[] = [];
@@ -165,6 +168,16 @@ export default function RecentImports({ kind, refreshKey }: RecentImportsProps) 
       .catch(() => { if (current) setFailed(true); });
     return () => { current = false; };
   }, [kind, refreshKey, reloads]);
+
+  // A running import finishes on its own, within a minute or two, often after the
+  // person left its page. Look again until it has, so "Still running" turns into its
+  // undo without a reload.
+  const anyRunning = batches?.some((b) => b.running) ?? false;
+  useEffect(() => {
+    if (!anyRunning) return;
+    const timer = setTimeout(load, RUNNING_RECHECK_MS);
+    return () => clearTimeout(timer);
+  }, [anyRunning, batches, load]);
 
   if (failed) {
     return (
