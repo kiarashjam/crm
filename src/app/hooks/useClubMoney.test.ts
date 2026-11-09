@@ -6,6 +6,10 @@ import type { HospitalitySettings } from '@/app/api/hospitalitySettings';
 
 const settings = vi.fn<() => Promise<Partial<HospitalitySettings>>>();
 vi.mock('@/app/api/hospitalitySettings', () => ({ getHospitalitySettings: () => settings() }));
+const workspace = vi.hoisted(() => ({ current: null as null | { id: string; name: string; locale?: string } }));
+vi.mock('@/app/contexts/OrgContext', () => ({
+  useOrgOptional: () => (workspace.current ? { currentOrg: workspace.current } : null),
+}));
 
 const { useClubMoney, setClubCurrency, resetClubCurrency } = await import('./useClubMoney');
 
@@ -13,6 +17,7 @@ beforeEach(() => {
   localStorage.clear();
   resetClubCurrency();
   settings.mockReset();
+  workspace.current = null;
 });
 
 describe('useClubMoney', () => {
@@ -23,7 +28,8 @@ describe('useClubMoney', () => {
 
     await waitFor(() => expect(first.result.current.currency).toBe('EUR'));
     expect(second.result.current.currency).toBe('EUR');
-    expect(first.result.current.format(12.5)).toContain('€');
+    // "EUR 12.50" in the workspace's de-CH number format, "€12.50" in some others.
+    expect(first.result.current.format(12.5)).toMatch(/€|EUR/);
     expect(settings).toHaveBeenCalledTimes(1);
   });
 
@@ -57,5 +63,19 @@ describe('useClubMoney', () => {
     const zurich = renderHook(() => useClubMoney());
     await waitFor(() => expect(settings).toHaveBeenCalledTimes(2));
     expect(zurich.result.current.currency).toBe('CHF');
+  });
+
+  it("writes amounts in the workspace's number format, as the deal pages do", async () => {
+    settings.mockResolvedValue({ currency: 'CHF' });
+    workspace.current = { id: 'org-1', name: 'Brooklyn Club', locale: 'en-US' };
+    const american = renderHook(() => useClubMoney());
+    await waitFor(() => expect(settings).toHaveBeenCalled());
+    expect(american.result.current.format(1234.5)).toBe(new Intl.NumberFormat('en-US', { style: 'currency', currency: 'CHF' }).format(1234.5));
+    american.unmount();
+
+    workspace.current = { id: 'org-1', name: 'Pavillon 46', locale: 'de-CH' };
+    const swiss = renderHook(() => useClubMoney());
+    expect(swiss.result.current.format(1234.5)).toBe(new Intl.NumberFormat('de-CH', { style: 'currency', currency: 'CHF' }).format(1234.5));
+    expect(swiss.result.current.format(1234.5)).not.toBe(american.result.current.format(1234.5));
   });
 });

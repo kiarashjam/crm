@@ -84,7 +84,8 @@ describe('the printed statement', () => {
     show(<Statements />);
 
     expect(await screen.findByText('Dinner for two')).toBeInTheDocument();
-    await screen.findAllByText(/€\s?320[.,]50/);
+    // In the workspace's number format, de-CH unless it says otherwise: "EUR 320.50".
+    await screen.findAllByText(/(€|EUR)\s?320[.,]50/);
     expect(document.body.textContent).not.toContain('$');
   });
 });

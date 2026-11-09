@@ -25,6 +25,11 @@ describe('formatClubMoney', () => {
     expect(formatClubMoney(50, 'EUR')).toContain('€');
   });
 
+  it('writes the amount for the locale it is given', () => {
+    expect(formatClubMoney(1234.5, 'CHF', 'en-US')).toMatch(/1,234\.50/);
+    expect(formatClubMoney(1234.5, 'CHF', 'de-CH')).toMatch(/1’234\.50/);
+  });
+
   it('survives a code Intl does not know, and a missing number', () => {
     expect(formatClubMoney(12.5, 'XQQ1')).toBe('XQQ1 12.50');
     expect(formatClubMoney(Number.NaN, 'CHF')).toMatch(/0[.,]00/);

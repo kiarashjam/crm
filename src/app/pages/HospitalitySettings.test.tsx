@@ -83,6 +83,7 @@ describe('hospitality settings', () => {
 
     await waitFor(() => expect(api.update).toHaveBeenCalled());
     expect(api.update.mock.calls[0]![0]).toMatchObject({ currency: 'EUR' });
-    await waitFor(() => expect(screen.getByTestId('elsewhere')).toHaveTextContent('€'));
+    // "EUR" in the workspace's de-CH number format, "€" in some others.
+    await waitFor(() => expect(screen.getByTestId('elsewhere')).toHaveTextContent(/€|EUR/));
   });
 });
