@@ -32,6 +32,12 @@ describe('currencyOf', () => {
     expect(currencyOf({ currency: 'chf' })).toBe('CHF');
     expect(currencyOf({ currency: undefined })).toBe(DEFAULT_CURRENCY);
     expect(currencyOf({ currency: undefined }, 'EUR')).toBe('EUR');
+    expect(currencyOf({ currency: '  ' }, 'EUR')).toBe('EUR');
+  });
+
+  it('keeps a symbol an older deal was saved with, as the server does, rather than calling it francs', () => {
+    expect(currencyOf({ currency: '€' }, 'CHF')).toBe('€');
+    expect(currencyOf({ currency: ' fr. ' }, 'CHF')).toBe('FR.');
   });
 });
 
@@ -83,6 +89,16 @@ describe('sumByCurrency — REGRESSION: values were added across currencies', ()
 
   it('adds to the cent, so line-item style amounts do not drift', () => {
     expect(sumByCurrency([deal(0.1, 'CHF'), deal(0.2, 'CHF')])[0]?.value).toBe(0.3);
+  });
+
+  it('totals a deal saved with a symbol under that symbol, not in the workspace currency', () => {
+    // The server's reports list "€" on its own; the board added it to the francs.
+    expect(sumByCurrency([deal(40000, 'CHF'), deal(30000, '€')], 'CHF')).toEqual([
+      { currency: 'CHF', value: 40000, count: 1 },
+      { currency: '€', value: 30000, count: 1 },
+    ]);
+    expect(formatDealAmount(deal(30000, '€'), SWISS)).toBe(formatMoney(30000, '€', { locale: 'de-CH' }));
+    expect(formatDealAmount(deal(30000, '€'), SWISS)).not.toContain('CHF');
   });
 });
 

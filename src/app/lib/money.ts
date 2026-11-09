@@ -195,9 +195,18 @@ export function amountOf(deal: Pick<Deal, 'amount'>): number | null {
   return typeof deal.amount === 'number' && Number.isFinite(deal.amount) ? deal.amount : null;
 }
 
-/** A deal's currency: its own code, or the workspace's when it has none. */
+/**
+ * A deal's currency: its own, trimmed and upper-cased, or the workspace's when it has
+ * none, as the server counts it.
+ *
+ * Only a blank currency falls back. A few older deals hold a symbol or a word ("€",
+ * "Fr."), which the one-time currency fix left alone rather than guess at, and the
+ * server totals them under that name. Read as the workspace's currency here, a "€" deal
+ * was written as francs and added into the board's franc total.
+ */
 export function currencyOf(deal: { currency?: string | null }, fallback: string = DEFAULT_CURRENCY): string {
-  return normaliseCurrency(deal.currency, fallback);
+  const code = String(deal.currency ?? '').trim().toUpperCase();
+  return code || fallback;
 }
 
 /** A deal's amount in its own currency, or "No amount" for one saved without a readable number. */
