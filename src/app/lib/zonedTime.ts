@@ -99,3 +99,23 @@ export function dateOnlyKey(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   return m ? `${m[1]}-${m[2]}-${m[3]}` : dayKeyIn(iso, 'UTC');
 }
+
+const utcOf = (key: string) => Date.UTC(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, Number(key.slice(8, 10)));
+
+/** Whole calendar days from one "YYYY-MM-DD" to another: 1 from today to tomorrow. */
+export function daysBetween(fromKey: string, toKey: string): number {
+  return Math.round((utcOf(toKey) - utcOf(fromKey)) / 86_400_000);
+}
+
+/** The day of the week of a "YYYY-MM-DD", 0 for Sunday. */
+export function weekdayOf(key: string): number {
+  return new Date(utcOf(key)).getUTCDay();
+}
+
+/**
+ * A "YYYY-MM-DD", or a date-only value, written as the calendar day it is, in the
+ * viewer's language unless `locale` says otherwise.
+ */
+export function formatDay(keyOrIso: string, options: Intl.DateTimeFormatOptions, locale?: string): string {
+  return new Date(utcOf(dateOnlyKey(keyOrIso))).toLocaleDateString(locale, { ...options, timeZone: 'UTC' });
+}

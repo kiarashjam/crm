@@ -57,6 +57,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useMoney } from '@/app/hooks/useMoney';
+import { dayKeyIn, todayKeyIn } from '@/app/lib/zonedTime';
+import { getDateGroup } from './activities/utils';
 
 const ACTIVITY_TYPES = [
   { id: 'call', label: 'Call', icon: Phone, color: 'emerald', bgColor: 'bg-emerald-100', textColor: 'text-emerald-700', borderColor: 'border-emerald-200' },
@@ -88,21 +90,6 @@ function formatRelativeDate(iso: string): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function getDateGroup(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 86400000);
-  const thisWeekStart = new Date(today.getTime() - today.getDay() * 86400000);
-  const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 86400000);
-  
-  if (d >= today) return 'Today';
-  if (d >= yesterday) return 'Yesterday';
-  if (d >= thisWeekStart) return 'This Week';
-  if (d >= lastWeekStart) return 'Last Week';
-  return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
 type ActivityFilter = 'all' | 'contact' | 'deal' | 'lead';
@@ -275,10 +262,9 @@ export default function Activities() {
       byType[a.type] = (byType[a.type] || 0) + 1;
     });
     
-    // Activities today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayCount = activities.filter(a => new Date(a.createdAt) >= today).length;
+    // Activities today, on the workspace's calendar like the "Today" heading below.
+    const today = todayKeyIn(money.timeZone);
+    const todayCount = activities.filter(a => dayKeyIn(a.createdAt, money.timeZone) === today).length;
     
     // Activities this week
     const oneWeekAgo = new Date();
@@ -295,7 +281,7 @@ export default function Activities() {
     const topType = Object.entries(byType).sort((a, b) => b[1] - a[1])[0];
     
     return { total, byType, todayCount, thisWeek, withContacts, withDeals, topType };
-  }, [activities]);
+  }, [activities, money.timeZone]);
 
   // For contact/deal filter views, apply client-side filtering
   // For 'all' view, filtering is done server-side
@@ -326,16 +312,16 @@ export default function Activities() {
     return result;
   }, [activities, searchQuery, filterType, filter]);
 
-  // Group activities by date
+  // Group activities by the day they happened on the workspace's calendar
   const groupedActivities = useMemo(() => {
     const groups: Record<string, Activity[]> = {};
     filteredActivities.forEach(activity => {
-      const group = getDateGroup(activity.createdAt);
+      const group = getDateGroup(activity.createdAt, money.timeZone);
       if (!groups[group]) groups[group] = [];
       groups[group].push(activity);
     });
     return groups;
-  }, [filteredActivities]);
+  }, [filteredActivities, money.timeZone]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

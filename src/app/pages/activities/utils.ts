@@ -1,3 +1,5 @@
+import { daysBetween, dayKeyIn, formatDay, todayKeyIn, weekdayOf } from '@/app/lib/zonedTime';
+
 export function formatDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
@@ -18,17 +20,19 @@ export function formatRelativeDate(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-export function getDateGroup(iso: string): string {
-  const d = new Date(iso);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 86400000);
-  const thisWeekStart = new Date(today.getTime() - today.getDay() * 86400000);
-  const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 86400000);
-  
-  if (d >= today) return 'Today';
-  if (d >= yesterday) return 'Yesterday';
-  if (d >= thisWeekStart) return 'This Week';
-  if (d >= lastWeekStart) return 'Last Week';
-  return d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+/**
+ * The heading an activity is listed under, by the day it happened on the workspace's
+ * calendar (`timeZone`). It was this browser's day: away from the club, a call made
+ * there just after midnight was listed under yesterday while the reports counted it
+ * today. Weeks begin on Sunday, as they did.
+ */
+export function getDateGroup(iso: string, timeZone: string, now: Date = new Date()): string {
+  const day = dayKeyIn(iso, timeZone);
+  const ago = daysBetween(day, todayKeyIn(timeZone, now));
+  const sinceSunday = weekdayOf(todayKeyIn(timeZone, now));
+  if (ago <= 0) return 'Today';
+  if (ago === 1) return 'Yesterday';
+  if (ago <= sinceSunday) return 'This Week';
+  if (ago <= sinceSunday + 7) return 'Last Week';
+  return formatDay(day, { month: 'long', year: 'numeric' });
 }
