@@ -35,6 +35,23 @@ public class InboundMailTests
     }
 
     [Fact]
+    public void AHugeReplyIsOnlyReadAsFarAsCanBeKept()
+    {
+        // One line of 300,000 characters that keeps looking like a German attribution
+        // ("Am … schrieb …:") took the attribution pattern ten seconds; a reply may be tens
+        // of megabytes. Only the start, which holds the words that are kept, is read.
+        var line = "Am " + string.Concat(Enumerable.Repeat("schrieb :", 300_000 / 9)) + "x";
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        var reply = InboundMail.WithoutQuotedHistory(line);
+
+        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+        reply.Should().Be(line[..10_000]);
+        InboundMail.WithoutQuotedHistory("Yes please.\n" + new string('a', 30_000) + "\nOn Mon, Anna <anna@club.ch> wrote:\n> Hi", max: 50)
+            .Should().Be("Yes please.\n" + new string('a', 38), "what is kept is the same, only less of the rest is read");
+    }
+
+    [Fact]
     public void EventsAreReadOneByOne_AndAnUnreadableOneIsLeftOut()
     {
         var id = Guid.NewGuid();

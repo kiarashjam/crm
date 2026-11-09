@@ -56,4 +56,32 @@ public class InboundParseReaderTests
     {
         InboundParseReader.Read(new InboundParseReader.Fields(null, null, null, "x@example.ch", null, null, "Hi", null, null)).Should().BeNull();
     }
+
+    [Fact]
+    public void CommentsAreLeftOut_ATagThatOnlyStartsLikeHeadIsNot_AndALoneLessThanIsText()
+    {
+        HtmlReply("<!--[if mso]><xml>Outlook settings</xml><![endif]--><p>Yes</p><header>From the club</header><br/>1 < 2")
+            .Should().Be("Yes\nFrom the club\n1 < 2");
+    }
+
+    [Theory]
+    [InlineData("<style>", 200_000)]
+    [InlineData("<", 1_000_000)]
+    public void AnHtmlReplyBuiltToBeSlowIsReadInOnePass(string piece, int length)
+    {
+        // Anyone can send mail to the reply domain, and every post is read before it is
+        // matched. Two hundred kilobytes of "<style>" took the old patterns most of a
+        // minute, and a megabyte of it would have held the request for a quarter of an hour.
+        var html = "Yes please" + string.Concat(Enumerable.Repeat(piece, length / piece.Length));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        var text = HtmlReply(html);
+
+        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
+        text.Should().StartWith("Yes please");
+    }
+
+    /// <summary>The words read from a reply that has an HTML part only.</summary>
+    private static string? HtmlReply(string html) =>
+        InboundParseReader.Read(new InboundParseReader.Fields(null, null, "jean@example.ch", "x@example.ch", null, "Re", null, html, null))!.Text;
 }

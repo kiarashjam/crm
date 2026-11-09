@@ -1,7 +1,6 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using ACI.Application.Common;
 using MimeKit;
 using MimeKit.Utils;
@@ -19,7 +18,7 @@ namespace ACI.Infrastructure.Services;
 /// "envelope", a JSON object, which is where a reply+token address shows when the
 /// visible To does not carry it.
 /// </remarks>
-public static partial class InboundParseReader
+public static class InboundParseReader
 {
     /// <summary>The fields of one post, as SendGrid names them. Null when the post did not carry one.</summary>
     public sealed record Fields(
@@ -114,20 +113,75 @@ public static partial class InboundParseReader
         return [];
     }
 
-    [GeneratedRegex("<(head|style|script)[^>]*>.*?</\\1\\s*>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
-    private static partial Regex Invisible();
-
-    [GeneratedRegex("<(br|/p|/div|/tr|/li)[^>]*>", RegexOptions.IgnoreCase)]
-    private static partial Regex LineBreak();
-
-    [GeneratedRegex("<[^>]+>")]
-    private static partial Regex Tag();
+    /// <summary>
+    /// How much of an HTML-only reply is read for its words. The timeline keeps the first
+    /// ten thousand characters of a reply, and the person's own words come first.
+    /// </summary>
+    private const int MaxHtml = 500_000;
 
     /// <summary>The words of an HTML-only reply, line breaks kept: enough for a timeline entry.</summary>
+    /// <remarks>
+    /// One pass over the markup, so the time it takes grows with its length and no more.
+    /// It used to be regular expressions, and the one that left out style and script went
+    /// back over the rest of the message from every opening tag that was never closed:
+    /// two hundred kilobytes of "&lt;style&gt;" held a request for most of a minute. Anyone
+    /// may send mail to the reply domain, and every post was read this way before it was
+    /// matched to anything.
+    /// </remarks>
     private static string? HtmlToText(string? html)
     {
         if (string.IsNullOrWhiteSpace(html)) return null;
-        var withBreaks = LineBreak().Replace(Invisible().Replace(html, ""), "\n");
-        return WebUtility.HtmlDecode(Tag().Replace(withBreaks, "")).Trim();
+        if (html.Length > MaxHtml) html = html[..MaxHtml];
+        var text = new StringBuilder();
+        var at = 0;
+        while (at < html.Length)
+        {
+            var open = html.IndexOf('<', at);
+            if (open < 0)
+            {
+                text.Append(html, at, html.Length - at);
+                break;
+            }
+            text.Append(html, at, open - at);
+
+            if (string.CompareOrdinal(html, open, "<!--", 0, 4) == 0)
+            {
+                // A comment, Outlook's conditional blocks among them: nothing in it is shown.
+                var commentEnd = html.IndexOf("-->", open + 4, StringComparison.Ordinal);
+                if (commentEnd < 0) break;
+                at = commentEnd + 3;
+                continue;
+            }
+
+            var close = html.IndexOf('>', open + 1);
+            if (close < 0)
+            {
+                // A "<" that opens no tag is text.
+                text.Append(html, open, html.Length - open);
+                break;
+            }
+            var name = TagName(html, open + 1, close);
+            if (name is "head" or "style" or "script")
+            {
+                // Not for reading, up to its closing tag; never closed, nor is the rest.
+                var end = html.IndexOf("</" + name, close + 1, StringComparison.OrdinalIgnoreCase);
+                var endTag = end < 0 ? -1 : html.IndexOf('>', end);
+                if (endTag < 0) break;
+                at = endTag + 1;
+                continue;
+            }
+            if (name is "br" or "/p" or "/div" or "/tr" or "/li") text.Append('\n');
+            at = close + 1;
+        }
+        return WebUtility.HtmlDecode(text.ToString()).Trim();
+    }
+
+    /// <summary>A tag's name in lower case, with the slash of a closing tag: "br", "/p".</summary>
+    private static string TagName(string html, int start, int end)
+    {
+        var at = start;
+        if (at < end && html[at] == '/') at++;
+        while (at < end && char.IsAsciiLetterOrDigit(html[at])) at++;
+        return html[start..at].ToLowerInvariant();
     }
 }

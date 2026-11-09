@@ -123,7 +123,13 @@ public static partial class InboundMail
     /// </summary>
     public static string WithoutQuotedHistory(string? text, int max = 10_000)
     {
-        var lines = (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        // Only the start is read: at most max characters are kept, and the person's words
+        // come before the history. A reply may be tens of megabytes, and the attribution
+        // pattern takes time that grows with the square of a line's length, so reading all
+        // of it let one reply hold the request for minutes.
+        text ??= "";
+        if (text.Length > LookAt(max)) text = text[..LookAt(max)];
+        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var end = lines.Length;
         for (var i = 0; i < lines.Length; i++)
         {
@@ -138,7 +144,13 @@ public static partial class InboundMail
             }
         }
         var reply = string.Join('\n', lines.Take(end)).Trim();
-        if (reply.Length == 0) reply = (text ?? "").Trim();
+        if (reply.Length == 0) reply = text.Trim();
         return reply.Length <= max ? reply : reply[..max];
     }
+
+    /// <summary>
+    /// How much of a reply is looked at: twice what is kept, so the line that starts the
+    /// quoted history is still whole when the person's own words fill most of it.
+    /// </summary>
+    internal static int LookAt(int max) => Math.Max(max, 0) * 2 + 1_000;
 }
