@@ -57,6 +57,22 @@ public class InboundParseReaderTests
         InboundParseReader.Read(new InboundParseReader.Fields(null, null, null, "x@example.ch", null, null, "Hi", null, null)).Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("Auto-Submitted: auto-replied", true)]
+    [InlineData("Auto-Submitted: auto-generated", true)]
+    [InlineData("Auto-Submitted: no", false)]
+    [InlineData("X-Autoreply: yes", true)]
+    [InlineData("Precedence: auto_reply", true)]
+    [InlineData("Precedence: bulk", true)]
+    [InlineData("X-Mailer: Outlook", false)]
+    public void AnOutOfOfficeIsKnownByItsHeaders(string header, bool automatic)
+    {
+        var reply = InboundParseReader.Read(new InboundParseReader.Fields(null, $"Message-ID: <a@b>\r\n{header}", "jean@example.ch",
+            "x@example.ch", null, "Out of office", "Back on Monday.", null, null))!;
+
+        reply.IsAutomatic.Should().Be(automatic);
+    }
+
     [Fact]
     public void CommentsAreLeftOut_ATagThatOnlyStartsLikeHeadIsNot_AndALoneLessThanIsText()
     {

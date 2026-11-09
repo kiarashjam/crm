@@ -14,6 +14,10 @@ namespace ACI.Application.Common;
 /// <param name="InReplyTo">The Message-ID it answers, when it says.</param>
 /// <param name="References">The thread's Message-IDs, oldest first.</param>
 /// <param name="Text">The plain text, quoted history included.</param>
+/// <param name="IsAutomatic">
+/// A program answered, not the person: an out-of-office or other auto-reply, as its headers
+/// say (Auto-Submitted, X-Autoreply, Precedence: auto_reply).
+/// </param>
 public sealed record InboundReply(
     string FromAddress,
     string? FromName,
@@ -22,7 +26,8 @@ public sealed record InboundReply(
     string? MessageId,
     string? InReplyTo,
     IReadOnlyList<string> References,
-    string? Text);
+    string? Text,
+    bool IsAutomatic = false);
 
 /// <summary>One event from the mail service's delivery reports (SendGrid Event Webhook).</summary>
 /// <param name="Event">delivered, deferred, bounce, dropped, spamreport, open, unsubscribe and others.</param>

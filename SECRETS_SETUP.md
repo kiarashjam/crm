@@ -206,8 +206,9 @@ then everything works as before.
 `https://<your-api>/api/public/email/inbound/<Email__InboundParseSecret>`. Leave "POST the raw,
 full MIME message" either way; both are read. Then set the two settings above. A reply is
 matched by its reply address or by the Message-ID it answers, goes on the record's
-timeline, stops that person's sequences and notifies whoever works the record. Mail that
-answers nothing the workspaces sent is dropped.
+timeline, stops that person's sequences and notifies whoever works the record. An
+automatic reply (an out-of-office, marked so in its headers) goes on the timeline only.
+Mail that answers nothing the workspaces sent is dropped.
 
 **Bounces and spam reports (SendGrid Event Webhook).** In **SendGrid → Settings → Mail
 Settings → Event Webhook**, set the URL to

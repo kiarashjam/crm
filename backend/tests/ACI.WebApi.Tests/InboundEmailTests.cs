@@ -146,6 +146,27 @@ public class InboundEmailTests
     }
 
     [Fact]
+    public async Task AnOutOfOfficeGoesOnTheTimeline_ButTheSequenceGoesOnAndNobodyIsToldOfAReply()
+    {
+        // With the reply address in Reply-To, auto-responders answer there too. Taken for
+        // the person's reply, an out-of-office ended the sequence of everyone who was away.
+        await using var app = new App();
+        var (owner, ownerId, leadId, enrollmentId, first) = await EmailedLeadAsync(app);
+        var replyAddress = first.ReplyTo.Single(a => a.EndsWith("@" + ReplyDomain));
+
+        var res = await app.CreateClient().PostAsync($"/api/public/email/inbound/{ParseSecret}", Reply(replyAddress,
+            "I am out of the office until 16 November.", "Message-ID: <ooo-1@mail.example.ch>\r\nAuto-Submitted: auto-replied"));
+
+        (await Json(res, "inbound")).GetProperty("matched").GetBoolean().Should().BeTrue();
+        var entry = await app.Services.Read(db => db.Activities.Single(a => a.LeadId == leadId && a.Subject!.Contains("from Jean Dupont")));
+        entry.Subject.Should().Be("Automatic reply from Jean Dupont: Re: Hello");
+        entry.Body.Should().Be("I am out of the office until 16 November.");
+        (await EnrollmentStatusAsync(owner, enrollmentId)).Should().Be("active", "an auto-responder is not the person answering");
+        (await app.Services.Read(db => db.Notifications.Count(n => n.UserId == ownerId && n.Title.EndsWith("replied")))).Should().Be(0);
+        (await app.Services.Read(db => db.OutboundMessages.Single().RepliedAtUtc)).Should().BeNull();
+    }
+
+    [Fact]
     public async Task AReplyWhoseMessageIdIsTooLongToKeepIsStillTakenIn()
     {
         // InboundEmails keeps a Message-ID of up to 255 characters. Saving a longer one

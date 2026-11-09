@@ -230,7 +230,7 @@ an email whose lead or contact is deleted while it waits is cancelled, not sent.
 | `GET` | `/api/organizations/{id}/email/suppressions` | Addresses the workspace does not email because the mail service reported them (bounced, invalid, spam report, unsubscribed) |
 | `DELETE` | `/api/organizations/{id}/email/suppressions/{suppressionId}` | Take an address off that list so the workspace may email it again (owner or manager) |
 | `GET` | `/api/webhook/organizations/{id}/deliveries` | The latest outbound webhook deliveries and what the receiver answered (owner or manager) |
-| `POST` | `/api/public/email/inbound/{secret}` | SendGrid Inbound Parse: a reply, matched to its message by reply+token address or In-Reply-To/References, written on the timeline; the person's sequences stop. 404 without `Email:InboundParseSecret` |
+| `POST` | `/api/public/email/inbound/{secret}` | SendGrid Inbound Parse: a reply, matched to its message by reply+token address or In-Reply-To/References, written on the timeline; the person's sequences stop (not for an automatic reply such as an out-of-office). 404 without `Email:InboundParseSecret` |
 | `POST` | `/api/public/email/events/{secret}` | SendGrid Event Webhook (or `/events` with a signature checked against `Email:EventWebhookVerificationKey`): bounces, drops, spam reports and unsubscribes suppress the address and stop sequences; deliveries and opens are recorded |
 
 ### Organizations & Team

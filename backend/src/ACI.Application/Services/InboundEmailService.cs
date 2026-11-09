@@ -13,6 +13,11 @@ public enum InboundReplyOutcome
 {
     /// <summary>Matched to a message, written on the record's timeline, and the person's sequence stopped.</summary>
     Recorded,
+    /// <summary>
+    /// An automatic answer (an out-of-office, say), matched and written on the timeline;
+    /// the person's sequence goes on and nobody is told of a reply.
+    /// </summary>
+    AutomaticReply,
     /// <summary>The same reply had been taken in already.</summary>
     AlreadyRecorded,
     /// <summary>It answers nothing the workspaces sent, so it is not kept.</summary>
@@ -104,12 +109,20 @@ public sealed class InboundEmailService : IInboundEmailService
             MatchedBy = matchedBy!,
             ReceivedAtUtc = now,
         };
-        message.RepliedAtUtc ??= now;
+        // An out-of-office is not the person answering: it goes on the timeline, where the
+        // rep sees when they are back, but the sequence carries on and nobody is told of a
+        // reply. Taken for a reply, it ended the sequence of everyone who was away.
+        if (!reply.IsAutomatic) message.RepliedAtUtc ??= now;
 
         // Recorded first, so the same reply posted twice at once is written on the timeline once.
         if (!await _messages.TryAddInboundAsync(inbound, ct)) return InboundReplyOutcome.AlreadyRecorded;
         inbound.ActivityId = await WriteTimelineAsync(message, reply, ct);
         await _messages.SaveAsync(ct);
+        if (reply.IsAutomatic)
+        {
+            _logger.LogInformation("An automatic reply to outbox email {MessageId} was recorded (matched by {MatchedBy})", message.Id, matchedBy);
+            return InboundReplyOutcome.AutomaticReply;
+        }
 
         // They answered: the scheduled emails stop, as when someone logs their reply by hand.
         await StopOutreachAsync(message, organizationId, ct);
@@ -156,11 +169,11 @@ public sealed class InboundEmailService : IInboundEmailService
             var who = string.IsNullOrWhiteSpace(reply.FromName) ? reply.FromAddress.Trim() : reply.FromName.Trim();
             var subject = OutboxService.OneLine(reply.Subject);
             // Automated: it is the prospect writing, not somebody here answering them, so it
-            // is no first response. The sequence is stopped below instead.
+            // is no first response. The sequence is stopped below instead, unless a program wrote it.
             var created = await _activities.CreateAsync(userId, message.OrganizationId, new CreateActivityRequest
             {
                 Type = "email",
-                Subject = Clip($"Reply from {who}: {(subject.Length > 0 ? subject : message.Subject)}", 200),
+                Subject = Clip($"{(reply.IsAutomatic ? "Automatic reply" : "Reply")} from {who}: {(subject.Length > 0 ? subject : message.Subject)}", 200),
                 Body = InboundMail.WithoutQuotedHistory(reply.Text),
                 LeadId = message.LeadId,
                 ContactId = message.ContactId,

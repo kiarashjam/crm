@@ -83,12 +83,32 @@ public static class InboundParseReader
             messageId,
             inReplyTo,
             references,
-            !string.IsNullOrWhiteSpace(text) ? text : HtmlToText(html));
+            !string.IsNullOrWhiteSpace(text) ? text : HtmlToText(html),
+            IsAutomatic(headers));
+    }
+
+    /// <summary>
+    /// Whether a program wrote it: an out-of-office or other auto-reply. Mail programs say so
+    /// in Auto-Submitted (RFC 3834: anything but "no"), and older ones in X-Autoreply,
+    /// X-Autorespond or Precedence.
+    /// </summary>
+    private static bool IsAutomatic(HeaderList? headers)
+    {
+        if (headers == null) return false;
+        if (Header(headers, "Auto-Submitted") is { } submitted && !submitted.StartsWith("no", StringComparison.OrdinalIgnoreCase)) return true;
+        if (Header(headers, "X-Autoreply") != null || Header(headers, "X-Autorespond") != null || Header(headers, "X-Autoresponder") != null) return true;
+        return Header(headers, "Precedence")?.ToLowerInvariant() is "auto_reply" or "bulk" or "junk";
     }
 
     private static string? Header(HeaderList? headers, HeaderId id)
     {
         var value = headers?[id];
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? Header(HeaderList headers, string field)
+    {
+        var value = headers[field];
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
