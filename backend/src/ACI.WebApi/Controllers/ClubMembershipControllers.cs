@@ -22,6 +22,7 @@ namespace ACI.WebApi.Controllers;
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class ApplicationsController : ControllerBase
 {
     private readonly IClubApplications _applications;
@@ -149,6 +150,7 @@ public class ApplicationsController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class HouseholdsController : ControllerBase
 {
     private readonly IClubHouseholds _households;
@@ -262,6 +264,7 @@ public class HouseholdsController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class MembershipLinksController : ControllerBase
 {
     private readonly IClubApplications _applications;

@@ -51,6 +51,8 @@ public static class DependencyInjection
         services.AddScoped<IAttachmentRepository, AttachmentRepository>();
         services.AddScoped<ICustomFieldRepository, CustomFieldRepository>();
         services.AddScoped<IWorkspaceRecords, WorkspaceRecords>();
+        // Which of the Sales and Club modules a workspace has on (InModuleAttribute asks it).
+        services.AddScoped<IWorkspaceModules, WorkspaceModuleService>();
         services.AddScoped<IDealLineItemRepository, DealLineItemRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<IOutboxRepository, OutboxRepository>();

@@ -14,6 +14,7 @@ namespace ACI.WebApi.Controllers;
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class MembersController : ControllerBase
 {
     private readonly IClubService _club;
@@ -70,6 +71,7 @@ public class MembersController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.FrontDesk, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class VisitsController : ControllerBase
 {
     private readonly IClubService _club;
@@ -108,6 +110,7 @@ public class VisitsController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class LoyaltyController : ControllerBase
 {
     private readonly IClubService _club;

@@ -1,3 +1,5 @@
+using ACI.WebApi.Filters;
+using ACI.Domain.Common;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -16,6 +18,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Sales)]
 public class CopyHistoryController : ControllerBase
 {
     private readonly ICopyHistoryService _copyHistoryService;

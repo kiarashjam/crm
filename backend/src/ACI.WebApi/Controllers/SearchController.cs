@@ -48,11 +48,16 @@ public class SearchController : ControllerBase
     [HttpGet]
     [ProducesResponseType(typeof(GlobalSearchResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public async Task<ActionResult<GlobalSearchResultDto>> Search([FromQuery] string? q, CancellationToken ct)
+    public async Task<ActionResult<GlobalSearchResultDto>> Search([FromQuery] string? q, [FromServices] IWorkspaceModules modules, CancellationToken ct)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
         var result = await _searchService.SearchAsync(userId.Value, _currentUser.CurrentOrganizationId, q ?? "", ct);
+        // Leads and deals are the Sales module's: with it turned off their pages say so, so a
+        // result that opened one would lead nowhere.
+        if (_currentUser.CurrentOrganizationId is Guid organizationId
+            && !await modules.IsOnAsync(organizationId, Domain.Common.WorkspaceModules.Sales, ct))
+            result = result with { Leads = [], Deals = [] };
         return Ok(result);
     }
 }

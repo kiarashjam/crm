@@ -18,6 +18,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
+[InModule(WorkspaceModules.Club)]
 public class CatalogController : ControllerBase
 {
     private readonly IClubCatalog _catalog;

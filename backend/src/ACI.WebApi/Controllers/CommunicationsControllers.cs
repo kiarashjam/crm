@@ -18,6 +18,7 @@ namespace ACI.WebApi.Controllers;
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class CampaignsController : ControllerBase
 {
     private readonly ICampaignService _campaigns;
@@ -127,6 +128,7 @@ public class CampaignsController : ControllerBase
 [WorkspaceRequired]
 [Produces("application/json")]
 [Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
+[InModule(WorkspaceModules.Club)]
 public class CommunicationsController : ControllerBase
 {
     private readonly IMemberMessageService _messages;

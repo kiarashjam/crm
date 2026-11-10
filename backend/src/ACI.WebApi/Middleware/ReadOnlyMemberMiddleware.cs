@@ -1,6 +1,7 @@
 using ACI.Application.Common;
 using ACI.Application.Interfaces;
 using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ACI.WebApi.Middleware;
@@ -47,7 +48,8 @@ public sealed class ReadOnlyMemberMiddleware
     public async Task InvokeAsync(
         HttpContext context,
         ICurrentUserService currentUser,
-        IPermissionService permissions)
+        IPermissionService permissions,
+        IWorkspaceModules modules)
     {
         if (!IsStateChanging(context.Request.Method) || IsSelfServiceWrite(context.Request))
         {
@@ -67,6 +69,15 @@ public sealed class ReadOnlyMemberMiddleware
 
         var held = await permissions.PermissionsAsync(userId, organizationId, context.RequestAborted);
         if (held.Any(MemberPermissions.Writes.Contains))
+        {
+            await _next(context);
+            return;
+        }
+
+        // An endpoint of a module the workspace has turned off answers with that module's
+        // refusal, the same for everyone (InModuleAttribute), rather than this one.
+        if (context.GetEndpoint()?.Metadata.GetMetadata<InModuleAttribute>() is { } inModule
+            && !await modules.IsOnAsync(organizationId, inModule.Module, context.RequestAborted))
         {
             await _next(context);
             return;

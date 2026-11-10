@@ -21,6 +21,7 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [Produces("application/json")]
 [Requires(MemberPermissions.EditRecords, WritesOnly = true)]
+[InModule(WorkspaceModules.Sales)]
 public class ContractsController : ControllerBase
 {
     private readonly IContractService _contracts;

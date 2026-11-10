@@ -125,6 +125,35 @@ public class OrganizationsController : ControllerBase
     }
 
     /// <summary>
+    /// Turns the workspace's Sales or Club module on or off. A field left out keeps its value.
+    /// </summary>
+    /// <remarks>
+    /// A module that is off leaves every member's menu, its pages say it is turned off, and
+    /// its endpoints refuse (Module.Off); nothing is deleted, and turning it on brings it all
+    /// back. One module always stays on. A module is not turned off while work of its own is
+    /// still switched on (the club's automatic billing, reminders, lapsing or monthly
+    /// statements, or a campaign scheduled or sending; leads in outreach sequences), as nobody
+    /// could see or stop that work once its pages were gone. Takes managing the workspace's
+    /// settings.
+    /// </remarks>
+    /// <response code="200">Which modules are on now.</response>
+    /// <response code="400">Both modules would be off.</response>
+    /// <response code="403">The caller's role does not let them manage the workspace's settings.</response>
+    /// <response code="409">The module still has work of its own switched on; the answer says what.</response>
+    [HttpPut("{id:guid}/modules")]
+    [ProducesResponseType(typeof(WorkspaceModulesDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<WorkspaceModulesDto>> UpdateModules(
+        Guid id, [FromBody] SetWorkspaceModulesRequest request, [FromServices] IWorkspaceModules modules, CancellationToken ct)
+    {
+        var userId = _currentUser.UserId;
+        if (userId == null) return Unauthorized();
+        return (await modules.SetAsync(id, userId.Value, request, ct)).ToActionResult();
+    }
+
+    /// <summary>
     /// Who the workspace's email goes out from: its own address, whether the mail service
     /// has verified its domain (until then the shared address is used), and whether
     /// replies come back into the CRM.
