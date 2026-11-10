@@ -155,7 +155,7 @@ A sequence is an ordered set of email, call, task, and wait steps. The scheduler
 - Tests: `src/app/salesAgent/nextAction.test.ts`, `src/app/salesAgent/workspace.test.ts`
 - Questions, playbooks, memory, and the amount-and-silence judgment: `src/app/salesAgent/brain/`
 - Briefings, activity, neglected records, pipeline math, and proposed creates: `src/app/salesAgent/brain/workflows.ts`
-- Shared list cache, one copy per workspace, refreshed after a save: `src/app/salesAgent/agentData.ts`
+- The lists, read through the app's query cache (`src/app/hooks/queries`), one copy per workspace, refreshed after a save that changed them: `src/app/salesAgent/agentData.ts`
 - The ask box: `src/app/salesAgent/AgentDesk.tsx`. The last record and the last turns are saved on the user settings (`AgentMemoryJson`) and in this browser, under a key that includes the user and the organization. Send, assign, convert, enroll, merge, a task, a note, a comment, a contact, and a deal change run only from a button. A button saves nothing when another tab has switched the workspace or the account since the answer was given.
 - On screen: `src/app/salesAgent/NextActions.tsx`, in the slot after the page title, and on the workspace launcher when a workspace is already selected. The ask box sits on that same panel.
 - Reusable checks: `src/app/salesAgent/agentEvaluation.test.tsx`. Organization isolation for the external tools: `backend/tests/ACI.WebApi.Tests/McpEndpointTests.cs`.
@@ -176,7 +176,7 @@ Text inside a note, an activity, or any other record is data. It does not change
 
 ## Cache
 
-The lists live in `agentData.ts`, outside the panel, so navigating does not load them again. The key is the organization plus the signed-in session. A copy younger than 60 seconds is kept. A save, or returning to the tab, refreshes behind the rows already on screen. Switching organization drops the previous lists. One failed list does not wipe the others. A write is not retried by the loader.
+The lists live in the app's query cache, outside the panel, under the same keys as the pages that show them, so navigating does not load them again and a page that shows one of them (Tasks, the board, Contacts and others) shares the same copy. The key is the organization plus the signed-in user. A copy younger than 60 seconds is kept. A save reads again only the lists of the kinds of record it changed (`src/app/api/dataChanged.ts`), behind the rows already on screen; returning to the tab reads again a copy older than 60 seconds. Switching organization drops the previous lists. One failed list does not wipe the others. A write is not retried by the loader.
 
 ## Example requests
 
@@ -214,6 +214,6 @@ dotnet test backend/tests/ACI.WebApi.Tests/ACI.WebApi.Tests.csproj --filter McpE
 
 ## Limits that are still true
 
-The `AgentMemoryJson` column is added by the API startup script when it is missing. There is no separate migration to run. The list cache lives in the browser tab. Production deployment is a separate step.
+The `AgentMemoryJson` column is in the baseline migration, which the API applies at start-up (DEPLOY.md says how a database made before the baseline is brought to it). There is no separate migration to run. The list cache lives in the browser tab. Production deployment is a separate step.
 
 The in-app agent does not call a model. The sales writer does, when an API key is configured, and an empty key keeps the template replies. Record text is placed between marker lines that change on every request, so a record cannot close the block early. A model can still ignore the label. This CRM does not read mail or calendars outside Cadence, and it does not open attachments. Global search still reads its four lists one after another. A question that is not one of the set questions falls back to the loaded queue and says so. Answers use the loaded lists, which can be up to 60 seconds old, rather than a new query for every question. The ask box does not yet read activities, contracts, invitations, pipeline stages, or the club lists, so those questions say so and point to the page that has them. The external tools are read-only and were not given a write path.
