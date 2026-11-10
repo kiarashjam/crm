@@ -1,9 +1,7 @@
 using System.Net;
 using System.Text.Json;
-using ACI.Infrastructure.Persistence;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
 namespace ACI.WebApi.Tests;
@@ -35,10 +33,10 @@ public class LeadPipelinePatchTests
     private static Task<HttpResponseMessage> Patch(HttpClient client, Guid id, string pipelineState) =>
         client.PutAsync($"/api/leads/{id}", Body(new { pipelineState }));
 
+    // What was saved, in whichever workspace: outside a request the app reads none.
     private static async Task<JsonElement> StoredPipeline(CustomWebApplicationFactory factory, Guid id)
     {
-        using var scope = factory.Services.CreateScope();
-        var lead = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Leads.AsNoTracking().SingleAsync(l => l.Id == id);
+        var lead = await factory.Services.Read(db => db.Leads.AsNoTracking().Single(l => l.Id == id));
         using var doc = JsonDocument.Parse(lead.PipelineState ?? "{}");
         return doc.RootElement.Clone();
     }
@@ -90,8 +88,7 @@ public class LeadPipelinePatchTests
 
         (await Patch(client, id, "")).EnsureSuccessStatusCode();
 
-        using var scope = factory.Services.CreateScope();
-        (await scope.ServiceProvider.GetRequiredService<AppDbContext>().Leads.AsNoTracking().SingleAsync(l => l.Id == id))
+        (await factory.Services.Read(db => db.Leads.AsNoTracking().Single(l => l.Id == id)))
             .PipelineState.Should().BeNull();
     }
 

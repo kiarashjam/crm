@@ -245,6 +245,18 @@ public class EditConflictTests
 
     // ---- The save itself: two requests that both read the same version.
 
+    /// <summary>
+    /// A context that reads as the rep's workspace, as their request does: the app reads only
+    /// the workspace a request acts for (AppDbContext.Workspaces), and a context made here
+    /// starts in none.
+    /// </summary>
+    private static AppDbContext OpenAs(Func<AppDbContext> open, Guid userId, Guid? organizationId = null)
+    {
+        var db = open();
+        db.ActFor(organizationId, userId);
+        return db;
+    }
+
     private static async Task<(Guid UserId, Guid LeadId)> SeedLeadAsync(Func<AppDbContext> open)
     {
         await using var db = open();
@@ -255,9 +267,10 @@ public class EditConflictTests
         return (user.Id, lead.Id);
     }
 
-    private static async Task ALeadSavedFromAnOlderCopyIsRefusedAsync(Func<AppDbContext> open)
+    private static async Task ALeadSavedFromAnOlderCopyIsRefusedAsync(Func<AppDbContext> openAny)
     {
-        var (userId, id) = await SeedLeadAsync(open);
+        var (userId, id) = await SeedLeadAsync(openAny);
+        AppDbContext open() => OpenAs(openAny, userId);
         await using var first = open();
         await using var second = open();
         var firstRepo = new LeadRepository(first);
@@ -297,9 +310,10 @@ public class EditConflictTests
     // The server's own bookkeeping on a lead (a first response, the SLA flag) is saved
     // through LeadOpsRepository. Refused, it has to let go of the old copy: a read in the
     // same scope would otherwise hand that copy back, and its retry could never land.
-    private static async Task ABookkeepingSaveFromAnOlderCopyIsRefusedAndTheNextReadIsTheNewerOneAsync(Func<AppDbContext> open)
+    private static async Task ABookkeepingSaveFromAnOlderCopyIsRefusedAndTheNextReadIsTheNewerOneAsync(Func<AppDbContext> openAny)
     {
-        var (_, id) = await SeedLeadAsync(open);
+        var (userId, id) = await SeedLeadAsync(openAny);
+        AppDbContext open() => OpenAs(openAny, userId);
         await using var mine = open();
         await using var theirs = open();
         var ops = new LeadOpsRepository(mine);
@@ -347,8 +361,9 @@ public class EditConflictTests
         return (user.Id, deal.Id);
     }
 
-    private static async Task TwoDealSavesFromTheSameReadAsync(Func<AppDbContext> open, Guid userId, Guid id, Guid? organizationId = null)
+    private static async Task TwoDealSavesFromTheSameReadAsync(Func<AppDbContext> openAny, Guid userId, Guid id, Guid? organizationId = null)
     {
+        AppDbContext open() => OpenAs(openAny, userId, organizationId);
         await using var first = open();
         await using var second = open();
         var firstRepo = new DealRepository(first);
