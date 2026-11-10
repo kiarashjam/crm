@@ -208,6 +208,34 @@ public class ClubSalesTests
     }
 
     [Fact]
+    public async Task ATabWithItemsAtTwoVatRates_ClosesIntoAChargePerRate_AndStillPostsOnce()
+    {
+        // A tab used to post one charge, with no VAT rate unless every item had the same one,
+        // so a tab of drinks and a book left both out of the statement's VAT summary.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, member, negroni, book) = await ShopAsync(factory);
+        var tab = (await Club.Json(await client.PostAsync("/api/tabs", Body(new { memberId = member, venue = "Bar" })), "open a tab")).GetProperty("id").GetGuid();
+        await Club.Json(await client.PostAsync($"/api/tabs/{tab}/items", Body(new { catalogItemId = negroni, quantity = 2 })), "two Negronis");
+        await Club.Json(await client.PostAsync($"/api/tabs/{tab}/items", Body(new { catalogItemId = book, quantity = 1 })), "the book");
+        await Club.Json(await client.PostAsync($"/api/tabs/{tab}/items", Body(new { name = "Olives", quantity = 1, unitPrice = 6.5 })), "olives typed in");
+
+        var closed = await Club.Json(await client.PostAsync($"/api/tabs/{tab}/close", null), "close the tab");
+        closed.GetProperty("total").GetDecimal().Should().Be(83.50m);
+
+        var charges = await Club.ChargesAsync(client, member);
+        charges.Select(c => (c.GetProperty("amount").GetDecimal(), c.TryGetProperty("vatRate", out var vat) ? vat.GetDecimal() : (decimal?)null))
+            .Should().BeEquivalentTo(new (decimal, decimal?)[] { (37.00m, 8.1m), (40.00m, 2.6m), (6.50m, null) });
+        charges.Count(c => c.TryGetProperty("tabId", out _)).Should().Be(1, "the tab's own key is on one charge, the guard against posting it twice");
+        charges.Single(c => c.TryGetProperty("tabId", out _)).GetProperty("id").GetGuid().Should().Be(closed.GetProperty("chargeId").GetGuid());
+        (await Club.BalanceAsync(client, member)).Should().Be(-83.50m);
+        (await Club.PointsAsync(client, member)).Should().Be(1252, "83.50 × 10 × 1.5, rounded down, once");
+
+        await Club.Json(await client.PostAsync($"/api/tabs/{tab}/close", null), "close it again");
+        (await Club.ChargesAsync(client, member)).Should().HaveCount(3);
+        (await Club.BalanceAsync(client, member)).Should().Be(-83.50m);
+    }
+
+    [Fact]
     public async Task TheFrontDeskRingsUpSales_ASalesRepAndAnAccountantCannot()
     {
         using var factory = new CustomWebApplicationFactory();
