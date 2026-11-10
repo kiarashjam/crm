@@ -12,6 +12,12 @@ public interface IConsentRepository
         Guid organizationId, string subjectType, IReadOnlyCollection<Guid> subjectIds,
         string? channel = null, string? purpose = null, CancellationToken ct = default);
 
+    /// <summary>
+    /// The subjects with any answer recorded for <paramref name="channel"/> at
+    /// <paramref name="address"/> (lower-cased for email), standing or not.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> SubjectsAtAddressAsync(Guid organizationId, string subjectType, string channel, string address, CancellationToken ct = default);
+
     /// <summary>Everything recorded for one subject, newest first.</summary>
     Task<IReadOnlyList<ConsentRecord>> HistoryAsync(Guid organizationId, string subjectType, Guid subjectId, int take, CancellationToken ct = default);
 

@@ -57,9 +57,10 @@ public interface IConsentService
 
     /// <summary>
     /// Records that marketing by email is withdrawn for the member a link names and for every
-    /// other member of the workspace at that address, as given by the person themselves
-    /// (<paramref name="source"/>). Returns how many members it changed; a member already
-    /// withdrawn is left as they are, so a link followed twice records it once.
+    /// other member of the workspace at that address, or with an answer given at it, as given
+    /// by the person themselves (<paramref name="source"/>). Returns how many members it
+    /// changed; a member already withdrawn is left as they are, so a link followed twice
+    /// records it once.
     /// </summary>
     Task<int> WithdrawMarketingEmailAsync(Guid organizationId, Guid? memberId, string address, string source, string? detail, CancellationToken ct = default);
 }
@@ -148,12 +149,20 @@ public sealed class ConsentService : IConsentService, IMemberMailRules
         var normalized = Normalize(address);
         // The person who followed the link holds that mailbox: their "stop" is for every
         // member the club writes to there (a couple sharing one address, a duplicate record),
-        // not only the record the link was made for.
+        // not only the record the link was made for. That includes a member with an answer
+        // given at the address. Two records of one person merged: the one merged away is
+        // gone, and the link in an email sent to it names a member who no longer exists,
+        // but its answers (and the address they were given at) are the kept member's now,
+        // and so is the marketing that link has to stop, wherever it is sent.
+        var answeredHere = normalized.Length == 0
+            ? new HashSet<Guid>()
+            : (await _consent.SubjectsAtAddressAsync(organizationId, ConsentSubjects.Member, ConsentChannels.Email, normalized, ct)).ToHashSet();
+        // Members of the workspace only: an answer written for a member who has gone (merged
+        // away, or removed at their request) would only bring their address back.
         var members = (await _club.MembersAsync(organizationId, ct))
-            .Where(m => m.Id == memberId || (normalized.Length > 0 && Normalize(m.Email) == normalized))
+            .Where(m => m.Id == memberId || (normalized.Length > 0 && (Normalize(m.Email) == normalized || answeredHere.Contains(m.Id))))
             .Select(m => m.Id)
             .ToList();
-        if (memberId is Guid named && !members.Contains(named)) members.Add(named);
         if (members.Count == 0) return 0;
 
         var standing = (await _consent.CurrentAsync(organizationId, ConsentSubjects.Member, members, ConsentChannels.Email, ConsentPurposes.Marketing, ct))

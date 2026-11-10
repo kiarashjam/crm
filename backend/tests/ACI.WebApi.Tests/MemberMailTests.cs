@@ -190,6 +190,39 @@ public class MemberMailTests
     }
 
     [Fact]
+    public async Task TheLinkInAnEmailToARecordMergedAwayStopsThePersonsMarketing()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        // A second record of the same person, at their work address: the one kept when the two are merged.
+        var kept = (await Json(await club.Owner.PostAsync("/api/members", Body(new
+        {
+            firstName = "Jean", lastName = "Dupont", email = "j.dupont@work.example.ch", tier = "Gold", status = "Active",
+        })), "add the other record")).GetProperty("id").GetGuid();
+        await ConsentAsync(club, granted: true);
+        (await QueueAsync(app, club, ConsentPurposes.Marketing)).IsSuccess.Should().BeTrue();
+        await app.DispatchOutboxAsync();
+        var token = TokenFrom(app.Mail.Sent.Single().TextBody);
+
+        (await club.Owner.PostAsync($"/api/members/{kept}/merge", Body(new { otherMemberId = club.MemberId })))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        async Task<string> KeptState() =>
+            (await Json(await club.Owner.GetAsync($"/api/members/{kept}/consent"), "read the kept record's consent"))
+                .GetProperty("current").EnumerateArray()
+                .Single(s => s.GetProperty("channel").GetString() == "email" && s.GetProperty("purpose").GetString() == "marketing")
+                .GetProperty("state").GetString()!;
+        (await KeptState()).Should().Be("granted", "the yes given on the record merged away is the person's");
+
+        // The link names the record merged away, and an address the kept record does not have.
+        await Json(await app.CreateClient().PostAsync($"/api/public/unsubscribe/{token}", null), "unsubscribe");
+
+        (await KeptState()).Should().Be("withdrawn", "the person said stop, and the kept record is them");
+        (await app.Services.Read(db => db.ConsentRecords.Count(c => c.SubjectId == club.MemberId))).Should().Be(0,
+            "nothing is written for a member who no longer exists");
+        (await QueueAsync(app, club with { MemberId = kept }, ConsentPurposes.Marketing)).Error.Code.Should().Be("Consent.Withdrawn");
+    }
+
+    [Fact]
     public async Task AWithdrawalBeforeTheEmailGoesStopsIt()
     {
         await using var app = new App();

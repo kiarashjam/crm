@@ -23,6 +23,13 @@ public sealed class ConsentRepository : IConsentRepository
         return await query.ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Guid>> SubjectsAtAddressAsync(Guid organizationId, string subjectType, string channel, string address, CancellationToken ct = default) =>
+        await _db.ConsentRecords.AsNoTracking()
+            .Where(c => c.OrganizationId == organizationId && c.SubjectType == subjectType && c.Channel == channel && c.Address == address)
+            .Select(c => c.SubjectId)
+            .Distinct()
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<ConsentRecord>> HistoryAsync(Guid organizationId, string subjectType, Guid subjectId, int take, CancellationToken ct = default) =>
         await _db.ConsentRecords.AsNoTracking()
             .Where(c => c.OrganizationId == organizationId && c.SubjectType == subjectType && c.SubjectId == subjectId)
