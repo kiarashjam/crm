@@ -164,6 +164,39 @@ describe('moving a deal on the board', () => {
   });
 });
 
+describe('a move refused while the board for new filters is on its way', () => {
+  it('leaves the board for the new filters on screen, not the one it stood in for', async () => {
+    // While the board for a search loads, the last board stays on screen. A move made on
+    // it and then refused used to put that last board back, under the new search.
+    const bergsee = card({ name: 'Bergsee AG' });
+    const twoCards = (): DealBoard => ({
+      ...board(),
+      columns: [column({ count: 2, deals: [card({ name: 'Alpine Club' }), bergsee] }), board().columns[1]!],
+    });
+    api.getDealBoard.mockImplementation(async () => twoCards());
+    show();
+    await screen.findByTitle('Alpine Club', undefined, { timeout: 5000 });
+
+    let answerSearch!: (next: DealBoard) => void;
+    api.getDealBoard.mockImplementationOnce(() => new Promise<DealBoard>((resolve) => { answerSearch = resolve; }));
+    fireEvent.change(screen.getByPlaceholderText('Search deals by name, value, or contact...'), { target: { value: 'berg' } });
+    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'berg' }), expect.anything()));
+
+    let refuse!: (err: Error) => void;
+    api.updateDeal.mockReturnValue(new Promise((_, reject) => { refuse = reject; }));
+    fireEvent.change(stagePickerOf('Alpine Club'), { target: { value: SIGNED } });
+    answerSearch({ ...twoCards(), columns: [column({ count: 1, deals: [bergsee] }), board().columns[1]!] });
+    await waitFor(() => expect(screen.queryByTitle('Alpine Club')).toBeNull());
+
+    refuse(new Error('You cannot change this deal.'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(screen.queryByTitle('Alpine Club')).toBeNull();
+    expect(screen.getByTitle('Bergsee AG')).toBeInTheDocument();
+  });
+});
+
 describe('a board that could not be read', () => {
   it('says so with a retry, instead of the empty first-day screen', async () => {
     api.getDealBoard.mockRejectedValueOnce(new Error('The server took too long to answer.'));

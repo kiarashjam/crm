@@ -483,8 +483,10 @@ export default function Pipeline() {
     if (isWon !== undefined) payload.isWon = isWon;
     // The card moves to its new column at once. The columns' counts, money and stale
     // deals are the server's to work out again, which the cache does once the save is
-    // announced; a refused move puts the board back as it was.
-    const before = board;
+    // announced; a refused move puts the board back as it was. While the board for new
+    // filters is on its way, the one on screen is the last filters' stand-in: nothing
+    // moves in it, and it is never put back under the new filters.
+    const before = boardResult.isPlaceholderData ? null : board;
     if (deal) setBoard((prev) => withCardMoved(prev, dealId, newStageId, newStageName));
     const putBack = () => { if (before) writeCache<DealBoard>(dealBoardKey(ws, boardQuery), () => before); };
     try {
