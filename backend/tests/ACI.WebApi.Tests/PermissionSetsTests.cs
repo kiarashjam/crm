@@ -132,6 +132,8 @@ public class PermissionSetsTests
         await RefusedForAsync(await finance.PostAsync("/api/members", Body(new { firstName = "Anne", lastName = "Muster", tier = "Gold", status = "Active" })),
             MemberPermissions.ClubMembers, "finance adding a club member");
         await RefusedForAsync(await finance.PostAsync("/api/visits", Body(new { memberId })), MemberPermissions.FrontDesk, "finance checking a member in");
+        await RefusedForAsync(await finance.PostAsync("/api/loyalty/ledger", Body(new { memberId, kind = "Adjusted", reason = "Goodwill", points = 500 })),
+            MemberPermissions.ClubMembers, "finance handing out loyalty points");
     }
 
     [Fact]
@@ -169,7 +171,13 @@ public class PermissionSetsTests
         var charge = await ChargeAsync(club.Owner, memberId);
         var (desk, _) = await JoinAsync(club, "desk@pavillon46.ch", "front_desk");
 
-        await Ok(await desk.PostAsync("/api/visits", Body(new { memberId, venue = "Lounge" })), "the front desk checks a member in");
+        await Ok(await desk.PostAsync("/api/visits", Body(new { memberId, venue = "Lounge", pointsAwarded = 15 })), "the front desk checks a member in");
+        // The points a check-in earns: the app writes them as a ledger entry straight after
+        // the visit (visits.ts, and an event's door check-in). Refused, every check-in at
+        // the desk ended in an error after the visit was saved, and earned nothing.
+        var earned = (await Ok(await desk.PostAsync("/api/loyalty/ledger", Body(new { memberId, memberName = "Jean Dupont", kind = "Earned", reason = "Visit", points = 15, note = "Lounge check-in" })),
+            "the front desk's check-in earns its points")).GetProperty("id").GetGuid();
+        await RefusedSayingAsync(await desk.DeleteAsync($"/api/loyalty/ledger/{earned}"), "Your role here does not let you", "the front desk taking points away");
         await Ok(await desk.GetAsync("/api/charges"), "the front desk reads the charges");
 
         await RefusedForAsync(await desk.PostAsync("/api/charges", Body(new { memberId, kind = "Bar", description = "Bar tab", amount = 80 })),

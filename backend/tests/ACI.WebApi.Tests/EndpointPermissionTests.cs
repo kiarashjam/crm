@@ -140,6 +140,8 @@ public class EndpointPermissionTests
         { "ChargesController", "Void", MemberPermissions.VoidMoney },
         { "PaymentsController", "Void", MemberPermissions.VoidMoney },
         { "GiftCardsController", "Void", MemberPermissions.VoidMoney },
+        // A check-in's points are written by the app as a ledger entry, so the front desk may add one.
+        { "LoyaltyController", "Add", MemberPermissions.FrontDesk },
         { "PipelinesController", "Create", MemberPermissions.ManageSettings },
         { "LeadStatusesController", "Update", MemberPermissions.ManageSettings },
         { "AutomationsController", "Create", MemberPermissions.ManageSettings },

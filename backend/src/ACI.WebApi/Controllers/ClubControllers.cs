@@ -108,7 +108,6 @@ public class VisitsController : ControllerBase
 [Authorize]
 [WorkspaceRequired]
 [Produces("application/json")]
-[Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
 public class LoyaltyController : ControllerBase
 {
     private readonly IClubService _club;
@@ -126,6 +125,12 @@ public class LoyaltyController : ControllerBase
         return Ok(await _club.LedgerAsync(_currentUser.CurrentOrganizationId, ct));
     }
 
+    // The front desk too: the points a check-in earns (at the desk, at the POS, at an
+    // event's door) are written by the app as a ledger entry straight after the visit.
+    // With club members alone, every front-desk check-in failed after the visit was saved
+    // and earned nothing, though checking members in is what that preset is for. Taking
+    // points away stays with whoever manages club members (Delete).
+    [Requires(MemberPermissions.ClubMembers, MemberPermissions.FrontDesk, Any = true)]
     [HttpPost("ledger")]
     public async Task<ActionResult<LoyaltyEntryDto>> Add([FromBody] LoyaltyWriteRequest request, CancellationToken ct)
     {
@@ -133,6 +138,7 @@ public class LoyaltyController : ControllerBase
         return (await _club.AddLedgerAsync(_currentUser.CurrentOrganizationId, request, ct)).ToActionResult();
     }
 
+    [Requires(MemberPermissions.ClubMembers)]
     [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("ledger/{id:guid}")]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
