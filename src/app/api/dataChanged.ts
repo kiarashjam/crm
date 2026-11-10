@@ -146,8 +146,8 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   duplicates: ['duplicates'],
   // A balance set by hand on a member is an entry on the ledger, a member's tier or
   // status changes who a campaign reaches, and a member added can start their dues
-  // subscription and be charged their initiation fee.
-  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions'],
+  // subscription (due today, so billing now has it to bill) and be charged their initiation fee.
+  members: ['members', 'charges', 'payments', 'statements', 'campaigns', 'subscriptions', 'billing'],
   // A void or a payment can put back a member the billing lapsed (members).
   charges: ['charges', 'members', 'statements'],
   payments: ['payments', 'charges', 'members', 'statements'],

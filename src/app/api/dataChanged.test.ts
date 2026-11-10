@@ -100,6 +100,8 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('POST', '/api/subscriptions/s-1/bill')).toEqual(expect.arrayContaining(['subscriptions', 'charges', 'members']));
     // A balance set by hand on a member is an entry on the ledger too.
     expect(resourcesChangedBy('PUT', '/api/members/m-1')).toEqual(expect.arrayContaining(['members', 'charges', 'statements']));
+    // A member added can start their dues today: a subscription, and a period billing now would post.
+    expect(resourcesChangedBy('POST', '/api/members')).toEqual(expect.arrayContaining(['subscriptions', 'billing']));
   });
 
   it("a club member's merge moves club records, not the sales lists", () => {
