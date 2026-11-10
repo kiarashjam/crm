@@ -19,7 +19,7 @@ vi.mock('@/app/lib/exportCsv', async (importOriginal) => ({
 }));
 
 const BASE = 'http://api.test';
-let requests: { method: string; path: string; search: string; body: string; auth: string | null }[];
+let requests: { method: string; path: string; search: string; body: string; auth: string | null; payToken: string | null }[];
 
 beforeEach(() => {
   localStorage.clear();
@@ -33,7 +33,7 @@ beforeEach(() => {
     const url = new URL(request.url);
     requests.push({
       method: request.method, path: url.pathname, search: url.search, body: await request.clone().text(),
-      auth: request.headers.get('Authorization'),
+      auth: request.headers.get('Authorization'), payToken: request.headers.get('X-Pay-Token'),
     });
   });
 });
@@ -91,19 +91,23 @@ describe('payments against the server', () => {
 });
 
 describe('the public pay page', () => {
-  it('reads the link with no sign-in, and starts checkout from it', async () => {
+  it('reads the link with no sign-in, and starts checkout from it, the token in a header rather than the address', async () => {
     server.use(
-      http.get(`${BASE}/api/public/pay/tok%2Fen`, () => HttpResponse.json({ clubName: 'Pavillon 46', amount: 120, available: true })),
-      http.post(`${BASE}/api/public/pay/tok%2Fen/checkout`, () => HttpResponse.json({ url: 'https://checkout.stripe.com/c/pay/cs_1' })),
+      http.get(`${BASE}/api/public/pay`, () => HttpResponse.json({ clubName: 'Pavillon 46', amount: 120, available: true })),
+      http.post(`${BASE}/api/public/pay/checkout`, () => HttpResponse.json({ url: 'https://checkout.stripe.com/c/pay/cs_1' })),
     );
 
-    expect((await getPayPage('tok/en')).clubName).toBe('Pavillon 46');
-    expect((await startCheckout('tok/en')).url).toBe('https://checkout.stripe.com/c/pay/cs_1');
+    expect((await getPayPage('tok_en-1')).clubName).toBe('Pavillon 46');
+    expect((await startCheckout('tok_en-1')).url).toBe('https://checkout.stripe.com/c/pay/cs_1');
     expect(requests.map((r) => r.auth)).toEqual([null, null]);
+    // IIS, in front of the API, refuses an address segment longer than 260 characters: a token
+    // in the path never reached the server. A header has room, and stays out of the request log.
+    expect(requests.map((r) => r.payToken)).toEqual(['tok_en-1', 'tok_en-1']);
+    expect(requests.map((r) => r.path)).toEqual(['/api/public/pay', '/api/public/pay/checkout']);
   });
 
   it("says why a link cannot be used, in the server's words", async () => {
-    server.use(http.get(`${BASE}/api/public/pay/old`, () => HttpResponse.json(
+    server.use(http.get(`${BASE}/api/public/pay`, () => HttpResponse.json(
       { title: 'Not found', status: 404, detail: 'This payment link is not valid any more. Ask the club for a new one.' }, { status: 404 })));
 
     const err = await getPayPage('old').catch((e: unknown) => e);

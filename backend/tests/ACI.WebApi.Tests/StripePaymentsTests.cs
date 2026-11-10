@@ -76,6 +76,19 @@ public class StripePaymentsTests
 
     private static string TokenOf(string url) => Uri.UnescapeDataString(url[(url.IndexOf("/pay/", StringComparison.Ordinal) + 5)..]);
 
+    /// <summary>The pay page reading what a link asks for: its token in a header, as the page sends it.</summary>
+    private static Task<HttpResponseMessage> OpenAsync(HttpClient client, string token) => client.SendAsync(PayRequest(HttpMethod.Get, "/api/public/pay", token));
+
+    /// <summary>The member pressing Pay on the page.</summary>
+    private static Task<HttpResponseMessage> PayAsync(HttpClient client, string token) => client.SendAsync(PayRequest(HttpMethod.Post, "/api/public/pay/checkout", token));
+
+    private static HttpRequestMessage PayRequest(HttpMethod method, string path, string token)
+    {
+        var request = new HttpRequestMessage(method, path);
+        request.Headers.Add("X-Pay-Token", token);
+        return request;
+    }
+
     private static object IntentEvent(string eventId, string type, string intentId, string status, long amountMinor, Dictionary<string, string> metadata,
         string method = "card", string? failure = null) => new
     {
@@ -111,7 +124,7 @@ public class StripePaymentsTests
         var charge = await ChargeAsync(club.Owner, memberId, 299m);
         var link = await Json(await club.Owner.PostAsync($"/api/members/{memberId}/pay-link", Body(new { purpose = "account" })), "make a pay link");
         var anonymous = app.CreateClient();
-        await Json(await anonymous.PostAsync($"/api/public/pay/{Uri.EscapeDataString(TokenOf(link.GetProperty("url").GetString()!))}/checkout", null), "press Pay");
+        await Json(await PayAsync(anonymous, TokenOf(link.GetProperty("url").GetString()!)), "press Pay");
         var checkout = app.Stripe.Sent("POST", "/v1/checkout/sessions").Last();
         return (memberId, charge, MetadataOf(checkout));
     }
@@ -146,10 +159,10 @@ public class StripePaymentsTests
         link.GetProperty("currency").GetString().Should().Be("CHF");
         var url = link.GetProperty("url").GetString()!;
         url.Should().StartWith("http://localhost:5173/pay/");
-        var token = Uri.EscapeDataString(TokenOf(url));
+        var token = TokenOf(url);
 
         var anonymous = app.CreateClient();
-        var page = await Json(await anonymous.GetAsync($"/api/public/pay/{token}"), "open the page");
+        var page = await Json(await OpenAsync(anonymous, token), "open the page");
         page.GetProperty("clubName").GetString().Should().Be("Pavillon 46");
         page.GetProperty("memberFirstName").GetString().Should().Be("Jean");
         page.GetProperty("amount").GetDecimal().Should().Be(299m);
@@ -157,7 +170,7 @@ public class StripePaymentsTests
         page.GetProperty("methods").EnumerateArray().Select(m => m.GetString()).Should().Equal("card", "twint");
         app.Stripe.Sent("POST", "/v1/checkout/sessions").Should().BeEmpty("opening the page changes nothing: mail scanners open every link");
 
-        var started = await Json(await anonymous.PostAsync($"/api/public/pay/{token}/checkout", null), "press Pay");
+        var started = await Json(await PayAsync(anonymous, token), "press Pay");
         started.GetProperty("url").GetString().Should().StartWith("https://checkout.stripe.com/");
         var customer = app.Stripe.Sent("POST", "/v1/customers").Single();
         customer.IdempotencyKey.Should().StartWith("cadence-customer-");
@@ -175,9 +188,26 @@ public class StripePaymentsTests
         checkout.Authorization.Should().Be($"Bearer {Key}");
 
         // Pressing Pay again finds the page already made rather than making another.
-        await Json(await anonymous.PostAsync($"/api/public/pay/{token}/checkout", null), "press Pay again");
+        await Json(await PayAsync(anonymous, token), "press Pay again");
         app.Stripe.Sent("POST", "/v1/checkout/sessions").Should().HaveCount(1);
-        (await anonymous.GetAsync("/api/public/pay/not-a-token")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await OpenAsync(anonymous, "not-a-token")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        url.Should().NotContain("%", "the token is plain base64url, safe in a link as it is");
+    }
+
+    [Fact]
+    public async Task ALinkForAsManyChargesAsStaffMayTickStillOpens()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        var memberId = await MemberAsync(club.Owner);
+        var charges = new List<Guid>();
+        for (var i = 0; i < 50; i++) charges.Add(await ChargeAsync(club.Owner, memberId, 10m, "Bar", $"Bar tab {i + 1}"));
+
+        var link = await Json(await club.Owner.PostAsync($"/api/members/{memberId}/pay-link", Body(new { purpose = "charges", chargeIds = charges })), "a link for 50 charges");
+        link.GetProperty("amount").GetDecimal().Should().Be(500m);
+        var token = TokenOf(link.GetProperty("url").GetString()!);
+        var page = await Json(await OpenAsync(app.CreateClient(), token), "the member opens it");
+        page.GetProperty("amount").GetDecimal().Should().Be(500m);
     }
 
     [Fact]
@@ -281,12 +311,12 @@ public class StripePaymentsTests
         var club = await ClubAsync(app);
         var memberId = await MemberAsync(club.Owner);
         var link = await Json(await club.Owner.PostAsync($"/api/members/{memberId}/pay-link", Body(new { purpose = "setup", autoPay = true })), "a link to save a card");
-        var token = Uri.EscapeDataString(TokenOf(link.GetProperty("url").GetString()!));
+        var token = TokenOf(link.GetProperty("url").GetString()!);
         var anonymous = app.CreateClient();
-        var page = await Json(await anonymous.GetAsync($"/api/public/pay/{token}"), "open it");
+        var page = await Json(await OpenAsync(anonymous, token), "open it");
         page.GetProperty("purpose").GetString().Should().Be("setup");
         page.GetProperty("autoPay").GetBoolean().Should().BeTrue();
-        await Json(await anonymous.PostAsync($"/api/public/pay/{token}/checkout", null), "go to Stripe's page");
+        await Json(await PayAsync(anonymous, token), "go to Stripe's page");
         var checkout = app.Stripe.Sent("POST", "/v1/checkout/sessions").Single();
         checkout.Form["mode"].Should().Be("setup");
         checkout.Form["custom_text[submit][message]"].Should().Contain("membership dues", "the member agrees on Stripe's page, under these words");

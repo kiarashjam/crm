@@ -81,18 +81,6 @@ public class SecretPathRedactionTests
     }
 
     [Theory]
-    // A pay link's token opens one member's account to be paid, and shows their name and what
-    // they owe, to whoever holds it.
-    [InlineData("/api/public/pay/SUPERSECRETTOKEN123abcXYZ", "/api/public/pay/[redacted]")]
-    [InlineData("/api/public/pay/SUPERSECRETTOKEN123abcXYZ/checkout", "/api/public/pay/[redacted]/checkout")]
-    public void RemovesTheTokenFromPayLinks(string path, string expected)
-    {
-        var redacted = SecretPathRedactionMiddleware.RedactPath(path);
-        redacted.Should().Be(expected);
-        redacted.Should().NotContain(Token);
-    }
-
-    [Theory]
     // The CRM's own routes carry ids, not credentials. Redacting them would throw
     // away the only thing that makes a log line useful.
     [InlineData("/api/contracts/3f9a21c0-0000-0000-0000-000000000000")]
@@ -104,6 +92,10 @@ public class SecretPathRedactionTests
     [InlineData("/api/public/contracts/")]
     [InlineData("/api/attachments")]
     [InlineData("/api/attachments/3f9a21c0-0000-0000-0000-000000000000")]
+    // A pay link's token travels in a header (IIS refuses an address segment as long as one),
+    // so its two addresses carry nothing to hide, and "checkout" is not taken for a secret.
+    [InlineData("/api/public/pay")]
+    [InlineData("/api/public/pay/checkout")]
     public void LeavesEverythingElseAlone(string path)
     {
         SecretPathRedactionMiddleware.RedactPath(path).Should().BeNull(

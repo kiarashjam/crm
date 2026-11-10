@@ -136,9 +136,10 @@ try
                 QueueLimit = 0,
             }));
         // A pay link: a member opens it and presses Pay once or twice. Per token, like the
-        // unsubscribe link; a forged token fails its check before any database work.
+        // unsubscribe link (the pay page sends it in a header); a forged token fails its
+        // check before any database work.
         options.AddPolicy("public-pay", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
-            "pay:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
+            "pay:" + context.Request.Headers[ACI.WebApi.Controllers.PublicPaymentsController.TokenHeader].ToString(),
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,

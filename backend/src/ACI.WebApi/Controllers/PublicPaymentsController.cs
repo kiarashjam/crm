@@ -14,8 +14,13 @@ namespace ACI.WebApi.Controllers;
 /// <para>
 /// A pay link's token is the whole permission, and only for what it names: one member's
 /// account, some of their charges, or saving a card. Opening the page changes nothing (mail
-/// scanners open every link); pressing Pay starts Stripe's page. The token is kept out of the
-/// request log (SecretPathRedactionMiddleware).
+/// scanners open every link); pressing Pay starts Stripe's page.
+/// </para>
+/// <para>
+/// The page sends the token in a header (<see cref="TokenHeader"/>), not in the address: IIS,
+/// which the API runs behind on App Service, refuses an address whose segment is longer than
+/// 260 characters before the app sees it, and a token is longer than that. A header also keeps
+/// it out of the request log.
 /// </para>
 /// <para>
 /// Stripe's webhook is answered by its signature alone, checked with the signing secret of the
@@ -31,25 +36,28 @@ public class PublicPaymentsController : ControllerBase
     /// <summary>Larger than any Stripe event.</summary>
     private const long MaxEventBytes = 1024 * 1024;
 
+    /// <summary>The header the pay page sends a pay link's token in.</summary>
+    public const string TokenHeader = "X-Pay-Token";
+
     private readonly IClubPayments _payments;
 
     public PublicPaymentsController(IClubPayments payments) => _payments = payments;
 
-    /// <summary>What the pay link asks for: the club, whom it is for, what and how much.</summary>
-    [HttpGet("pay/{token}")]
+    /// <summary>What the pay link whose token is in <see cref="TokenHeader"/> asks for: the club, whom it is for, what and how much.</summary>
+    [HttpGet("pay")]
     [EnableRateLimiting("public-pay")]
-    public async Task<ActionResult> Read(string token, CancellationToken ct)
+    public async Task<ActionResult> Read(CancellationToken ct)
     {
-        var page = await _payments.ReadPayLinkAsync(token, ct);
+        var page = await _payments.ReadPayLinkAsync(Request.Headers[TokenHeader].ToString(), ct);
         return page.IsSuccess ? Ok(page.Value) : page.Error.ToProblemResult();
     }
 
-    /// <summary>Starts Stripe's page for the link, and says where it is.</summary>
-    [HttpPost("pay/{token}/checkout")]
+    /// <summary>Starts Stripe's page for the pay link whose token is in <see cref="TokenHeader"/>, and says where it is.</summary>
+    [HttpPost("pay/checkout")]
     [EnableRateLimiting("public-pay")]
-    public async Task<ActionResult> Checkout(string token, CancellationToken ct)
+    public async Task<ActionResult> Checkout(CancellationToken ct)
     {
-        var started = await _payments.StartCheckoutAsync(token, ct);
+        var started = await _payments.StartCheckoutAsync(Request.Headers[TokenHeader].ToString(), ct);
         return started.IsSuccess ? Ok(started.Value) : started.Error.ToProblemResult();
     }
 

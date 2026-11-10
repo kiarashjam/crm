@@ -348,7 +348,12 @@ export async function downloadJournalCsv(fromUtc: string, toUtc: string, layout:
 }
 
 // ── the public pay page ─────────────────────────────────────────────────────
-// Opened by a member with no account: the token in the link is the whole permission.
+// Opened by a member with no account: the token in the link is the whole permission. The page
+// sends it to the API in a header, not in the address: IIS, in front of the API on App Service,
+// refuses an address segment longer than 260 characters, and a token is longer than that.
+
+/** The header the API reads a pay link's token from. */
+export const PAY_TOKEN_HEADER = 'X-Pay-Token';
 
 export class PayLinkError extends Error {
   readonly status: number;
@@ -372,12 +377,12 @@ export interface PublicPayPage {
   autoPay: boolean;
 }
 
-async function publicCall<T>(path: string, method: 'GET' | 'POST'): Promise<T> {
+async function publicCall<T>(path: string, method: 'GET' | 'POST', token: string): Promise<T> {
   const base = getApiBaseUrl();
   if (!base) throw new PayLinkError('VITE_API_URL is not set', 0);
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, { method });
+    res = await fetch(`${base}${path}`, { method, headers: { [PAY_TOKEN_HEADER]: token } });
   } catch {
     throw new PayLinkError('Could not reach the server', 0);
   }
@@ -395,7 +400,7 @@ async function publicCall<T>(path: string, method: 'GET' | 'POST'): Promise<T> {
 }
 
 /** What the link asks for. Opening it changes nothing. */
-export const getPayPage = (token: string) => publicCall<PublicPayPage>(`/api/public/pay/${encodeURIComponent(token)}`, 'GET');
+export const getPayPage = (token: string) => publicCall<PublicPayPage>('/api/public/pay', 'GET', token);
 
 /** Starts Stripe's page for the link; the answer says where it is. */
-export const startCheckout = (token: string) => publicCall<{ url: string }>(`/api/public/pay/${encodeURIComponent(token)}/checkout`, 'POST');
+export const startCheckout = (token: string) => publicCall<{ url: string }>('/api/public/pay/checkout', 'POST', token);

@@ -63,9 +63,6 @@ public sealed class SecretPathRedactionMiddleware
         // it was made for, and a mail app's one-click POST to it lands in this log too.
         new(@"^(?<keep>/api/public/unsubscribe/)(?<secret>[^/?]+)(?<rest>.*)$",
             RegexOptions.Compiled | RegexOptions.IgnoreCase),
-        // /api/public/pay/{token}[/checkout]: a pay link opens one member's account to be paid.
-        new(@"^(?<keep>/api/public/pay/)(?<secret>[^/?]+)(?<rest>.*)$",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase),
     };
 
     private readonly RequestDelegate _next;
