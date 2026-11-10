@@ -96,6 +96,11 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
  *   status), and ends a sequence when it is a reply.
  * - A deal shows on its company's row and its contact's; a contact's name and a
  *   company's show on the deals and contacts linked to them.
+ * - A deal moved to a stage, won or lost runs the workspace's automations, which can
+ *   add a task; so does a countersigned contract, which wins its deal and moves its
+ *   lead's status on.
+ * - Removing a member hands their open leads, deals and tasks to someone else, and
+ *   the workspace's currency and time zone decide how its figures are counted.
  * - Work-queue and report figures count leads, deals and tasks.
  *
  * A base not listed changes only its own records (the club's members, charges,
@@ -105,20 +110,20 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
 const CHANGES: Readonly<Record<string, readonly string[]>> = {
   leads: ['leads', 'contacts', 'tasks', 'activities', 'sequences', 'duplicates', 'work-queue', 'reports'],
   activities: ['activities', 'leads', 'contacts', 'deals', 'sequences', 'work-queue', 'reports'],
-  deals: ['deals', 'companies', 'contacts', 'activities', 'work-queue', 'reports'],
+  deals: ['deals', 'companies', 'contacts', 'activities', 'tasks', 'work-queue', 'reports'],
   contacts: ['contacts', 'companies', 'deals', 'leads', 'duplicates', 'reports'],
   companies: ['companies', 'contacts', 'deals', 'duplicates', 'reports'],
   tasks: ['tasks', 'work-queue', 'reports'],
   sequences: ['sequences', 'leads', 'work-queue'],
   email: ['activities', 'leads', 'contacts', 'deals', 'sequences'],
-  contracts: ['contracts', 'leads', 'deals', 'activities', 'work-queue', 'reports'],
+  contracts: ['contracts', 'leads', 'deals', 'activities', 'tasks', 'work-queue', 'reports'],
   imports: ['leads', 'contacts', 'companies', 'deals', 'members', 'duplicates', 'work-queue', 'reports'],
   'lead-ops': ['leads', 'contacts', 'tasks', 'activities', 'work-queue', 'reports'],
   pipelines: ['pipelines', 'deals', 'reports'],
   dealstages: ['pipelines', 'deals', 'reports'],
   leadstatuses: ['lead-lookups', 'leads', 'reports'],
   leadsources: ['lead-lookups', 'leads', 'reports'],
-  organizations: ['team', 'organizations'],
+  organizations: ['team', 'organizations', 'leads', 'deals', 'tasks', 'work-queue', 'reports'],
   invites: ['team'],
   joinrequests: ['team'],
   teams: ['team', 'reports'],

@@ -68,6 +68,18 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('POST', '/api/leads')).toEqual(expect.arrayContaining(['leads', 'contacts', 'tasks', 'sequences']));
   });
 
+  it("a deal's save and a countersigned contract change tasks: the automations they start add some", () => {
+    // A deal moved to a stage, won or lost runs the workspace's automations, which
+    // can make a task; so can the lead status a signature moves on.
+    expect(resourcesChangedBy('PUT', '/api/deals/d-1')).toContain('tasks');
+    expect(resourcesChangedBy('POST', '/api/contracts/c-1/countersign')).toContain('tasks');
+  });
+
+  it("removing a member changes the leads, deals and tasks handed to whoever takes them over", () => {
+    expect(resourcesChangedBy('DELETE', '/api/organizations/o-1/members/u-2?handOverTo=u-3'))
+      .toEqual(expect.arrayContaining(['team', 'leads', 'deals', 'tasks', 'work-queue', 'reports']));
+  });
+
   it('a merge or a conversion changes everything linked', () => {
     for (const path of ['/api/contacts/c-1/merge', '/api/leads/l-1/convert']) {
       expect(resourcesChangedBy('POST', path)).toEqual(expect.arrayContaining(['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities']));
