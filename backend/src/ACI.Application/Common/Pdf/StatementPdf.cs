@@ -13,6 +13,12 @@ namespace ACI.Application.Common.Pdf;
 public sealed record StatementPdfLine(
     DateTime AtUtc, string Description, string? Detail, decimal Charge, decimal Payment, decimal OwedAfter, decimal? VatRate);
 
+/// <summary>One person on a household statement: what they ran up on the account in the period.</summary>
+/// <param name="Role">Their place in the household: Primary, Spouse, Child and so on.</param>
+/// <param name="Charged">What they ran up on this account in the period, voids taken off.</param>
+/// <param name="OwnAccountOwed">What an account of their own owed at the end of the period, when it owes or holds anything; none otherwise.</param>
+public sealed record StatementPdfHouseholdLine(string Name, string Role, decimal Charged, decimal? OwnAccountOwed);
+
 /// <summary>Everything a statement says.</summary>
 /// <param name="ClubName">Whose letterhead it is.</param>
 /// <param name="FromUtc">The period's first moment.</param>
@@ -22,6 +28,9 @@ public sealed record StatementPdfLine(
 /// <param name="OpeningOwed">Owed when the period began: negative when in credit.</param>
 /// <param name="ClosingOwed">Owed when it ended: negative when in credit.</param>
 /// <param name="GeneratedAtUtc">When it was made, printed on it; passed in so the same statement gives the same bytes.</param>
+/// <param name="Title">The heading: "Statement", or "Household statement" for a household's primary.</param>
+/// <param name="Household">On a household statement: each person and what they ran up in the period.</param>
+/// <param name="HouseholdName">On a household statement: the household's name, under the primary's.</param>
 public sealed record StatementPdfRequest(
     string ClubName,
     string MemberName,
@@ -37,7 +46,10 @@ public sealed record StatementPdfRequest(
     decimal PaymentsTotal,
     decimal ClosingOwed,
     IReadOnlyList<StatementPdfLine> Lines,
-    DateTime GeneratedAtUtc);
+    DateTime GeneratedAtUtc,
+    string Title = "Statement",
+    IReadOnlyList<StatementPdfHouseholdLine>? Household = null,
+    string? HouseholdName = null);
 
 /// <summary>
 /// Sets a member's statement as an A4 document: the period, the balance brought forward,
@@ -88,7 +100,7 @@ public static class StatementPdf
 
         var pdf = new PdfBuilder
         {
-            Title = $"Statement {period} – {r.MemberName}",
+            Title = $"{r.Title} {period} – {r.MemberName}",
             Author = r.ClubName,
             Subject = "Account statement",
             CreatedUtc = r.GeneratedAtUtc,
@@ -181,6 +193,33 @@ public static class StatementPdf
             }
         }
 
+        // On a household statement: who ran up what, and what anyone billed on their own owes.
+        if (r.Household is { Count: > 0 } household)
+        {
+            y += 12;
+            if (y + 40 + household.Count * 15 > BodyBottom)
+            {
+                page = pdf.AddPage();
+                y = 70;
+            }
+            page.Text(Left, y, PdfFont.HelveticaBold, 9, "Who ran up what in this period", Ink);
+            y += 16;
+            foreach (var person in household)
+            {
+                if (y + 15 > BodyBottom)
+                {
+                    page = pdf.AddPage();
+                    y = 70;
+                }
+                page.Text(Left, y, PdfFont.Helvetica, 9, Fit($"{person.Name} · {person.Role}", PdfFont.Helvetica, 9, 250), Ink);
+                page.Text(ChargeRight, y, PdfFont.Helvetica, 9, Money(person.Charged), Ink, align: PdfAlign.Right);
+                if (person.OwnAccountOwed is { } own)
+                    page.Text(OwedRight, y, PdfFont.Helvetica, 8, own > 0 ? $"Own account owes {Money(own)}" : $"Own account in credit {Money(-own)}",
+                        own > 0 ? Due : Muted, align: PdfAlign.Right);
+                y += 15;
+            }
+        }
+
         // Page numbers last, now that the number of pages is known.
         var pages = pdf.PageCount;
         for (var i = 0; i < pages; i++)
@@ -197,7 +236,7 @@ public static class StatementPdf
     private static double Letterhead(PdfCanvas page, StatementPdfRequest r, string period, string issued)
     {
         page.Text(Left, 62, PdfFont.HelveticaBold, 11, Fit(r.ClubName.ToUpperInvariant(), PdfFont.HelveticaBold, 11, 280), Muted, tracking: 1.2);
-        page.Text(Left, 96, PdfFont.HelveticaBold, 24, "Statement", Ink);
+        page.Text(Left, 96, PdfFont.HelveticaBold, 24, r.Title, Ink);
         page.Text(Left, 116, PdfFont.Helvetica, 10.5, period, Ink);
         page.Text(Left, 131, PdfFont.Helvetica, 8.5, $"Issued {issued}", Muted);
 
@@ -210,7 +249,12 @@ public static class StatementPdf
             y += 13;
         }
         if (!string.IsNullOrWhiteSpace(r.MemberTier))
+        {
             page.Text(x, y, PdfFont.Helvetica, 9, Fit($"{r.MemberTier} member", PdfFont.Helvetica, 9, 220), Muted, align: PdfAlign.Right);
+            y += 13;
+        }
+        if (!string.IsNullOrWhiteSpace(r.HouseholdName))
+            page.Text(x, y, PdfFont.Helvetica, 9, Fit($"For the {r.HouseholdName} household", PdfFont.Helvetica, 9, 220), Muted, align: PdfAlign.Right);
 
         page.Rule(Left, 150, Right, 0.6, Hairline);
         return 168;

@@ -238,6 +238,20 @@ public class OrganizationCloneTests
             new LeadAssignmentRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Geneva desk", Kind = "territory", TerritoryId = territory.Id, QueueId = queue.Id, IsActive = true },
             new LeadCaptureForm { Id = Guid.NewGuid(), OrganizationId = org.Id, CreatedByUserId = owner, Name = "Website form", PublicToken = Guid.NewGuid().ToString("N"), IsActive = true, CreatedAtUtc = now },
             new LeadOpsSettings { Id = Guid.NewGuid(), OrganizationId = org.Id, SlaHours = 4 });
+        // The public application form, an application approved as the member from the lead and
+        // contact, and a household with the member as primary and the contact (not a member) as
+        // spouse: rows that point at the member, the lead, the contact and the household.
+        var household = new ClubHousehold { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Silva", CreatedAtUtc = now };
+        db.AddRange(household,
+            new ClubApplicationForm { Id = Guid.NewGuid(), OrganizationId = org.Id, PublicToken = Guid.NewGuid().ToString("N"), IsActive = true, CreatedByUserId = owner, CreatedAtUtc = now },
+            new ClubApplication
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, FirstName = "Ana", LastName = "Silva", Email = "ana@example.ch", RequestedTier = "Gold",
+                Status = ApplicationStatuses.Approved, Source = ApplicationSources.PublicForm, SubmittedAtUtc = now, LeadId = lead.Id, ContactId = contact.Id,
+                MemberId = member.Id, HouseholdId = household.Id, DuesSubscriptionId = subscription.Id, CreatedAtUtc = now,
+            },
+            new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org.Id, HouseholdId = household.Id, MemberId = member.Id, Role = HouseholdRoles.Primary, IsPrimary = true, CreatedAtUtc = now },
+            new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org.Id, HouseholdId = household.Id, ContactId = contact.Id, Role = HouseholdRoles.Spouse, CreatedAtUtc = now });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return new Seeded(org.Id, owner, manager, rep, lead.Id, deal.Id, contact.Id, member.Id, rule.Id, sequence.Id);

@@ -44,6 +44,9 @@ public sealed class ClubDocumentService : IClubDocumentService
     private static readonly HashSet<string> MovedKinds = new(StringComparer.Ordinal)
     {
         "events", "event-attendees", "resources", "reservations",
+        // Applications and households, in typed tables (IClubApplications, IClubHouseholds)
+        // since the AddMembershipBridgeAndHouseholds migration copied them there.
+        "applications", "households", "household-members",
     };
 
     private readonly IClubDocumentRepository _docs;
@@ -99,15 +102,6 @@ public sealed class ClubDocumentService : IClubDocumentService
         RefuseMoney(kind);
         var row = await Load(organizationId, kind, id, ct);
         if (row == null || !await _docs.DeleteAsync(id, organizationId, kind, ct)) return false;
-        switch (kind)
-        {
-            case "households":
-                // A household's member links go with it, as they did in the browser.
-                foreach (var link in await _docs.ListAsync(organizationId, "household-members", ct))
-                    if (Parse(link.Payload) is { } obj && Text(obj, "householdId") == id.ToString())
-                        await _docs.DeleteAsync(link.Id, organizationId, "household-members", ct);
-                break;
-        }
         return true;
     }
 
@@ -180,40 +174,13 @@ public sealed class ClubDocumentService : IClubDocumentService
     /// </summary>
     private static Error? Stamp(string kind, JsonObject obj)
     {
-        var now = DateTime.UtcNow.ToString("o");
-        switch (kind)
-        {
-            case "applications":
-                Set(obj, "submittedAtUtc", now);
-                Set(obj, "status", "Submitted");
-                break;
-            case "households":
-                Set(obj, "createdAtUtc", now);
-                break;
-        }
+        // Nothing left here stamps fields of its own: the kinds that did (applications and
+        // households) have their own tables now.
         return null;
     }
 
-    /// <summary>What the browser did after these writes, done here so every device sees it.</summary>
-    private async Task AfterCreateAsync(Guid? organizationId, string kind, JsonObject obj, CancellationToken ct)
-    {
-        switch (kind)
-        {
-            case "households":
-                // The primary member is the household's first link.
-                if (Guid.TryParse(Text(obj, "primaryMemberId"), out var primary))
-                {
-                    await CreateAsync(organizationId, "household-members", new JsonObject
-                    {
-                        ["householdId"] = Text(obj, "id"),
-                        ["memberId"] = primary.ToString(),
-                        ["role"] = "Primary",
-                        ["rollUpBilling"] = true,
-                    }, ct);
-                }
-                break;
-        }
-    }
+    /// <summary>What follows from a write, done here so every device sees it. Nothing does for the kinds still kept as documents.</summary>
+    private static Task AfterCreateAsync(Guid? organizationId, string kind, JsonObject obj, CancellationToken ct) => Task.CompletedTask;
 
     /// <summary>
     /// Runs a write as one transaction. A save that lost a race to another request comes
@@ -237,7 +204,7 @@ public sealed class ClubDocumentService : IClubDocumentService
         if (MoneyKinds.Contains(kind))
             throw new InvalidOperationException($"Club {kind} are kept in the money ledger (IClubLedger), not as documents.");
         if (MovedKinds.Contains(kind))
-            throw new InvalidOperationException($"Club {kind} are kept in their own tables (IClubEvents, IClubReservations), not as documents.");
+            throw new InvalidOperationException($"Club {kind} are kept in their own tables (IClubEvents, IClubReservations, IClubApplications, IClubHouseholds), not as documents.");
     }
 
     private async Task<JsonObject?> Load(Guid? organizationId, string kind, Guid id, CancellationToken ct)
@@ -268,12 +235,6 @@ public sealed class ClubDocumentService : IClubDocumentService
 
     private static Guid? ReadId(JsonObject obj) =>
         Guid.TryParse(Text(obj, "id"), out var id) ? id : null;
-
-    private static void Set(JsonObject obj, string key, JsonNode? value)
-    {
-        if (!obj.ContainsKey(key) || obj[key] == null)
-            obj[key] = value;
-    }
 
     private static string Text(JsonObject obj, string key) => obj[key]?.ToString() ?? "";
 }

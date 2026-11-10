@@ -65,6 +65,9 @@ public static class DependencyInjection
         // The club's price catalogue, and the billing that runs on the ledger.
         services.AddScoped<IClubCatalog, ClubCatalogService>();
         services.AddScoped<IClubBilling, ClubBillingService>();
+        // How people join (applications, the public form, approval) and who belongs together.
+        services.AddScoped<IClubApplications, ClubApplicationService>();
+        services.AddScoped<IClubHouseholds, ClubHouseholdService>();
         services.AddScoped<IConsentRepository, ConsentRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IImportRepository, ImportRepository>();

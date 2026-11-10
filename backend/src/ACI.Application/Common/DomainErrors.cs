@@ -5,7 +5,7 @@ namespace ACI.Application.Common;
 /// <summary>
 /// Centralized domain error definitions for all entities.
 /// </summary>
-public static class DomainErrors
+public static partial class DomainErrors
 {
     /// <summary>
     /// A member's role does not let them do this (see Domain.Common.MemberPermissions).

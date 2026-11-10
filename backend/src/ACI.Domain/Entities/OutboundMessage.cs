@@ -221,6 +221,8 @@ public static class OutboundSources
     /// cancelled; <see cref="OutboundMessage.SourceId"/> is their registration.
     /// </summary>
     public const string Event = "event";
+    /// <summary>The welcome to a new member, queued when their application is approved; <see cref="OutboundMessage.SourceId"/> is the application.</summary>
+    public const string Welcome = "welcome";
     public const string Webhook = "webhook";
 }
 

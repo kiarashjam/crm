@@ -171,16 +171,22 @@ public sealed partial class ClubLedgerService
         // since left, say) comes before anything is saved.
         var member = await MemberAsync(organizationId, tab.MemberId, ct);
         if (total > 0 && member == null) return DomainErrors.Club.MemberNotFound;
-        var account = member != null ? await AccountAsync(organizationId, member.Id, ct) : null;
+        // The tab is the member's (and so are its points), but its charge goes on the household
+        // primary's account when the member's bills roll up to them.
+        ClubMember? billTo = null;
+        ClubMember? rolledUpFrom = null;
+        if (member != null) (billTo, rolledUpFrom) = await BillToAsync(organizationId, member, ct);
+        var account = billTo != null ? await AccountAsync(organizationId, billTo.Id, ct) : null;
         await _reads.ReadAsync("tabs", ct);
 
         ClubCharge? charge = null;
         if (total > 0)
         {
-            charge = NewCharge(organizationId, member!, account!, ClubEntryTypes.Charge,
+            charge = NewCharge(organizationId, billTo!, account!, ClubEntryTypes.Charge,
                 tab.Venue switch { "Bar" => "Bar", "Spa" => "Spa", _ => "Dining" },
                 $"{label} tab ({items.Count} items)", total);
             charge.TabId = tab.Id;
+            IncurredBy(charge, rolledUpFrom);
             // One VAT rate for the charge when every item on the tab came from the menu at
             // that rate; a mixed tab, or one with items typed in by hand, records none.
             var rates = items.Select(i => i.VatRate).Distinct().ToList();
@@ -226,7 +232,7 @@ public sealed partial class ClubLedgerService
             if (charge != null)
             {
                 _db.ClubCharges.Add(charge);
-                await StageBalanceAsync(organizationId, member, -total, ct);
+                await StageBalanceAsync(organizationId, billTo, -total, ct);
             }
             if (earned != null) _db.LoyaltyLedger.Add(earned);
         });

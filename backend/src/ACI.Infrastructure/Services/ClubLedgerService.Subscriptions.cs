@@ -243,9 +243,12 @@ public sealed partial class ClubLedgerService
     /// subscription on to the next one. The subscription is saved first, against the copy this
     /// request read, then its charge, so two bills of one period at once post one charge.
     /// </summary>
-    private async Task<Result<ClubCharge>> BillPeriodAsync(Guid? organizationId, ClubSubscription sub, ClubMember member, DateTime period,
+    private async Task<Result<ClubCharge>> BillPeriodAsync(Guid? organizationId, ClubSubscription sub, ClubMember subscriber, DateTime period,
         DateTime now, int paymentTermsDays, decimal? vatRate, CancellationToken ct)
     {
+        // The subscription stays the member's; its dues go on the household primary's account
+        // when the member's bills roll up to them.
+        var (member, rolledUpFrom) = await BillToAsync(organizationId, subscriber, ct);
         var account = await AccountAsync(organizationId, member.Id, ct);
         if (await _db.ClubCharges.AnyAsync(c => c.SubscriptionId == sub.Id && c.BillingPeriodStartUtc == period, ct))
             return DomainErrors.Club.PeriodBilled;
@@ -262,6 +265,7 @@ public sealed partial class ClubLedgerService
         charge.BillingPeriodStartUtc = period;
         charge.CatalogItemId = sub.CatalogItemId;
         charge.VatRate = vatRate;
+        IncurredBy(charge, rolledUpFrom);
         Touch(account);
         sub.BillingAnchorDay = anchor;
         sub.LastChargedAtUtc = now;

@@ -37,6 +37,8 @@ public sealed class ClubRepository : IClubRepository
             existing.HouseAccountBalance = member.HouseAccountBalance;
             existing.ManualBalance = member.ManualBalance;
             existing.Notes = member.Notes;
+            existing.ContactId = member.ContactId;
+            existing.LeadId = member.LeadId;
         }
         await _db.SaveChangesAsync(ct);
     }
@@ -55,9 +57,29 @@ public sealed class ClubRepository : IClubRepository
             registration.HostMemberId = null;
         foreach (var booking in await _db.ClubReservations.Where(r => r.MemberId == id && r.OrganizationId == organizationId).ToListAsync(ct))
             booking.MemberId = null;
+        // They leave their household (ClubService refuses deleting a primary with others in it).
+        // A household nobody is left in goes with them.
+        var link = await _db.ClubHouseholdMembers.FirstOrDefaultAsync(l => l.MemberId == id && l.OrganizationId == organizationId, ct);
+        if (link != null)
+        {
+            _db.ClubHouseholdMembers.Remove(link);
+            if (!await _db.ClubHouseholdMembers.AnyAsync(l => l.HouseholdId == link.HouseholdId && l.Id != link.Id, ct)
+                && await _db.ClubHouseholds.FirstOrDefaultAsync(h => h.Id == link.HouseholdId && h.OrganizationId == organizationId, ct) is { } empty)
+                _db.ClubHouseholds.Remove(empty);
+        }
         _db.ClubMembers.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
+    }
+
+    public async Task<(string Member, string Household)?> PrimaryOfHouseholdAsync(Guid memberId, Guid? organizationId, CancellationToken ct = default)
+    {
+        var link = await _db.ClubHouseholdMembers.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.MemberId == memberId && l.OrganizationId == organizationId && l.IsPrimary, ct);
+        if (link == null || !await _db.ClubHouseholdMembers.AnyAsync(l => l.HouseholdId == link.HouseholdId && l.Id != link.Id, ct)) return null;
+        var member = await _db.ClubMembers.AsNoTracking().Where(m => m.Id == memberId).Select(m => m.FirstName + " " + m.LastName).FirstOrDefaultAsync(ct) ?? "This member";
+        var household = await _db.ClubHouseholds.AsNoTracking().Where(h => h.Id == link.HouseholdId).Select(h => h.Name).FirstOrDefaultAsync(ct) ?? "their";
+        return (member.Trim(), household);
     }
 
     public Task<bool> MergeMembersAsync(Guid keepId, Guid dropId, Guid? organizationId, CancellationToken ct = default) =>
@@ -98,6 +120,22 @@ public sealed class ClubRepository : IClubRepository
                 row.PurchaserMemberId = keepId;
             foreach (var row in await _db.ClubGiftCardTransactions.Where(t => t.MemberId == dropId && t.OrganizationId == organizationId).ToListAsync(ct))
                 row.MemberId = keepId;
+            // What the duplicate ran up on a household primary's account is the kept member's doing.
+            foreach (var row in await _db.ClubCharges.Where(c => c.IncurredByMemberId == dropId && c.OrganizationId == organizationId).ToListAsync(ct))
+                (row.IncurredByMemberId, row.IncurredByName) = (keepId, name);
+            // The applications that admitted the duplicate admitted the kept member.
+            foreach (var row in await _db.ClubApplications.Where(a => a.MemberId == dropId && a.OrganizationId == organizationId).ToListAsync(ct))
+                row.MemberId = keepId;
+            // Reminders follow the charges they are about, which moved above. A statement sent for a
+            // month the kept member already had one for stays under the duplicate's id, as the
+            // record of what was sent; the others move, so the next monthly run does not send the
+            // kept member a second statement for a month already done.
+            foreach (var row in await _db.ClubPaymentReminders.Where(r => r.MemberId == dropId && r.OrganizationId == organizationId).ToListAsync(ct))
+                row.MemberId = keepId;
+            var keptMonths = (await _db.ClubStatementDeliveries.Where(d => d.MemberId == keepId && d.OrganizationId == organizationId)
+                .Select(d => d.PeriodStartUtc).ToListAsync(ct)).ToHashSet();
+            foreach (var row in await _db.ClubStatementDeliveries.Where(d => d.MemberId == dropId && d.OrganizationId == organizationId).ToListAsync(ct))
+                if (keptMonths.Add(row.PeriodStartUtc)) row.MemberId = keepId;
             // One account per member: the duplicate's entries are the kept member's now.
             var dropAccount = await _db.ClubHouseAccounts.FirstOrDefaultAsync(a => a.MemberId == dropId && a.OrganizationId == organizationId, ct);
             if (dropAccount != null) _db.ClubHouseAccounts.Remove(dropAccount);
@@ -133,23 +171,17 @@ public sealed class ClubRepository : IClubRepository
                 document.Payload = Regex.Replace(document.Payload, Regex.Escape(dropText), keepText, RegexOptions.IgnoreCase);
                 document.UpdatedAtUtc = DateTime.UtcNow;
             }
-            // Both in the same household is one person in it once.
-            var links = await _db.ClubDocuments
-                .Where(d => d.OrganizationId == organizationId && d.Kind == "household-members")
-                .ToListAsync(ct);
-            var seen = new HashSet<string>();
-            foreach (var link in links.OrderBy(l => documents.Contains(l) ? 1 : 0))
-            {
-                var obj = JsonNode.Parse(link.Payload) as JsonObject;
-                var key = $"{obj?["householdId"]}|{obj?["memberId"]}".ToLowerInvariant();
-                if (!seen.Add(key)) _db.ClubDocuments.Remove(link);
-            }
+            // A person is in one household. The duplicate's place moves to the kept member when
+            // they have none; when both have one, the kept member's stands and the duplicate's goes.
+            await MergeHouseholdLinksAsync(keepId, dropId, organizationId, ct);
 
             // Consent answers and messages are the person's, so they move too.
             await MemberCommunications.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);
             await MemberCommunications.MoveMessagesToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
 
             keep.Phone = RecordMerge.Fill(keep.Phone, drop.Phone);
+            keep.ContactId ??= drop.ContactId;
+            keep.LeadId ??= drop.LeadId;
             keep.Notes = string.IsNullOrWhiteSpace(drop.Notes) || keep.Notes?.Contains(drop.Notes.Trim()) == true
                 ? keep.Notes
                 : string.IsNullOrWhiteSpace(keep.Notes) ? drop.Notes : $"{keep.Notes.TrimEnd()}\n\n{drop.Notes.Trim()}";
@@ -162,6 +194,49 @@ public sealed class ClubRepository : IClubRepository
             await _db.SaveChangesAsync(ct);
             return true;
         }, ct);
+
+    /// <summary>
+    /// The household links of two members being merged. Saved in steps inside the merge's
+    /// transaction, because a household has one primary and the index that keeps it so would see
+    /// two if a new primary were set in the same statement as the old one leaves.
+    /// </summary>
+    private async Task MergeHouseholdLinksAsync(Guid keepId, Guid dropId, Guid? organizationId, CancellationToken ct)
+    {
+        var drop = await _db.ClubHouseholdMembers.FirstOrDefaultAsync(l => l.MemberId == dropId && l.OrganizationId == organizationId, ct);
+        if (drop == null) return;
+        var keep = await _db.ClubHouseholdMembers.FirstOrDefaultAsync(l => l.MemberId == keepId && l.OrganizationId == organizationId, ct);
+        if (keep == null)
+        {
+            drop.MemberId = keepId;
+            drop.UpdatedAtUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+        var householdId = drop.HouseholdId;
+        var wasPrimary = drop.IsPrimary;
+        _db.ClubHouseholdMembers.Remove(drop);
+        await _db.SaveChangesAsync(ct);
+        if (!wasPrimary) return;
+        // The duplicate headed a household: someone still in it takes over, the kept member when
+        // it is theirs, else whoever joined it first.
+        var next = householdId == keep.HouseholdId
+            ? keep
+            : await _db.ClubHouseholdMembers.Where(l => l.HouseholdId == householdId && l.OrganizationId == organizationId)
+                .OrderBy(l => l.CreatedAtUtc).FirstOrDefaultAsync(ct);
+        if (next == null)
+        {
+            if (await _db.ClubHouseholds.FirstOrDefaultAsync(h => h.Id == householdId && h.OrganizationId == organizationId, ct) is { } empty)
+                _db.ClubHouseholds.Remove(empty);
+        }
+        else
+        {
+            next.IsPrimary = true;
+            next.Role = Domain.Entities.HouseholdRoles.Primary;
+            next.RollUpBilling = false;
+            next.UpdatedAtUtc = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync(ct);
+    }
 
     public async Task<IReadOnlyList<ClubVisit>> VisitsAsync(Guid? organizationId, CancellationToken ct = default) =>
         await _db.ClubVisits.AsNoTracking().Where(v => v.OrganizationId == organizationId)

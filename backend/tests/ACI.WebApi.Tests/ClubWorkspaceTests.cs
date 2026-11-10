@@ -168,11 +168,13 @@ public class ClubWorkspaceTests
 
         var household = await Json(await client.PostAsync("/api/households", Body(new { name = "Dupont family", primaryMemberId = memberId })), "add household");
 
-        var link = (await Json(await client.GetAsync("/api/household-members"), "links")).EnumerateArray().Should().ContainSingle().Subject;
+        var link = household.GetProperty("people").EnumerateArray().Should().ContainSingle().Subject;
         link.GetProperty("memberId").GetString().Should().Be(memberId);
         link.GetProperty("role").GetString().Should().Be("Primary");
+        link.GetProperty("isPrimary").GetBoolean().Should().BeTrue();
         (await client.DeleteAsync($"/api/households/{household.GetProperty("id").GetString()}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
-        (await Json(await client.GetAsync("/api/household-members"), "links after delete")).GetArrayLength().Should().Be(0);
+        (await Json(await client.GetAsync("/api/households"), "households after delete")).GetArrayLength().Should().Be(0);
+        (await factory.Services.Read(db => db.ClubHouseholdMembers.Count())).Should().Be(0, "the household's people go with it");
     }
 
     [Fact]

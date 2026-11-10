@@ -5,11 +5,13 @@ using ACI.Domain.Entities;
 namespace ACI.Application.Services;
 
 /// <param name="BillingLapsedAtUtc">When the club's billing lapsed the member for a charge left unpaid; none otherwise.</param>
+/// <param name="ContactId">The member's CRM contact, when they are linked to one.</param>
+/// <param name="LeadId">The lead they came in as, when they joined through the sales pipeline.</param>
 public record MemberDto(
     Guid Id, string FirstName, string LastName, string Email, string? Phone,
     string Tier, string Status, DateTime JoinedAtUtc, DateTime RenewsAtUtc,
     decimal DuesAmount, string DuesFrequency, decimal HouseAccountBalance, string? Notes,
-    DateTime? BillingLapsedAtUtc = null);
+    DateTime? BillingLapsedAtUtc = null, Guid? ContactId = null, Guid? LeadId = null);
 
 /// <summary>
 /// A member to add, or the fields of one to change. On a change a field left out is
@@ -39,6 +41,10 @@ public class MemberWriteRequest : IMergePatchRequest
 
     /// <summary>On adding a member: charge their tier's initiation fee to their account. Money, so it takes money.manage.</summary>
     public bool? ChargeInitiationFee { get; set; }
+
+    /// <summary>The member's CRM contact and the lead they came in as, in this workspace; sent as null, the link is taken off.</summary>
+    public Guid? ContactId { get; set; }
+    public Guid? LeadId { get; set; }
 
     /// <inheritdoc />
     [System.Text.Json.Serialization.JsonIgnore]
@@ -89,6 +95,9 @@ public interface IClubRepository
     Task<ClubMember?> MemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
     Task SaveMemberAsync(ClubMember member, CancellationToken ct = default);
     Task<bool> DeleteMemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
+
+    /// <summary>The member's name and household when they are the primary of a household with others in it; null otherwise.</summary>
+    Task<(string Member, string Household)?> PrimaryOfHouseholdAsync(Guid memberId, Guid? organizationId, CancellationToken ct = default);
     /// <summary>
     /// Folds <paramref name="dropId"/> into <paramref name="keepId"/>: visits, loyalty points
     /// and every club record that names the member move to the member kept, the house
@@ -128,9 +137,10 @@ public sealed class ClubService : IClubService
     private readonly ICurrentUserService _user;
     private readonly IClubCatalog _catalog;
     private readonly IClubRules _rules;
+    private readonly IWorkspaceRecords? _records;
 
     public ClubService(IClubRepository club, IClubLedger ledger, IPermissionService permissions, ICurrentUserService user,
-        IClubCatalog catalog, IClubRules rules)
+        IClubCatalog catalog, IClubRules rules, IWorkspaceRecords? records = null)
     {
         _club = club;
         _ledger = ledger;
@@ -138,6 +148,18 @@ public sealed class ClubService : IClubService
         _user = user;
         _catalog = catalog;
         _rules = rules;
+        _records = records;
+    }
+
+    /// <summary>
+    /// A contact or lead a member is linked to has to be in the member's workspace, by the rule
+    /// everything else reads them by: an id from elsewhere would show another workspace's name.
+    /// </summary>
+    private async Task<Error?> LinksRefusedAsync(Guid userId, Guid? organizationId, MemberWriteRequest request, CancellationToken ct)
+    {
+        if (_records == null || (request.ContactId == null && request.LeadId == null)) return null;
+        var checkedLinks = await _records.CheckLinksAsync(userId, organizationId, new RecordLinks { ContactId = request.ContactId, LeadId = request.LeadId }, ct);
+        return checkedLinks.IsSuccess ? null : checkedLinks.Error;
     }
 
     /// <remarks>
@@ -161,6 +183,7 @@ public sealed class ClubService : IClubService
         if (MemberTooLong(request) is { } tooLong) return tooLong;
         if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
             return MoneyInvalid;
+        if (await LinksRefusedAsync(userId, organizationId, request, ct) is { } badLink) return badLink;
         var opening = request.HouseAccountBalance ?? 0;
         var startDues = request.StartDues == true;
         var chargeFee = request.ChargeInitiationFee == true;
@@ -214,6 +237,8 @@ public sealed class ClubService : IClubService
             DuesAmount = request.DuesAmount ?? tier?.Price ?? 0,
             DuesFrequency = duesFrequency,
             Notes = request.Notes,
+            ContactId = request.ContactId,
+            LeadId = request.LeadId,
         };
         await _club.SaveMemberAsync(row, ct);
         // The house account opens with the member, and an opening balance is its first entry.
@@ -262,6 +287,7 @@ public sealed class ClubService : IClubService
         if (MemberTooLong(request) is { } tooLong) return tooLong;
         if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
             return MoneyInvalid;
+        if (_user.UserId is { } editor && await LinksRefusedAsync(editor, organizationId, request, ct) is { } badLink) return badLink;
         var balance = (await _ledger.BalancesAsync(organizationId, null, ct)).GetValueOrDefault(row.Id);
         if (request.HouseAccountBalance is { } wanted && wanted != balance)
         {
@@ -304,6 +330,11 @@ public sealed class ClubService : IClubService
         if (!string.IsNullOrWhiteSpace(request.DuesFrequency)) row.DuesFrequency = request.DuesFrequency.Trim();
         if (request.Notes != null) row.Notes = request.Notes;
         else if (request.Clears(nameof(request.Notes))) row.Notes = null;
+        // Linked to the person in the sales records, or unlinked with an explicit null.
+        if (request.ContactId != null) row.ContactId = request.ContactId;
+        else if (request.Clears(nameof(request.ContactId))) row.ContactId = null;
+        if (request.LeadId != null) row.LeadId = request.LeadId;
+        else if (request.Clears(nameof(request.LeadId))) row.LeadId = null;
         await _club.SaveMemberAsync(row, ct);
         return ToDto(row, balance);
     }
@@ -318,6 +349,9 @@ public sealed class ClubService : IClubService
     {
         if (await _club.MemberAsync(id, organizationId, ct) == null) return new Error("Member.NotFound", "That member was not found.");
         if (await _ledger.HasOpenAccountAsync(organizationId, id, ct)) return DomainErrors.Club.MemberHasOpenAccount;
+        // A household's bills roll up to its primary: deleting them would leave the others with nobody to bill.
+        if (await _club.PrimaryOfHouseholdAsync(id, organizationId, ct) is { } primary)
+            return DomainErrors.Household.PrimaryOfHousehold(primary.Member, primary.Household);
         return await _club.DeleteMemberAsync(id, organizationId, ct)
             ? Result.Success()
             : new Error("Member.NotFound", "That member was not found.");
@@ -449,5 +483,5 @@ public sealed class ClubService : IClubService
 
     private static MemberDto ToDto(ClubMember m, decimal balance) => new(
         m.Id, m.FirstName, m.LastName, m.Email, m.Phone, m.Tier, m.Status,
-        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, balance, m.Notes, m.BillingLapsedAtUtc);
+        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, balance, m.Notes, m.BillingLapsedAtUtc, m.ContactId, m.LeadId);
 }

@@ -477,6 +477,14 @@ public sealed class OrganizationCloner
             case LeadCaptureForm f:
                 f.PublicToken = Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant();
                 return "Lead capture forms get their own public address";
+            case ClubApplicationForm f:
+                // The link on the club's website applies to the original; the copy's form has its own.
+                f.PublicToken = Convert.ToHexString(Guid.NewGuid().ToByteArray()).ToLowerInvariant();
+                return "The public application form gets its own link";
+            case ClubApplication a when a.ApprovalClaimedUntilUtc != null:
+                // An approval under way in the original finishes there.
+                a.ApprovalClaimedUntilUtc = null;
+                return "Applications being approved are approved in the original only";
             case Invite i:
                 // A hash of a token nobody has: the copy's invitation is accepted after a resend.
                 i.TokenHash = ACI.Application.Common.PasswordResetCrypto.HashRawToken(

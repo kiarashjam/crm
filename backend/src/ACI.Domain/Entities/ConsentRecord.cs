@@ -73,6 +73,12 @@ public static class ConsentSubjects
     public const string Member = "member";
     public const string Contact = "contact";
     public const string Lead = "lead";
+
+    /// <summary>
+    /// A membership application: what the applicant said on the public form, before they are
+    /// anyone else. Approval copies it onto the member they become.
+    /// </summary>
+    public const string Application = "application";
 }
 
 /// <summary>The ways a workspace can reach a person.</summary>

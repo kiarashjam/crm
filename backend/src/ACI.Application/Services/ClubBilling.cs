@@ -55,7 +55,19 @@ public interface IClubBilling
     /// nothing for a member the billing did not lapse.
     /// </summary>
     Task ReinstateIfSettledAsync(Guid organizationId, Guid memberId, CancellationToken ct = default);
+
+    /// <summary>
+    /// A household's statement for [fromUtc, toUtc) as a PDF: the primary's account, where the
+    /// bills of the members who roll up land, each line saying whose it was; then what each
+    /// person in the household ran up in the period, and what anyone billed on their own owes.
+    /// </summary>
+    Task<Result<StatementFile>> HouseholdStatementPdfAsync(Guid organizationId, Guid primaryMemberId, string householdName,
+        IReadOnlyList<HouseholdStatementMember> others, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 }
+
+/// <summary>A member of a household other than its primary, for the household statement.</summary>
+/// <param name="RollsUp">Whether their bills go on the primary's account now.</param>
+public sealed record HouseholdStatementMember(Guid MemberId, string Name, string Role, bool RollsUp);
 
 /// <summary>A statement as a file to download or attach.</summary>
 public sealed record StatementFile(string FileName, byte[] Content, AccountStatementDto Statement, decimal AmountDue);

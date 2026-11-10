@@ -50,7 +50,8 @@ public class ContractService : IContractService
         IOptions<EmailSettings> emailSettings,
         ILogger<ContractService> logger,
         ILeadStatusSync statusSync,
-        ITenantContext? tenant = null)
+        ITenantContext? tenant = null,
+        IClubApplications? admissions = null)
     {
         _contracts = contracts;
         _leads = leads;
@@ -61,9 +62,11 @@ public class ContractService : IContractService
         _logger = logger;
         _statusSync = statusSync;
         _tenant = tenant;
+        _admissions = admissions;
     }
 
     private readonly ITenantContext? _tenant;
+    private readonly IClubApplications? _admissions;
 
     /// <summary>
     /// Reads and writes as the contract's workspace until disposed. The counterparty signs
@@ -411,9 +414,37 @@ public class ContractService : IContractService
             $"Countersigned by {contract.CounterSignatureName}", userId, contract.CounterSignatureName, ip, null, ct);
 
         await ApplyPipelineEffectAsync(contract, userId, organizationId, userId, ct);
+        await AdmitMemberAsync(contract, userId, ct);
         await SendExecutedCopiesAsync(contract, userId, ct);
 
         return Result.Success(await ToDtoAsync(contract, ct));
+    }
+
+    /// <summary>
+    /// A countersigned membership contract is the club's yes: the application behind the
+    /// contract's lead or deal is approved, once, as an approval by the person who countersigned,
+    /// so the member is made with their dues and initiation fee. A contract with no application
+    /// behind it (private dining, say) admits nobody.
+    /// </summary>
+    /// <remarks>
+    /// The contract is executed whatever happens here: a refusal (a tier no longer on sale, say)
+    /// leaves the application open for a reviewer to approve, and is written on the contract's
+    /// trail rather than undoing a signature both parties have given.
+    /// </remarks>
+    private async Task AdmitMemberAsync(Contract contract, Guid userId, CancellationToken ct)
+    {
+        if (_admissions == null) return;
+        try
+        {
+            var admitted = await _admissions.AdmitForContractAsync(contract.OrganizationId, contract.Id, contract.LeadId, contract.DealId, userId, ct);
+            foreach (var result in admitted)
+                await LogEventAsync(contract.Id, "member_admitted",
+                    $"Membership application approved: {result.MemberName} is a member", userId, null, null, null, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Contract {ContractId} was countersigned but its membership application could not be approved", contract.Id);
+        }
     }
 
     public async Task<Result<bool>> ResendExecutedCopyAsync(

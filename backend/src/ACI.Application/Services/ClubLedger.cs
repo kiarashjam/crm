@@ -363,6 +363,13 @@ public sealed record ChargeDto
     /// <summary>The VAT rate in percent included in the amount, when known.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? VatRate { get; init; }
 
+    /// <summary>
+    /// For a charge on a household primary's account that another member of the household ran
+    /// up (their bills roll up): who incurred it. <see cref="MemberId"/> is the account it is on.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? IncurredByMemberId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? IncurredByName { get; init; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Reason { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? VoidedAtUtc { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? VoidedByUserId { get; init; }
@@ -455,6 +462,10 @@ public sealed record StatementLineDto
 
     /// <summary>For a charge (or its void) whose VAT rate is known: the percent included in it.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? VatRate { get; init; }
+
+    /// <summary>For a charge (or its void) a household member ran up on this account: who.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? IncurredByMemberId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? IncurredByName { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? CreatedByName { get; init; }
 }

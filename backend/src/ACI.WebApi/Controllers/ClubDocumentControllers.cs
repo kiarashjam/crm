@@ -35,58 +35,9 @@ file static class ClubDocs
 
 // Campaigns and communications are typed now: CommunicationsControllers.cs. So is the
 // club's money (charges, payments, subscriptions, gift cards, tabs, donations):
-// ClubLedgerControllers.cs. And events with their guest lists (ClubEventControllers.cs), and
-// the bookable resources with their bookings (ClubReservationControllers.cs).
-
-[ApiController]
-[Route("api/applications")]
-[Authorize]
-[WorkspaceRequired]
-[Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
-public class ApplicationsController : ControllerBase
-{
-    private readonly IClubDocumentService _docs;
-    private readonly ICurrentUserService _user;
-    public ApplicationsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
-
-    [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "applications", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "applications", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "applications", id, await ClubDocs.Body(Request, ct), ct)); }
-    [HttpDelete("{id:guid}")][Requires(MemberPermissions.DeleteRecords)] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "applications", id, ct) ? NoContent() : NotFound(); }
-}
-
-[ApiController]
-[Route("api/households")]
-[Authorize]
-[WorkspaceRequired]
-[Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
-public class HouseholdsController : ControllerBase
-{
-    private readonly IClubDocumentService _docs;
-    private readonly ICurrentUserService _user;
-    public HouseholdsController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
-
-    [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "households", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "households", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpPut("{id:guid}")] public async Task<IActionResult> Update(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.UpdateAsync(org, "households", id, await ClubDocs.Body(Request, ct), ct)); }
-    [HttpDelete("{id:guid}")][Requires(MemberPermissions.DeleteRecords)] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "households", id, ct) ? NoContent() : NotFound(); }
-}
-
-[ApiController]
-[Route("api/household-members")]
-[Authorize]
-[WorkspaceRequired]
-[Requires(MemberPermissions.ClubMembers, WritesOnly = true)]
-public class HouseholdMembersController : ControllerBase
-{
-    private readonly IClubDocumentService _docs;
-    private readonly ICurrentUserService _user;
-    public HouseholdMembersController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
-
-    [HttpGet] public async Task<IActionResult> List(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "household-members", ct)); }
-    [HttpPost] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "household-members", await ClubDocs.Body(Request, ct), ct)); }
-    [HttpDelete("{id:guid}")] public async Task<IActionResult> Delete(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return await _docs.DeleteAsync(org, "household-members", id, ct) ? NoContent() : NotFound(); }
-}
+// ClubLedgerControllers.cs. And events with their guest lists (ClubEventControllers.cs), the
+// bookable resources with their bookings (ClubReservationControllers.cs), and applications and
+// households (ClubMembershipControllers.cs).
 
 [ApiController]
 [Route("api/hospitality")]

@@ -661,6 +661,68 @@ public sealed class ClubBillingService : IClubBilling
         return new StatementFile(FileName(statement, workspace), bytes, statement, amountDue);
     }
 
+    /// <remarks>
+    /// Roll-up billing puts a household member's charges on the primary's account, so the
+    /// primary's statement already holds the household's bills; each of those lines says who ran
+    /// it up. This adds what each person ran up in the period, and the balance of any account of
+    /// their own (charges from before their bills rolled up, or a member billed separately), so
+    /// the primary sees the whole household on one page.
+    /// </remarks>
+    public async Task<Result<StatementFile>> HouseholdStatementPdfAsync(Guid organizationId, Guid primaryMemberId, string householdName,
+        IReadOnlyList<HouseholdStatementMember> others, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        var read = await _ledger.StatementAsync(organizationId, primaryMemberId, fromUtc, toUtc, ct);
+        if (!read.IsSuccess) return read.Error;
+        var statement = read.Value;
+        var primary = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == primaryMemberId && m.OrganizationId == organizationId, ct);
+        var workspace = await WorkspaceAsync(organizationId, ct);
+        var lines = statement.Lines.Select(l => new StatementPdfLine(l.AtUtc, l.Description, Detail(l), l.Debit, l.Credit, Owed(l.Balance), l.VatRate)).ToList();
+
+        // What each person ran up in the period on this account: charges less the voids of them.
+        var charged = statement.Lines.Where(l => l.Side == "charge")
+            .GroupBy(l => l.IncurredByMemberId ?? primaryMemberId)
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Debit - l.Credit));
+        var people = new List<StatementPdfHouseholdLine>
+        {
+            new(statement.MemberName, "Primary", charged.GetValueOrDefault(primaryMemberId), null),
+        };
+        foreach (var other in others)
+        {
+            // An account of their own: what it owed when the period ended, when it owes anything.
+            var own = await _ledger.BalanceAsync(organizationId, other.MemberId, toUtc.AddTicks(-1), ct);
+            var ownOwed = own.IsSuccess && own.Value.Balance != 0 ? Owed(own.Value.Balance) : (decimal?)null;
+            people.Add(new StatementPdfHouseholdLine(other.Name, other.Role, charged.GetValueOrDefault(other.MemberId), ownOwed));
+        }
+        // Someone who has left the household since still ran up what the lines say.
+        foreach (var gone in statement.Lines.Where(l => l.IncurredByMemberId is { } id && id != primaryMemberId && others.All(o => o.MemberId != id))
+                     .GroupBy(l => l.IncurredByMemberId!.Value))
+            people.Add(new StatementPdfHouseholdLine(gone.First().IncurredByName ?? "A former member of the household", "No longer in the household",
+                charged.GetValueOrDefault(gone.Key), null));
+
+        var bytes = StatementPdf.Render(new StatementPdfRequest(
+            workspace.Name,
+            statement.MemberName,
+            primary?.Email,
+            primary?.Tier,
+            statement.FromUtc,
+            statement.ToUtc,
+            statement.Currency,
+            workspace.Locale,
+            workspace.TimeZone,
+            Owed(statement.OpeningBalance),
+            statement.TotalDebits,
+            statement.TotalCredits,
+            Owed(statement.ClosingBalance),
+            lines,
+            DateTime.UtcNow,
+            Title: "Household statement",
+            Household: people,
+            HouseholdName: householdName));
+        var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
+        var fileName = $"household-{FileName(statement, workspace)}";
+        return new StatementFile(fileName, bytes, statement, amountDue);
+    }
+
     public async Task<Result<StatementDeliveryDto>> EmailStatementAsync(Guid organizationId, Guid userId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
     {
         var member = await _db.ClubMembers.AsNoTracking().FirstOrDefaultAsync(m => m.Id == memberId && m.OrganizationId == organizationId, ct);
@@ -919,7 +981,9 @@ public sealed class ClubBillingService : IClubBilling
             ClubEntryTypes.Refund => "Refund",
             _ => null,
         };
-        var parts = new[] { label, line.Reason, line.Reference }.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+        // A household member's charge on the primary's account says whose it was.
+        var incurred = string.IsNullOrWhiteSpace(line.IncurredByName) ? null : $"Incurred by {line.IncurredByName}";
+        var parts = new[] { incurred, label, line.Reason, line.Reference }.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
         return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
 

@@ -39,6 +39,7 @@ internal static class RecordDependents
         {
             var type = group.Key;
             var ids = group.Select(r => r.Id).ToList();
+            await UnlinkClubAsync(db, type, ids, ct);
             var attachmentIds = await db.Attachments.IgnoreQueryFilters()
                 .Where(a => a.EntityType == type && ids.Contains(a.RecordId)).Select(a => a.Id).ToListAsync(ct);
             var valueSets = await db.CustomFieldValues.IgnoreQueryFilters()
@@ -47,6 +48,37 @@ internal static class RecordDependents
                 ? await db.DealLineItems.Where(i => ids.Contains(i.DealId)).ToListAsync(ct)
                 : new List<DealLineItem>();
             Remove(db, attachmentIds, valueSets, lineItems);
+        }
+    }
+
+    /// <summary>
+    /// A deleted contact or lead is no longer anyone's on the club side: members and applications
+    /// stop naming it, and a contact who was in a household only as a contact (not as a member)
+    /// leaves it. The member stays a member; only the link goes.
+    /// </summary>
+    private static async Task UnlinkClubAsync(AppDbContext db, string type, List<Guid> ids, CancellationToken ct)
+    {
+        if (type == RecordTypes.Contact)
+        {
+            foreach (var member in await db.ClubMembers.IgnoreQueryFilters().Where(m => m.ContactId != null && ids.Contains(m.ContactId.Value)).ToListAsync(ct))
+                member.ContactId = null;
+            foreach (var application in await db.ClubApplications.IgnoreQueryFilters().Where(a => a.ContactId != null && ids.Contains(a.ContactId.Value)).ToListAsync(ct))
+            {
+                application.ContactId = null;
+                application.Version = Guid.NewGuid();
+            }
+            db.ClubHouseholdMembers.RemoveRange(await db.ClubHouseholdMembers.IgnoreQueryFilters()
+                .Where(l => l.ContactId != null && ids.Contains(l.ContactId.Value)).ToListAsync(ct));
+        }
+        else if (type == RecordTypes.Lead)
+        {
+            foreach (var member in await db.ClubMembers.IgnoreQueryFilters().Where(m => m.LeadId != null && ids.Contains(m.LeadId.Value)).ToListAsync(ct))
+                member.LeadId = null;
+            foreach (var application in await db.ClubApplications.IgnoreQueryFilters().Where(a => a.LeadId != null && ids.Contains(a.LeadId.Value)).ToListAsync(ct))
+            {
+                application.LeadId = null;
+                application.Version = Guid.NewGuid();
+            }
         }
     }
 

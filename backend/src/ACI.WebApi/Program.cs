@@ -125,6 +125,17 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // The public application form: a few applications a minute per form link is plenty for
+        // a club; a script posting in a loop stops at ten instead of filling the list. Per link,
+        // like the capture form, for the same reason (the caller's address can't be trusted).
+        options.AddPolicy("public-apply", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "apply:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
         // The unsubscribe link: a person opens it once or twice. Per token, like the
         // two above; a forged token fails its signature check before any database work.
         options.AddPolicy("public-unsubscribe", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(

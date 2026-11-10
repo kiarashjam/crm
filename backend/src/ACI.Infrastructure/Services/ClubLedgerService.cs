@@ -145,6 +145,7 @@ public sealed partial class ClubLedgerService : IClubLedger
                 Description = c.ReversesChargeId != null ? $"Voided: {c.Description}" : c.Description,
                 Debit = Math.Max(0, c.Amount), Credit = Math.Max(0, -c.Amount), Kind = c.Kind, Reference = c.Reference,
                 Reason = c.Reason, ReversesId = c.ReversesChargeId, CreatedByName = c.CreatedByName, VatRate = c.VatRate,
+                IncurredByMemberId = c.IncurredByMemberId, IncurredByName = c.IncurredByName,
             }))
             .Concat(payments.Select(p => (At: p.ReceivedAtUtc, Created: p.CreatedAtUtc, Line: new StatementLineDto
             {
@@ -198,8 +199,10 @@ public sealed partial class ClubLedgerService : IClubLedger
         else if (Money(request.Amount) is { } typed) amount = typed;
         else return DomainErrors.Club.AmountInvalid;
 
-        var member = await MemberAsync(organizationId, request.MemberId, ct);
-        if (member == null) return DomainErrors.Club.MemberNotFound;
+        var incurredBy = await MemberAsync(organizationId, request.MemberId, ct);
+        if (incurredBy == null) return DomainErrors.Club.MemberNotFound;
+        // The account it goes on: the household primary's when this member's bills roll up to them.
+        var (member, rolledUpFrom) = await BillToAsync(organizationId, incurredBy, ct);
         var kind = item?.ChargeKind ?? (request.Kind ?? "").Trim();
         if (kind.Length == 0) kind = "Other";
         if (!ChargeKinds.Contains(kind)) return DomainErrors.Club.ChargeKindInvalid;
@@ -223,6 +226,7 @@ public sealed partial class ClubLedgerService : IClubLedger
         charge.IdempotencyKey = key;
         charge.CatalogItemId = item?.Id;
         charge.VatRate = item?.VatRate ?? request.VatRate;
+        IncurredBy(charge, rolledUpFrom);
         Touch(account);
         var saved = await SaveAsync(DomainErrors.Club.AccountChanged, ct, async () =>
         {
@@ -274,6 +278,8 @@ public sealed partial class ClubLedgerService : IClubLedger
             // A void takes back the VAT the charge carried, at the same rate.
             VatRate = charge.VatRate,
             CatalogItemId = charge.CatalogItemId,
+            IncurredByMemberId = charge.IncurredByMemberId,
+            IncurredByName = charge.IncurredByName,
         };
         Stamp(reversal);
         Touch(account);
@@ -326,6 +332,8 @@ public sealed partial class ClubLedgerService : IClubLedger
             // so a cancelled ticket priced from the catalogue leaves the statement's VAT.
             VatRate = charge.VatRate,
             CatalogItemId = charge.CatalogItemId,
+            IncurredByMemberId = charge.IncurredByMemberId,
+            IncurredByName = charge.IncurredByName,
         };
         Stamp(reversal);
         Touch(account);
@@ -631,6 +639,41 @@ public sealed partial class ClubLedgerService : IClubLedger
     // ── the house account ────────────────────────────────────────────────────
 
     /// <summary>
+    /// The member whose account a charge for <paramref name="member"/> goes on, and who incurred
+    /// it when that is someone else: the primary of their household when their household link
+    /// rolls up, else the member themselves.
+    /// </summary>
+    /// <remarks>
+    /// Roll-up billing was a switch on the Households page that nothing read, so a spouse's spa
+    /// bill stayed on the spouse's account while the club invoiced the primary. The entry is put
+    /// on the primary's account here, at posting, so the balance, the statement, the reminders
+    /// and the overdue chasing all follow the bill without knowing about households. What is
+    /// already posted stays where it is when the switch changes: an entry is never moved.
+    /// </remarks>
+    private async Task<(ClubMember BillTo, ClubMember? IncurredBy)> BillToAsync(Guid? organizationId, ClubMember member, CancellationToken ct)
+    {
+        var link = await _db.ClubHouseholdMembers.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.OrganizationId == organizationId && l.MemberId == member.Id, ct);
+        if (link is not { RollUpBilling: true, IsPrimary: false }) return (member, null);
+        var primaryId = await _db.ClubHouseholdMembers.AsNoTracking()
+            .Where(l => l.OrganizationId == organizationId && l.HouseholdId == link.HouseholdId && l.IsPrimary)
+            .Select(l => l.MemberId)
+            .FirstOrDefaultAsync(ct);
+        // A household whose primary is not a member (yet) has nobody to bill but the member.
+        if (primaryId is not { } id || id == member.Id) return (member, null);
+        var primary = await MemberAsync(organizationId, id, ct);
+        return primary == null ? (member, null) : (primary, member);
+    }
+
+    /// <summary>Records on the charge who ran it up, when it is on someone else's account.</summary>
+    private static void IncurredBy(ClubCharge charge, ClubMember? member)
+    {
+        if (member == null) return;
+        charge.IncurredByMemberId = member.Id;
+        charge.IncurredByName = NameOf(member);
+    }
+
+    /// <summary>
     /// The member's account row, read at the version this write is checked against. A
     /// member with no account yet gets one, added only if the write goes ahead (<see cref="Touch"/>).
     /// </summary>
@@ -900,6 +943,8 @@ public sealed partial class ClubLedgerService : IClubLedger
             BillingPeriodStartUtc = c.BillingPeriodStartUtc,
             CatalogItemId = c.CatalogItemId,
             VatRate = c.VatRate,
+            IncurredByMemberId = c.IncurredByMemberId,
+            IncurredByName = c.IncurredByName,
             Reason = c.Reason,
             VoidedAtUtc = reversal?.PostedAtUtc,
             VoidedByUserId = reversal?.CreatedByUserId,
