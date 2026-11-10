@@ -22,6 +22,10 @@ public sealed record StatementPdfLine(
 /// <param name="OpeningOwed">Owed when the period began: negative when in credit.</param>
 /// <param name="ClosingOwed">Owed when it ended: negative when in credit.</param>
 /// <param name="GeneratedAtUtc">When it was made, printed on it; passed in so the same statement gives the same bytes.</param>
+/// <param name="PaymentSlip">
+/// The Swiss QR-bill to print at the foot, when the club has its bank details set and something
+/// is due; none prints no slip.
+/// </param>
 public sealed record StatementPdfRequest(
     string ClubName,
     string MemberName,
@@ -37,7 +41,8 @@ public sealed record StatementPdfRequest(
     decimal PaymentsTotal,
     decimal ClosingOwed,
     IReadOnlyList<StatementPdfLine> Lines,
-    DateTime GeneratedAtUtc);
+    DateTime GeneratedAtUtc,
+    Payments.QrBill? PaymentSlip = null);
 
 /// <summary>
 /// Sets a member's statement as an A4 document: the period, the balance brought forward,
@@ -159,7 +164,14 @@ public static class StatementPdf
         page.Text(Left, y, PdfFont.Helvetica, 9,
             r.ClosingOwed > 0 ? "This is what the account owed when the period ended. Payments made since are on the next statement."
             : "Questions about this statement? Reply to the email it came with, or ask the membership office.", Muted);
-        y += 26;
+        y += 13;
+        if (r.PaymentSlip != null)
+        {
+            page.Text(Left, y, PdfFont.Helvetica, 9,
+                "Pay with the QR-bill at the foot of the statement: scan it in your banking app, or quote its reference.", Muted);
+            y += 13;
+        }
+        y += 13;
 
         // The VAT the charges included, by rate, for those whose rate is known.
         var vat = r.Lines.Where(l => l.VatRate is > 0)
@@ -181,14 +193,30 @@ public static class StatementPdf
             }
         }
 
+        // The QR-bill fills the foot of the last page, or a page of its own when the statement
+        // runs too far down for it; the footer then sits above the slip.
+        var slipPage = -1;
+        if (r.PaymentSlip is { } slip)
+        {
+            if (y > PageH - QrBillPdf.HeightPt - 40)
+            {
+                page = pdf.AddPage();
+                page.Text(Left, 70, PdfFont.HelveticaBold, 10, "Payment slip", Ink);
+                page.Text(Right, 70, PdfFont.Helvetica, 9, Fit($"{r.MemberName} · {period}", PdfFont.Helvetica, 9, 300), Muted, align: PdfAlign.Right);
+            }
+            QrBillPdf.Draw(page, slip);
+            slipPage = pdf.PageCount - 1;
+        }
+
         // Page numbers last, now that the number of pages is known.
         var pages = pdf.PageCount;
         for (var i = 0; i < pages; i++)
         {
             var p = PageAt(pdf, i);
-            p.Rule(Left, PageH - 50, Right, 0.4, Hairline);
-            p.Text(Left, PageH - 36, PdfFont.Helvetica, 7.5, Fit(r.ClubName, PdfFont.Helvetica, 7.5, 300), Muted);
-            p.Text(Right, PageH - 36, PdfFont.Helvetica, 7.5, $"Page {i + 1} of {pages}", Muted, align: PdfAlign.Right);
+            var footer = i == slipPage ? PageH - QrBillPdf.HeightPt - 32 : PageH - 50;
+            p.Rule(Left, footer, Right, 0.4, Hairline);
+            p.Text(Left, footer + 14, PdfFont.Helvetica, 7.5, Fit(r.ClubName, PdfFont.Helvetica, 7.5, 300), Muted);
+            p.Text(Right, footer + 14, PdfFont.Helvetica, 7.5, $"Page {i + 1} of {pages}", Muted, align: PdfAlign.Right);
         }
         return pdf.Build();
     }
