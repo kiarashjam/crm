@@ -89,6 +89,14 @@ describe('what a write changes', () => {
   it('a club write changes only its own records, whatever the query string', () => {
     expect(resourcesChangedBy('POST', 'https://api.example.com/api/visits?memberId=m-1')).toEqual(['visits']);
   });
+
+  it("sending a campaign fills the communications log, and a member's consent or merge refreshes what campaigns reach", () => {
+    expect(resourcesChangedBy('POST', '/api/campaigns/c-1/send')).toEqual(['campaigns', 'communications']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/consent')).toEqual(['members', 'campaigns']);
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(
+      expect.arrayContaining(['members', 'campaigns', 'communications', 'duplicates', 'charges', 'visits']),
+    );
+  });
 });
 
 describe('what the signal carries', () => {

@@ -1,20 +1,33 @@
-// Member communications log.
+// The communications log: every message the club sent a member, by a campaign or by
+// someone on the team, with what happened to each.
 //
-// Records the emails, SMS and push messages staff say they sent a member: who,
-// what and when. Cadence does not deliver any of them yet, and nothing reports
-// opens, clicks or bounces back, so a row the server marks "Sent" was logged, not
-// delivered. The screens show it that way (`commStatusLabel`), because the team
-// relies on this log when a member asks "did you ever send me that?".
+// An email to a member goes through the server's outbox, and its status is what the
+// mail service reports back: queued, sent, delivered, opened (where open tracking is on),
+// bounced. One that did not go says why (suppressed: no consent to marketing, an
+// unsubscribe, do not contact; skipped: no usable address). A message the team sent some
+// other way (a text from the desk phone, a letter) can still be logged, and reads as
+// logged: Cadence did not send it. Cadence cannot send SMS or push.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
+import { demoMarketingConsent } from './consent';
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export type CommChannel = 'Email' | 'SMS' | 'Push';
-export type CommStatus = 'Queued' | 'Sent' | 'Delivered' | 'Opened' | 'Clicked' | 'Failed' | 'Bounced';
+export type CommPurpose = 'marketing' | 'service';
+export type CommStatus =
+  | 'queued'
+  | 'sent'
+  | 'delivered'
+  | 'opened'
+  | 'bounced'
+  | 'suppressed'
+  | 'failed'
+  | 'skipped'
+  | 'logged';
 export type CommCategory =
   | 'Welcome'
   | 'Dues'
@@ -30,35 +43,41 @@ export interface Communication {
   id: string;
   memberId: string;
   memberName: string;
+  email?: string | null;
+  campaignId?: string | null;
+  campaignName?: string | null;
   channel: CommChannel;
   category: CommCategory;
+  purpose?: CommPurpose | null;
   subject: string;
-  preview: string;
+  preview?: string | null;
   status: CommStatus;
-  sentAtUtc: string;
-  openedAtUtc?: string;
-  clickedAtUtc?: string;
-  campaignName?: string;
+  /** Why it was not sent, or did not arrive. */
+  reason?: string | null;
+  createdAtUtc: string;
+  sentAtUtc?: string | null;
+  openedAtUtc?: string | null;
 }
 
-/**
- * How a status reads on screen. "Sent" is what every logged message is stamped
- * with, and it never meant that anything left Cadence.
- */
+/** How a status reads on screen. */
 export function commStatusLabel(status: CommStatus): string {
-  return status === 'Sent' ? 'Logged, not delivered' : status;
+  switch (status) {
+    case 'queued': return 'Queued';
+    case 'sent': return 'Sent';
+    case 'delivered': return 'Delivered';
+    case 'opened': return 'Opened';
+    case 'bounced': return 'Bounced';
+    case 'suppressed': return 'Not sent';
+    case 'skipped': return 'Not sent';
+    case 'failed': return 'Failed';
+    case 'logged': return 'Logged, not sent by CadenceE';
+  }
 }
+
+/** Statuses that mean nothing reached the member. */
+export const NOT_SENT: CommStatus[] = ['suppressed', 'skipped', 'failed', 'bounced'];
 
 export const CHANNELS: CommChannel[] = ['Email', 'SMS', 'Push'];
-export const STATUSES: CommStatus[] = [
-  'Queued',
-  'Sent',
-  'Delivered',
-  'Opened',
-  'Clicked',
-  'Failed',
-  'Bounced',
-];
 export const CATEGORIES: CommCategory[] = [
   'Welcome',
   'Dues',
@@ -71,149 +90,151 @@ export const CATEGORIES: CommCategory[] = [
   'Other',
 ];
 
+/**
+ * A sensible first answer to "marketing or service?": what a member needs to run their
+ * membership (dues, a booking, their application) is service; the rest is marketing,
+ * which goes only to members who agreed to it. The sender can change it.
+ */
+export function defaultPurposeFor(category: CommCategory): CommPurpose {
+  return category === 'Dues' || category === 'Reservation' || category === 'Application' ? 'service' : 'marketing';
+}
+
+/** The message to email one member. */
+export interface SendMemberEmailInput {
+  memberId: string;
+  category: CommCategory;
+  purpose: CommPurpose;
+  subject: string;
+  body: string;
+}
+
+/** A message the team sent some other way, recorded so the team can see it. */
+export interface LogCommunicationInput {
+  memberId: string;
+  channel: CommChannel;
+  category: CommCategory;
+  subject: string;
+  preview?: string;
+}
+
+// ── demo ────────────────────────────────────────────────────────────────────
+
 const day = 86_400_000;
 const hour = 3_600_000;
 
 const seed: Communication[] = [
   {
-    id: 'com-seed-1',
-    memberId: 'mem-seed-1',
-    memberName: 'Amelia Hartwell',
-    channel: 'Email',
-    category: 'Event',
-    subject: 'Your seats for Wine Down Wednesday are confirmed',
-    preview: 'See you Wednesday at 7pm in the Library Bar — wines paired with...',
-    status: 'Opened',
-    sentAtUtc: new Date(Date.now() - 4 * hour).toISOString(),
+    id: 'com-seed-1', memberId: 'mem-seed-1', memberName: 'Amelia Hartwell', email: 'amelia.hartwell@example.com', channel: 'Email',
+    category: 'Event', purpose: 'service', subject: 'Your seats for Wine Down Wednesday are confirmed',
+    preview: 'See you Wednesday at 7pm in the Library Bar — wines paired with...', status: 'opened',
+    createdAtUtc: new Date(Date.now() - 4 * hour).toISOString(), sentAtUtc: new Date(Date.now() - 4 * hour).toISOString(),
     openedAtUtc: new Date(Date.now() - 3 * hour).toISOString(),
-    campaignName: 'event-confirm-wdw-2026-06',
   },
   {
-    id: 'com-seed-2',
-    memberId: 'mem-seed-2',
-    memberName: 'Daniel Okafor',
-    channel: 'SMS',
-    category: 'Reservation',
-    subject: 'Conference Room A — 2pm reminder',
-    preview: 'Hi Daniel, your booking for Conference Room A is in 1 hour.',
-    status: 'Delivered',
-    sentAtUtc: new Date(Date.now() - 1 * hour).toISOString(),
+    id: 'com-seed-2', memberId: 'mem-seed-2', memberName: 'Daniel Okafor', channel: 'SMS', category: 'Reservation',
+    subject: 'Conference Room A — 2pm reminder', preview: 'Texted from the front desk phone.', status: 'logged',
+    createdAtUtc: new Date(Date.now() - 1 * hour).toISOString(),
   },
   {
-    id: 'com-seed-3',
-    memberId: 'mem-seed-3',
-    memberName: 'Priya Raman',
-    channel: 'Email',
-    category: 'Loyalty',
-    subject: 'You just unlocked 500 anniversary points',
-    preview: 'Thank you for a wonderful year with us — your account has been...',
-    status: 'Clicked',
-    sentAtUtc: new Date(Date.now() - 2 * day).toISOString(),
-    openedAtUtc: new Date(Date.now() - 2 * day + 1 * hour).toISOString(),
-    clickedAtUtc: new Date(Date.now() - 2 * day + 1.5 * hour).toISOString(),
-    campaignName: 'anniversary-points-q2',
-  },
-  {
-    id: 'com-seed-4',
-    memberId: 'mem-seed-5',
-    memberName: 'Sofia Reyes',
-    channel: 'Email',
-    category: 'Dues',
-    subject: 'We were unable to process your dues',
-    preview: 'Your card on file declined when we attempted to process this...',
-    status: 'Bounced',
+    id: 'com-seed-3', memberId: 'mem-seed-5', memberName: 'Sofia Reyes', email: 'sofia.reyes@example.com', channel: 'Email',
+    category: 'Dues', purpose: 'service', subject: 'We were unable to process your dues',
+    preview: 'Your card on file declined when we attempted to process this...', status: 'bounced',
+    reason: '550 5.1.1 The email account does not exist', createdAtUtc: new Date(Date.now() - 18 * day).toISOString(),
     sentAtUtc: new Date(Date.now() - 18 * day).toISOString(),
-    campaignName: 'dues-failure-notice',
-  },
-  {
-    id: 'com-seed-5',
-    memberId: 'mem-seed-4',
-    memberName: 'Marcus Lindgren',
-    channel: 'Email',
-    category: 'Application',
-    subject: 'Welcome to the club — your application is approved',
-    preview: "We're delighted to welcome you. Below you'll find your member...",
-    status: 'Opened',
-    sentAtUtc: new Date(Date.now() - 6 * day).toISOString(),
-    openedAtUtc: new Date(Date.now() - 6 * day + 30 * 60 * 1000).toISOString(),
-    campaignName: 'welcome-new-member',
-  },
-  {
-    id: 'com-seed-6',
-    memberId: 'mem-seed-6',
-    memberName: 'Jordan Patel',
-    channel: 'Push',
-    category: 'Announcement',
-    subject: 'Founders Anniversary Gala — RSVPs open Friday',
-    preview: 'Our 5-year celebration on the 28th. Black tie. RSVPs go live...',
-    status: 'Sent',
-    sentAtUtc: new Date(Date.now() - 9 * hour).toISOString(),
-    campaignName: 'gala-announce',
-  },
-  {
-    id: 'com-seed-7',
-    memberId: 'mem-seed-1',
-    memberName: 'Amelia Hartwell',
-    channel: 'Email',
-    category: 'Renewal',
-    subject: 'Your Platinum membership renews on July 25',
-    preview: 'A heads up that your annual cycle restarts in 45 days. Your...',
-    status: 'Delivered',
-    sentAtUtc: new Date(Date.now() - 11 * day).toISOString(),
-    campaignName: 'renewal-45day',
   },
 ];
 
 const commStore = createMockStore<Communication>({
-  storageKey: 'crm.mock.communications.v1',
+  storageKey: 'crm.mock.communications.v2',
   seed,
   idOf: (c) => c.id,
 });
 
-export async function getCommunications(): Promise<Communication[]> {
+/** Demo: the messages a demo campaign writes, so its members' logs show them. */
+export function addDemoCommunication(row: Communication): Communication {
+  return commStore.add(row);
+}
+
+/** Demo: every message, for the campaign figures worked out in this browser. */
+export function demoCommunications(): Communication[] {
+  return commStore.list();
+}
+
+// ── API ─────────────────────────────────────────────────────────────────────
+
+/** The newest messages, the club's or one member's. */
+export async function getCommunications(
+  params: { memberId?: string } = {},
+  req: RequestOptions = {},
+): Promise<Communication[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<Communication[]>('/api/communications');
+      const query = params.memberId ? `?memberId=${encodeURIComponent(params.memberId)}` : '';
+      const res = await authFetchJson<Communication[]>(`/api/communications${query}`, { signal: req.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {
-      await delay(120);
-      return [...commStore.list()].sort(
-        (a, b) => Date.parse(b.sentAtUtc) - Date.parse(a.sentAtUtc),
-      );
+      await delay(80);
+      return commStore.list()
+        .filter((c) => !params.memberId || c.memberId === params.memberId)
+        .sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc));
     },
   );
 }
 
-export interface CommunicationInput {
-  memberId: string;
-  memberName: string;
-  channel: CommChannel;
-  category: CommCategory;
-  subject: string;
-  preview: string;
-  campaignName?: string;
-}
-
-export async function sendCommunication(input: CommunicationInput): Promise<Communication | null> {
+/**
+ * Emails one member through the outbox. A refusal (no consent to marketing, do not
+ * contact, a bounced address) is not an error: the attempt is recorded and comes back
+ * with status "suppressed" and the reason.
+ */
+export async function sendMemberEmail(input: SendMemberEmailInput, memberName = 'Member', email?: string): Promise<Communication> {
   return apiWithFallback(
-    () =>
-      authFetchJson<Communication>('/api/communications', {
-        method: 'POST',
-        body: JSON.stringify(input),
-      }),
+    () => authFetchJson<Communication>('/api/communications/send', { method: 'POST', body: JSON.stringify(input) }),
     async () => {
-      await delay(180);
+      await delay(120);
+      const refused = input.purpose === 'marketing' && demoMarketingConsent(input.memberId) !== 'granted';
       return commStore.add({
         id: mockId('com'),
-        sentAtUtc: new Date().toISOString(),
-        status: 'Sent',
-        ...input,
+        memberId: input.memberId,
+        memberName,
+        email,
+        channel: 'Email',
+        category: input.category,
+        purpose: input.purpose,
+        subject: input.subject,
+        preview: input.body.slice(0, 140),
+        // Nothing leaves this browser in the demo; the status shows what the server would do.
+        status: refused ? 'suppressed' : 'sent',
+        reason: refused ? 'This member has not agreed to marketing by email.' : null,
+        createdAtUtc: new Date().toISOString(),
+        sentAtUtc: refused ? null : new Date().toISOString(),
       });
     },
   );
 }
 
+/** Records a message sent some other way. Nothing is sent. */
+export async function logCommunication(input: LogCommunicationInput, memberName = 'Member'): Promise<Communication> {
+  return apiWithFallback(
+    () => authFetchJson<Communication>('/api/communications', { method: 'POST', body: JSON.stringify(input) }),
+    async () => {
+      await delay(80);
+      return commStore.add({
+        id: mockId('com'),
+        memberId: input.memberId,
+        memberName,
+        channel: input.channel,
+        category: input.category,
+        subject: input.subject,
+        preview: input.preview ?? null,
+        status: 'logged',
+        createdAtUtc: new Date().toISOString(),
+      });
+    },
+  );
+}
+
+/** Deletes a logged message. What Cadence sent is kept; the server refuses (409). */
 export async function deleteCommunication(id: string): Promise<boolean> {
   return apiWithFallback(
     async () => {
@@ -222,48 +243,31 @@ export async function deleteCommunication(id: string): Promise<boolean> {
       return true;
     },
     async () => {
-      await delay(100);
+      await delay(60);
       return commStore.remove(id);
     },
   );
 }
 
 export interface CommStats {
-  sentThisWeek: number;
-  openRate: number; // 0–1
-  clickRate: number;
-  bounceRate: number;
-  bySent7d: number;
-  byOpened7d: number;
+  /** Messages written in the last seven days, logged ones included. */
+  lastWeek: number;
+  delivered: number;
+  opened: number;
+  notSent: number;
 }
 
 export function computeCommStats(comms: Communication[]): CommStats {
   const weekAgo = Date.now() - 7 * day;
-  let total = 0;
-  let totalThisWeek = 0;
+  let lastWeek = 0;
+  let delivered = 0;
   let opened = 0;
-  let clicked = 0;
-  let bounced = 0;
-  let openedThisWeek = 0;
+  let notSent = 0;
   for (const c of comms) {
-    const sent = Date.parse(c.sentAtUtc);
-    const isThisWeek = sent >= weekAgo;
-    total++;
-    if (isThisWeek) totalThisWeek++;
-    if (c.status === 'Opened' || c.status === 'Clicked') {
-      opened++;
-      if (isThisWeek) openedThisWeek++;
-    }
-    if (c.status === 'Clicked') clicked++;
-    if (c.status === 'Bounced' || c.status === 'Failed') bounced++;
+    if (Date.parse(c.createdAtUtc) >= weekAgo) lastWeek++;
+    if (c.status === 'delivered' || c.status === 'opened') delivered++;
+    if (c.status === 'opened') opened++;
+    if (NOT_SENT.includes(c.status)) notSent++;
   }
-  const total1 = total || 1;
-  return {
-    sentThisWeek: totalThisWeek,
-    openRate: opened / total1,
-    clickRate: clicked / total1,
-    bounceRate: bounced / total1,
-    bySent7d: totalThisWeek,
-    byOpened7d: openedThisWeek,
-  };
+  return { lastWeek, delivered, opened, notSent };
 }

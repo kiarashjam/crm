@@ -86,6 +86,16 @@ export function changesRecords(method: string | undefined, path: string): boolea
 const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities', 'sequences', 'duplicates', 'work-queue', 'reports'];
 
 /**
+ * What merging two club members changes: every record that carried the duplicate's id
+ * (visits, points, charges, bookings, gift cards, consent, messages…) is the kept
+ * member's now, and the pair leaves the duplicates list.
+ */
+const MEMBER_MERGE = [
+  'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'reservations',
+  'gift-cards', 'donations', 'subscriptions', 'households', 'household-members',
+];
+
+/**
  * What a write under /api/<base> may change, beyond its own records. The server
  * does more than store the row it is sent, and a list showing any of these would
  * otherwise go on showing the old figures:
@@ -128,6 +138,10 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   joinrequests: ['team'],
   teams: ['team', 'reports'],
   duplicates: ['duplicates'],
+  // Sending a campaign writes a message per member into the communications log.
+  campaigns: ['campaigns', 'communications'],
+  // A member's tier or status changes who a campaign reaches.
+  members: ['members', 'campaigns'],
 };
 
 /** Which records an activity is about, from the body it was saved with. */
@@ -156,6 +170,7 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   if (segments[0] === 'api') segments.shift();
   const base = segments[0] ?? '';
   const last = segments[segments.length - 1] ?? '';
+  if (base === 'members' && last === 'merge') return [...MEMBER_MERGE];
   // A merge moves everything linked to the record merged away; a conversion makes
   // a contact, a company and a deal from the lead.
   if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];
