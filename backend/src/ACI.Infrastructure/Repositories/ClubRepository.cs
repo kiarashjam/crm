@@ -55,6 +55,8 @@ public sealed class ClubRepository : IClubRepository
             registration.HostMemberId = null;
         foreach (var booking in await _db.ClubReservations.Where(r => r.MemberId == id && r.OrganizationId == organizationId).ToListAsync(ct))
             booking.MemberId = null;
+        // Nothing more is charged to a card the member saved.
+        await MemberPayments.ForgetDeletedMemberAsync(_db, id, organizationId, ct);
         _db.ClubMembers.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -144,6 +146,10 @@ public sealed class ClubRepository : IClubRepository
                 var key = $"{obj?["householdId"]}|{obj?["memberId"]}".ToLowerInvariant();
                 if (!seen.Add(key)) _db.ClubDocuments.Remove(link);
             }
+
+            // Their online payments, QR references, bank transfers and saved card, so a payment
+            // confirmed later still lands on an account.
+            await MemberPayments.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, name, ct);
 
             // Consent answers and messages are the person's, so they move too.
             await MemberCommunications.MoveToKeptMemberAsync(_db, keepId, dropId, organizationId, ct);

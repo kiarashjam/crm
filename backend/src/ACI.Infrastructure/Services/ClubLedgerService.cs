@@ -34,7 +34,11 @@ public sealed partial class ClubLedgerService : IClubLedger
 {
     public const decimal MaxMoney = 1_000_000_000m;
     public static readonly string[] ChargeKinds = ["Dues", "Dining", "Bar", "Event", "Spa", "Booking", "Retail", "Other"];
-    public static readonly string[] PaymentMethods = ["CardOnFile", "Cash", "Check", "Wire", "AppliedCredit"];
+    /// <summary>
+    /// How money comes in: a card on file, a card or TWINT (at a terminal or online), a SEPA
+    /// direct debit, cash, a cheque, a bank transfer (Wire), or credit the member already holds.
+    /// </summary>
+    public static readonly string[] PaymentMethods = ["CardOnFile", "Card", "Twint", "DirectDebit", "Cash", "Check", "Wire", "AppliedCredit"];
     public const string AppliedCredit = "AppliedCredit";
 
     private readonly AppDbContext _db;
@@ -523,7 +527,17 @@ public sealed partial class ClubLedgerService : IClubLedger
         if (method != null && (!PaymentMethods.Contains(method) || method == AppliedCredit)) return DomainErrors.Club.MethodInvalid;
         var reference = Trimmed(request.Reference);
         if (reference?.Length > 200) return DomainErrors.Club.TooLong("A reference", 200);
+        return await RefundCoreAsync(organizationId, paymentId, amount, why, method, reference, null, ct);
+    }
 
+    /// <summary>
+    /// The refund itself, as <see cref="RefundPaymentAsync"/> describes it; <paramref name="provider"/>,
+    /// when given, marks it as one a payment provider made, kept with the provider's refund id and
+    /// recorded once by it.
+    /// </summary>
+    private async Task<Result<PaymentDto>> RefundCoreAsync(Guid? organizationId, Guid paymentId, decimal amount, string why, string? method,
+        string? reference, ProviderRefundEntry? provider, CancellationToken ct)
+    {
         var payment = await _db.ClubPayments.AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == paymentId && p.OrganizationId == organizationId && p.ReversesPaymentId == null, ct);
         if (payment == null) return DomainErrors.Club.PaymentNotFound;
@@ -537,6 +551,13 @@ public sealed partial class ClubLedgerService : IClubLedger
         await _reads.ReadAsync("charges", ct);
 
         var refund = Reverse(payment, ClubEntryTypes.Refund, amount, why, method ?? payment.Method, reference);
+        if (provider != null)
+        {
+            refund.Provider = provider.Provider;
+            refund.ProviderPaymentId = provider.ProviderRefundId;
+            refund.IdempotencyKey = ProviderRefundKey(provider);
+            if (refund.CreatedByName == null && provider.RecordedBy != null) refund.CreatedByName = Truncate(provider.RecordedBy, 200);
+        }
         var unused = left - allocated.Sum(a => a.Amount);
         var release = Math.Max(0, amount - unused);
         var released = new List<ClubPaymentAllocation>();
@@ -557,9 +578,17 @@ public sealed partial class ClubLedgerService : IClubLedger
             _db.ClubPaymentAllocations.AddRange(released);
             await StageBalanceAsync(organizationId, await MemberAsync(organizationId, payment.MemberId, ct), -amount, ct);
         });
-        if (!saved.IsSuccess) return saved.Error;
+        if (!saved.IsSuccess)
+        {
+            // The same provider refund reported twice at once: the other request recorded it.
+            if (provider != null && await PaymentByKeyAsync(organizationId, ProviderRefundKey(provider), ct) != null)
+                return await PaymentDtoAsync(organizationId, payment, ct);
+            return saved.Error;
+        }
         return await PaymentDtoAsync(organizationId, payment, ct);
     }
+
+    private static string ProviderRefundKey(ProviderRefundEntry refund) => $"{refund.Provider}-refund:{refund.ProviderRefundId}";
 
     // ── balances set by hand ─────────────────────────────────────────────────
 
@@ -935,6 +964,8 @@ public sealed partial class ClubLedgerService : IClubLedger
             Method = p.Method,
             Reference = p.Reference,
             Notes = p.Notes,
+            Provider = p.Provider,
+            ProviderPaymentId = p.ProviderPaymentId,
             ReceivedAtUtc = p.ReceivedAtUtc,
             ChargeId = applied.Count > 0 ? applied[0] : null,
             AppliedToChargeIds = applied,
@@ -942,7 +973,7 @@ public sealed partial class ClubLedgerService : IClubLedger
                 .Where(a => a.Amount != 0).ToList(),
             Status = status,
             RefundedAmount = refunded,
-            Refunds = refunds.Select(r => new PaymentRefundDto(r.Id, -r.Amount, r.Reason, r.Method, r.ReceivedAtUtc, r.CreatedByName)).ToList(),
+            Refunds = refunds.Select(r => new PaymentRefundDto(r.Id, -r.Amount, r.Reason, r.Method, r.ReceivedAtUtc, r.CreatedByName, r.Provider, r.ProviderPaymentId)).ToList(),
             VoidedAtUtc = voided?.ReceivedAtUtc,
             VoidedByUserId = voided?.CreatedByUserId,
             VoidedByName = voided?.CreatedByName,

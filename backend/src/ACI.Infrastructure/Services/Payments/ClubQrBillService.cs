@@ -32,12 +32,14 @@ public sealed class ClubQrBillService : IClubQrBills
 
     private readonly AppDbContext _db;
     private readonly ClubPaymentSettingsService _settings;
+    private readonly ILedgerReadObserver _reads;
     private readonly ILogger<ClubQrBillService> _logger;
 
-    public ClubQrBillService(AppDbContext db, ClubPaymentSettingsService settings, ILogger<ClubQrBillService> logger)
+    public ClubQrBillService(AppDbContext db, ClubPaymentSettingsService settings, ILedgerReadObserver reads, ILogger<ClubQrBillService> logger)
     {
         _db = db;
         _settings = settings;
+        _reads = reads;
         _logger = logger;
     }
 
@@ -111,6 +113,7 @@ public sealed class ClubQrBillService : IClubQrBills
 
             var number = (await _db.ClubPaymentReferences.Where(r => r.OrganizationId == organizationId)
                 .Select(r => (long?)r.Number).MaxAsync(ct) ?? 0) + 1;
+            await _reads.ReadAsync("payment-references", ct);
             string? qrReference = null;
             if (config.QrIban != null)
             {

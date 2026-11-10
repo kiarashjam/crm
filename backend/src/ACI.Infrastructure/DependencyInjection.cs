@@ -71,6 +71,7 @@ public static class DependencyInjection
         services.AddScoped<IClubPaymentSettings>(sp => sp.GetRequiredService<ACI.Infrastructure.Services.Payments.ClubPaymentSettingsService>());
         services.AddScoped<ACI.Infrastructure.Services.Payments.ClubQrBillService>();
         services.AddScoped<IClubQrBills>(sp => sp.GetRequiredService<ACI.Infrastructure.Services.Payments.ClubQrBillService>());
+        services.AddScoped<IClubBankFiles, ACI.Infrastructure.Services.Payments.ClubBankFileService>();
         services.AddHttpClient(ACI.Infrastructure.Services.Payments.StripePaymentProvider.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddSingleton<IPaymentProvider, ACI.Infrastructure.Services.Payments.StripePaymentProvider>();
         services.AddScoped<IConsentRepository, ConsentRepository>();

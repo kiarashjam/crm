@@ -1033,7 +1033,11 @@ public static readonly Error AlreadyMember = new(
             "Charge.DescriptionRequired", "A charge needs a description.");
 
         public static readonly Error MethodInvalid = new(
-            "Payment.MethodInvalid", "A payment is made by CardOnFile, Cash, Check, Wire or AppliedCredit.");
+            "Payment.MethodInvalid", "A payment is made by CardOnFile, Card, Twint, DirectDebit, Cash, Check, Wire or AppliedCredit.");
+
+        public static Error ReceivedCurrencyMismatch(string received, string account) => new(
+            "Payment.CurrencyMismatch",
+            $"The money came in {received}, and the member's account is kept in {account}: record it by hand at the rate the bank used.");
 
         public static readonly Error ExpiryInvalid = new(
             "GiftCard.ExpiryInvalid", "A gift card's expiry must be a date in the future.");
