@@ -140,7 +140,7 @@ export function useLeadStatusSync({
    */
   const save = useCallback(
     async (
-      lead: Pick<Lead, 'id' | 'status' | 'isConverted' | 'name' | 'pipelineState'>,
+      lead: Pick<Lead, 'id' | 'status' | 'isConverted' | 'name' | 'pipelineState' | 'version'>,
       pipeline: LeadPipeline,
       opts?: {
         log?: { subject: string; body?: string };

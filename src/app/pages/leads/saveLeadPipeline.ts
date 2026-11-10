@@ -19,8 +19,9 @@
 
 import { updateLead } from '@/app/api/leads';
 import { createActivity } from '@/app/api/activities';
+import { servesDemoData } from '@/app/api/apiClient';
 import type { Lead } from '@/app/api/types';
-import { pipelinePatch, type LeadPipeline } from './leadPipeline';
+import { pipelinePatch, serializePipeline, type LeadPipeline } from './leadPipeline';
 import {
   planStatusSync,
   classifyStatusLabel,
@@ -32,7 +33,8 @@ import {
 } from './leadStatusSync';
 
 export interface SavePipelineArgs {
-  lead: Pick<Lead, 'id' | 'status' | 'isConverted'>;
+  /** `version` says the lead came from a server that merges a pipeline change (see below). */
+  lead: Pick<Lead, 'id' | 'status' | 'isConverted' | 'version'>;
   /** The complete next pipeline (not a patch). */
   pipeline: LeadPipeline;
   /** The pipeline the edit was made on. Only what differs from it is sent. */
@@ -122,9 +124,18 @@ export async function saveLeadPipeline(args: SavePipelineArgs): Promise<SavePipe
     overrides: args.overrides,
   });
 
+  // Only the steps this edit changed, which the server merges into the pipeline it
+  // has. A lead read without a version came from a server from before that merge
+  // (one still serving during a deploy, or after a rollback), which replaces the
+  // pipeline with whatever it is sent: handed only the changed steps, it would wipe
+  // every other step. That server gets the whole pipeline, as it always did. Demo
+  // mode merges in this browser (see updateLead).
+  const merges = !!lead.version || servesDemoData();
+  const pipelineState = merges ? JSON.stringify(pipelinePatch(args.base, pipeline)) : serializePipeline(pipeline);
+
   let updated: Lead | null = null;
   try {
-    updated = await updateLead(lead.id, { pipelineState: JSON.stringify(pipelinePatch(args.base, pipeline)) });
+    updated = await updateLead(lead.id, { pipelineState });
   } catch {
     return { ok: false, plan: preview, previousStatus };
   }

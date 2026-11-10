@@ -8,11 +8,17 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Lead } from '@/app/api/types';
+import type { LeadPipeline } from './leadPipeline';
 
 const updateLead = vi.fn();
 const createActivity = vi.fn();
+const demo = vi.hoisted(() => ({ on: true }));
 vi.mock('@/app/api/leads', () => ({ updateLead: (...a: unknown[]) => updateLead(...a) }));
 vi.mock('@/app/api/activities', () => ({ createActivity: (...a: unknown[]) => createActivity(...a) }));
+vi.mock('@/app/api/apiClient', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/api/apiClient')>()),
+  servesDemoData: () => demo.on,
+}));
 
 const { saveLeadPipeline, planFromServer } = await import('./saveLeadPipeline');
 const { planStatusSync } = await import('./leadStatusSync');
@@ -41,6 +47,7 @@ beforeEach(() => {
   updateLead.mockReset();
   createActivity.mockReset();
   createActivity.mockResolvedValue(null);
+  demo.on = true;
 });
 
 describe('saveLeadPipeline', () => {
@@ -66,6 +73,34 @@ describe('saveLeadPipeline', () => {
 
     const [, patch] = updateLead.mock.calls[0]!;
     expect(JSON.parse(patch.pipelineState)).toEqual({ meetingDate: null, meetingAttended: true });
+  });
+
+  // A server from before the merge replaces the pipeline with whatever it is sent, so
+  // the changed steps alone would wipe every other one. A lead read from such a server
+  // (one still serving during a deploy, or after a rollback) carries no version.
+  it('sends the whole pipeline to a server that replaces it', async () => {
+    demo.on = false;
+    updateLead.mockResolvedValue(serverLead({ status: 'Connected' }));
+    const pipeline: LeadPipeline = { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingAttended: true };
+
+    await save({ base: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' }, pipeline });
+
+    const [, patch] = updateLead.mock.calls[0]!;
+    expect(JSON.parse(patch.pipelineState)).toEqual(pipeline);
+  });
+
+  it('sends only the changed steps to a server that merges them', async () => {
+    demo.on = false;
+    updateLead.mockResolvedValue(serverLead({ status: 'Connected' }));
+
+    await save({
+      lead: { ...lead, version: 'v1' },
+      base: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled' },
+      pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingAttended: true },
+    });
+
+    const [, patch] = updateLead.mock.calls[0]!;
+    expect(JSON.parse(patch.pipelineState)).toEqual({ meetingAttended: true });
   });
 
   it('reports the move the server made, with the id the server stored', async () => {
