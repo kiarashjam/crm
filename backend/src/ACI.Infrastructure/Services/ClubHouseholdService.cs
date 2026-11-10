@@ -210,7 +210,7 @@ public sealed class ClubHouseholdService : IClubHouseholds
             _db.ClubHouseholds.Remove(duplicate);
         }
         // An application waiting to join a duplicate joins the household it was folded into.
-        foreach (var application in await OpenApplicationsNamingAsync(organizationId, duplicates.Select(d => d.Id).ToList(), ct))
+        foreach (var application in await OpenApplicationsNamingAsync(organizationId, merging, ct))
         {
             application.HouseholdId = householdId;
             application.UpdatedAtUtc = DateTime.UtcNow;
