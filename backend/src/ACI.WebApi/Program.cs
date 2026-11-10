@@ -2238,7 +2238,21 @@ try
                 db, scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ACI.WebApi.SchemaBaseline"));
 
             Log.Information("Applying database migrations...");
-            await db.Database.MigrateAsync();
+            // A migration that moves data runs it as one command: the club ledger's copy of
+            // the money documents took 16 seconds for a club with 140,000 of them on a
+            // developer's machine, and longer on the Basic tier, against a command's default
+            // 30. A timeout rolls the migration back, and every start after it fails the
+            // same way. So migrations have the ten minutes the long DDL above has.
+            var migrationTimeout = db.Database.GetCommandTimeout();
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+            try
+            {
+                await db.Database.MigrateAsync();
+            }
+            finally
+            {
+                db.Database.SetCommandTimeout(migrationTimeout);
+            }
 
             Log.Information("Seeding database...");
             await SeedData.SeedAsync(db, passwordHasher, seedDemoUser: app.Environment.IsDevelopment());

@@ -8,6 +8,8 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace ACI.WebApi.Tests;
 
@@ -383,6 +385,80 @@ public class ClubLedgerMoveTests
             tabs.Single(t => t.GetProperty("status").GetString() == "Open").GetProperty("total").GetDecimal().Should().Be(42);
             (await ReadAsync(client, "/api/subscriptions")).Should().HaveCount(2);
             (await ReadAsync(client, "/api/donations")).Should().HaveCount(2);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    /// <summary>
+    /// A club with tens of thousands of money documents: a thousand members, their charges,
+    /// a payment for every one paid, and their tabs. Made in one batch, the way the move reads them.
+    /// </summary>
+    private const string LargeClubSql = @"
+SET NOCOUNT ON;
+DECLARE @org uniqueidentifier = NEWID(), @user uniqueidentifier = NEWID();
+INSERT INTO [Users] ([Id], [Name], [Email], [PasswordHash], [TwoFactorEnabled], [CreatedAtUtc], [EmailVerifiedAtUtc])
+VALUES (@user, N'Treasurer', CONCAT(CONVERT(nvarchar(36), @user), N'@example.ch'), N'x', 0, SYSUTCDATETIME(), SYSUTCDATETIME());
+INSERT INTO [Organizations] ([Id], [Name], [OwnerUserId], [CreatedAtUtc], [StaleDealDays]) VALUES (@org, N'Big club', @user, SYSUTCDATETIME(), 30);
+SELECT TOP (40000) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS [i] INTO #n FROM sys.all_objects a CROSS JOIN sys.all_objects b;
+SELECT [i], NEWID() AS [Id] INTO #m FROM #n WHERE [i] <= 1000;
+INSERT INTO [ClubMembers] ([Id], [OrganizationId], [OwnerUserId], [FirstName], [LastName], [Email], [Tier], [Status], [JoinedAtUtc], [RenewsAtUtc],
+    [DuesAmount], [DuesFrequency], [HouseAccountBalance], [ManualBalance])
+SELECT [Id], @org, @user, CONCAT(N'M', [i]), N'Dupont', CONCAT(N'm', [i], N'@example.ch'), N'Gold', N'Active', '2024-01-01', '2027-01-01', 0, N'Monthly', 0, 0 FROM #m;
+SELECT n.[i], NEWID() AS [Id], m.[Id] AS [MemberId], CAST((n.[i] % 300) + 10 AS decimal(18,2)) AS [Amount],
+    CAST(CASE WHEN n.[i] % 3 = 0 THEN (n.[i] % 300) + 10 ELSE 0 END AS decimal(18,2)) AS [Paid]
+INTO #c FROM #n n JOIN #m m ON m.[i] = (n.[i] % 1000) + 1;
+INSERT INTO [ClubDocuments] ([Id], [OrganizationId], [Kind], [Payload], [UpdatedAtUtc], [Version])
+SELECT [Id], @org, N'charges', CONCAT(N'{""memberId"":""', [MemberId], N'"",""memberName"":""M Dupont"",""kind"":""Dining"",""description"":""Dinner"",""amount"":', [Amount],
+    N',""paidAmount"":', [Paid], N',""status"":""', CASE WHEN [Paid] > 0 THEN N'Paid' ELSE N'Pending' END, N'"",""postedAtUtc"":""2025-06-01T12:00:00.0000000Z""}'), SYSUTCDATETIME(), NEWID() FROM #c;
+INSERT INTO [ClubDocuments] ([Id], [OrganizationId], [Kind], [Payload], [UpdatedAtUtc], [Version])
+SELECT NEWID(), @org, N'payments', CONCAT(N'{""memberId"":""', [MemberId], N'"",""amount"":', [Paid], N',""method"":""Cash"",""chargeId"":""', [Id],
+    N'"",""receivedAtUtc"":""2025-06-02T12:00:00.0000000Z""}'), SYSUTCDATETIME(), NEWID() FROM #c WHERE [Paid] > 0;
+INSERT INTO [ClubDocuments] ([Id], [OrganizationId], [Kind], [Payload], [UpdatedAtUtc], [Version])
+SELECT NEWID(), @org, N'tabs', CONCAT(N'{""memberId"":""', m.[Id], N'"",""venue"":""Bar"",""status"":""Open"",""items"":[{""name"":""Negroni"",""quantity"":1,""unitPrice"":15},{""name"":""Wine"",""quantity"":2,""unitPrice"":10}]}'),
+    SYSUTCDATETIME(), NEWID()
+FROM #n n JOIN #m m ON m.[i] = (n.[i] % 1000) + 1 WHERE n.[i] <= 10000;
+UPDATE m SET [HouseAccountBalance] = -o.[Owed]
+FROM [ClubMembers] m JOIN (SELECT [MemberId], SUM([Amount] - [Paid]) AS [Owed] FROM #c GROUP BY [MemberId]) o ON o.[MemberId] = m.[Id];";
+
+    [SqlServerFact]
+    public async Task ALargeClubsMoveRunsAtStartUp_ThoughItTakesLongerThanACommandIsGivenByDefault()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            var migrations = SqlServerSchema.AllMigrationIds();
+            var ledger = migrations.Single(m => m.EndsWith("_AddClubMoneyLedger", StringComparison.Ordinal));
+            await using (var db = SqlServerSchema.Context(database))
+                await db.GetService<IMigrator>().MigrateAsync(migrations[migrations.ToList().IndexOf(ledger) - 1]);
+            await SqlServerApp.ExecuteAsync(database, LargeClubSql);
+            // The one-time opening balance fix (DataFixes) reads every charge for every member
+            // and would not finish in a second either; it is recorded here as done, so the
+            // start's one long command is the move.
+            await SqlServerApp.ExecuteAsync(database, ACI.WebApi.DataFixes.CreateTableSql
+                + $" INSERT INTO [AppliedDataFixes] ([Name], [AppliedAtUtc]) VALUES (N'{ACI.WebApi.DataFixes.KeepClubOpeningBalancesName}', SYSUTCDATETIME());");
+
+            // Commands given a second by default, where production gives them 30: the move of
+            // these 63,000 documents takes longer than that here, as a big club's would take
+            // longer than 30 seconds on the Basic tier. The timeout rolled the migration back
+            // and the start failed, and so did every start after it.
+            var oneSecond = new SqlConnectionStringBuilder(SqlServerApp.ConnectionString(database)) { CommandTimeout = 1 }.ConnectionString;
+            using var app = SqlServerApp.Start(database, services: services =>
+            {
+                services.RemoveAll(typeof(DbContextOptions<ACI.Infrastructure.Persistence.AppDbContext>));
+                services.AddDbContext<ACI.Infrastructure.Persistence.AppDbContext>(options => options.UseSqlServer(oneSecond));
+            });
+
+            (await SqlServerSchema.HistoryAsync(database)).Should().Contain(ledger, "the start applied the ledger's migration");
+            (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [ClubCharges]")).Should().Be(40000);
+            (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [ClubTabs]")).Should().Be(10000);
+            (await SqlServerApp.ScalarAsync(database, @"SELECT COUNT(*) FROM [ClubMembers] m WHERE m.[HouseAccountBalance] <>
+                ISNULL((SELECT SUM([Amount]) FROM [ClubPayments] p WHERE p.[MemberId] = m.[Id]), 0)
+              - ISNULL((SELECT SUM([Amount]) FROM [ClubCharges] c WHERE c.[MemberId] = m.[Id]), 0)"))
+                .Should().Be(0, "every member's balance is what it was before the move");
         }
         finally
         {
