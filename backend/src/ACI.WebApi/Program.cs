@@ -366,6 +366,7 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubBillingBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubPaymentsBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.ClubPosBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();

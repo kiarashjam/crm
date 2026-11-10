@@ -284,6 +284,29 @@ public class OrganizationCloneTests
             },
             new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org.Id, HouseholdId = household.Id, MemberId = member.Id, Role = HouseholdRoles.Primary, IsPrimary = true, CreatedAtUtc = now },
             new ClubHouseholdMember { Id = Guid.NewGuid(), OrganizationId = org.Id, HouseholdId = household.Id, ContactId = contact.Id, Role = HouseholdRoles.Spouse, CreatedAtUtc = now });
+        // Sales and the POS: a ticket imported from Lightspeed and the sale it was posted as, with
+        // its line, the member's code at the POS, and the connection, whose tokens stay behind.
+        var posTicket = new ClubPosTicket
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, Provider = PosProviders.LightspeedK, ExternalId = $"46100001:{name}-R1", ReceiptNumber = "R1",
+            ClosedAtUtc = now, Currency = "CHF", Total = 18.50m, OnAccountAmount = 18.50m, Status = PosTicketStatuses.Posted, Attempts = 1,
+            MemberId = member.Id, MemberName = "Ana Silva", MatchedBy = "code", ImportedAtUtc = now,
+        };
+        var sale = new ClubSale
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Source = PosProviders.LightspeedK,
+            PosTicketId = posTicket.Id, Venue = "Bar", Tender = SaleTenders.HouseAccount, Subtotal = 18.50m, Total = 18.50m, OwedAmount = 18.50m,
+            Currency = "CHF", ChargeIds = dues.Id.ToString(), IdempotencyKey = $"sale:{name}", SoldAtUtc = now, CreatedAtUtc = now,
+        };
+        posTicket.SaleId = sale.Id;
+        db.AddRange(posTicket, sale,
+            new ClubSaleLine { Id = Guid.NewGuid(), OrganizationId = org.Id, SaleId = sale.Id, Name = "Negroni", Quantity = 1, UnitPrice = 18.50m, Total = 18.50m, VatRate = 8.1m, Kind = "Bar" },
+            new ClubMemberCode { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, Kind = MemberCodeKinds.Card, Code = "1042", CreatedAtUtc = now },
+            new ClubPosSettings
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Enabled = true, RefreshTokenProtected = "protected-refresh", AccessTokenProtected = "protected-access",
+                AccessTokenExpiresAtUtc = now.AddHours(1), ConnectedAtUtc = now, LocationId = "46100001", DefaultVenue = "Bar", CreatedAtUtc = now,
+            });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
         return new Seeded(org.Id, owner, manager, rep, lead.Id, deal.Id, contact.Id, member.Id, rule.Id, sequence.Id);
@@ -391,6 +414,27 @@ public class OrganizationCloneTests
         (await db.ClubOnlinePayments.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == original.Org)).Status.Should().Be(OnlinePaymentStatuses.Processing);
         report.Adjustments.Keys.Should().Contain("Payment settings keep the Stripe key and webhook with the original")
             .And.Contain("Saved cards are not charged for dues from the copy");
+    }
+
+    [Fact]
+    public async Task TheCopyImportsNothingFromTheOriginalsPos()
+    {
+        var (connection, db, original, _, _) = await WorldAsync();
+        using var _c = connection;
+        await using var _d = db;
+
+        var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
+
+        // Both importing the same location's tickets would post every bill to the same people twice.
+        var copied = await db.ClubPosSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);
+        copied.RefreshTokenProtected.Should().BeNull("the Lightspeed account stays with the original");
+        copied.AccessTokenProtected.Should().BeNull();
+        copied.Enabled.Should().BeFalse();
+        copied.LocationId.Should().Be("46100001", "the location is the same club's, ready if the copy is connected");
+        var source = await db.ClubPosSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == original.Org);
+        source.RefreshTokenProtected.Should().Be("protected-refresh", "the original keeps importing");
+        source.Enabled.Should().BeTrue();
+        report.Adjustments.Keys.Should().Contain("The POS connection stays with the original, so no ticket is imported twice");
     }
 
     [Fact]

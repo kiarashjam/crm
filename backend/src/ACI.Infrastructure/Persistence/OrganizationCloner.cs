@@ -532,6 +532,17 @@ public sealed class OrganizationCloner
                 settings.StripeCheckedAtUtc = null;
                 settings.WebhookKey = Guid.NewGuid();
                 return "Payment settings keep the Stripe key and webhook with the original";
+            case ClubPosSettings pos:
+                // The POS account stays with the original: the copy holds the same members, and
+                // importing the same location's tickets would post every bill to them twice.
+                pos.RefreshTokenProtected = null;
+                pos.AccessTokenProtected = null;
+                pos.AccessTokenExpiresAtUtc = null;
+                pos.ConnectedAtUtc = null;
+                pos.ConnectedByName = null;
+                pos.Enabled = false;
+                pos.ClaimedUntilUtc = null;
+                return "The POS connection stays with the original, so no ticket is imported twice";
             case ClubPaymentProfile profile when profile.AutoPayDues:
                 profile.AutoPayDues = false;
                 return "Saved cards are not charged for dues from the copy";
