@@ -217,6 +217,54 @@ public class CommunicationsOnSqlServerTests
     }
 
     [SqlServerFact]
+    public async Task AnAnswerChangedAndTwoRecordsMergedLeaveOneAnswerStanding()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            // The unique index lets one answer stand per member, channel and purpose, and a
+            // change marks the old one superseded in the same save as it adds the new one: on a
+            // real server that save, and a merge of two records that each hold an answer, must
+            // never have two standing at once, or every change after the first is refused.
+            using var app = SqlServerApp.Start(database);
+            var (owner, _) = await SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
+            var created = await owner.PostAsync("/api/organizations", Body(new { name = "Pavillon" }));
+            var org = JsonDocument.Parse(await created.Content.ReadAsStringAsync()).RootElement.GetProperty("id").GetGuid();
+            owner.In(org);
+            async Task<Guid> Member(string first, string email) => (await Json(await owner.PostAsync("/api/members", Body(new
+            {
+                firstName = first, lastName = "Dupont", email, tier = "Gold", status = "Active",
+            })), "add member")).GetProperty("id").GetGuid();
+            async Task Answer(Guid member, bool granted, string channel = "email") => await Json(await owner.PostAsync($"/api/members/{member}/consent", Body(new
+            {
+                channel, purpose = "marketing", granted, source = "staff",
+            })), "record an answer");
+            var keep = await Member("Jean", "jean@example.ch");
+            var drop = await Member("Jeannot", "jeannot@example.ch");
+
+            await Answer(keep, true);
+            await Answer(keep, false);
+            await Answer(keep, true);
+            await Answer(drop, false);
+            await Answer(drop, true, "post");
+
+            (await owner.PostAsync($"/api/members/{keep}/merge", Body(new { otherMemberId = drop }))).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ConsentRecords] WHERE [SubjectId] = '{keep}'")).Should().Be(5, "every answer either record held");
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ConsentRecords] WHERE [SubjectId] = '{keep}' AND [IsCurrent] = 1")).Should().Be(2);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [Granted] FROM [ConsentRecords] WHERE [SubjectId] = '{keep}' AND [IsCurrent] = 1 AND [Channel] = N'email'"))
+                .Should().Be(false, "the latest answer either record held stands: the one given on the record merged away");
+            await Answer(keep, true);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ConsentRecords] WHERE [SubjectId] = '{keep}' AND [IsCurrent] = 1")).Should().Be(2);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
     public async Task OneConsentAnswerStandsWhenTwoAreRecordedAtOnce()
     {
         await SqlServerApp.WaitForServerAsync();
