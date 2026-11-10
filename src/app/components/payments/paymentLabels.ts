@@ -1,6 +1,6 @@
 // How the money screens name what Stripe and the bank's files say.
 
-import type { BankTransactionStatus, OnlinePayment, OnlinePaymentStatus } from '@/app/api/payments';
+import type { BankImport, BankTransactionStatus, OnlinePayment, OnlinePaymentStatus } from '@/app/api/payments';
 
 /** Stripe's names for how a member pays, as a member would say them. */
 export const METHOD_LABEL: Record<string, string> = {
@@ -57,4 +57,12 @@ export function describeCard(card: { type: string; brand?: string; last4?: strin
   const ending = card.last4 ? ` ending ${card.last4}` : '';
   const expiry = card.expMonth && card.expYear ? `, expires ${String(card.expMonth).padStart(2, '0')}/${String(card.expYear).slice(-2)}` : '';
   return `${name}${ending}${expiry}`;
+}
+
+/** What a bank file's import did, as one sentence. */
+export function importSummary(i: Pick<BankImport, 'matched' | 'unmatched' | 'alreadyImported' | 'skipped'>): string {
+  const parts = [`${i.matched} matched and recorded`, `${i.unmatched} to allocate`];
+  if (i.alreadyImported) parts.push(`${i.alreadyImported} already imported`);
+  if (i.skipped) parts.push(`${i.skipped} skipped (debits, reversals, not yet booked)`);
+  return `${parts.join(', ')}.`;
 }
