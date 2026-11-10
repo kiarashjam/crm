@@ -72,6 +72,48 @@ public class LeadWriteRaceTests
             "it was saved by someone else, most likely the call that answered it");
     }
 
+    /// <summary>
+    /// The same run across two workspaces. The job reads every workspace's late leads and
+    /// writes each in its own (ITenantContext), so a lead it skips must leave the run in no
+    /// workspace, and the next lead is saved and its owner told in that lead's workspace.
+    /// </summary>
+    [Fact]
+    public async Task AnSlaRunThatSkipsALeadSavedMeanwhileWritesTheNextInItsOwnWorkspace()
+    {
+        Guid alpine = Guid.NewGuid(), bernina = Guid.NewGuid();
+        var raced = Lead(Guid.NewGuid(), Guid.NewGuid());
+        raced.OrganizationId = alpine;
+        var calm = Lead(Guid.NewGuid(), Guid.NewGuid());
+        calm.OrganizationId = bernina;
+        var tenant = new ActingWorkspace();
+        var savedIn = new List<(Guid Lead, Guid? Workspace)>();
+        var ops = new Mock<ILeadOpsRepository>();
+        ops.Setup(o => o.OverdueFirstResponseAsync(It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { raced, calm });
+        ops.Setup(o => o.SaveLeadAsync(raced, It.IsAny<CancellationToken>()))
+            .Callback(() => savedIn.Add((raced.Id, tenant.OrganizationId)))
+            .ThrowsAsync(new ConcurrencyConflictException());
+        ops.Setup(o => o.SaveLeadAsync(calm, It.IsAny<CancellationToken>()))
+            .Callback(() => savedIn.Add((calm.Id, tenant.OrganizationId)))
+            .Returns(Task.CompletedTask);
+        var toldIn = new List<Guid?>();
+        var notifications = new Mock<INotificationService>();
+        notifications.Setup(n => n.CreateAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CreateNotificationRequest>(), It.IsAny<CancellationToken>()))
+            .Callback(() => toldIn.Add(tenant.OrganizationId))
+            .ReturnsAsync((NotificationDto?)null);
+        var service = new LeadOpsService(
+            ops.Object, Mock.Of<ILeadService>(), Mock.Of<ILeadRepository>(), notifications.Object,
+            Mock.Of<ILeadAutomation>(), Mock.Of<IActivityService>(), tenant: tenant);
+
+        await service.NotifyOverdueAsync();
+
+        savedIn.Should().Equal(new[] { (raced.Id, (Guid?)alpine), (calm.Id, (Guid?)bernina) }, "each lead is saved in its own workspace");
+        toldIn.Should().Equal(new Guid?[] { bernina }, "only the lead still late is told about, in its workspace");
+        notifications.Verify(n => n.CreateAsync(calm.UserId, bernina,
+            It.Is<CreateNotificationRequest>(r => r.Link == $"/leads/{calm.Id}"), It.IsAny<CancellationToken>()), Times.Once);
+        tenant.OrganizationId.Should().BeNull("the run ends in no workspace, as it began");
+    }
+
     [Fact]
     public async Task AConversionMarksTheNewerCopyWhenTheLeadWasSavedMeanwhile()
     {
