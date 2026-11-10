@@ -161,6 +161,54 @@ public class ClubBillingOnSqlServerTests
     }
 
     [SqlServerFact]
+    public async Task TheRunRemindsAndLapsesOnlyWhatAMembersCreditDoesNotCover()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (client, _) = await Workspaces.SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
+            var org = (await Ok(await client.PostAsync("/api/organizations", Workspaces.Body(new { name = "Pavillon46" })), "create the club"))
+                .GetProperty("id").GetGuid();
+            client.In(org);
+            async Task<Guid> MemberAsync(string first, decimal credit)
+            {
+                var id = (await Ok(await client.PostAsync("/api/members", Workspaces.Body(new
+                {
+                    firstName = first, lastName = "Dupont", email = $"{first.ToLowerInvariant()}@example.ch", tier = "Gold", status = "Active",
+                    houseAccountBalance = credit,
+                })), $"add {first}")).GetProperty("id").GetGuid();
+                await Ok(await client.PostAsync("/api/charges", Workspaces.Body(new
+                {
+                    memberId = id, kind = "Dues", description = "Gold dues", amount = 300, dueAtUtc = DateTime.UtcNow.AddDays(-45).ToString("o"),
+                })), $"charge {first}");
+                return id;
+            }
+            // Jean's credit covers his dues; Max's covers 100 of them; Lea has none.
+            var (jean, max, lea) = (await MemberAsync("Jean", 500), await MemberAsync("Max", 100), await MemberAsync("Lea", 0));
+            await Ok(await client.PutAsync("/api/hospitality/settings", Workspaces.Body(new
+            {
+                billing = new { remindersEnabled = true, reminderDays = new[] { 3 }, lapseEnabled = true, gracePeriodDays = 30 },
+            })), "turn on reminders and lapsing");
+
+            using (var scope = app.Services.CreateScope())
+                (await scope.ServiceProvider.GetRequiredService<ACI.Application.Services.IClubBilling>().RunScheduledAsync(RunTime())).Should().Be(1);
+
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubPaymentReminders] WHERE [MemberId] = '{jean}'")).Should().Be(0);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubPaymentReminders] WHERE [MemberId] IN ('{max}', '{lea}') AND [Status] = N'queued'"))
+                .Should().Be(2);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [Status] FROM [ClubMembers] WHERE [Id] = '{jean}'")).Should().Be("Active");
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubMembers] WHERE [Id] IN ('{max}', '{lea}') AND [Status] = N'Lapsed'")).Should().Be(2);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [OverdueCharges] FROM [ClubBillingRuns] WHERE [OrganizationId] = '{org}'")).Should().Be(2);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
     public async Task TwoBillingRunsStartedByHandAtOnce_BillEachPeriodOnce()
     {
         await SqlServerApp.WaitForServerAsync();
