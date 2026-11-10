@@ -130,7 +130,8 @@ beforeEach(() => {
     { ...REFUSED, id: 'com-5', memberId: 'm2', memberName: 'Ana Weber', email: 'ana@example.ch', campaignId: 'cmp-3' },
   ]);
   campaignsApi.create.mockReset().mockImplementation(async (input) => ({ ...DRAFT, ...(input as Partial<Campaign>), id: 'cmp-9' }));
-  campaignsApi.send.mockReset().mockResolvedValue({ ...DRAFT, status: 'Sent', totals: { ...NO_TOTALS, recipients: 5, queued: 2, suppressed: 3 } });
+  // By the time the answer comes back the outbox has already handed one of the two to the mail server.
+  campaignsApi.send.mockReset().mockResolvedValue({ ...DRAFT, status: 'Sent', totals: { ...NO_TOTALS, recipients: 5, queued: 1, sent: 1, suppressed: 3 } });
   campaignsApi.test.mockReset().mockResolvedValue({ messageId: 'msg-1', to: 'me@club.ch', status: 'sent' });
   commsApi.list.mockReset().mockResolvedValue([DELIVERED, REFUSED, LOGGED_TEXT]);
   commsApi.send.mockReset().mockResolvedValue({ ...DELIVERED, id: 'com-8', status: 'queued', sentAtUtc: null });
@@ -171,7 +172,7 @@ describe('campaigns', () => {
 
     await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledWith('cmp-1', 'v1'));
     expect(campaignsApi.send).toHaveBeenCalledTimes(1);
-    expect(toast.success).toHaveBeenCalledWith('"Founders dinner" is on its way: 2 emails queued.');
+    expect(toast.success).toHaveBeenCalledWith('"Founders dinner" is on its way: 2 emails sent or queued.');
   });
 
   it('sends a test to the person who asked for it, and to no member', async () => {

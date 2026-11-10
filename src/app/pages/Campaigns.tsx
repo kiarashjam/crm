@@ -531,8 +531,10 @@ function SendDialog({ campaign, onClose }: { campaign: Campaign; onClose: () => 
     setSending(true);
     try {
       const sent = await sendCampaign(campaign.id, campaign.version);
-      const queued = sent.totals?.queued ?? 0;
-      toast.success(`"${sent.name}" is on its way: ${queued} email${queued === 1 ? '' : 's'} queued.`);
+      // The outbox starts on them as soon as they are queued: by the time the answer comes
+      // back some are already with the mail server, and are going out all the same.
+      const going = (sent.totals?.queued ?? 0) + (sent.totals?.sent ?? 0);
+      toast.success(`"${sent.name}" is on its way: ${going} email${going === 1 ? '' : 's'} sent or queued.`);
       onClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'The campaign could not be sent.');
