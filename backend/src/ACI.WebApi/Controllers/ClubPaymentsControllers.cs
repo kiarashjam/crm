@@ -160,3 +160,109 @@ public class BankFilesController : ControllerBase
         return ignored.IsSuccess ? Ok(ignored.Value) : ignored.Error.ToProblemResult();
     }
 }
+
+/// <summary>
+/// A member's online payments: a link to pay what they owe or to save a card, the card they
+/// saved, their dues charged to it, and what Stripe said of each attempt.
+/// </summary>
+[ApiController]
+[Route("api/members/{memberId:guid}")]
+[Authorize]
+[WorkspaceRequired]
+[Produces("application/json")]
+public class MemberPaymentsController : ControllerBase
+{
+    private readonly IClubPayments _payments;
+    private readonly ICurrentUserService _user;
+
+    public MemberPaymentsController(IClubPayments payments, ICurrentUserService user)
+    {
+        _payments = payments;
+        _user = user;
+    }
+
+    /// <summary>The member's saved card (what Stripe shows of it), whether their dues are charged to it, and their latest online payments.</summary>
+    [HttpGet("payment-profile")]
+    public async Task<ActionResult> Profile(Guid memberId, CancellationToken ct)
+    {
+        var profile = await _payments.ProfileAsync(_user.CurrentOrganizationId!.Value, memberId, ct);
+        if (!profile.IsSuccess) return profile.Error.ToProblemResult();
+        Response.SetETag(profile.Value.Version);
+        return Ok(profile.Value);
+    }
+
+    /// <summary>A link the member pays on (what they owe, or some charges) or saves a card on.</summary>
+    [HttpPost("pay-link")]
+    [Requires(MemberPermissions.ManageMoney, What = "send a member a payment link")]
+    public async Task<ActionResult> PayLink(Guid memberId, [FromBody] PayLinkRequest request, CancellationToken ct)
+    {
+        if (_user.UserId is not { } userId) return Unauthorized();
+        var link = await _payments.CreatePayLinkAsync(_user.CurrentOrganizationId!.Value, userId, memberId, request, ct);
+        return link.IsSuccess ? Ok(link.Value) : link.Error.ToProblemResult();
+    }
+
+    /// <summary>The same link, emailed to the member through the outbox.</summary>
+    [HttpPost("pay-link/email")]
+    [Requires(MemberPermissions.ManageMoney, What = "send a member a payment link")]
+    public async Task<ActionResult> EmailPayLink(Guid memberId, [FromBody] PayLinkRequest request, CancellationToken ct)
+    {
+        if (_user.UserId is not { } userId) return Unauthorized();
+        var link = await _payments.EmailPayLinkAsync(_user.CurrentOrganizationId!.Value, userId, memberId, request, ct);
+        return link.IsSuccess ? Ok(link.Value) : link.Error.ToProblemResult();
+    }
+
+    /// <summary>Removes the saved card, at Stripe too; dues stop being charged to it.</summary>
+    [HttpDelete("card")]
+    [Requires(MemberPermissions.ManageMoney, What = "remove a member's saved card")]
+    public async Task<ActionResult> RemoveCard(Guid memberId, CancellationToken ct)
+    {
+        if (_user.UserId is not { } userId) return Unauthorized();
+        var removed = await _payments.RemoveCardAsync(_user.CurrentOrganizationId!.Value, userId, memberId, ct);
+        return removed.IsSuccess ? Ok(removed.Value) : removed.Error.ToProblemResult();
+    }
+
+    /// <summary>Turns charging the member's dues to their saved card on (they agreed) or off.</summary>
+    [HttpPut("autopay")]
+    [Requires(MemberPermissions.ManageMoney, What = "change how a member pays their dues")]
+    public async Task<ActionResult> AutoPay(Guid memberId, [FromBody] AutoPayRequest request, CancellationToken ct)
+    {
+        if (_user.UserId is not { } userId) return Unauthorized();
+        var (version, versionError) = Request.ExpectedVersion(request.Version);
+        if (versionError != null) return versionError.ToProblemResult();
+        request.Version = version;
+        var saved = await _payments.SetAutoPayAsync(_user.CurrentOrganizationId!.Value, userId, memberId, request, ct);
+        return saved.IsSuccess ? Ok(saved.Value) : saved.Error.ToProblemResult();
+    }
+
+    /// <summary>Charges the member's open charges (or those named) to their saved card now.</summary>
+    [HttpPost("card/charge")]
+    [Requires(MemberPermissions.ManageMoney, What = "charge a member's saved card")]
+    public async Task<ActionResult> ChargeCard(Guid memberId, [FromBody] ChargeSavedCardRequest request, CancellationToken ct)
+    {
+        if (_user.UserId is not { } userId) return Unauthorized();
+        var charged = await _payments.ChargeSavedCardAsync(_user.CurrentOrganizationId!.Value, userId, memberId, request, ct);
+        return charged.IsSuccess ? Ok(charged.Value) : charged.Error.ToProblemResult();
+    }
+}
+
+/// <summary>Online payments across the workspace, failed ones included, newest first.</summary>
+[ApiController]
+[Route("api/online-payments")]
+[Authorize]
+[WorkspaceRequired]
+[Produces("application/json")]
+public class OnlinePaymentsController : ControllerBase
+{
+    private readonly IClubPayments _payments;
+    private readonly ICurrentUserService _user;
+
+    public OnlinePaymentsController(IClubPayments payments, ICurrentUserService user)
+    {
+        _payments = payments;
+        _user = user;
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyList<OnlinePaymentDto>>> List([FromQuery] Guid? memberId, [FromQuery] string? status, CancellationToken ct) =>
+        Ok(await _payments.OnlinePaymentsAsync(_user.CurrentOrganizationId!.Value, memberId, status, ct));
+}

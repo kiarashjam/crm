@@ -137,7 +137,7 @@ public sealed class ClubPaymentSettingsService : IClubPaymentSettings
         var creditor = new QrBillAddress(
             Clean(request.CreditorName), Clean(request.CreditorStreet), Clean(request.CreditorBuildingNumber),
             Clean(request.CreditorPostalCode), Clean(request.CreditorTown), Clean(request.CreditorCountry).ToUpperInvariant());
-        var anyCreditor = new[] { creditor.Name, creditor.Street, creditor.BuildingNumber, creditor.PostalCode, creditor.Town, creditor.Country }.Any(v => v.Length > 0);
+        var anyCreditor = new[] { creditor.Name, creditor.Street, creditor.BuildingNumber, creditor.PostalCode, creditor.Town, creditor.Country }.Any(v => !string.IsNullOrEmpty(v));
         if (iban != null || qrIban != null || anyCreditor)
         {
             if (creditor.Name.Length is 0 or > 70) return DomainErrors.Payments.SettingsInvalid("The creditor's name is needed, at most 70 characters: the club as the bank knows it.");

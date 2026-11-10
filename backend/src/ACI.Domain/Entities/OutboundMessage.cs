@@ -221,6 +221,8 @@ public static class OutboundSources
     /// cancelled; <see cref="OutboundMessage.SourceId"/> is their registration.
     /// </summary>
     public const string Event = "event";
+    /// <summary>A link for a member to pay their account online or save a card, sent by staff.</summary>
+    public const string PaymentLink = "payment_link";
     public const string Webhook = "webhook";
 }
 

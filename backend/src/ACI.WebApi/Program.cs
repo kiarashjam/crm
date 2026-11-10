@@ -135,6 +135,16 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // A pay link: a member opens it and presses Pay once or twice. Per token, like the
+        // unsubscribe link; a forged token fails its check before any database work.
+        options.AddPolicy("public-pay", context => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            "pay:" + (context.Request.RouteValues["token"]?.ToString() ?? ""),
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
         // Email from the composer goes out under the club's own address, so one
         // account cannot turn it into a mass mailer: twenty a minute per person.
         // Per user, which is why UseRateLimiter runs after UseAuthentication.
@@ -343,6 +353,7 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.GiftCardExpiryBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.ClubBillingBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.ClubPaymentsBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
