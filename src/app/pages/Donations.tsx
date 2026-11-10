@@ -54,6 +54,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const CAUSE_COLOR: Record<DonationCause, string> = {
   StaffSupport: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -188,18 +190,22 @@ export default function Donations() {
   const donationActions = (d: Donation) => (
     <>
       {!d.acknowledged && (
-        <Button size="sm" variant="outline" onClick={() => acknowledge(d)}>
-          Acknowledge
-        </Button>
+        <WriteOnly permission={PERMISSION.ManageMoney}>
+          <Button size="sm" variant="outline" onClick={() => acknowledge(d)}>
+            Acknowledge
+          </Button>
+        </WriteOnly>
       )}
-      <button
-        type="button"
-        onClick={() => remove(d)}
-        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-        aria-label={`Delete donation from ${donorName(d)}`}
-      >
-        <Trash2 className="w-4 h-4" />
-      </button>
+      <WriteOnly permission={[PERMISSION.ManageMoney, PERMISSION.DeleteRecords]} all>
+        <button
+          type="button"
+          onClick={() => remove(d)}
+          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+          aria-label={`Delete donation from ${donorName(d)}`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </WriteOnly>
     </>
   );
 
@@ -245,9 +251,11 @@ export default function Donations() {
             title="Donations"
             subtitle="Member contributions to staff support, scholarship, and community causes."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('rose')}>
-                <Plus className="h-4 w-4" /> Record donation
-              </Button>
+              <WriteOnly permission={PERMISSION.ManageMoney}>
+                <Button onClick={openCreate} className={heroPrimary('rose')}>
+                  <Plus className="h-4 w-4" /> Record donation
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Total raised', value: stats.totalRaised, icon: DollarSign, tone: 'rose', format: formatCurrency },

@@ -49,7 +49,8 @@ public class ContractService : IContractService
         IEmailSender email,
         IOptions<EmailSettings> emailSettings,
         ILogger<ContractService> logger,
-        ILeadStatusSync statusSync)
+        ILeadStatusSync statusSync,
+        ITenantContext? tenant = null)
     {
         _contracts = contracts;
         _leads = leads;
@@ -59,7 +60,17 @@ public class ContractService : IContractService
         _emailSettings = emailSettings.Value;
         _logger = logger;
         _statusSync = statusSync;
+        _tenant = tenant;
     }
+
+    private readonly ITenantContext? _tenant;
+
+    /// <summary>
+    /// Reads and writes as the contract's workspace until disposed. The counterparty signs
+    /// in to nothing, so a signing link's request starts in no workspace; the link names
+    /// the contract, and the contract its workspace (the lead it moves, its owner's notice).
+    /// </summary>
+    private IDisposable? ActFor(Contract contract) => _tenant?.ActFor(contract.OrganizationId, contract.CreatedByUserId);
 
     /* ------------------------------------------------------- step 1: draft */
 
@@ -265,6 +276,7 @@ public class ContractService : IContractService
     {
         var (contract, error) = await ResolveTokenAsync(rawToken, ct);
         if (contract is null) return Result.Failure<PublicContractDto>(error);
+        using var acting = ActFor(contract);
 
         if (contract.FirstViewedAtUtc is null)
         {
@@ -284,6 +296,7 @@ public class ContractService : IContractService
     {
         var (contract, error) = await ResolveTokenAsync(rawToken, ct);
         if (contract is null) return Result.Failure<PublicContractDto>(error);
+        using var acting = ActFor(contract);
 
         if (!ContractStateMachine.Can(contract.Status, ContractActions.ClientSign))
             return Result.Failure<PublicContractDto>(DomainErrors.Contract.NotAllowedInThisState);
@@ -322,6 +335,7 @@ public class ContractService : IContractService
     {
         var (contract, error) = await ResolveTokenAsync(rawToken, ct);
         if (contract is null) return Result.Failure<PublicContractDto>(error);
+        using var acting = ActFor(contract);
 
         if (!ContractStateMachine.Can(contract.Status, ContractActions.Decline))
             return Result.Failure<PublicContractDto>(DomainErrors.Contract.NotAllowedInThisState);
@@ -546,6 +560,7 @@ public class ContractService : IContractService
     {
         var (contract, error) = await ResolveTokenAsync(rawToken, ct);
         if (contract is null) return Result.Failure<ContractDocument>(error);
+        using var acting = ActFor(contract);
 
         var org = await _organizations.GetByIdAsync(contract.OrganizationId, ct);
         return Document(contract, org?.Name ?? "");

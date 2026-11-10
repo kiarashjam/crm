@@ -62,6 +62,7 @@ public sealed class InboundEmailService : IInboundEmailService
     private readonly INotificationService _notifications;
     private readonly EmailSettings _settings;
     private readonly ILogger<InboundEmailService> _logger;
+    private readonly ITenantContext? _tenant;
 
     public InboundEmailService(
         IOutboxRepository messages,
@@ -70,7 +71,8 @@ public sealed class InboundEmailService : IInboundEmailService
         IActivityService activities,
         INotificationService notifications,
         IOptions<EmailSettings> settings,
-        ILogger<InboundEmailService> logger)
+        ILogger<InboundEmailService> logger,
+        ITenantContext? tenant = null)
     {
         _messages = messages;
         _sequences = sequences;
@@ -79,6 +81,7 @@ public sealed class InboundEmailService : IInboundEmailService
         _notifications = notifications;
         _settings = settings.Value;
         _logger = logger;
+        _tenant = tenant;
     }
 
     // ── Replies ───────────────────────────────────────────────────────────────
@@ -91,6 +94,9 @@ public sealed class InboundEmailService : IInboundEmailService
             _logger.LogInformation("An inbound email matched nothing that was sent, so it was dropped");
             return InboundReplyOutcome.NotMatched;
         }
+        // Nobody signs in here. The message the reply answers names the workspace, and
+        // everything after this reads and writes as that workspace.
+        using var acting = _tenant?.ActFor(organizationId, message.CreatedByUserId);
         // A Message-ID longer than the column holds is not kept: saving it would fail, and
         // the failure would read as "taken in already", dropping the reply.
         var messageId = NormalizeMessageId(reply.MessageId) is { Length: <= MaxMessageIdLength } id ? id : null;
@@ -264,12 +270,14 @@ public sealed class InboundEmailService : IInboundEmailService
 
     private async Task<bool> ApplyAsync(MailEvent report, CancellationToken ct)
     {
-        var message = report.OutboundMessageId is Guid id ? await _messages.GetAsync(id, ct) : null;
+        var message = report.OutboundMessageId is Guid id ? await _messages.GetInAnyWorkspaceAsync(id, ct) : null;
         if (message == null && !string.IsNullOrWhiteSpace(report.SmtpId))
             message = await _messages.FindByMessageIdAsync(report.SmtpId, ct);
         // A report about mail we cannot place belongs to no workspace: the relay is shared,
         // and suppressing the address for everyone would act on another workspace's mail.
         if (message?.OrganizationId is not Guid organizationId || message.Channel != OutboundChannels.Email) return false;
+        // As for a reply: the message names the workspace the report is acted on in.
+        using var acting = _tenant?.ActFor(organizationId, message.CreatedByUserId);
 
         var at = report.OccurredAtUtc ?? DateTime.UtcNow;
         var detail = Clip(report.Reason, 500);

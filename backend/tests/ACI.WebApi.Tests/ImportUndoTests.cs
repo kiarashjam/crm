@@ -8,6 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.ImportFiles;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
+using ACI.WebApi.Tests.Helpers;
+
 namespace ACI.WebApi.Tests;
 
 /// <summary>
@@ -75,7 +77,7 @@ public class ImportUndoTests
 
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             (await db.Leads.Select(l => l.Name).OrderBy(n => n).ToListAsync()).Should().Equal("Bruno Frei", "Chiara Rossi");
             (await db.Contacts.Select(c => c.Name).OrderBy(n => n).ToListAsync()).Should().Equal("Bruno Frei", "Chiara Rossi");
             (await db.Companies.Select(c => c.Name).ToListAsync()).Should().Equal("Acme SA");
@@ -104,7 +106,7 @@ public class ImportUndoTests
         await OkJson(await client.PostAsync($"/api/imports/{result.GetProperty("batchId").GetGuid()}/undo", null), "undo");
 
         using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        using var db = scope.ServiceProvider.EveryWorkspace();
         (await db.Leads.Select(l => l.Name).ToListAsync()).Should().Equal("Bruno Frei");
         (await db.Leads.SingleAsync()).CompanyId.Should().Be(acme, "the import's change to him stays; undo removes only what it created");
         (await db.Companies.Select(c => c.Id).ToListAsync()).Should().Equal(acme);
@@ -141,7 +143,7 @@ public class ImportUndoTests
         CustomWebApplicationFactory factory, Guid userId, Guid orgId, DateTime started, DateTime? lastSaved, params TimeSpan?[] customValuesAfter)
     {
         using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        using var db = scope.ServiceProvider.EveryWorkspace();
         var batch = new ImportBatch
         {
             Id = Guid.NewGuid(), OrganizationId = orgId, UserId = userId, EntityType = "lead", FileName = "big.csv",
@@ -311,7 +313,7 @@ public class ImportUndoTests
         // so the message alone decides.
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             OutboundMessage Email(string name, string status) => new()
             {
                 Id = Guid.NewGuid(), OrganizationId = orgId, Channel = OutboundChannels.Email, Source = OutboundSources.Automation,

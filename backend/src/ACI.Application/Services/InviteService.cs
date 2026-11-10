@@ -2,6 +2,7 @@ using ACI.Application.Common;
 using ACI.Application.Configuration;
 using ACI.Application.DTOs;
 using ACI.Application.Interfaces;
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -45,12 +46,14 @@ public sealed class InviteService : IInviteService
             return Result.Failure<InviteDto>(DomainErrors.Organization.NotFound);
         }
 
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(userId, organizationId, MemberPermissions.ManageMembers, ct))
         {
-            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, organizationId);
-            return Result.Failure<InviteDto>(DomainErrors.Organization.NotOwnerOrManager);
+            _logger.LogWarning("User {UserId} may not manage the members of organization {OrganizationId}", userId, organizationId);
+            return Result.Failure<InviteDto>(DomainErrors.Permission.Missing(MemberPermissions.ManageMembers));
         }
+        // Accepting makes them a Member, with what Members could always do.
+        if (!await _organizationRepository.HoldsAllAsync(userId, organizationId, MemberPermissions.LegacyMember, ct))
+            return Result.Failure<InviteDto>(DomainErrors.Permission.MoreThanYourOwn);
 
         var email = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
         if (string.IsNullOrEmpty(email))
@@ -122,11 +125,10 @@ public sealed class InviteService : IInviteService
             return Result.Failure<InviteDto>(DomainErrors.Organization.NotFound);
         }
 
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, invite.OrganizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(userId, invite.OrganizationId, MemberPermissions.ManageMembers, ct))
         {
-            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, invite.OrganizationId);
-            return Result.Failure<InviteDto>(DomainErrors.Organization.NotOwnerOrManager);
+            _logger.LogWarning("User {UserId} may not manage the members of organization {OrganizationId}", userId, invite.OrganizationId);
+            return Result.Failure<InviteDto>(DomainErrors.Permission.Missing(MemberPermissions.ManageMembers));
         }
 
         // Only the hash of the first link was kept, so this email carries a new one.
@@ -170,11 +172,10 @@ public sealed class InviteService : IInviteService
             return Result.Failure<IReadOnlyList<InviteDto>>(DomainErrors.Organization.NotFound);
         }
 
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(userId, organizationId, MemberPermissions.ManageMembers, ct))
         {
-            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, organizationId);
-            return Result.Failure<IReadOnlyList<InviteDto>>(DomainErrors.Organization.NotOwnerOrManager);
+            _logger.LogWarning("User {UserId} may not manage the members of organization {OrganizationId}", userId, organizationId);
+            return Result.Failure<IReadOnlyList<InviteDto>>(DomainErrors.Permission.Missing(MemberPermissions.ManageMembers));
         }
 
         var list = await _inviteRepository.ListPendingByOrganizationIdAsync(organizationId, ct);

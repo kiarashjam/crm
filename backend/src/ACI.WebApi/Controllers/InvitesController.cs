@@ -123,7 +123,7 @@ public class InvitesController : ControllerBase
     /// Re-sends the invitation email for a pending invite and refreshes its 7-day expiry.
     /// </summary>
     /// <remarks>
-    /// Only the organization's owner or a manager can resend. Unlike creating an invite,
+    /// Only a member who manages the team (the owner and managers by default) can resend. Unlike creating an invite,
     /// this fails when the email cannot be sent — so an unconfigured mail server is
     /// reported rather than silently ignored.
     /// </remarks>
@@ -133,7 +133,7 @@ public class InvitesController : ControllerBase
     /// <response code="200">Invitation e-mailed again.</response>
     /// <response code="400">Already accepted, or the email could not be sent.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">User is not an owner or manager.</response>
+    /// <response code="403">The caller's role does not let them manage the team.</response>
     /// <response code="404">Invite not found.</response>
     [HttpPost("{inviteId:guid}/resend")]
     [EnableRateLimiting("invite-email")]

@@ -330,7 +330,9 @@ public sealed class ContactRepository : IContactRepository
         // contact of the same email, and showed that contact's spouse and family.
         var workspace = FilterByUserAndOrg(_db.Contacts, lead.UserId, lead.OrganizationId);
 
-        var linked = await _db.Contacts.FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct);
+        // In any workspace, on purpose (IgnoreQueryFilters): the old match left leads claimed
+        // by other users' contacts, and this is where such a claim is found and let go.
+        var linked = await _db.Contacts.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.ConvertedFromLeadId == lead.Id, ct);
         if (linked != null)
         {
             var sameWorkspace = linked.OrganizationId == lead.OrganizationId
@@ -353,8 +355,9 @@ public sealed class ContactRepository : IContactRepository
             if (await workspace.AnyAsync(c => c.Id == existingId, ct))
                 return;
             // Gone altogether, so deleted before a delete left its note on the lead. The
-            // note is written now, rather than the contact made again.
-            if (!await _db.Contacts.AnyAsync(c => c.Id == existingId, ct))
+            // note is written now, rather than the contact made again. Asked of every
+            // workspace: one in another user's is not gone, and the lead gets its own below.
+            if (!await _db.Contacts.IgnoreQueryFilters().AnyAsync(c => c.Id == existingId, ct))
             {
                 var tracked = await _db.Leads.FirstOrDefaultAsync(l => l.Id == lead.Id, ct);
                 var removedAt = tracked?.PersonContactRemovedAtUtc ?? DateTime.UtcNow;
@@ -407,7 +410,10 @@ public sealed class ContactRepository : IContactRepository
 
     public async Task<int> BackfillPersonContactsAsync(int maxLeads, CancellationToken ct = default)
     {
+        // A background job for every workspace: it looks across them for leads without
+        // their contact, and gives each one its contact acting for the lead's workspace.
         var linkedLeadIds = _db.Contacts
+            .IgnoreQueryFilters()
             .Where(c => c.ConvertedFromLeadId != null)
             .Select(c => c.ConvertedFromLeadId!.Value);
         // Looked at once per run, linked or not: a lead that cannot be given a contact
@@ -417,6 +423,7 @@ public sealed class ContactRepository : IContactRepository
         while (seen.Count < maxLeads)
         {
             var missing = await _db.Leads
+                .IgnoreQueryFilters()
                 .Where(l => l.Name.Trim() != "" && l.Email.Trim() != "" && l.ConvertedToContactId == null
                     && l.PersonContactRemovedAtUtc == null && !linkedLeadIds.Contains(l.Id) && !seen.Contains(l.Id))
                 .OrderBy(l => l.CreatedAtUtc)
@@ -427,6 +434,7 @@ public sealed class ContactRepository : IContactRepository
             foreach (var lead in missing)
             {
                 seen.Add(lead.Id);
+                using var acting = _db.ActFor(lead.OrganizationId, lead.UserId);
                 try
                 {
                     await EnsurePersonContactAsync(lead, ct);

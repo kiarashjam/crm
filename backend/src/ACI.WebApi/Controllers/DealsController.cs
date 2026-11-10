@@ -3,6 +3,8 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -13,6 +15,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class DealsController : ControllerBase
 {
     private readonly IDealService _dealService;
@@ -189,7 +192,7 @@ public class DealsController : ControllerBase
     /// <response code="200">Deal updated successfully.</response>
     /// <response code="400">Invalid request data, or a company, contact, pipeline or stage that is not in this workspace.</response>
     /// <response code="401">User is not authenticated.</response>
-    /// <response code="403">The owner is not a member of this workspace, or only its owner or a manager may change its privacy.</response>
+    /// <response code="403">The owner is not a member of this workspace, or only a member who sees every deal (the owner and managers by default) may change its privacy.</response>
     /// <response code="404">Deal not found.</response>
     /// <response code="409">Someone saved the deal after the version this edit sends (in <c>version</c> or If-Match).</response>
     [HttpPut("{id:guid}")]
@@ -231,6 +234,7 @@ public class DealsController : ControllerBase
     /// <response code="204">Deal deleted successfully.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Deal not found.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -317,6 +321,7 @@ public class DealsController : ControllerBase
     /// <response code="204">Merged; the other deal is gone and everything on it is on this one.</response>
     /// <response code="403">The other deal is private and this person may not make this one private.</response>
     /// <response code="404">Either deal is not one this person can see, or they are the same deal.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpPost("{id:guid}/merge")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

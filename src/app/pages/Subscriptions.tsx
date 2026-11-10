@@ -58,6 +58,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const STATUS_BADGE: Record<SubscriptionStatus, string> = {
   Active: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -234,60 +236,65 @@ export default function Subscriptions() {
   /** Bill, pause or resume, cancel and delete, the same in every layout. */
   const subscriptionActions = (s: Subscription) => (
     <div className="flex items-center justify-end gap-1">
-      {/* A paused or cancelled subscription bills nothing, so there is no Bill to press. */}
-      {s.status !== 'Cancelled' && s.status !== 'Paused' && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => charge(s)}
-          disabled={runningId === s.id}
-        >
-          {runningId === s.id ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <>
-              <Zap className="w-3.5 h-3.5 mr-1" /> Bill
-            </>
-          )}
-        </Button>
-      )}
-      {s.status === 'Active' && (
+      {/* Billing, pausing and cancelling change the club's money: money.manage. */}
+      <WriteOnly permission={PERMISSION.ManageMoney}>
+        {/* A paused or cancelled subscription bills nothing, so there is no Bill to press. */}
+        {s.status !== 'Cancelled' && s.status !== 'Paused' && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => charge(s)}
+            disabled={runningId === s.id}
+          >
+            {runningId === s.id ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <>
+                <Zap className="w-3.5 h-3.5 mr-1" /> Bill
+              </>
+            )}
+          </Button>
+        )}
+        {s.status === 'Active' && (
+          <button
+            type="button"
+            onClick={() => togglePause(s)}
+            className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Pause"
+          >
+            <Pause className="w-4 h-4" />
+          </button>
+        )}
+        {s.status === 'Paused' && (
+          <button
+            type="button"
+            onClick={() => togglePause(s)}
+            className="rounded p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
+            aria-label="Resume"
+          >
+            <Play className="w-4 h-4" />
+          </button>
+        )}
+        {s.status !== 'Cancelled' && (
+          <button
+            type="button"
+            onClick={() => cancel(s)}
+            className="rounded p-1.5 text-xs text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+          >
+            Cancel
+          </button>
+        )}
+      </WriteOnly>
+      <WriteOnly permission={[PERMISSION.ManageMoney, PERMISSION.DeleteRecords]} all>
         <button
           type="button"
-          onClick={() => togglePause(s)}
-          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-          aria-label="Pause"
+          onClick={() => remove(s)}
+          className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+          aria-label="Delete"
         >
-          <Pause className="w-4 h-4" />
+          <Trash2 className="w-4 h-4" />
         </button>
-      )}
-      {s.status === 'Paused' && (
-        <button
-          type="button"
-          onClick={() => togglePause(s)}
-          className="rounded p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
-          aria-label="Resume"
-        >
-          <Play className="w-4 h-4" />
-        </button>
-      )}
-      {s.status !== 'Cancelled' && (
-        <button
-          type="button"
-          onClick={() => cancel(s)}
-          className="rounded p-1.5 text-xs text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-        >
-          Cancel
-        </button>
-      )}
-      <button
-        type="button"
-        onClick={() => remove(s)}
-        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-        aria-label="Delete"
-      >
-        <Trash2 className="w-4 h-4" />
-      </button>
+      </WriteOnly>
     </div>
   );
 
@@ -335,25 +342,29 @@ export default function Subscriptions() {
             subtitle="Recurring dues and add-ons. Bill the cycle to drop a charge automatically."
             actions={
               <>
-                <Button
-                  onClick={chargeDue}
-                  disabled={runningAll}
-                  variant="outline"
-                  className={`${heroSecondary} disabled:opacity-60`}
-                >
-                  {runningAll ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" /> Running
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="h-4 w-4" /> Run due cycles
-                    </>
-                  )}
-                </Button>
-                <Button onClick={openCreate} className={heroPrimary('blue')}>
-                  <Plus className="h-4 w-4" /> New subscription
-                </Button>
+                <WriteOnly permission={PERMISSION.ManageMoney}>
+                  <Button
+                    onClick={chargeDue}
+                    disabled={runningAll}
+                    variant="outline"
+                    className={`${heroSecondary} disabled:opacity-60`}
+                  >
+                    {runningAll ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Running
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="h-4 w-4" /> Run due cycles
+                      </>
+                    )}
+                  </Button>
+                </WriteOnly>
+                <WriteOnly permission={PERMISSION.ManageMoney}>
+                  <Button onClick={openCreate} className={heroPrimary('blue')}>
+                    <Plus className="h-4 w-4" /> New subscription
+                  </Button>
+                </WriteOnly>
               </>
             }
             stats={[

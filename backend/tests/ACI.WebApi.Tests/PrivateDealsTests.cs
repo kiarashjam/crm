@@ -149,6 +149,8 @@ public class PrivateDealsTests
             db.Activities.Add(new Activity { Id = Guid.NewGuid(), UserId = owner.Id, OrganizationId = org.Id, Type = "call", DealId = dealId, CreatedAtUtc = now });
         }
         await db.SaveChangesAsync();
+        // As the requests do: they read as the organization.
+        using var acting = db.ActFor(org.Id, rep.Id);
         var tasks = new TaskRepository(db);
         var activities = new ActivityRepository(db);
 
@@ -189,7 +191,7 @@ public class PrivateDealsTests
         (await team.Rep.GetAsync("/api/reporting/forecast-snapshots")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var refused = await team.Rep.GetAsync("/api/reporting/forecast-snapshot");
         refused.StatusCode.Should().Be(HttpStatusCode.Forbidden, "the saved rows carry the private deal's amount and owner");
-        (await refused.Content.ReadAsStringAsync()).Should().Contain("Only the owner or a manager can see saved forecasts.");
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("Your role here does not let you see saved forecasts.");
     }
 
     [Fact]

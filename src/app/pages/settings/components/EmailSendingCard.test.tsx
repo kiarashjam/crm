@@ -80,7 +80,7 @@ describe('the workspace email sender', () => {
     state.org = workspace({ isOwner: false, role: 1 });
     render(<EmailSendingCard />);
 
-    expect(await screen.findByText('Only the owner or a manager can change this.')).toBeTruthy();
+    expect(await screen.findByText("Changing this takes managing the workspace's settings, which the owner and managers have.")).toBeTruthy();
     expect(screen.getByLabelText('The workspace’s own sending address')).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
   });

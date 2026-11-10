@@ -175,7 +175,7 @@ describe('lead routing', () => {
   it('a member sees the setup but cannot change it', async () => {
     role = 1;
     show();
-    expect(await screen.findByText(/Only owners and managers can change lead routing/)).toBeInTheDocument();
+    expect(await screen.findByText(/Changing lead routing takes managing the workspace's settings/)).toBeInTheDocument();
     expect(await within(section('First response')).findByRole('button', { name: 'Save' })).toBeDisabled();
     expect(within(section('Queues')).getByLabelText('Queue name')).toBeDisabled();
   });

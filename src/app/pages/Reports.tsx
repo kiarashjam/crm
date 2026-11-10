@@ -33,7 +33,7 @@ import {
 import { downloadCsv } from '@/app/lib/exportCsv';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { servesDemoData } from '@/app/api/apiClient';
-import { isOrgAdmin } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { SavedForecastPanel } from './reports/SavedForecastPanel';
 import { useMoney } from '@/app/hooks/useMoney';
@@ -85,7 +85,7 @@ export default function Reports() {
   // Saved forecasts live on the server and, in an organization, are a manager's: they
   // count private deals. A personal workspace's are its owner's. Wait for the
   // organizations to load, or everyone looks personal for a moment.
-  const canSaveForecast = !servesDemoData() && Boolean(orgs?.hasFetched) && (org === null || isOrgAdmin(org));
+  const canSaveForecast = !servesDemoData() && Boolean(orgs?.hasFetched) && orgCan(org, PERMISSION.SeeAllDeals);
 
   const request = useMemo(() => toReportFilters(filters, timeZone), [filters, timeZone]);
   const latest = useRef(0);

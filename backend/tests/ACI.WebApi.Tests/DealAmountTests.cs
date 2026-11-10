@@ -18,7 +18,7 @@ public class DealAmountTests
     private static async Task<decimal?> AmountOf(IServiceProvider services, Guid dealId)
     {
         using var scope = services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        using var db = scope.ServiceProvider.EveryWorkspace();
         return (await db.Deals.AsNoTracking().SingleAsync(d => d.Id == dealId)).Amount;
     }
 
@@ -51,7 +51,7 @@ public class DealAmountTests
         var unreadable = Guid.NewGuid();
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             db.Deals.AddRange(
                 new Deal { Id = legacy, UserId = ownerId, Name = "Old", Value = "CHF 85,500", CreatedAtUtc = DateTime.UtcNow },
                 new Deal { Id = unreadable, UserId = ownerId, Name = "Vague", Value = "to be agreed", CreatedAtUtc = DateTime.UtcNow });

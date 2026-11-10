@@ -29,7 +29,10 @@ public sealed class ContractReminderBackgroundService : BackgroundService
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var email = scope.ServiceProvider.GetRequiredService<IEmailSender>();
                 var due = DateTime.UtcNow.Subtract(Wait);
+                // Every workspace's contracts: one job reminds every counterparty. It only
+                // mails and stamps each contract, so nothing more needs a workspace.
                 var rows = await db.Contracts
+                    .IgnoreQueryFilters()
                     .Where(c => c.Status == ContractStatuses.Sent
                         && c.SentAtUtc != null
                         && c.SentAtUtc <= due

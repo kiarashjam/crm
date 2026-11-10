@@ -11,6 +11,8 @@ using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.ImportFiles;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
+using ACI.WebApi.Tests.Helpers;
+
 namespace ACI.WebApi.Tests;
 
 /// <summary>
@@ -151,7 +153,7 @@ public class LeadImportTests
         Notes(result, 2).Should().Contain("Adds the company “Dupont & Fils SA”");
 
         using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        using var db = scope.ServiceProvider.EveryWorkspace();
         var jean = await db.Leads.SingleAsync(l => l.Email == "jean@dupont.example");
         jean.Name.Should().Be("Jean Dupont", "a first and a last name column make the name");
         jean.Description.Should().Be("Met at the gala\r\nCall after 5");
@@ -195,7 +197,7 @@ public class LeadImportTests
         var (client, _, orgId) = await WorkspaceAsync(factory);
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             db.LeadStatuses.AddRange(
                 new LeadStatus { Id = Guid.NewGuid(), OrganizationId = orgId, Name = "New", DisplayOrder = 0 },
                 new LeadStatus { Id = Guid.NewGuid(), OrganizationId = orgId, Name = "Contacted", DisplayOrder = 1 });
@@ -299,7 +301,7 @@ public class LeadImportTests
         var longStatus = "Waiting for the committee to meet after the summer holidays";
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             db.LeadStatuses.Add(new LeadStatus { Id = Guid.NewGuid(), OrganizationId = orgId, Name = longStatus, DisplayOrder = 0 });
             await db.SaveChangesAsync();
         }
@@ -328,7 +330,7 @@ public class LeadImportTests
         var (client, _, orgId) = await WorkspaceAsync(factory);
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             db.LeadStatuses.AddRange(
                 new LeadStatus { Id = Guid.NewGuid(), OrganizationId = orgId, Name = "New", DisplayOrder = 0 },
                 new LeadStatus { Id = Guid.NewGuid(), OrganizationId = orgId, Name = "Contacted", DisplayOrder = 1 });

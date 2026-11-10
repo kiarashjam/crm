@@ -34,6 +34,7 @@ public sealed class IntegrationController : ControllerBase
     private readonly ITaskService _tasks;
     private readonly IActivityService _activities;
     private readonly IDealService _deals;
+    private readonly ITenantContext _tenant;
 
     public IntegrationController(
         IOrganizationService organizations,
@@ -41,7 +42,8 @@ public sealed class IntegrationController : ControllerBase
         ILeadService leads,
         ITaskService tasks,
         IActivityService activities,
-        IDealService deals)
+        IDealService deals,
+        ITenantContext tenant)
     {
         _organizations = organizations;
         _reporting = reporting;
@@ -49,6 +51,7 @@ public sealed class IntegrationController : ControllerBase
         _tasks = tasks;
         _activities = activities;
         _deals = deals;
+        _tenant = tenant;
     }
 
     /// <summary>The organization's sales figures: leads, deals and pipeline, tasks and recent activity.</summary>
@@ -62,6 +65,7 @@ public sealed class IntegrationController : ControllerBase
         var (organization, refusal) = await OrganizationFromKeyAsync(ct);
         if (organization == null)
             return refusal!;
+        using var acting = ActFor(organization);
 
         // Read as the owner, exactly as the MCP tools read this organization.
         var owner = organization.OwnerUserId;
@@ -104,6 +108,7 @@ public sealed class IntegrationController : ControllerBase
         var (organization, refusal) = await OrganizationFromKeyAsync(ct);
         if (organization == null)
             return refusal!;
+        using var acting = ActFor(organization);
 
         var page = await _deals.GetDealsPagedAsync(
             organization.OwnerUserId,
@@ -137,6 +142,7 @@ public sealed class IntegrationController : ControllerBase
         var (organization, refusal) = await OrganizationFromKeyAsync(ct);
         if (organization == null)
             return refusal!;
+        using var acting = ActFor(organization);
 
         var owner = organization.OwnerUserId;
         var deal = await _deals.GetByIdAsync(id, owner, organization.Id, ct);
@@ -160,6 +166,12 @@ public sealed class IntegrationController : ControllerBase
                 .Select(t => new IntegrationTaskDto(t.Title, t.Status, t.Priority, t.DueDateUtc, t.AssigneeName))
                 .ToList()));
     }
+
+    /// <summary>
+    /// Reads as the key's organization, as its owner, until disposed: nobody signs in here,
+    /// so without it the request would see no organization's records at all.
+    /// </summary>
+    private IDisposable ActFor(Organization organization) => _tenant.ActFor(organization.Id, organization.OwnerUserId);
 
     /// <summary>The organization whose MCP key the request carries, or the 401 to answer.</summary>
     private async Task<(Organization? Organization, IActionResult? Refusal)> OrganizationFromKeyAsync(CancellationToken ct)

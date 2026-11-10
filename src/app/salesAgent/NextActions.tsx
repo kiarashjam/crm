@@ -22,6 +22,7 @@ import type { WorkQueue } from '@/app/api/workQueue';
 import { useWorkScope, type WorkScope } from '@/app/lib/workScope';
 import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
 import type { WriterBrief } from './writerBrief';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 
 /**
  * The sales agent's panel: the next thing worth doing, from what is already saved.
@@ -101,7 +102,7 @@ function AskBox({ lists, gaps, items, scope }: { lists: AgentLists; gaps: string
       // A new workspace starts a new conversation: nothing typed in the last one carries over.
       key={accountKey}
       world={askWorld(lists, items, scope, patterns, gaps)}
-      readOnly={org?.isReadOnly ?? false}
+      readOnly={(org?.isReadOnly ?? false) || (org ? !orgCan(org.currentOrg, PERMISSION.EditRecords) : false)}
       accountKey={accountKey}
     />
   );

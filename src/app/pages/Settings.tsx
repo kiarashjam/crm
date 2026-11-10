@@ -38,7 +38,9 @@ import {
   getOrgMembers,
   updateMemberRole,
   removeMember,
-  isOrgAdmin,
+  handedOverSummary,
+  orgCan,
+  PERMISSION,
   type InviteDto,
   type JoinRequestDto,
   type OrgMemberDto,
@@ -190,21 +192,24 @@ export default function Settings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Only sync when API settings change, not when themeContext changes
   }, [settings?.theme, settings?.dataDensity, settings?.sidebarCollapsed, settings?.showWelcomeBanner]);
 
-  // Load org data
+  // What the caller may do here, as a key that changes only when that does.
+  const access = `${currentOrg?.isOwner}|${currentOrg?.role}|${currentOrg?.permissions?.join(',') ?? ''}`;
+
+  // Load org data: the team's invitations and requests are for whoever manages the team.
   useEffect(() => {
-    if (servesDemoData() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
+    if (servesDemoData() || !currentOrg?.id || !orgCan(currentOrg, PERMISSION.ManageMembers)) return;
     listPendingInvitesForOrg(currentOrg.id).then(setOwnerInvites).catch(() => setOwnerInvites([]));
     listPendingJoinRequestsForOrg(currentOrg.id).then(setOwnerJoinRequests).catch(() => setOwnerJoinRequests([]));
     getOrgMembers(currentOrg.id).then(setOrgMembers).catch(() => setOrgMembers([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- isOrgAdmin only reads isOwner and role
-  }, [currentOrg?.id, currentOrg?.isOwner, currentOrg?.role]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- orgCan only reads isOwner, role and permissions (access)
+  }, [currentOrg?.id, access]);
 
-  // Load pipelines
+  // Load pipelines: changing them takes managing the workspace's settings.
   useEffect(() => {
-    if (servesDemoData() || !isOrgAdmin(currentOrg) || !currentOrg?.id) return;
+    if (servesDemoData() || !currentOrg?.id || !orgCan(currentOrg, PERMISSION.ManageSettings)) return;
     getPipelines().then(setPipelines).catch(() => setPipelines([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- isOrgAdmin only reads isOwner and role
-  }, [currentOrg?.id, currentOrg?.isOwner, currentOrg?.role]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- orgCan only reads isOwner, role and permissions (access)
+  }, [currentOrg?.id, access]);
 
   // Load pipeline stages when expanded
   useEffect(() => {
@@ -326,16 +331,17 @@ export default function Settings() {
     if (!currentOrg?.id || member.role === 0) return;
     setActingMemberId(member.userId);
     try {
-      const ok = await removeMember(currentOrg.id, member.userId);
-      if (ok) {
-        toast.success(`${member.name} removed from organization`);
-        setRemoveMemberConfirm(null);
-        getOrgMembers(currentOrg.id).then(setOrgMembers).catch(() => {});
-      } else {
-        toast.error('Could not remove member.');
-      }
-    } catch {
-      toast.error('Could not remove member.');
+      // Their open work goes to the owner (the Team page lets you choose someone else).
+      const removed = await removeMember(currentOrg.id, member.userId);
+      const moved = handedOverSummary(removed);
+      toast.success(moved
+        ? `${member.name} removed. ${removed.handedOverToName || 'The owner'} now has their open ${moved}.`
+        : `${member.name} removed from organization`);
+      setRemoveMemberConfirm(null);
+      getOrgMembers(currentOrg.id).then(setOrgMembers).catch(() => {});
+    } catch (err) {
+      // The server says why, e.g. that they can do more than you.
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not remove member.');
     } finally {
       setActingMemberId(null);
     }
@@ -751,6 +757,7 @@ export default function Settings() {
             <h3 className="text-lg font-semibold text-slate-900 mb-2">Remove member?</h3>
             <p className="text-slate-600 text-sm mb-4">
               {removeMemberConfirm.name} ({removeMemberConfirm.email}) will lose access. This cannot be undone.
+              Their open leads, deals and tasks go to the owner; to hand them to someone else, remove them on the Team page.
             </p>
             <div className="flex gap-2 justify-end">
               <button

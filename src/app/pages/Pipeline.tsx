@@ -103,6 +103,8 @@ import { StaggerItem } from '@/app/components/motion/Stagger';
 import { ActivityFactsFields } from '@/app/components/ActivityFactsFields';
 import { withActivity } from '@/app/components/RecordActivity';
 import { activityFactsLine, activityTime, factsPayload, factsProblem, EMPTY_FACTS, type ActivityFactsDraft } from '@/app/lib/activityFacts';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 
 /** Cards per column in each page of the board. */
 const BOARD_PAGE = 25;
@@ -124,7 +126,9 @@ function editFormFor(deal: Deal) {
 }
 
 export default function Pipeline() {
-  const { isReadOnly } = useOrg();
+  const { currentOrg, isReadOnly: viewOnly } = useOrg();
+  // Working deals takes records.edit: finance, the front desk and read-only members see them.
+  const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
   const money = useMoney();
   // Every deal, for the table, list and card layouts; read only when one of them is open.
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -844,15 +848,17 @@ export default function Pipeline() {
       >
         <Pencil className="h-4 w-4" />
       </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600"
-        onClick={() => setDeleteConfirmDeal(deal)}
-        aria-label={`Delete ${deal.name}`}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600"
+          onClick={() => setDeleteConfirmDeal(deal)}
+          aria-label={`Delete ${deal.name}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </WriteOnly>
     </>
   ));
 
@@ -1621,17 +1627,19 @@ export default function Pipeline() {
                       </Button>
                     </>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => {
-                      setDeleteConfirmDeal(detailDeal);
-                      setDetailDeal(null);
-                    }}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
+                  <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => {
+                        setDeleteConfirmDeal(detailDeal);
+                        setDetailDeal(null);
+                      }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </WriteOnly>
                 </div>
 
                 {/* Activities Section */}

@@ -4,6 +4,8 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -14,6 +16,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class CompaniesController : ControllerBase
 {
     private readonly ICompanyService _companyService;
@@ -97,6 +100,7 @@ public class CompaniesController : ControllerBase
     /// </summary>
     /// <response code="200">The CSV file.</response>
     [HttpGet("export")]
+    [Requires(MemberPermissions.ExportRecords, What = "export companies")]
     [Produces("text/csv")]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -301,6 +305,7 @@ public class CompaniesController : ControllerBase
     }
 
     /// <summary>Keeps this company and folds the other one into it.</summary>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpPost("{id:guid}/merge")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -324,6 +329,7 @@ public class CompaniesController : ControllerBase
     /// <response code="204">Company deleted successfully.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Company not found.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

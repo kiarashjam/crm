@@ -31,8 +31,9 @@ public class LeadScoreUnfreezeTests
         return lead;
     }
 
+    // The job reads every workspace, and so does this check of what it wrote.
     private static async Task<int?> ScoreOf(AppDbContext db, Guid id) =>
-        (await db.Leads.AsNoTracking().SingleAsync(l => l.Id == id)).LeadScore;
+        (await db.Leads.AsNoTracking().IgnoreQueryFilters().SingleAsync(l => l.Id == id)).LeadScore;
 
     [Fact]
     public async Task ScoresMoveWithTimeWithoutAnyoneSavingTheLead()
@@ -51,7 +52,7 @@ public class LeadScoreUnfreezeTests
         moved.Should().Be(2);
         (await ScoreOf(db, called.Id)).Should().Be(10);
         (await ScoreOf(db, untouched.Id)).Should().Be(0);
-        (await db.Leads.AsNoTracking().SingleAsync(l => l.Id == called.Id)).UpdatedAtUtc
+        (await db.Leads.AsNoTracking().IgnoreQueryFilters().SingleAsync(l => l.Id == called.Id)).UpdatedAtUtc
             .Should().Be(Now.AddDays(-10), "a rescore is not an edit by anyone");
     }
 

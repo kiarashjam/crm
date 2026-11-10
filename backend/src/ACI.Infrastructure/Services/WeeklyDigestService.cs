@@ -112,7 +112,8 @@ public sealed class WeeklyDigestService
         // turns it on and manages nothing gets none, rather than a report of their own
         // pipeline dressed up as the team's.
         var workspaces = await _db.OrganizationMembers.AsNoTracking()
-            .Where(m => m.UserId == userId && (m.Role == OrgMemberRole.Owner || m.Role == OrgMemberRole.Manager))
+            .Where(m => m.UserId == userId)
+            .Where(DealVisibility.SeesAllDeals)
             .Join(_db.Organizations.AsNoTracking(), m => m.OrganizationId, o => o.Id, (m, o) => new { o.Id, o.Name })
             .OrderBy(o => o.Name)
             .ToListAsync(ct);
@@ -129,6 +130,8 @@ public sealed class WeeklyDigestService
             var sections = new List<DigestSection>();
             foreach (var workspace in workspaces)
             {
+                // The job runs in no workspace; each section is read as its own.
+                using var acting = _db.ActFor(workspace.Id, userId);
                 var summary = await _reporting.GetSummaryAsync(userId, workspace.Id, new ReportFilter
                 {
                     FromUtc = week.WeekStartUtc,

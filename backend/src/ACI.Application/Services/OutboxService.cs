@@ -168,6 +168,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     private readonly IOutboxSignal _signal;
     private readonly EmailSettings _settings;
     private readonly ILogger<OutboxService> _logger;
+    private readonly ITenantContext? _tenant;
 
     public OutboxService(
         IOutboxRepository messages,
@@ -181,7 +182,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         INotificationService notifications,
         IOutboxSignal signal,
         IOptions<EmailSettings> settings,
-        ILogger<OutboxService> logger)
+        ILogger<OutboxService> logger,
+        ITenantContext? tenant = null)
     {
         _messages = messages;
         _email = email;
@@ -195,6 +197,7 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         _signal = signal;
         _settings = settings.Value;
         _logger = logger;
+        _tenant = tenant;
     }
 
     // ── Queueing ──────────────────────────────────────────────────────────────
@@ -326,8 +329,11 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     {
         var now = DateTime.UtcNow;
         if (!await _messages.TryClaimAsync(due.Id, due.Attempts, now, now.Add(ClaimFor), ct)) return;
-        var message = await _messages.GetAsync(due.Id, ct);
+        var message = await _messages.GetInAnyWorkspaceAsync(due.Id, ct);
         if (message == null) return;
+        // The dispatcher sends for every workspace and starts in none. Everything this
+        // attempt reads (the suppression list, the lead, the enrollment) is the message's own.
+        using var acting = _tenant?.ActFor(message.OrganizationId, message.CreatedByUserId);
 
         try
         {
@@ -637,9 +643,9 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
         var message = await _messages.GetAsync(id, ct);
         if (message == null || message.OrganizationId != organizationId || message.Channel != OutboundChannels.Email)
             return new Error("Email.NotFound", "That email does not exist.");
-        var role = await _organizations.GetMemberRoleAsync(userId, organizationId, ct);
-        if (message.CreatedByUserId != userId && role is not (OrgMemberRole.Owner or OrgMemberRole.Manager))
-            return new Error("Email.NotOwner", "Only whoever sent it, or a manager, can cancel it.");
+        if (message.CreatedByUserId != userId
+            && !await _organizations.HasPermissionAsync(userId, organizationId, Domain.Common.MemberPermissions.ManageSettings, ct))
+            return new Error("Email.NotOwner", "Only whoever sent it, or someone who manages the workspace's settings, can cancel it.");
         if (message.Status != OutboundStatuses.Queued)
             return new Error("Email.Conflict", message.Status == OutboundStatuses.Sent ? "It has already gone." : "It is no longer waiting to be sent.");
         if (!await _messages.TryCancelAsync(id, DateTime.UtcNow, ct))
@@ -650,8 +656,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
     public async Task<Result<IReadOnlyList<WebhookDeliveryDto>>> WebhookDeliveriesAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
         // The same people who may change where events go.
-        var role = await _organizations.GetMemberRoleAsync(userId, organizationId, ct);
-        if (role is not (OrgMemberRole.Owner or OrgMemberRole.Manager)) return DomainErrors.Organization.NotOwnerOrManager;
+        if (!await _organizations.HasPermissionAsync(userId, organizationId, Domain.Common.MemberPermissions.ManageSettings, ct))
+            return DomainErrors.Permission.Missing(Domain.Common.MemberPermissions.ManageSettings);
         var rows = await _messages.WebhookDeliveriesAsync(organizationId, 50, ct);
         return rows.Select(m => new WebhookDeliveryDto(
             m.Id, m.EventName ?? "", m.Status, m.Attempts, m.LastStatusCode, m.LastError, m.CreatedAtUtc, m.SentAtUtc,

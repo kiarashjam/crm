@@ -97,6 +97,7 @@ import { cn } from '@/app/components/ui/utils';
 import { fromLocalInputValue, toLocalInputValue } from '@/app/lib/dateInputs';
 import { useWorkScope } from '@/app/lib/workScope';
 import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
+import { PERMISSION } from '@/app/api/organizations';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -722,9 +723,11 @@ export default function Tasks() {
       <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-500 hover:bg-amber-50 hover:text-amber-700" onClick={() => openEdit(t)} aria-label={`Edit ${t.title}`}>
         <Pencil className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600" onClick={() => setDeleteConfirmTask(t)} aria-label={`Delete ${t.title}`}>
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600" onClick={() => setDeleteConfirmTask(t)} aria-label={`Delete ${t.title}`}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </WriteOnly>
     </WriteOnly>
   );
 
@@ -1087,9 +1090,11 @@ export default function Tasks() {
                     <Button size="sm" variant="outline" onClick={() => handleBulkAction('priority', 'high')} disabled={bulkProcessing || selectedTaskIds.size === 0} className="text-xs h-7">
                       <Flag className="w-3 h-3 mr-1" /> High Priority
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleBulkAction('delete')} disabled={bulkProcessing || selectedTaskIds.size === 0} className="text-xs h-7 text-red-600 hover:text-red-700 hover:bg-red-50">
-                      <Trash2 className="w-3 h-3 mr-1" /> Delete
-                    </Button>
+                    <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+                      <Button size="sm" variant="outline" onClick={() => handleBulkAction('delete')} disabled={bulkProcessing || selectedTaskIds.size === 0} className="text-xs h-7 text-red-600 hover:text-red-700 hover:bg-red-50">
+                        <Trash2 className="w-3 h-3 mr-1" /> Delete
+                      </Button>
+                    </WriteOnly>
                     <div className="ml-auto">
                       <Button size="sm" variant="ghost" onClick={exitBulkMode} className="text-xs h-7">Exit bulk mode</Button>
                     </div>

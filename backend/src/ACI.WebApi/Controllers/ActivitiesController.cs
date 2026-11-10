@@ -3,6 +3,8 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -13,6 +15,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class ActivitiesController : ControllerBase
 {
     private readonly IActivityService _activityService;
@@ -295,6 +298,7 @@ public class ActivitiesController : ControllerBase
     /// <response code="204">Activity deleted successfully.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Activity not found.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

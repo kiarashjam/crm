@@ -15,7 +15,9 @@ public record OrganizationDto(
     string Currency = "CHF",
     string Locale = "de-CH",
     string TimeZone = "Europe/Zurich",
-    int StaleDealDays = StaleDeals.DefaultDays);
+    int StaleDealDays = StaleDeals.DefaultDays,
+    string PermissionPreset = "",
+    IReadOnlyList<string>? Permissions = null);
 
 /// <summary>
 /// What a workspace works in. Each field left out keeps its current value.

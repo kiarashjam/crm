@@ -52,6 +52,8 @@ import {
   InitialsAvatar, RecordTable, ViewSwitcher, ViewTransition, columnChoices, gridDensity, useViewPreference,
   type RecordColumn,
 } from '@/app/components/views';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 const VENUE_COLOR: Record<VisitVenue, string> = {
   Dining: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
@@ -193,19 +195,21 @@ export default function Visits() {
 
   /** Delete: the same on a row, a card and a table line. */
   const visitActions = (v: Visit) => (
-    <button
-      type="button"
-      onClick={() => remove(v)}
-      disabled={deletingId === v.id}
-      className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
-      aria-label={`Delete visit by ${v.memberName}`}
-    >
-      {deletingId === v.id ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <Trash2 className="h-4 w-4" />
-      )}
-    </button>
+    <WriteOnly permission={[PERMISSION.FrontDesk, PERMISSION.DeleteRecords]} all>
+      <button
+        type="button"
+        onClick={() => remove(v)}
+        disabled={deletingId === v.id}
+        className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 shrink-0"
+        aria-label={`Delete visit by ${v.memberName}`}
+      >
+        {deletingId === v.id ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        )}
+      </button>
+    </WriteOnly>
   );
 
   const visitColumns: RecordColumn<Visit>[] = [
@@ -243,10 +247,12 @@ export default function Visits() {
             title="Visits"
             subtitle="Check-ins, attendance, and the touchpoints that earn loyalty."
             actions={
-              <Button onClick={openCheckIn} className={heroPrimary('cyan')}>
-                <Plus className="h-4 w-4" />
-                Check in
-              </Button>
+              <WriteOnly permission={PERMISSION.FrontDesk}>
+                <Button onClick={openCheckIn} className={heroPrimary('cyan')}>
+                  <Plus className="h-4 w-4" />
+                  Check in
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Today', value: stats.today, icon: ScanLine, tone: 'cyan', hint: `${stats.uniqueMembersToday} unique members` },

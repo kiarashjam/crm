@@ -32,6 +32,8 @@ public class MergeDuplicatesTests
         var org = new Organization { Id = Guid.NewGuid(), Name = "Pavillon", OwnerUserId = user.Id, CreatedAtUtc = DateTime.UtcNow };
         db.AddRange(user, org);
         await db.SaveChangesAsync();
+        // A merge is a request in the organization, and reads as it.
+        db.ActFor(org.Id, user.Id);
         return new World(db, user, org);
     }
 
@@ -276,8 +278,8 @@ public class MergeDuplicatesTests
         (await leads.MergeIntoAsync(mine.Id, theirs.Id, w.User.Id, w.Org.Id)).Should().BeFalse();
         db.ChangeTracker.Clear();
 
-        (await db.Leads.CountAsync()).Should().Be(2);
-        (await db.TaskItems.SingleAsync()).LeadId.Should().Be(theirs.Id);
+        (await db.Leads.IgnoreQueryFilters().CountAsync()).Should().Be(2);
+        (await db.TaskItems.IgnoreQueryFilters().SingleAsync()).LeadId.Should().Be(theirs.Id);
     }
 
     [Fact]

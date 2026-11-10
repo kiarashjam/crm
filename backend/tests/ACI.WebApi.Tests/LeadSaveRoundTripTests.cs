@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
+using ACI.WebApi.Tests.Helpers;
+
 namespace ACI.WebApi.Tests;
 
 /// <summary>
@@ -34,7 +36,8 @@ public class LeadSaveRoundTripTests
     private static async Task<ACI.Domain.Entities.Lead> Stored(CustomWebApplicationFactory factory, Guid id)
     {
         using var scope = factory.Services.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<AppDbContext>().Leads.AsNoTracking().SingleAsync(l => l.Id == id);
+        await using var db = scope.ServiceProvider.EveryWorkspace();
+        return await db.Leads.AsNoTracking().SingleAsync(l => l.Id == id);
     }
 
     [Fact]

@@ -84,7 +84,7 @@ describe('the workspace currency, number format and time zone', () => {
     expect(screen.getByLabelText('Currency')).toBeDisabled();
     expect(screen.getByLabelText('Time zone')).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
-    expect(screen.getByText(/only the owner or a manager/i)).toBeInTheDocument();
+    expect(screen.getByText(/takes managing the workspace's settings/i)).toBeInTheDocument();
   });
 
   it("says why the server refused, and does not claim it saved", async () => {

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { getWebhookDeliveries, getWebhookInfo, updateOutboundWebhook, updateWebhookPassword, type WebhookDelivery, type WebhookInfo } from '@/app/api/webhook';
 import { servesDemoData } from '@/app/api/apiClient';
-import { isOrgAdmin, type Organization } from '@/app/api/organizations';
+import { orgCan, PERMISSION, type Organization } from '@/app/api/organizations';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
@@ -45,7 +45,7 @@ export function IntegrationsSection({ currentOrg }: { currentOrg: Organization |
   const [outboundSecret, setOutboundSecret] = useState('');
   const [savingOutbound, setSavingOutbound] = useState(false);
   const [deliveries, setDeliveries] = useState<WebhookDelivery[] | null>(null);
-  const seesDeliveries = isOrgAdmin(currentOrg);
+  const seesDeliveries = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageSettings);
 
   useEffect(() => {
     setOutboundUrl(info?.outboundWebhookUrl ?? '');

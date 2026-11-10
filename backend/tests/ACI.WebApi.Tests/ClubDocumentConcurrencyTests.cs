@@ -20,10 +20,17 @@ namespace ACI.WebApi.Tests;
 /// </remarks>
 public class ClubDocumentConcurrencyTests
 {
-    private static async Task SecondWriterIsRefusedAsync(Func<AppDbContext> open)
+    private static async Task SecondWriterIsRefusedAsync(Func<AppDbContext> openAny)
     {
         var org = Guid.NewGuid();
         var id = Guid.NewGuid();
+        // Each context is a request from one of the club's terminals, acting for the club.
+        AppDbContext open()
+        {
+            var db = openAny();
+            db.ActFor(org, null);
+            return db;
+        }
         await using (var seed = open())
         {
             await new ClubDocumentRepository(seed).SaveAsync(new ClubDocument

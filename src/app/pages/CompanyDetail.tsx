@@ -34,6 +34,7 @@ import { RecordAvatar, RecordCard, initialsOf } from '@/app/components/RecordCar
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { cn } from '@/app/components/ui/utils';
 import { useMoney } from '@/app/hooks/useMoney';
+import { PERMISSION } from '@/app/api/organizations';
 
 type CompanyRaw = Company & Record<string, unknown>;
 
@@ -260,7 +261,7 @@ export default function CompanyDetail() {
                     <Pencil className="h-4 w-4" /> Edit
                   </Button>
                 </WriteOnly>
-                <WriteOnly>
+                <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     onClick={() => setDeleteOpen(true)}

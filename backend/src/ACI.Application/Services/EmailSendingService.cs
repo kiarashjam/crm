@@ -33,7 +33,7 @@ public interface IEmailSendingService
     /// <summary>The addresses the workspace does not email because the mail service reported them.</summary>
     Task<Result<IReadOnlyList<EmailSuppressionDto>>> SuppressionsAsync(Guid organizationId, Guid userId, CancellationToken ct = default);
 
-    /// <summary>Takes an address off that list (owner or manager), so the workspace may email it again.</summary>
+    /// <summary>Takes an address off that list (takes managing settings), so the workspace may email it again.</summary>
     Task<Result> LiftSuppressionAsync(Guid organizationId, Guid userId, Guid suppressionId, CancellationToken ct = default);
 }
 
@@ -74,10 +74,11 @@ public sealed class EmailSendingService : IEmailSendingService
 
     public async Task<Result> LiftSuppressionAsync(Guid organizationId, Guid userId, Guid suppressionId, CancellationToken ct = default)
     {
-        // Emailing someone who complained, or an address that bounced, is a manager's call.
-        var role = await _organizations.GetMemberRoleAsync(userId, organizationId, ct);
-        if (role == null) return DomainErrors.Organization.NotMember;
-        if (role is not (OrgMemberRole.Owner or OrgMemberRole.Manager)) return DomainErrors.Organization.NotOwnerOrManager;
+        // Emailing someone who complained, or an address that bounced, is for whoever
+        // manages the workspace's settings: the owner and managers by default.
+        var held = await _organizations.PermissionsAsync(userId, organizationId, ct);
+        if (held == null) return DomainErrors.Organization.NotMember;
+        if (!held.Contains(Domain.Common.MemberPermissions.ManageSettings)) return DomainErrors.Permission.Missing(Domain.Common.MemberPermissions.ManageSettings);
         if (!await _outbox.LiftSuppressionAsync(organizationId, suppressionId, ct))
             return new Error("EmailSuppression.NotFound", "That address is not on the list.");
         _logger.LogInformation("A suppressed address of organization {OrganizationId} was lifted by {UserId}", organizationId, userId);
@@ -93,10 +94,10 @@ public sealed class EmailSendingService : IEmailSendingService
 
     public async Task<Result<EmailSendingDto>> UpdateAsync(Guid organizationId, Guid userId, UpdateEmailSendingRequest request, CancellationToken ct = default)
     {
-        // Who every customer's email appears to come from: a manager's decision.
-        var role = await _organizations.GetMemberRoleAsync(userId, organizationId, ct);
-        if (role == null) return DomainErrors.Organization.NotMember;
-        if (role is not (OrgMemberRole.Owner or OrgMemberRole.Manager)) return DomainErrors.Organization.NotOwnerOrManager;
+        // Who every customer's email appears to come from: the settings' manager's decision.
+        var held = await _organizations.PermissionsAsync(userId, organizationId, ct);
+        if (held == null) return DomainErrors.Organization.NotMember;
+        if (!held.Contains(Domain.Common.MemberPermissions.ManageSettings)) return DomainErrors.Permission.Missing(Domain.Common.MemberPermissions.ManageSettings);
         var org = await _organizations.GetByIdAsync(organizationId, ct);
         if (org == null) return DomainErrors.Organization.NotFound;
 

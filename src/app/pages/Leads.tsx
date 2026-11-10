@@ -48,7 +48,7 @@ import {
 } from '@/app/api';
 import type { Lead, Company, Contact, Deal, LeadStatus, LeadSource, Pipeline, Activity } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
-import { getOrgMembers, type OrgMemberDto } from '@/app/api/organizations';
+import { getOrgMembers, orgCan, PERMISSION, type OrgMemberDto } from '@/app/api/organizations';
 import { relationshipLabel } from '@/app/api/relationships';
 import { bulkUpdateLeads } from '@/app/api/leadOps';
 import { getCurrentUser, type AuthUser } from '@/app/lib/auth';
@@ -147,7 +147,11 @@ export default function Leads() {
   const money = useMoney();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentOrgId, isReadOnly } = useOrg();
+  const { currentOrgId, currentOrg, isReadOnly: viewOnly } = useOrg();
+  // What the member's role lets them do here: work leads, delete them, export them.
+  const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
+  const canDelete = !viewOnly && orgCan(currentOrg, PERMISSION.DeleteRecords);
+  const canExport = orgCan(currentOrg, PERMISSION.ExportRecords);
 
   const searchFromUrl = searchParams.get('search') || '';
   const currentPage = Number(searchParams.get('page')) || 1;
@@ -1591,11 +1595,13 @@ export default function Leads() {
                     </Button>
                   </>
                 )}
-                {/* Export is read-only, so viewers keep it. */}
-                <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className={`${heroSecondary} disabled:opacity-60`} aria-label={exporting ? 'Exporting...' : 'Export CSV'}>
-                  <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
-                  <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export CSV'}</span>
-                </Button>
+                {/* Export is read-only, so viewers keep it, where their role lets them export. */}
+                {canExport && (
+                  <Button onClick={handleExportLeads} disabled={exporting} variant="outline" className={`${heroSecondary} disabled:opacity-60`} aria-label={exporting ? 'Exporting...' : 'Export CSV'}>
+                    <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
+                    <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export CSV'}</span>
+                  </Button>
+                )}
                 {!isReadOnly && (
                   <Button onClick={openCreate} className={heroPrimary('orange')}>
                     <Plus className="h-4 w-4" />
@@ -2062,7 +2068,7 @@ export default function Leads() {
               count={selectedIds.size}
               members={orgMembers}
               onClear={clearSelection}
-              onBulkDelete={runBulkDelete}
+              onBulkDelete={canDelete ? runBulkDelete : undefined}
               onBulkApply={runBulkApply}
             />
           )}

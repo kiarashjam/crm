@@ -7,7 +7,7 @@ import LoadingSpinner from '@/app/components/LoadingSpinner';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import { getWebhookInfo, generateWebhookApiKey, type WebhookInfo } from '@/app/api/webhook';
 import { useOrg } from '@/app/contexts/OrgContext';
-import { isOrgAdmin } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import {
@@ -194,7 +194,7 @@ export default function LeadWebhook() {
 
   const apiKey = freshKey;
   const maskedKey = maskApiKey(apiKey);
-  const canManageKey = isOrgAdmin(currentOrg);
+  const canManageKey = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageSettings);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -303,7 +303,7 @@ export default function LeadWebhook() {
                 It is shown only once, when it is made.{' '}
                 {canManageKey
                   ? 'If it has been lost, make a new one; the old key then stops working.'
-                  : 'Ask an owner or a manager if you need it.'}
+                  : 'Ask someone who manages the workspace\'s settings if you need it.'}
               </p>
               {canManageKey && (
                 <Button

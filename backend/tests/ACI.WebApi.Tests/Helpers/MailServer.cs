@@ -63,7 +63,7 @@ public static class OutboxTesting
     public static async Task MakeQueuedDueAsync(this WebApplicationFactory<Program> factory)
     {
         using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ACI.Infrastructure.Persistence.AppDbContext>();
+        using var db = scope.ServiceProvider.EveryWorkspace();
         foreach (var message in db.OutboundMessages.Where(m => m.Status == "queued"))
         {
             message.NextAttemptAtUtc = DateTime.UtcNow.AddSeconds(-1);

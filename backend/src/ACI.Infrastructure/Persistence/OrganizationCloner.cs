@@ -129,7 +129,7 @@ public sealed class OrganizationCloner
         foreach (var (child, parentKey, parent) in Children)
             await Count(model.FindEntityType(child)!, parentKey, keys.GetValueOrDefault(parent) ?? []);
 
-        var attachmentBytes = await _db.Attachments.Where(a => a.OrganizationId == sourceId).SumAsync(a => (long)a.Content.Length, ct);
+        var attachmentBytes = await _db.Attachments.IgnoreQueryFilters().Where(a => a.OrganizationId == sourceId).SumAsync(a => (long)a.Content.Length, ct);
         return new OrganizationClonePlan(sourceId, toCopy, leftOut, attachmentBytes);
     }
 
@@ -394,15 +394,18 @@ public sealed class OrganizationCloner
         return (keys.Count, keys);
     }
 
+    // An admin tool, run with no workspace: it names the organization it copies by id,
+    // and reads that organization's rows (and the copy's, to check them) whatever
+    // workspace the context would otherwise read as. So the workspace filters are set aside.
     private IQueryable<T> Matching<T>(string column, Guid[] ids) where T : class
     {
         if (_db.Model.FindEntityType(typeof(T))!.FindProperty(column)!.IsNullable)
         {
             var any = ids.Select(i => (Guid?)i).ToList();
-            return _db.Set<T>().AsNoTracking().Where(r => any.Contains(EF.Property<Guid?>(r, column)));
+            return _db.Set<T>().AsNoTracking().IgnoreQueryFilters().Where(r => any.Contains(EF.Property<Guid?>(r, column)));
         }
         var all = ids.ToList();
-        return _db.Set<T>().AsNoTracking().Where(r => all.Contains(EF.Property<Guid>(r, column)));
+        return _db.Set<T>().AsNoTracking().IgnoreQueryFilters().Where(r => all.Contains(EF.Property<Guid>(r, column)));
     }
 
     /// <summary>Runs <paramref name="sql"/> on the context's connection, in its transaction if it has one.</summary>

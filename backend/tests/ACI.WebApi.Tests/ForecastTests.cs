@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
+using ACI.WebApi.Tests.Helpers;
+
 namespace ACI.WebApi.Tests;
 
 /// <summary>
@@ -31,7 +33,7 @@ public class ForecastTests
     private static async Task AddDealsAsync(CustomWebApplicationFactory factory, params Deal[] deals)
     {
         using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        using var db = scope.ServiceProvider.EveryWorkspace();
         db.Deals.AddRange(deals);
         await db.SaveChangesAsync();
     }
@@ -106,7 +108,7 @@ public class ForecastTests
         // The deal grows, and another manager saves again on the 30th.
         using (var scope = factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             var tracked = await db.Deals.SingleAsync(d => d.Id == deal.Id);
             tracked.Value = "25000";
             await db.SaveChangesAsync();

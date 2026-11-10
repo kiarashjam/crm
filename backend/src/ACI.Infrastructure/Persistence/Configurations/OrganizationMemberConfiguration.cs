@@ -13,5 +13,7 @@ internal sealed class OrganizationMemberConfiguration : IEntityTypeConfiguration
         builder.HasOne(e => e.Organization).WithMany(o => o.Members).HasForeignKey(e => e.OrganizationId);
         builder.HasOne(e => e.User).WithMany(u => u.OrganizationMemberships).HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Restrict);
         builder.Property(e => e.Role).HasConversion<string>().HasMaxLength(32);
+        builder.Property(e => e.PermissionPreset).HasMaxLength(40);
+        builder.Property(e => e.Permissions).HasMaxLength(400);
     }
 }

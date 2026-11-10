@@ -3,6 +3,8 @@ using ACI.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -20,6 +22,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/copy")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class CopyController : ControllerBase
 {
     private readonly ICopyGeneratorApplicationService _generatorService;

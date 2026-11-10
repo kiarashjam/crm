@@ -62,7 +62,7 @@ public class AutomationRulesTests
 
         var refused = await member.PostAsync("/api/automations", Body(Rule("notify", new { message = "hi" })));
         refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await refused.Content.ReadAsStringAsync()).Should().Contain("Only the owner or a manager can change automations.");
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("Your role here does not let you change automations.");
 
         var rule = await Json(await manager.PostAsync("/api/automations", Body(Rule("notify", new { message = "hi" }))), "manager adds");
         var id = rule.GetProperty("id").GetGuid();

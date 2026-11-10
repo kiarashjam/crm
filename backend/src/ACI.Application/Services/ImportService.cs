@@ -580,11 +580,13 @@ public sealed class ImportService : IImportService
         return clean.Length <= 260 ? clean : clean[..260];
     }
 
-    /// <summary>Whether this person may undo anyone's import here: the owner or a manager, or anyone in their own personal workspace.</summary>
+    /// <summary>
+    /// Whether this person may undo anyone's import here: whoever manages the workspace's
+    /// settings (the owner and managers by default), or anyone in their own personal workspace.
+    /// </summary>
     private async Task<bool> CanUndoAnyAsync(Guid userId, Guid? organizationId, CancellationToken ct)
     {
         if (organizationId is not Guid orgId) return true;
-        var role = await _organizations.GetMemberRoleAsync(userId, orgId, ct);
-        return role is OrgMemberRole.Owner or OrgMemberRole.Manager;
+        return await _organizations.HasPermissionAsync(userId, orgId, Domain.Common.MemberPermissions.ManageSettings, ct);
     }
 }

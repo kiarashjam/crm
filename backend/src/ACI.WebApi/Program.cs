@@ -306,6 +306,8 @@ try
     builder.Services.AddScoped<ICopyHistoryService, CopyHistoryService>();
     builder.Services.AddScoped<ISettingsService, SettingsService>();
     builder.Services.AddScoped<IOrganizationService, ACI.Application.Services.OrganizationService>();
+    // What the caller may do in the request's organization (MemberPermissions), read once per request.
+    builder.Services.AddScoped<ACI.Application.Common.IPermissionService, ACI.Application.Common.PermissionService>();
     builder.Services.AddScoped<IInviteService, ACI.Application.Services.InviteService>();
     builder.Services.AddScoped<IJoinRequestService, ACI.Application.Services.JoinRequestService>();
     builder.Services.AddScoped<ICopyGeneratorApplicationService, CopyGeneratorService>();
@@ -334,6 +336,9 @@ try
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+    // The workspace every read is filtered to (AppDbContext's query filters): the
+    // request's, or whichever one a key, a token or a job says it acts for.
+    builder.Services.AddScoped<ITenantContext, ACI.WebApi.Services.TenantContext>();
 
     // JWT Authentication
     // The default below is in the repository, so anyone can sign a token with it for
@@ -570,6 +575,16 @@ try
                     );
                     CREATE INDEX [IX_OrganizationMembers_UserId] ON [OrganizationMembers] ([UserId]);
                 END;
+            ");
+
+            // What each member may do (MemberPermissions): the preset they start from, and
+            // their own list when the owner changed it. Null in both for every member from
+            // before, who keeps exactly what their role allowed.
+            await db.Database.ExecuteSqlRawAsync(@"
+                IF COL_LENGTH(N'dbo.OrganizationMembers', N'PermissionPreset') IS NULL
+                    ALTER TABLE [OrganizationMembers] ADD [PermissionPreset] nvarchar(40) NULL;
+                IF COL_LENGTH(N'dbo.OrganizationMembers', N'Permissions') IS NULL
+                    ALTER TABLE [OrganizationMembers] ADD [Permissions] nvarchar(400) NULL;
             ");
             
             // Create OrgSettings table if missing

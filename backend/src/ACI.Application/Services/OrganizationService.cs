@@ -19,19 +19,22 @@ public sealed class OrganizationService : IOrganizationService
     private readonly ILeadSourceRepository _leadSourceRepository;
     private readonly IUserRepository _userRepository;
     private readonly ILogger<OrganizationService> _logger;
+    private readonly ICollaborationNotifier? _collaboration;
 
     public OrganizationService(
-        IOrganizationRepository organizationRepository, 
-        ILeadStatusRepository leadStatusRepository, 
+        IOrganizationRepository organizationRepository,
+        ILeadStatusRepository leadStatusRepository,
         ILeadSourceRepository leadSourceRepository,
         IUserRepository userRepository,
-        ILogger<OrganizationService> logger)
+        ILogger<OrganizationService> logger,
+        ICollaborationNotifier? collaboration = null)
     {
         _organizationRepository = organizationRepository;
         _leadStatusRepository = leadStatusRepository;
         _leadSourceRepository = leadSourceRepository;
         _userRepository = userRepository;
         _logger = logger;
+        _collaboration = collaboration;
     }
 
     public async Task<IReadOnlyList<OrganizationDto>> ListMyOrganizationsAsync(Guid userId, CancellationToken ct = default)
@@ -42,8 +45,9 @@ public sealed class OrganizationService : IOrganizationService
         var result = new List<OrganizationDto>(orgs.Count);
         foreach (var o in orgs)
         {
-            var role = await _organizationRepository.GetMemberRoleAsync(userId, o.Id, ct) ?? OrgMemberRole.Member;
-            result.Add(ToDto(o, userId, role));
+            var member = await _organizationRepository.GetMemberAsync(o.Id, userId, ct);
+            if (member == null) continue;
+            result.Add(ToDto(o, userId, member));
         }
 
         _logger.LogDebug("Found {Count} organizations for user {UserId}", result.Count, userId);
@@ -68,9 +72,10 @@ public sealed class OrganizationService : IOrganizationService
             return DomainErrors.Organization.NotFound;
         }
 
-        var role = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct) ?? OrgMemberRole.Member;
+        var member = await _organizationRepository.GetMemberAsync(organizationId, userId, ct);
+        if (member == null) return DomainErrors.Organization.NotMember;
         _logger.LogDebug("Successfully retrieved organization {OrganizationId}", organizationId);
-        return ToDto(org, userId, role);
+        return ToDto(org, userId, member);
     }
 
     public async Task<Result<OrganizationDto>> CreateOrganizationAsync(Guid userId, CreateOrganizationRequest request, CancellationToken ct = default)
@@ -127,7 +132,7 @@ public sealed class OrganizationService : IOrganizationService
             }
             
             _logger.LogInformation("Successfully created organization {OrganizationId} for user {UserId}", org.Id, userId);
-            return ToDto(org, userId, OrgMemberRole.Owner);
+            return ToDto(org, userId, new OrganizationMember { OrganizationId = org.Id, UserId = userId, Role = OrgMemberRole.Owner });
         }
         catch (Exception ex)
         {
@@ -150,7 +155,7 @@ public sealed class OrganizationService : IOrganizationService
         var members = await _organizationRepository.GetMembersAsync(organizationId, ct);
         var result = members
             .Where(m => m.User != null)
-            .Select(m => new OrgMemberDto(m.UserId, m.User!.Name, m.User.Email, m.Role))
+            .Select(m => MemberDto(m, m.User!.Name, m.User.Email))
             .ToList();
         
         _logger.LogDebug("Found {Count} members for organization {OrganizationId}", result.Count, organizationId);
@@ -158,18 +163,17 @@ public sealed class OrganizationService : IOrganizationService
     }
 
     public async Task<Result<OrgMemberDto>> AddMemberByEmailAsync(
-        Guid organizationId, Guid requestingUserId, string email, OrgMemberRole role, CancellationToken ct = default)
+        Guid organizationId, Guid requestingUserId, string email, OrgMemberRole role, CancellationToken ct = default, string? preset = null)
     {
         var normalized = (email ?? string.Empty).Trim().ToLowerInvariant();
         _logger.LogInformation(
             "User {RequestingUserId} adding {Email} to organization {OrganizationId} as {Role}",
             requestingUserId, normalized, organizationId, role);
 
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(requestingUserId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(requestingUserId, organizationId, MemberPermissions.ManageMembers, ct))
         {
-            _logger.LogWarning("User {RequestingUserId} is not owner or manager of organization {OrganizationId}", requestingUserId, organizationId);
-            return Result.Failure<OrgMemberDto>(DomainErrors.Organization.NotOwnerOrManager);
+            _logger.LogWarning("User {RequestingUserId} may not manage the members of organization {OrganizationId}", requestingUserId, organizationId);
+            return Result.Failure<OrgMemberDto>(DomainErrors.Permission.Missing(MemberPermissions.ManageMembers));
         }
 
         if (string.IsNullOrEmpty(normalized))
@@ -204,12 +208,77 @@ public sealed class OrganizationService : IOrganizationService
             return Result.Failure<OrgMemberDto>(DomainErrors.Organization.AlreadyMember);
         }
 
-        await _organizationRepository.AddMemberAsync(organizationId, user.Id, role, ct);
+        // A preset chosen sets the role with it; nobody hands out more than they can do.
+        var added = new OrganizationMember { OrganizationId = organizationId, UserId = user.Id, Role = role };
+        if (preset != null)
+        {
+            var chosen = MemberPermissions.FindPreset(preset);
+            if (chosen == null || chosen == MemberPermissions.Owner) return Result.Failure<OrgMemberDto>(UnknownPreset);
+            added.PermissionPreset = chosen.Key;
+            added.Role = MemberPermissions.RoleFor(chosen, chosen.Permissions.ToHashSet());
+        }
+        if (!await _organizationRepository.HoldsAllAsync(requestingUserId, organizationId, MemberAccess.PermissionsOf(added), ct))
+            return Result.Failure<OrgMemberDto>(DomainErrors.Permission.MoreThanYourOwn);
+        await _organizationRepository.AddMemberAsync(organizationId, user.Id, added.Role, added.PermissionPreset, ct);
 
         _logger.LogInformation(
-            "Added user {UserId} to organization {OrganizationId} as {Role}",
-            user.Id, organizationId, role);
-        return Result.Success(new OrgMemberDto(user.Id, user.Name, user.Email, role));
+            "Added user {UserId} to organization {OrganizationId} as {Role} ({Preset})",
+            user.Id, organizationId, added.Role, added.PermissionPreset ?? "role");
+        return Result.Success(MemberDto(added, user.Name, user.Email));
+    }
+
+    private static readonly Error UnknownPreset = new(
+        "Organization.UnknownPreset", "That is not one of the presets. Pick Manager, Sales rep, Membership director, Finance, Front desk or Read-only accountant.");
+
+    private static readonly Error UnknownPermission = new(
+        "Organization.UnknownPermission", "One of those is not a permission this version knows.");
+
+    private static readonly Error CustomiseNotOwner = new(
+        "Organization.CustomiseNotOwner", "Only the owner can change single permissions. Pick one of the presets instead.");
+
+    public PermissionCatalogueDto GetPermissionCatalogue() => new(
+        MemberPermissions.All.Select(p => new PermissionDto(p.Key, p.Label, p.Description)).ToList(),
+        MemberPermissions.Presets
+            .Select(p => new PermissionPresetDto(p.Key, p.Label, p.Description, p.Permissions, p != MemberPermissions.Owner))
+            .ToList());
+
+    public async Task<Result<OrgMemberDto>> SetMemberPermissionsAsync(
+        Guid organizationId, Guid requestingUserId, Guid memberUserId, SetMemberPermissionsRequest request, CancellationToken ct = default)
+    {
+        var requester = await _organizationRepository.GetMemberAsync(organizationId, requestingUserId, ct);
+        if (requester == null) return DomainErrors.Organization.NotMember;
+        var mine = Permissions(requester);
+        if (!mine.Contains(MemberPermissions.ManageMembers)) return DomainErrors.Permission.Missing(MemberPermissions.ManageMembers);
+
+        var member = await _organizationRepository.GetMemberAsync(organizationId, memberUserId, ct);
+        if (member == null) return DomainErrors.Organization.NotMember;
+        // The owner can do everything, always: there is nobody above them to undo a mistake.
+        if (member.Role == OrgMemberRole.Owner)
+            return Result.Failure<OrgMemberDto>(new Error("Organization.CannotChangeOwnerRole", "The owner can always do everything."));
+
+        var preset = MemberPermissions.FindPreset(request.Preset);
+        if (preset == null || preset == MemberPermissions.Owner) return UnknownPreset;
+        IReadOnlySet<string> wanted = preset.Permissions.ToHashSet(StringComparer.Ordinal);
+        if (request.Permissions != null)
+        {
+            // Editable per member by owners: a manager picks presets, the owner fine-tunes.
+            if (requester.Role != OrgMemberRole.Owner) return CustomiseNotOwner;
+            if (request.Permissions.Any(p => !MemberPermissions.IsPermission(p))) return UnknownPermission;
+            wanted = request.Permissions.ToHashSet(StringComparer.Ordinal);
+        }
+        if (requester.Role != OrgMemberRole.Owner && (!wanted.IsSubsetOf(mine) || !Permissions(member).IsSubsetOf(mine)))
+            return DomainErrors.Permission.MoreThanYourOwn;
+
+        var stored = wanted.SetEquals(preset.Permissions) ? null : MemberPermissions.Format(wanted);
+        var role = MemberPermissions.RoleFor(preset, wanted);
+        await _organizationRepository.UpdateMemberPermissionsAsync(organizationId, memberUserId, role, preset.Key, stored, ct);
+        _logger.LogInformation("User {RequestingUserId} set member {MemberUserId} of organization {OrganizationId} to {Preset}{Custom}",
+            requestingUserId, memberUserId, organizationId, preset.Key, stored == null ? "" : " (customised)");
+
+        member.Role = role;
+        member.PermissionPreset = preset.Key;
+        member.Permissions = stored;
+        return MemberDto(member, member.User?.Name ?? "", member.User?.Email ?? "");
     }
 
     private static readonly Error NoAccountForEmail = new(
@@ -225,11 +294,10 @@ public sealed class OrganizationService : IOrganizationService
         _logger.LogInformation("Updating role for member {MemberUserId} in organization {OrganizationId} by user {RequestingUserId}", 
             memberUserId, organizationId, requestingUserId);
         
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(requestingUserId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(requestingUserId, organizationId, MemberPermissions.ManageMembers, ct))
         {
-            _logger.LogWarning("User {RequestingUserId} is not an owner or manager of organization {OrganizationId}", requestingUserId, organizationId);
-            return DomainErrors.Organization.NotOwnerOrManager;
+            _logger.LogWarning("User {RequestingUserId} may not manage the members of organization {OrganizationId}", requestingUserId, organizationId);
+            return DomainErrors.Permission.Missing(MemberPermissions.ManageMembers);
         }
 
         if (newRole == OrgMemberRole.Owner)
@@ -250,7 +318,13 @@ public sealed class OrganizationService : IOrganizationService
             _logger.LogWarning("Cannot change owner's role in organization {OrganizationId}", organizationId);
             return Result.Failure(new Error("Organization.CannotChangeOwnerRole", "Cannot change the owner's role"));
         }
-        
+
+        // A role set here means what it meant before presets (UpdateMemberRoleAsync clears
+        // the member's preset), and nobody gives or takes more than they hold.
+        if (!await _organizationRepository.HoldsAllAsync(requestingUserId, organizationId,
+                MemberAccess.PermissionsOf(member).Concat(MemberPermissions.Effective(newRole, null, null)), ct))
+            return Result.Failure(DomainErrors.Permission.MoreThanYourOwn);
+
         await _organizationRepository.UpdateMemberRoleAsync(organizationId, memberUserId, newRole, ct);
         
         _logger.LogInformation("Successfully updated role for member {MemberUserId} to {NewRole} in organization {OrganizationId}", 
@@ -258,16 +332,15 @@ public sealed class OrganizationService : IOrganizationService
         return Result.Success();
     }
 
-    public async Task<Result> RemoveMemberAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, CancellationToken ct = default)
+    public async Task<Result<MemberRemovedDto>> RemoveMemberAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, Guid? handOverToUserId = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Removing member {MemberUserId} from organization {OrganizationId} by user {RequestingUserId}", 
             memberUserId, organizationId, requestingUserId);
         
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(requestingUserId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(requestingUserId, organizationId, MemberPermissions.ManageMembers, ct))
         {
-            _logger.LogWarning("User {RequestingUserId} is not an owner or manager of organization {OrganizationId}", requestingUserId, organizationId);
-            return DomainErrors.Organization.NotOwnerOrManager;
+            _logger.LogWarning("User {RequestingUserId} may not manage the members of organization {OrganizationId}", requestingUserId, organizationId);
+            return DomainErrors.Permission.Missing(MemberPermissions.ManageMembers);
         }
 
         var member = await _organizationRepository.GetMemberAsync(organizationId, memberUserId, ct);
@@ -282,11 +355,35 @@ public sealed class OrganizationService : IOrganizationService
             _logger.LogWarning("Cannot remove owner from organization {OrganizationId}", organizationId);
             return DomainErrors.Organization.CannotRemoveOwner;
         }
-        
-        await _organizationRepository.RemoveMemberAsync(organizationId, memberUserId, ct);
-        
-        _logger.LogInformation("Successfully removed member {MemberUserId} from organization {OrganizationId}", memberUserId, organizationId);
-        return Result.Success();
+        if (!await _organizationRepository.HoldsAllAsync(requestingUserId, organizationId, MemberAccess.PermissionsOf(member), ct))
+            return DomainErrors.Permission.MoreThanYourOwn;
+
+        // Their open work goes to someone who can carry it on: the member chosen, or the
+        // owner. Left with them, their leads and deals showed an owner nobody could act
+        // as, and their tasks kept emailing reminders, with customers' details, to
+        // someone who no longer works here.
+        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+        if (org == null) return DomainErrors.Organization.NotFound;
+        var heir = handOverToUserId ?? org.OwnerUserId;
+        if (heir == memberUserId) return DomainErrors.Organization.HandOverToLeaver;
+        var heirMember = await _organizationRepository.GetMemberAsync(organizationId, heir, ct);
+        if (heirMember == null) return DomainErrors.Organization.HandOverOutsider;
+        if (!Permissions(heirMember).Contains(MemberPermissions.EditRecords)) return DomainErrors.Organization.HandOverReadOnly;
+
+        var handedOver = await _organizationRepository.RemoveMemberAsync(organizationId, memberUserId, heir, requestingUserId, ct);
+
+        // One notice for each kind of record that moved, rather than one per record.
+        if (_collaboration != null)
+        {
+            await _collaboration.RecordsAssignedAsync(RecordTypes.Lead, heir, organizationId, handedOver.Leads, requestingUserId, ct);
+            await _collaboration.RecordsAssignedAsync(RecordTypes.Deal, heir, organizationId, handedOver.Deals, requestingUserId, ct);
+            await _collaboration.TasksAssignedAsync(heir, handedOver.Tasks, requestingUserId, ct);
+        }
+
+        _logger.LogInformation(
+            "Removed member {MemberUserId} from organization {OrganizationId}; {Leads} leads, {Deals} deals and {Tasks} tasks handed to {HeirUserId}",
+            memberUserId, organizationId, handedOver.Leads.Count, handedOver.Deals.Count, handedOver.Tasks.Count, heir);
+        return new MemberRemovedDto(heir, heirMember.User?.Name ?? "", handedOver.Leads.Count, handedOver.Deals.Count, handedOver.Tasks.Count);
     }
 
     public async Task<Result<WebhookInfoDto>> GetWebhookInfoAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
@@ -332,11 +429,10 @@ public sealed class OrganizationService : IOrganizationService
 
     public async Task<Result> UpdateWebhookPasswordAsync(Guid organizationId, Guid userId, string? newPassword, CancellationToken ct = default)
     {
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(userId, organizationId, MemberPermissions.ManageSettings, ct))
         {
-            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, organizationId);
-            return DomainErrors.Organization.NotOwnerOrManager;
+            _logger.LogWarning("User {UserId} may not change the settings of organization {OrganizationId}", userId, organizationId);
+            return DomainErrors.Permission.Missing(MemberPermissions.ManageSettings);
         }
 
         var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
@@ -366,9 +462,8 @@ public sealed class OrganizationService : IOrganizationService
 
     public async Task<Result> UpdateOutboundWebhookAsync(Guid organizationId, Guid userId, string? url, string? secret, CancellationToken ct = default)
     {
-        var role = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
-        if (role != OrgMemberRole.Owner && role != OrgMemberRole.Manager)
-            return DomainErrors.Organization.NotOwnerOrManager;
+        if (!await _organizationRepository.HasPermissionAsync(userId, organizationId, MemberPermissions.ManageSettings, ct))
+            return DomainErrors.Permission.Missing(MemberPermissions.ManageSettings);
         var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
         if (org == null) return DomainErrors.Organization.NotFound;
         var trimmed = (url ?? "").Trim();
@@ -401,12 +496,12 @@ public sealed class OrganizationService : IOrganizationService
     public async Task<Result<OrganizationDto>> UpdateSettingsAsync(Guid organizationId, Guid userId, UpdateOrganizationSettingsRequest request, CancellationToken ct = default)
     {
         // The currency prices every new deal and labels every club amount, and the zone
-        // moves where each report's months begin, for the whole team. So it is a
-        // manager's decision, like the pipelines.
-        var role = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
-        if (role == null) return DomainErrors.Organization.NotMember;
-        if (role != OrgMemberRole.Owner && role != OrgMemberRole.Manager)
-            return DomainErrors.Organization.NotOwnerOrManager;
+        // moves where each report's months begin, for the whole team. So it is for whoever
+        // manages the settings (the owner and managers by default), like the pipelines.
+        var member = await _organizationRepository.GetMemberAsync(organizationId, userId, ct);
+        if (member == null) return DomainErrors.Organization.NotMember;
+        if (!Permissions(member).Contains(MemberPermissions.ManageSettings))
+            return DomainErrors.Permission.Missing(MemberPermissions.ManageSettings);
         var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
         if (org == null) return DomainErrors.Organization.NotFound;
 
@@ -428,18 +523,17 @@ public sealed class OrganizationService : IOrganizationService
         await _organizationRepository.UpdateAsync(org, ct);
         _logger.LogInformation("Regional settings of organization {OrganizationId} set to {Currency}, {Locale}, {TimeZone}, stale after {StaleDealDays} days, by {UserId}",
             organizationId, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays, userId);
-        return ToDto(org, userId, role.Value);
+        return ToDto(org, userId, member);
     }
 
     public async Task<Result<string>> GenerateWebhookApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
         _logger.LogInformation("Generating webhook API key for organization {OrganizationId} by user {UserId}", organizationId, userId);
         
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
+        if (!await _organizationRepository.HasPermissionAsync(userId, organizationId, MemberPermissions.ManageSettings, ct))
         {
-            _logger.LogWarning("User {UserId} is not owner or manager of organization {OrganizationId}", userId, organizationId);
-            return DomainErrors.Organization.NotOwnerOrManager;
+            _logger.LogWarning("User {UserId} may not change the settings of organization {OrganizationId}", userId, organizationId);
+            return DomainErrors.Permission.Missing(MemberPermissions.ManageSettings);
         }
 
         var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
@@ -471,9 +565,8 @@ public sealed class OrganizationService : IOrganizationService
 
     public async Task<Result<string>> GenerateMcpApiKeyAsync(Guid organizationId, Guid userId, CancellationToken ct = default)
     {
-        var requesterRole = await _organizationRepository.GetMemberRoleAsync(userId, organizationId, ct);
-        if (requesterRole != OrgMemberRole.Owner && requesterRole != OrgMemberRole.Manager)
-            return DomainErrors.Organization.NotOwnerOrManager;
+        if (!await _organizationRepository.HasPermissionAsync(userId, organizationId, MemberPermissions.ManageSettings, ct))
+            return DomainErrors.Permission.Missing(MemberPermissions.ManageSettings);
 
         var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
         if (org == null) return DomainErrors.Organization.NotFound;
@@ -503,6 +596,20 @@ public sealed class OrganizationService : IOrganizationService
     public static string HashApiKey(string apiKey) =>
         Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(apiKey))).ToLowerInvariant();
 
-    private static OrganizationDto ToDto(Organization org, Guid userId, OrgMemberRole role) =>
-        new(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)role, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays);
+    private static OrganizationDto ToDto(Organization org, Guid userId, OrganizationMember member) =>
+        new(org.Id, org.Name, org.OwnerUserId, org.OwnerUserId == userId, (int)member.Role, org.Currency, org.Locale, org.TimeZone, org.StaleDealDays,
+            MemberPermissions.PresetOf(member.Role, member.PermissionPreset).Key, Ordered(Permissions(member)));
+
+    private static IReadOnlySet<string> Permissions(OrganizationMember member) =>
+        MemberPermissions.Effective(member.Role, member.PermissionPreset, member.Permissions);
+
+    /// <summary>A set of permissions in the order the catalogue lists them.</summary>
+    private static IReadOnlyList<string> Ordered(IReadOnlySet<string> permissions) =>
+        MemberPermissions.All.Select(p => p.Key).Where(permissions.Contains).ToList();
+
+    private static OrgMemberDto MemberDto(OrganizationMember member, string name, string email) => new(
+        member.UserId, name, email, member.Role,
+        MemberPermissions.PresetOf(member.Role, member.PermissionPreset).Key,
+        Ordered(Permissions(member)),
+        MemberPermissions.IsCustomised(member.Role, member.PermissionPreset, member.Permissions));
 }

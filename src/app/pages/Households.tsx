@@ -52,6 +52,8 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 export default function Households() {
   const { format: formatCurrency } = useClubMoney();
@@ -210,22 +212,26 @@ export default function Households() {
   /** Add a member and delete, the same in every layout. */
   const householdActions = (r: HouseholdRollup) => (
     <>
-      <button
-        type="button"
-        onClick={() => openAddMember(r.household.id)}
-        className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-        aria-label="Add member"
-      >
-        <UserPlus className="w-4 h-4" />
-      </button>
-      <button
-        type="button"
-        onClick={() => removeHousehold(r.household.id, r.household.name)}
-        className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-        aria-label="Delete household"
-      >
-        <Trash2 className="w-4 h-4" />
-      </button>
+      <WriteOnly permission={PERMISSION.ClubMembers}>
+        <button
+          type="button"
+          onClick={() => openAddMember(r.household.id)}
+          className="rounded p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          aria-label="Add member"
+        >
+          <UserPlus className="w-4 h-4" />
+        </button>
+      </WriteOnly>
+      <WriteOnly permission={[PERMISSION.ClubMembers, PERMISSION.DeleteRecords]} all>
+        <button
+          type="button"
+          onClick={() => removeHousehold(r.household.id, r.household.name)}
+          className="rounded p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"
+          aria-label="Delete household"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </WriteOnly>
     </>
   );
   return (
@@ -243,10 +249,12 @@ export default function Households() {
             title="Households"
             subtitle="Family groupings with a primary member and sub-members. Each member is still billed on their own account."
             actions={
-              <Button onClick={openCreate} className={heroPrimary('teal')}>
-                <Plus className="h-4 w-4" />
-                New household
-              </Button>
+              <WriteOnly permission={PERMISSION.ClubMembers}>
+                <Button onClick={openCreate} className={heroPrimary('teal')}>
+                  <Plus className="h-4 w-4" />
+                  New household
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Households', value: totals.count, icon: HomeIcon, tone: 'teal' },
@@ -360,14 +368,16 @@ export default function Households() {
                           </div>
                         </div>
                         {row.link.role !== 'Primary' && (
-                          <button
-                            type="button"
-                            onClick={() => removeMember(row.link.id)}
-                            className="rounded p-1 text-slate-500 hover:bg-rose-50 hover:text-rose-600 shrink-0"
-                            aria-label="Remove from household"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <WriteOnly permission={PERMISSION.ClubMembers}>
+                            <button
+                              type="button"
+                              onClick={() => removeMember(row.link.id)}
+                              className="rounded p-1 text-slate-500 hover:bg-rose-50 hover:text-rose-600 shrink-0"
+                              aria-label="Remove from household"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </WriteOnly>
                         )}
                       </li>
                     ))}

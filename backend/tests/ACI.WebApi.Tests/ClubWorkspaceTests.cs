@@ -224,7 +224,7 @@ public class ClubWorkspaceTests
 
         var refused = await member.PutAsync("/api/hospitality/settings", Body(new { clubName = "Mine" }));
         refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await refused.Content.ReadAsStringAsync()).Should().Contain("Only the owner or a manager can change the hospitality settings.");
+        (await refused.Content.ReadAsStringAsync()).Should().Contain("Your role here does not let you change the hospitality settings.");
         (await member.PostAsync("/api/hospitality/settings/reset", null)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await Json(await owner.PutAsync("/api/hospitality/settings", Body(new { clubName = "Pavillon46" })), "owner saves"))
             .GetProperty("clubName").GetString().Should().Be("Pavillon46");

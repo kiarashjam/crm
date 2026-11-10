@@ -26,6 +26,8 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/app/components/ui/avatar';
 import type { TaskItem, TaskPriorityType, Lead, Deal } from '@/app/api/types';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 export interface KanbanTaskCardProps {
   task: TaskItem;
@@ -190,10 +192,12 @@ export function KanbanTaskCard({
                 </DropdownMenuSub>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
+              <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+                <DropdownMenuItem onClick={() => handleDelete(task)} className="text-red-600">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </WriteOnly>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

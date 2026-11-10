@@ -7,6 +7,8 @@ using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -17,6 +19,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class TasksController : ControllerBase
 {
     private readonly ITaskService _taskService;
@@ -486,6 +489,7 @@ public class TasksController : ControllerBase
     /// <response code="204">Task deleted successfully.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Task not found.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

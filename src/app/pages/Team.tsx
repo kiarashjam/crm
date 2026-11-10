@@ -24,11 +24,18 @@ import {
   rejectJoinRequest,
   updateMemberRole,
   removeMember,
-  isOrgAdmin,
+  handedOverSummary,
+  getPermissionSets,
+  orgCan,
+  orgPermissions,
+  PERMISSION,
   type OrgMemberDto,
   type InviteDto,
   type JoinRequestDto,
+  type PermissionCatalogue,
 } from '@/app/api/organizations';
+import { servesDemoData } from '@/app/api/apiClient';
+import { MemberPermissionsEditor, roleForPreset } from './team/MemberPermissionsEditor';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -81,14 +88,26 @@ function MemberDetailPanel({
   isAdmin,
   onRoleChange,
   onRemove,
+  organizationId,
+  catalogue,
+  mine,
+  isOwner,
+  onPermissionsChanged,
 }: {
   member: OrgMemberDto;
   onClose: () => void;
   isAdmin: boolean;
   onRoleChange: (role: number) => void;
   onRemove: () => void;
+  organizationId: string | null;
+  /** The presets and permissions; null from a server too old to have them, which keeps roles. */
+  catalogue: PermissionCatalogue | null;
+  mine: ReadonlySet<string>;
+  isOwner: boolean;
+  onPermissionsChanged: (member: OrgMemberDto) => void;
 }) {
   const roleInfo = getRoleInfo(member.role);
+  const presetLabel = catalogue?.presets.find((p) => p.key === member.preset)?.label;
   const RoleIcon = roleInfo.icon;
   
   // Mock stats for demonstration
@@ -124,7 +143,7 @@ function MemberDetailPanel({
           <div className="flex items-center justify-center gap-2 mt-3">
             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${roleInfo.bg} ${roleInfo.color}`}>
               <RoleIcon className="w-4 h-4" />
-              {roleInfo.label}
+              {presetLabel ?? roleInfo.label}
             </span>
           </div>
         </div>
@@ -236,7 +255,17 @@ function MemberDetailPanel({
         {isAdmin && member.role !== 0 && (
           <div className="border-t border-slate-200 pt-6 space-y-4">
             <h4 className="text-sm font-semibold text-slate-700">Admin Actions</h4>
-            
+
+            {catalogue && organizationId ? (
+              <MemberPermissionsEditor
+                organizationId={organizationId}
+                member={member}
+                catalogue={catalogue}
+                mine={mine}
+                isOwner={isOwner}
+                onChanged={onPermissionsChanged}
+              />
+            ) : (
             <div>
               <Label className="text-sm text-slate-600 mb-2 block">Change Role</Label>
               <Select
@@ -268,6 +297,7 @@ function MemberDetailPanel({
                 </SelectContent>
               </Select>
             </div>
+            )}
 
             <Button 
               variant="outline" 
@@ -301,8 +331,9 @@ export default function Team() {
   const [inviteEmails, setInviteEmails] = useState<string[]>([]);
   const [inviting, setInviting] = useState(false);
 
-  // Remove member confirmation
+  // Remove member confirmation, and who takes over their open work ('' = the owner)
   const [removeMemberConfirm, setRemoveMemberConfirm] = useState<OrgMemberDto | null>(null);
+  const [handOverTo, setHandOverTo] = useState('');
   const [removing, setRemoving] = useState(false);
 
   // Role change state
@@ -311,7 +342,28 @@ export default function Team() {
   // Join request actions
   const [processingJoinRequest, setProcessingJoinRequest] = useState<string | null>(null);
 
-  const isAdmin = isOrgAdmin(currentOrg);
+  // Managing the team takes members.manage (the owner and managers by default);
+  // single permissions are the owner's alone, and nobody gives more than they hold.
+  const isAdmin = Boolean(currentOrg) && orgCan(currentOrg, PERMISSION.ManageMembers);
+  const isOwnerHere = currentOrg?.isOwner === true;
+  const mine = useMemo(() => orgPermissions(currentOrg), [currentOrg]);
+
+  // The presets and permissions, to name each member's and to change them. An older
+  // server has none, and the page keeps its roles.
+  const [catalogue, setCatalogue] = useState<PermissionCatalogue | null>(null);
+  useEffect(() => {
+    if (!currentOrgId || servesDemoData()) {
+      setCatalogue(null);
+      return;
+    }
+    let cancelled = false;
+    getPermissionSets(currentOrgId)
+      .then((c) => { if (!cancelled) setCatalogue(c?.presets?.length ? c : null); })
+      .catch(() => { if (!cancelled) setCatalogue(null); });
+    return () => { cancelled = true; };
+  }, [currentOrgId]);
+  const presetLabel = (member: OrgMemberDto) =>
+    catalogue?.presets.find((p) => p.key === member.preset)?.label ?? getRoleInfo(member.role).label;
 
   const loadData = async () => {
     // With no workspace there is nothing to load — this returned with `loading`
@@ -439,6 +491,8 @@ export default function Team() {
   const [addOpen, setAddOpen] = useState(false);
   const [addEmail, setAddEmail] = useState('');
   const [addRole, setAddRole] = useState('3'); // default to the safest role: Viewer
+  // With presets, the safest one: reads and exports, changes nothing.
+  const [addPreset, setAddPreset] = useState('read_only_accountant');
   const [adding, setAdding] = useState(false);
 
   const handleAddExisting = async (e: React.FormEvent) => {
@@ -446,13 +500,16 @@ export default function Team() {
     if (!currentOrgId || !addEmail.trim() || adding) return;
     setAdding(true);
     try {
-      const member = await addOrgMember(currentOrgId, addEmail, parseInt(addRole, 10));
+      const member = catalogue
+        ? await addOrgMember(currentOrgId, addEmail, roleForPreset(addPreset), addPreset)
+        : await addOrgMember(currentOrgId, addEmail, parseInt(addRole, 10));
       if (member) {
         setMembers((prev) => [...prev, member]);
-        toast.success(`${member.name} added as ${getRoleInfo(member.role).label}`);
+        toast.success(`${member.name} added as ${presetLabel(member)}`);
         setAddOpen(false);
         setAddEmail('');
         setAddRole('3');
+        setAddPreset('read_only_accountant');
       }
     } catch (err) {
       // The server says exactly why — most usefully "no account with that email yet".
@@ -505,24 +562,38 @@ export default function Team() {
     }
   };
 
+  // Who can take over a leaving member's work: anyone else who can edit records. The
+  // server refuses anyone else, such as a read-only accountant or the front desk.
+  const handOverChoices = useMemo(
+    () => members.filter(m => m.userId !== removeMemberConfirm?.userId
+      && (m.permissions ? m.permissions.includes(PERMISSION.EditRecords) : m.role !== 3)),
+    [members, removeMemberConfirm],
+  );
+
+  const handlePermissionsChanged = (updated: OrgMemberDto) => {
+    setMembers((prev) => prev.map((m) => (m.userId === updated.userId ? updated : m)));
+    setSelectedMember((prev) => (prev?.userId === updated.userId ? updated : prev));
+  };
+  const owner = members.find(m => m.role === 0);
+
   // Handle remove member
   const handleRemoveMember = async () => {
     if (!currentOrgId || !removeMemberConfirm) return;
     setRemoving(true);
     try {
-      const success = await removeMember(currentOrgId, removeMemberConfirm.userId);
-      if (success) {
-        setMembers(prev => prev.filter(m => m.userId !== removeMemberConfirm.userId));
-        toast.success(`Removed ${removeMemberConfirm.name} from the team`);
-        setRemoveMemberConfirm(null);
-        if (selectedMember?.userId === removeMemberConfirm.userId) {
-          setSelectedMember(null);
-        }
-      } else {
-        toast.error('Failed to remove member');
+      const removed = await removeMember(currentOrgId, removeMemberConfirm.userId, handOverTo || undefined);
+      setMembers(prev => prev.filter(m => m.userId !== removeMemberConfirm.userId));
+      const moved = handedOverSummary(removed);
+      toast.success(moved
+        ? `Removed ${removeMemberConfirm.name}. ${removed.handedOverToName || 'The owner'} now has their open ${moved}.`
+        : `Removed ${removeMemberConfirm.name} from the team`);
+      setRemoveMemberConfirm(null);
+      setHandOverTo('');
+      if (selectedMember?.userId === removeMemberConfirm.userId) {
+        setSelectedMember(null);
       }
-    } catch {
-      toast.error('Failed to remove member');
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to remove member');
     } finally {
       setRemoving(false);
     }
@@ -576,7 +647,7 @@ export default function Team() {
     return (
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${roleInfo.bg} ${roleInfo.color}`}>
         <RoleIcon className="w-3 h-3" />
-        {roleInfo.label}
+        {presetLabel(member)}
       </span>
     );
   };
@@ -1049,6 +1120,11 @@ export default function Team() {
             member={selectedMember}
             onClose={() => setSelectedMember(null)}
             isAdmin={isAdmin}
+            organizationId={currentOrgId}
+            catalogue={catalogue}
+            mine={mine}
+            isOwner={isOwnerHere}
+            onPermissionsChanged={handlePermissionsChanged}
             onRoleChange={(role) => handleRoleChange(selectedMember, role)}
             onRemove={() => {
               setRemoveMemberConfirm(selectedMember);
@@ -1201,6 +1277,26 @@ export default function Team() {
                 className="mt-1"
               />
             </div>
+            {catalogue ? (
+              <div>
+                <Label htmlFor="add-preset">What they may do</Label>
+                <Select value={addPreset} onValueChange={setAddPreset}>
+                  <SelectTrigger id="add-preset" aria-label="Preset" className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {catalogue.presets.filter((p) => p.assignable).map((p) => (
+                      <SelectItem key={p.key} value={p.key} disabled={!isOwnerHere && !p.permissions.every((k) => mine.has(k))}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1.5 text-xs text-slate-500">
+                  {catalogue.presets.find((p) => p.key === addPreset)?.description}
+                </p>
+              </div>
+            ) : (
             <div>
               <Label htmlFor="add-role">Role</Label>
               <Select value={addRole} onValueChange={setAddRole}>
@@ -1220,6 +1316,7 @@ export default function Team() {
                 </SelectContent>
               </Select>
             </div>
+            )}
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="outline" onClick={() => setAddOpen(false)} disabled={adding}>
                 Cancel
@@ -1234,15 +1331,33 @@ export default function Team() {
       </Dialog>
 
       {/* Remove Member Confirmation */}
-      <AlertDialog open={!!removeMemberConfirm} onOpenChange={(open) => !open && setRemoveMemberConfirm(null)}>
+      <AlertDialog open={!!removeMemberConfirm} onOpenChange={(open) => { if (!open) { setRemoveMemberConfirm(null); setHandOverTo(''); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove team member?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove <strong>{removeMemberConfirm?.name}</strong> from your organization. 
+              This will remove <strong>{removeMemberConfirm?.name}</strong> from your organization.
               They will lose access to all organization data. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="hand-over-to">Hand their open leads, deals and tasks to</Label>
+            <Select value={handOverTo || owner?.userId || ''} onValueChange={setHandOverTo}>
+              <SelectTrigger id="hand-over-to" aria-label="Hand their open work to" className="h-10">
+                <SelectValue placeholder="The owner" />
+              </SelectTrigger>
+              <SelectContent>
+                {handOverChoices.map(m => (
+                  <SelectItem key={m.userId} value={m.userId}>
+                    {m.name}{m.role === 0 ? ' (owner)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500">
+              Won, lost and finished work stays credited to them. Their reminders stop.
+            </p>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={removing}>Cancel</AlertDialogCancel>
             <AlertDialogAction 

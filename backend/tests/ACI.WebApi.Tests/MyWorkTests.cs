@@ -95,7 +95,7 @@ public class MyWorkTests
         await LeadAsync(team.Marc, "Marc Lead");
         using (var scope = team.Factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             db.Leads.Single(l => l.Id == converted).IsConverted = true;
             await db.SaveChangesAsync();
         }

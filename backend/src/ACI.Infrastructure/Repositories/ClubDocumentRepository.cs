@@ -24,7 +24,9 @@ public sealed class ClubDocumentRepository : IClubDocumentRepository
     {
         // A row this request already read comes back as the tracked copy, still holding
         // the version it was read at, so the save below is checked against that read.
-        var existing = await _db.ClubDocuments.FirstOrDefaultAsync(d => d.Id == document.Id, ct);
+        // Looked for in every workspace: an id another workspace holds is refused below,
+        // rather than added again as a second row with the same key.
+        var existing = await _db.ClubDocuments.IgnoreQueryFilters().FirstOrDefaultAsync(d => d.Id == document.Id, ct);
         if (existing == null) _db.ClubDocuments.Add(document);
         else if (existing.OrganizationId != document.OrganizationId || existing.Kind != document.Kind)
             throw new InvalidOperationException("A club document can only be saved over one of the same kind in the same workspace.");

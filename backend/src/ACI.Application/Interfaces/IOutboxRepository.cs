@@ -16,10 +16,17 @@ public interface IOutboxRepository
     /// <summary>One message, tracked, so changes to it are kept by <see cref="SaveAsync"/>.</summary>
     Task<OutboundMessage?> GetAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>
+    /// One message, tracked, whichever workspace it belongs to: for the outbox's own
+    /// dispatcher and the mail service's reports, which find a message by its id before
+    /// anyone acts for its workspace. Everything else reads through <see cref="GetAsync"/>.
+    /// </summary>
+    Task<OutboundMessage?> GetInAnyWorkspaceAsync(Guid id, CancellationToken ct = default);
+
     /// <summary>Keeps the changes made to messages read through this repository.</summary>
     Task SaveAsync(CancellationToken ct = default);
 
-    /// <summary>Queued messages due now and held by nobody, the longest waiting first.</summary>
+    /// <summary>Queued messages due now and held by nobody, the longest waiting first, in every workspace.</summary>
     Task<IReadOnlyList<DueOutboundMessage>> DueAsync(DateTime utcNow, int take, CancellationToken ct = default);
 
     /// <summary>
@@ -39,10 +46,13 @@ public interface IOutboxRepository
     /// <summary>Whether something queued for this sender record (a sequence enrollment, say) has still not gone.</summary>
     Task<bool> HasQueuedAsync(Guid sourceId, CancellationToken ct = default);
 
-    /// <summary>The email with this Message-ID header, angle brackets included or not.</summary>
+    /// <summary>
+    /// The email with this Message-ID header, angle brackets included or not, in whichever
+    /// workspace sent it: a reply or a mail service report names the message, not the workspace.
+    /// </summary>
     Task<OutboundMessage?> FindByMessageIdAsync(string messageIdHeader, CancellationToken ct = default);
 
-    /// <summary>The email whose reply-capture address carries this token.</summary>
+    /// <summary>The email whose reply-capture address carries this token, in whichever workspace sent it.</summary>
     Task<OutboundMessage?> FindByReplyTokenAsync(string token, CancellationToken ct = default);
 
     /// <summary>A workspace's latest webhook deliveries, newest first.</summary>

@@ -7,16 +7,22 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace ACI.Infrastructure.Persistence;
 
-public class AppDbContext : DbContext
+public partial class AppDbContext : DbContext
 {
     private readonly ICurrentUserService? _currentUser;
+    private readonly ITenantContext _tenant;
 
     /// <param name="options">EF options.</param>
     /// <param name="currentUser">Who is making the change, for the audit trail. Supplied by DI;
     /// absent at design time, when changes are attributed to the system.</param>
-    public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserService? currentUser = null) : base(options)
+    /// <param name="tenant">The workspace reads are filtered to (see <see cref="TenantOrganizationId"/>).
+    /// Supplied by DI. A context made without one, as a tool or a test makes it, starts in no
+    /// workspace and reads no workspace's records until it acts for one (<see cref="ActFor"/>),
+    /// except where a query ignores the filters.</param>
+    public AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUserService? currentUser = null, ITenantContext? tenant = null) : base(options)
     {
         _currentUser = currentUser;
+        _tenant = tenant ?? new ActingWorkspace();
     }
 
     public DbSet<User> Users => Set<User>();
@@ -106,6 +112,7 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+        ScopeToWorkspace(modelBuilder);
     }
 
     /// <summary>

@@ -54,7 +54,7 @@ import {
   type GiftCardRedemption,
 } from '@/app/api/giftCards';
 import { getMembers, type Member } from '@/app/api/members';
-import { isOrgAdmin } from '@/app/api/organizations';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { endOfLocalDay } from '@/app/lib/dateInputs';
@@ -66,6 +66,7 @@ import {
   type RecordColumn,
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { WriteOnly } from '@/app/components/WriteOnly';
 
 function formatDate(iso: string): string {
   try {
@@ -110,9 +111,11 @@ export default function GiftCards() {
   });
   const [saving, setSaving] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
-  // Writing off a card is an owner's or a manager's call; the server refuses anyone else.
+  // Writing off a card takes money.void and money.manage, as voiding a charge does: the
+  // server refuses anyone without both.
   const org = useOrgOptional();
-  const canVoid = servesDemoData() || isOrgAdmin(org?.currentOrg);
+  const canVoid = servesDemoData()
+    || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.ManageMoney) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
 
   const load = async () => {
     try {
@@ -301,9 +304,12 @@ export default function GiftCards() {
   const cardActions = (c: GiftCard) =>
     c.status === 'Active' ? (
       <>
-        <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)}>
-          <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
-        </Button>
+        {/* Redeeming is the front desk's or money's; the server refuses anyone else. */}
+        <WriteOnly permission={[PERMISSION.ManageMoney, PERMISSION.FrontDesk]}>
+          <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)}>
+            <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
+          </Button>
+        </WriteOnly>
         {canVoid && <Button
           size="sm"
           variant="outline"
@@ -362,10 +368,12 @@ export default function GiftCards() {
             title="Gift Cards"
             subtitle="Issue, track, and redeem house gift cards."
             actions={
-              <Button onClick={openIssueDialog} className={heroPrimary('rose')}>
-                <Plus className="h-4 w-4" />
-                Issue gift card
-              </Button>
+              <WriteOnly permission={PERMISSION.ManageMoney}>
+                <Button onClick={openIssueDialog} className={heroPrimary('rose')}>
+                  <Plus className="h-4 w-4" />
+                  Issue gift card
+                </Button>
+              </WriteOnly>
             }
             stats={[
               { label: 'Total issued', value: stats.totalIssued, icon: TrendingUp, tone: 'rose', hint: 'all-time face value', format: formatCurrency },
@@ -516,9 +524,11 @@ export default function GiftCards() {
                           <div className="flex gap-2 mt-4">
                             {c.status === 'Active' && (
                               <>
-                                <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)} className="flex-1">
-                                  <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
-                                </Button>
+                                <WriteOnly permission={[PERMISSION.ManageMoney, PERMISSION.FrontDesk]}>
+                                  <Button size="sm" variant="outline" onClick={() => openRedeemDialog(c)} className="flex-1">
+                                    <CreditCard className="w-3.5 h-3.5 mr-1" /> Redeem
+                                  </Button>
+                                </WriteOnly>
                                 {canVoid && <Button
                                   size="sm"
                                   variant="outline"

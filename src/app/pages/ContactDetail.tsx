@@ -55,6 +55,7 @@ import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { ActivityLogForm, ActivityRow, withActivity, type ActivityDraft } from '@/app/components/RecordActivity';
 import { factsPayload } from '@/app/lib/activityFacts';
 import { showEditConflict } from '@/app/lib/editConflict';
+import { orgCan, PERMISSION } from '@/app/api/organizations';
 
 export default function ContactDetail() {
   const money = useMoney();
@@ -87,7 +88,9 @@ export default function ContactDetail() {
   const [dismissedLookalike, setDismissedLookalike] = useState(false);
   const [keepingApart, setKeepingApart] = useState(false);
   const [recordRevision, setRecordRevision] = useState(0);
-  const { isReadOnly } = useOrg();
+  const { currentOrg, isReadOnly: viewOnly } = useOrg();
+  // Working a contact takes records.edit: finance, the front desk and read-only members see it.
+  const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
 
   useEffect(() => {
     if (!id) return;
@@ -365,7 +368,7 @@ export default function ContactDetail() {
                     {contact.isArchived ? 'Unarchive' : 'Archive'}
                   </Button>
                 </WriteOnly>
-                <WriteOnly>
+                <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
                   <Button
                     variant="outline"
                     onClick={() => setDeleteOpen(true)}

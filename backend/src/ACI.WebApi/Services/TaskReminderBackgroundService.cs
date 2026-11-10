@@ -92,7 +92,11 @@ public class TaskReminderBackgroundService : BackgroundService
         // inlined rather than calling TaskReminderPolicy because EF has to translate
         // them to SQL; the policy is then applied in memory below, so the two can
         // only disagree by being over-inclusive here, never under-inclusive.
+        // Every workspace's tasks: this job reminds everyone, so it reads across workspaces.
+        // What it does about each task (the bell, the overdue automation) acts for that
+        // task's workspace, below.
         var candidates = await db.TaskItems
+            .IgnoreQueryFilters()
             .Include(t => t.User)
             .Include(t => t.Assignee)
             .Where(t => t.Status != TaskStatusEnum.Completed
@@ -149,6 +153,7 @@ public class TaskReminderBackgroundService : BackgroundService
             if (recipientId is Guid id) settingsByUserId.TryGetValue(id, out settings);
 
             var handled = true;
+            using var acting = db.ActFor(task.OrganizationId, recipientId ?? task.UserId);
 
             // ── In-app ──
             if (TaskReminderPolicy.NeedsInAppReminder(task, now))

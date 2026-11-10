@@ -214,6 +214,7 @@ public class ContactRelationshipTests
             Link(harry, drop, ContactRelationshipTypes.Parent)); // moves
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
+        using var acting = db.ActFor(org.Id, user.Id);
 
         var contacts = new ContactRepository(db);
         (await contacts.MergeIntoAsync(keep.Id, drop.Id, user.Id, org.Id)).Should().BeTrue();

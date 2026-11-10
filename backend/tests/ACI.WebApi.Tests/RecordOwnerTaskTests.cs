@@ -1,4 +1,4 @@
-using System.Net;
+using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using ACI.Application.Services;
 using ACI.Domain.Enums;
@@ -84,8 +84,15 @@ public class RecordOwnerTaskTests
         return leadId;
     }
 
-    private static async Task AnnaLeavesAsync(Team team) =>
-        (await team.Marc.DeleteAsync($"/api/organizations/{team.Org}/members/{team.AnnaId}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+    // Anna left before a leaver's open work was handed over (MemberOffboardingTests has
+    // that), so her lead still names her: what members removed earlier left behind.
+    private static async Task AnnaLeavesAsync(Team team)
+    {
+        using var scope = team.App.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.OrganizationMembers.Remove(await db.OrganizationMembers.SingleAsync(m => m.OrganizationId == team.Org && m.UserId == team.AnnaId));
+        await db.SaveChangesAsync();
+    }
 
     private static async Task<List<JsonElement>> TasksOnTheBellAsync(HttpClient client) =>
         (await Ok(await client.GetAsync("/api/notifications"), "read the bell")).EnumerateArray()

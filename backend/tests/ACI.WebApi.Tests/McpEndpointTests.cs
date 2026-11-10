@@ -7,6 +7,8 @@ using ACI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
+using ACI.WebApi.Tests.Helpers;
+
 namespace ACI.WebApi.Tests;
 
 public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
@@ -32,7 +34,7 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
         var webhookKey = "aci_" + Guid.NewGuid().ToString("N");
         using (var scope = _factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             var owner = Guid.NewGuid();
             db.Users.Add(new User { Id = owner, Name = "Ada", Email = $"{owner:N}@example.com", CreatedAtUtc = DateTime.UtcNow });
             db.Organizations.Add(new Organization
@@ -165,7 +167,7 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
         var records = await SeedFullOrganizationAsync(key, "Northwind");
         using (var scope = _factory.Services.CreateScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var db = scope.ServiceProvider.EveryWorkspace();
             var deal = await db.Deals.SingleAsync(d => d.Id == records.DealId);
             deal.Value = "CHF 85,500";
             deal.Currency = "CHF";
@@ -335,7 +337,7 @@ public class McpEndpointTests : IClassFixture<CustomWebApplicationFactory>
     private async Task<SeededRecords> SeedFullOrganizationAsync(string apiKey, string name, string? leadName = null)
     {
         using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        using var db = scope.ServiceProvider.EveryWorkspace();
         var userId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
         db.Users.Add(new User

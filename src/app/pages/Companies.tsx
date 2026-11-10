@@ -63,6 +63,7 @@ import {
 } from '@/app/components/views';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useMoney } from '@/app/hooks/useMoney';
+import { PERMISSION } from '@/app/api/organizations';
 
 // Industries offered when a company is added or edited. The filter lists the ones the
 // workspace's companies are really in instead, however they were typed.
@@ -460,13 +461,15 @@ export default function Companies() {
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => setDeleteConfirmCompany(company)}
-            className="text-red-600 focus:text-red-600"
-          >
-            <Trash2 className="w-4 h-4 mr-2" />
-            Delete
-          </DropdownMenuItem>
+          <WriteOnly permission={[PERMISSION.EditRecords, PERMISSION.DeleteRecords]} all>
+            <DropdownMenuItem
+              onClick={() => setDeleteConfirmCompany(company)}
+              className="text-red-600 focus:text-red-600"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </DropdownMenuItem>
+          </WriteOnly>
         </DropdownMenuContent>
       </DropdownMenu>
     </WriteOnly>
@@ -503,17 +506,19 @@ export default function Companies() {
             subtitle={loading ? 'Loading…' : 'Manage your business accounts'}
             actions={
               <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { void handleExport(); }}
-                  disabled={exporting || loading}
-                  className={heroSecondary}
-                  aria-label="Export the companies this list shows"
-                >
-                  <Download className="h-4 w-4" /> {exporting ? 'Exporting…' : 'Export'}
-                </Button>
+                <WriteOnly permission={PERMISSION.ExportRecords}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { void handleExport(); }}
+                    disabled={exporting || loading}
+                    className={heroSecondary}
+                    aria-label="Export the companies this list shows"
+                  >
+                    <Download className="h-4 w-4" /> {exporting ? 'Exporting…' : 'Export'}
+                  </Button>
+                </WriteOnly>
                 <WriteOnly>
                   <Button onClick={() => navigate('/companies/import')} variant="outline" className={heroSecondary} aria-label="Import">
                     <Upload className="h-4 w-4" />

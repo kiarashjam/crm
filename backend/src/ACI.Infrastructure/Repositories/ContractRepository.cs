@@ -31,8 +31,9 @@ public class ContractRepository : IContractRepository
         if (string.IsNullOrWhiteSpace(tokenHash)) return null;
         // No organisation filter, by design: the counterparty has no account and no
         // organisation. The token IS the authorisation, which is why only its hash
-        // is stored and why a void clears it.
-        return await _db.Contracts.FirstOrDefaultAsync(c => c.SigningTokenHash == tokenHash, ct);
+        // is stored and why a void clears it. So the workspace filters are set aside
+        // too: the request acts for the contract's workspace once it has it.
+        return await _db.Contracts.IgnoreQueryFilters().FirstOrDefaultAsync(c => c.SigningTokenHash == tokenHash, ct);
     }
 
     public async Task<Contract> AddAsync(Contract contract, CancellationToken ct = default)

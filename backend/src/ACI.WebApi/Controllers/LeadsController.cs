@@ -4,6 +4,8 @@ using ACI.Application.Interfaces;
 using ACI.WebApi.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ACI.Domain.Common;
+using ACI.WebApi.Filters;
 
 namespace ACI.WebApi.Controllers;
 
@@ -14,6 +16,7 @@ namespace ACI.WebApi.Controllers;
 [Route("api/[controller]")]
 [Authorize]
 [Produces("application/json")]
+[Requires(MemberPermissions.EditRecords, WritesOnly = true)]
 public class LeadsController : ControllerBase
 {
     private readonly ILeadService _leadService;
@@ -329,6 +332,7 @@ public class LeadsController : ControllerBase
     /// <summary>Keeps this lead and folds the other one into it.</summary>
     /// <response code="204">Merged; the other lead is gone and everything on it is on this one.</response>
     /// <response code="404">Either lead is not in this workspace, or they are the same lead.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpPost("{id:guid}/merge")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -352,6 +356,7 @@ public class LeadsController : ControllerBase
     /// <response code="204">Lead deleted successfully.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="404">Lead not found.</response>
+    [Requires(MemberPermissions.DeleteRecords)]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

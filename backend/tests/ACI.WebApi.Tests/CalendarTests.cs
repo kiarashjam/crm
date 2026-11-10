@@ -160,6 +160,7 @@ public class CalendarTests
             NewLead("ffffffff-ffff-ffff-ffff-ffffffffffff", "Meeting in November",
                 """{"outreachDate":"2026-10-20","meetingDate":"2026-11-12"}"""));
         await db.SaveChangesAsync();
+        using var acting = db.ActFor(org, marcId);
         var leads = scope.ServiceProvider.GetRequiredService<ILeadRepository>();
 
         var found = await leads.GetWithMeetingInMonthsAsync(marcId, org, ["2026-11"], mineOnly: false, take: 1);
@@ -197,6 +198,8 @@ public class CalendarTests
             }
 
             using var read = app.Services.CreateScope();
+            // As the calendar request does: it reads as the rep's own workspace.
+            using var acting = read.ServiceProvider.GetRequiredService<ITenantContext>().ActFor(null, repId);
             var found = await read.ServiceProvider.GetRequiredService<ILeadRepository>()
                 .GetWithMeetingInMonthsAsync(repId, null, ["2026-11"], mineOnly: false, take: 1);
 

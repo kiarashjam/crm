@@ -77,6 +77,19 @@ public static class LeadStatusVocabulary
     /// <summary>The stage that means "they said no". Last in the list, but not "furthest along".</summary>
     public const string Lost = "Lost / Not Interested";
 
+    /// <summary>The stage that means "they signed".</summary>
+    public const string Signed = "Signed";
+
+    /// <summary>
+    /// Whether a status closes the lead: they signed, or said no. A retired label counts
+    /// as the stage it was mapped to ("Open Deal" signed, "Unqualified" said no).
+    /// </summary>
+    public static bool IsClosed(string? status)
+    {
+        var index = StageIndex(status);
+        return index >= 0 && (Default[index] == Signed || Default[index] == Lost);
+    }
+
     /// <summary>
     /// Where a status sits in <see cref="Default"/>, reading a retired label as the
     /// stage it was mapped to. -1 for a status this vocabulary does not know.
