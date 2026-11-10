@@ -65,6 +65,20 @@ that keeps them apart from members' prepayments sets one (2035, say).
 Stripe pays out net of its fees; book the payout from 1090 to 1020 and the fees to 6940 (bank
 charges) from Stripe's payout report. TWINT and card terminals the same way.
 
+### Sales at the till and from the POS
+
+A sale rung up at the house-charge screen, and a ticket imported from Lightspeed and posted to a
+member, are charges like any other: one per VAT rate on the sale, each at its rate. What was
+paid at the till (card, cash or TWINT) is a payment of those charges, booked to 1090 or 1000 as
+above. What was put on the house account stays in 1100 until the member pays it.
+
+Lightspeed keeps its own sales journal, and its accounting export books the same tickets again.
+Book the sales that reach members' accounts from one system only: either leave the POS tickets'
+charges out of what you import from Cadence, or leave the members' bills out of Lightspeed's
+export. A POS ticket's lines in the journal name its receipt in their text ("Main Dining, receipt
+R40: …"), which tells them apart. Tickets that are not a member's (paid at the POS with nobody on
+them) never reach Cadence's ledger.
+
 ## Importing
 
 - **Bexio**: Accounting → Manual entries → Import (CSV). Map Date, Document (reference),
