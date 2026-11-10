@@ -463,6 +463,9 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<bool>("ReturningMember")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("ReviewedAtUtc")
                         .HasColumnType("datetime2");
 

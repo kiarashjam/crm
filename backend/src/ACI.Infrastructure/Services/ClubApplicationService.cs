@@ -541,6 +541,9 @@ public sealed class ClubApplicationService : IClubApplications
         await CarryConsentAsync(organizationId, app, member, ct);
 
         // The money: the tier's dues and its initiation fee, when whoever approves may charge accounts.
+        // Whether the fee is due is decided here, once, and kept: dues finished later by someone
+        // who may charge accounts must not charge a returning member the fee this approval waived.
+        app.ReturningMember = !plan.FeeApplies;
         var duesStarted = false;
         var feeCharged = false;
         var wantDues = request.StartDues != false;
@@ -552,8 +555,11 @@ public sealed class ClubApplicationService : IClubApplications
             (duesStarted, feeCharged) = money.Value;
             app.MoneyPending = false;
         }
-        else if ((wantDues && plan.Tier.Price > 0) || (wantFee && plan.FeeApplies && plan.Tier.InitiationFee > 0))
+        else if ((wantDues && plan.Tier.Price > 0 && !await HasRunningSubscriptionAsync(organizationId, member.Id, ct))
+                 || (wantFee && plan.FeeApplies && plan.Tier.InitiationFee > 0))
         {
+            // Left for finance only when there is something to set up: a member whose dues
+            // already run, with no fee due, has nothing waiting.
             app.MoneyPending = true;
             notes.Add("The dues and the initiation fee are left for someone who can charge accounts: they finish it by approving again.");
         }
@@ -605,8 +611,9 @@ public sealed class ClubApplicationService : IClubApplications
             }
             var notes = new List<string>();
             var request = approval.Request;
+            // The fee as the approval decided it: a member who had been one before pays no joining fee.
             var money = await SetUpMoneyAsync(organizationId, app, member, tier,
-                feeApplies: true, request.StartDues != false, request.ChargeInitiationFee != false, rules.Billing.PaymentTermsDays, notes, ct);
+                feeApplies: !app.ReturningMember, request.StartDues != false, request.ChargeInitiationFee != false, rules.Billing.PaymentTermsDays, notes, ct);
             if (!money.IsSuccess)
             {
                 if (transaction != null) await transaction.RollbackAsync(ct);
@@ -637,9 +644,8 @@ public sealed class ClubApplicationService : IClubApplications
         var feeCharged = false;
         if (wantDues && app.DuesSubscriptionId == null && tier.Price > 0)
         {
-            var running = await _db.ClubSubscriptions.AsNoTracking()
-                .AnyAsync(s => s.OrganizationId == organizationId && s.MemberId == member.Id && s.Status != "Cancelled", ct);
-            if (running) notes.Add($"{Name(member)} already has a subscription running, so no second one was started.");
+            if (await HasRunningSubscriptionAsync(organizationId, member.Id, ct))
+                notes.Add($"{Name(member)} already has a subscription running, so no second one was started.");
             else
             {
                 var started = await _ledger.CreateSubscriptionAsync(organizationId, new SubscriptionWriteRequest
@@ -677,6 +683,11 @@ public sealed class ClubApplicationService : IClubApplications
         }
         return (duesStarted, feeCharged);
     }
+
+    /// <summary>Whether the member already has dues running (a subscription not cancelled): a second is never started.</summary>
+    private Task<bool> HasRunningSubscriptionAsync(Guid organizationId, Guid memberId, CancellationToken ct) =>
+        _db.ClubSubscriptions.AsNoTracking()
+            .AnyAsync(s => s.OrganizationId == organizationId && s.MemberId == memberId && s.Status != "Cancelled", ct);
 
     /// <summary>
     /// Puts the new member in their household: the one they were already in as a contact (a couple

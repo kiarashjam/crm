@@ -145,6 +145,33 @@ public class ClubApplicationsTests
     }
 
     [Fact]
+    public async Task AReturningMemberApprovedWithoutTheMoney_IsNotChargedTheJoiningFee_WhenFinanceFinishesIt()
+    {
+        // Approved by someone who may not charge accounts, the dues are left for finance. The
+        // approval decided the applicant was a member before, so no initiation fee is due:
+        // finishing it later must start the dues and charge no fee, as approving it at once would.
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var director = await JoinAsync(factory, owner, org, "director@pavillon46.ch", "membership_director");
+        var existing = (await Json(await owner.PostAsync("/api/members", Body(new
+        {
+            firstName = "Peter", lastName = "Meier", email = "meier@example.ch", tier = "Gold", status = "Lapsed",
+        })), "add the lapsed member")).GetProperty("id").GetGuid();
+        var id = (await ApplyAsync(director, "Peter", "Meier", email: "meier@example.ch")).GetProperty("id").GetGuid();
+
+        var approved = await Json(await director.PostAsync($"/api/applications/{id}/approve", Body(new { })), "the director approves");
+        approved.GetProperty("memberId").GetGuid().Should().Be(existing);
+        approved.GetProperty("moneyPending").GetBoolean().Should().BeTrue("his dues are still to start");
+
+        var finished = await Json(await owner.PostAsync($"/api/applications/{id}/approve", Body(new { })), "the owner finishes it");
+        finished.GetProperty("duesStarted").GetBoolean().Should().BeTrue();
+        finished.GetProperty("feeCharged").GetBoolean().Should().BeFalse("he was a member before: no joining fee, however the approval was finished");
+        finished.GetProperty("moneyPending").GetBoolean().Should().BeFalse();
+        (await Read(factory, db => db.ClubCharges.Count(c => c.MemberId == existing))).Should().Be(0);
+        (await Read(factory, db => db.ClubSubscriptions.Count(s => s.MemberId == existing))).Should().Be(1);
+    }
+
+    [Fact]
     public async Task AWaitlistedApplication_CanBeApprovedOrReopened_ButARejectedOneMustBeReopenedFirst()
     {
         using var factory = new CustomWebApplicationFactory();

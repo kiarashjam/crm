@@ -129,6 +129,14 @@ public class ClubApplication : Common.BaseEntity, Common.IVersioned
     /// </summary>
     public bool MoneyPending { get; set; }
 
+    /// <summary>
+    /// The approval found the applicant had been a member before (neither new nor left Pending
+    /// by the old approval), so no initiation fee is due. Kept on the row because the money of
+    /// an approval can be finished later (<see cref="MoneyPending"/>), by someone who must not
+    /// charge the fee the approval decided against.
+    /// </summary>
+    public bool ReturningMember { get; set; }
+
     /// <summary>The deposit the applicant paid, recorded on their new account when they were admitted for it.</summary>
     public Guid? DepositPaymentId { get; set; }
 
