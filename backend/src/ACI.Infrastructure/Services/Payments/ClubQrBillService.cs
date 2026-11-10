@@ -32,6 +32,12 @@ public sealed class ClubQrBillService : IClubQrBills
     public const string StatementPurpose = "statement";
     public const string ChargePurpose = "charge";
 
+    /// <summary>
+    /// A merged duplicate's statement reference, where the member kept has one of their own for
+    /// the same period: still found by a transfer that quotes it, never printed again.
+    /// </summary>
+    public const string MergedStatementPurpose = "statement-merged";
+
     private readonly AppDbContext _db;
     private readonly ClubPaymentSettingsService _settings;
     private readonly ILedgerReadObserver _reads;

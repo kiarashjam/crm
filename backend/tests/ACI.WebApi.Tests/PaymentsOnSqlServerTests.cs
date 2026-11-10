@@ -149,6 +149,41 @@ public class PaymentsOnSqlServerTests
     }
 
     [SqlServerFact]
+    public async Task TwoMembersWhoseStatementsForTheSameMonthWerePrinted_CanBeMerged_AndBothReferencesStillPay()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (client, org) = await ClubAsync(app);
+            // The month's statement run prints every member's statement, the duplicate's too.
+            var keep = await OwingMemberAsync(client, "Jean");
+            var drop = await OwingMemberAsync(client, "Jeannot");
+            (await StatementAsync(client, keep)).StatusCode.Should().Be(HttpStatusCode.OK);
+            (await StatementAsync(client, drop)).StatusCode.Should().Be(HttpStatusCode.OK);
+            var dropReference = (string)(await SqlServerApp.ScalarAsync(database, $"SELECT [QrReference] FROM [ClubPaymentReferences] WHERE [MemberId] = '{drop}'"))!;
+
+            var merged = await client.PostAsync($"/api/members/{keep}/merge", Workspaces.Body(new { otherMemberId = drop }));
+            merged.StatusCode.Should().Be(HttpStatusCode.NoContent, await merged.Content.ReadAsStringAsync());
+
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubPaymentReferences] WHERE [MemberId] = '{keep}'")).Should().Be(2,
+                "the duplicate's printed reference is the kept member's now, beside their own");
+            (await StatementAsync(client, keep)).StatusCode.Should().Be(HttpStatusCode.OK, "the kept member's statement prints again with its own reference");
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubPaymentReferences] WHERE [OrganizationId] = '{org}'")).Should().Be(2);
+
+            // The duplicate's slip, paid after the merge, lands on the kept member's account.
+            var import = await Ok(await BankFileTests.ImportAsync(client, BankFileTests.Camt054(("TX-1", 299m, dropReference))), "import the transfer");
+            import.GetProperty("matched").GetInt32().Should().Be(1);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubPayments] WHERE [MemberId] = '{keep}' AND [Provider] = N'bank'")).Should().Be(1);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
     public async Task OneStatementPrintedTwiceAtOnce_KeepsOneReference()
     {
         await SqlServerApp.WaitForServerAsync();

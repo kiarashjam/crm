@@ -1,4 +1,5 @@
 using ACI.Domain.Entities;
+using ACI.Infrastructure.Services.Payments;
 using Microsoft.EntityFrameworkCore;
 
 namespace ACI.Infrastructure.Persistence;
@@ -20,8 +21,21 @@ internal static class MemberPayments
     {
         foreach (var row in await db.ClubOnlinePayments.Where(p => p.MemberId == dropId && p.OrganizationId == organizationId).ToListAsync(ct))
             (row.MemberId, row.MemberName) = (keepId, keptName);
+        var keptStatements = await db.ClubPaymentReferences
+            .Where(r => r.MemberId == keepId && r.OrganizationId == organizationId && r.Purpose == ClubQrBillService.StatementPurpose)
+            .Select(r => new { r.PeriodStartUtc, r.PeriodEndUtc })
+            .ToListAsync(ct);
         foreach (var row in await db.ClubPaymentReferences.Where(r => r.MemberId == dropId && r.OrganizationId == organizationId).ToListAsync(ct))
+        {
             row.MemberId = keepId;
+            // A statement has one reference per member and period (a unique index), and the
+            // month's run prints both records' statements: where the kept member has their own,
+            // the next print carries it. The duplicate's was printed too, so it still pays the
+            // kept member's account when a transfer quotes it; it only stops being the period's.
+            if (row.Purpose == ClubQrBillService.StatementPurpose
+                && keptStatements.Any(k => k.PeriodStartUtc == row.PeriodStartUtc && k.PeriodEndUtc == row.PeriodEndUtc))
+                row.Purpose = ClubQrBillService.MergedStatementPurpose;
+        }
         foreach (var row in await db.ClubBankTransactions.Where(t => t.MemberId == dropId && t.OrganizationId == organizationId).ToListAsync(ct))
             (row.MemberId, row.MemberName) = (keepId, keptName);
 
