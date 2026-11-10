@@ -336,7 +336,7 @@ public static class SchemaBaseline
     }
 }
 
-/// <summary>What <see cref="SchemaBaseline.CompareAsync"/> found.</summary>
+/// <summary>What <see cref="SchemaBaseline.CompareAsync(AppDbContext, IModel, CancellationToken)"/> found.</summary>
 /// <param name="TableCount">How many tables the database has, any of them.</param>
 /// <param name="Missing">Tables and columns the model maps that the database lacks.</param>
 /// <param name="Different">Keys, indexes, types and nullability that differ from the model.</param>
