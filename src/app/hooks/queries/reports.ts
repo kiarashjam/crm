@@ -2,9 +2,9 @@
 // own: a broken pipeline chart does not blank the team figures beside it.
 
 import { useQuery } from '@tanstack/react-query';
-import { getCopyHistoryStats } from '@/app/api/copyHistory';
-import { getDashboardStats, getPipelineValueByAssignee, getPipelineValueByStage } from '@/app/api/reporting';
-import { getTemplates } from '@/app/api/templates';
+import {
+  getCopyHistoryStats, getDashboardStats, getPipelineValueByAssignee, getPipelineValueByStage, getTemplates,
+} from '@/app/api';
 import { queryKeys } from './queryKeys';
 import { timed } from './queryClient';
 import { useWorkspaceScope } from './useWorkspaceScope';

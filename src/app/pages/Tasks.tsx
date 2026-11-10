@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import {
@@ -29,7 +29,6 @@ import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import EmptyState from '@/app/components/EmptyState';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import {
-  getTasks,
   createTask,
   updateTask,
   updateTaskStatus,
@@ -37,17 +36,16 @@ import {
   linkTaskToLead,
   linkTaskToDeal,
   deleteTask,
-  getTaskStats,
-  getLeads,
-  getDeals,
-  getContacts,
-  getOrgMembers,
   messages,
   createActivity,
 } from '@/app/api';
 import { bulkUpdateTasks } from '@/app/api/tasks';
-import type { TaskItem, Lead, Deal, Contact, TaskStatusType, TaskPriorityType, TaskRecurrence, TaskStats } from '@/app/api/types';
-import { getCurrentOrganizationId } from '@/app/lib/auth';
+import type { TaskItem, Lead, Deal, Contact, TaskStatusType, TaskPriorityType, TaskRecurrence } from '@/app/api/types';
+import type { OrgMemberDto } from '@/app/api/organizations';
+import {
+  tasksKey, useAllContacts, useAllDeals, useAllLeads, useCacheWriter, useOrgMembers, useTaskStats, useTasksList, useWorkspaceScope,
+} from '@/app/hooks/queries';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import { 
   statusConfig, 
   priorityConfig, 
@@ -99,14 +97,31 @@ import { useWorkScope } from '@/app/lib/workScope';
 import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
 import { PERMISSION } from '@/app/api/organizations';
 
+const NO_TASKS: TaskItem[] = [];
+const NO_LEADS: Lead[] = [];
+const NO_DEALS: Deal[] = [];
+const NO_CONTACTS: Contact[] = [];
+const NO_MEMBERS: OrgMemberDto[] = [];
+
 export default function Tasks() {
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [stats, setStats] = useState<TaskStats | null>(null);
   // My tasks by default: given to me, or made by me and given to nobody. The team's are
   // one switch away, and the choice is remembered. A personal workspace is all mine.
   const [scope, setScope] = useWorkScope('tasks');
-  const inWorkspace = !!getCurrentOrganizationId();
-  const [loading, setLoading] = useState(true);
+  const ws = useWorkspaceScope();
+  const inWorkspace = !!ws.orgId;
+  // The tasks and their figures, read through the shared cache and re-read after a
+  // save that changed tasks. A failed read is said, with a retry: the page used to
+  // show "No tasks yet", and a rep decided nothing was due.
+  const tasksQuery = useTasksList({ scope });
+  const statsQuery = useTaskStats(scope);
+  const tasks = tasksQuery.data ?? NO_TASKS;
+  const stats = statsQuery.data ?? null;
+  const writeCache = useCacheWriter();
+  /** Show a change on the board at once; the read after the save confirms it. */
+  const setTasks = useCallback((update: (prev: TaskItem[]) => TaskItem[]) => {
+    writeCache<TaskItem[]>(tasksKey(ws, { scope }), (current) => update(current ?? []));
+  }, [writeCache, ws, scope]);
+  const loading = tasksQuery.isPending;
   usePageLoading(loading);
   // How this person likes tasks shown: the board, grouped list or a table, saved for them.
   const view = useViewPreference('tasks', { layouts: ['board', 'list', 'table'] });
@@ -127,10 +142,12 @@ export default function Tasks() {
     notes: '',
     recurrence: '' as TaskRecurrence | '',
   });
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [orgMembers, setOrgMembers] = useState<{ userId: string; name: string; email: string }[]>([]);
+  // What the pickers offer. Each fails on its own and leaves its picker empty; none of
+  // them can blank the board, as one slow list used to.
+  const leads: Lead[] = useAllLeads().data ?? NO_LEADS;
+  const deals: Deal[] = useAllDeals().data ?? NO_DEALS;
+  const contacts: Contact[] = useAllContacts().data ?? NO_CONTACTS;
+  const orgMembers: OrgMemberDto[] = useOrgMembers().data ?? NO_MEMBERS;
   const [saving, setSaving] = useState(false);
   const [deleteConfirmTask, setDeleteConfirmTask] = useState<TaskItem | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -156,36 +173,6 @@ export default function Tasks() {
 
   // Collapsed sections (for list view)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<TaskGroup>>(new Set(['completed']));
-
-  // Load tasks and related data
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const orgId = getCurrentOrganizationId();
-      const [taskList, taskStats, leadList, dealList, contactList, memberList] = await Promise.all([
-        getTasks({ scope }),
-        getTaskStats(scope),
-        getLeads(),
-        getDeals(),
-        getContacts(),
-        orgId ? getOrgMembers(orgId) : Promise.resolve([]),
-      ]);
-      setTasks(taskList);
-      setStats(taskStats);
-      setLeads(leadList);
-      setDeals(dealList);
-      setContacts(contactList);
-      setOrgMembers(Array.isArray(memberList) ? memberList : []);
-    } catch {
-      toast.error(messages.errors.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }, [scope]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   // Date helpers — recompute whenever tasks change (ensures fresh grouping after data loads)
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `tasks` is the refresh trigger, not an input
@@ -412,7 +399,6 @@ export default function Tasks() {
           await logTaskActivity(updated, 'updated', changes.length > 0 ? `Changed: ${changes.join(', ')}` : undefined);
           toast.success(messages.success.taskUpdated);
           setDialogOpen(false);
-          getTaskStats(scope).then(setStats);
         } else {
           toast.error(messages.errors.generic);
         }
@@ -437,7 +423,6 @@ export default function Tasks() {
           await logTaskActivity(created, 'created', `New task "${created.title}" created with status ${statusConfig[created.status].label}`);
           toast.success(messages.success.taskCreated);
           setDialogOpen(false);
-          getTaskStats(scope).then(setStats);
         } else {
           toast.error(messages.errors.generic);
         }
@@ -465,7 +450,6 @@ export default function Tasks() {
         }
         toast.success(messages.success.taskDeleted);
         setDeleteConfirmTask(null);
-        getTaskStats(scope).then(setStats);
       } else {
         toast.error(messages.errors.generic);
       }
@@ -494,7 +478,6 @@ export default function Tasks() {
       // Log activity
       await logTaskActivity(updated, 'status changed', `Status changed from ${statusConfig[oldStatus].label} to ${statusConfig[newStatus].label}`);
       toast.success(`Task moved to ${statusConfig[newStatus].label}`);
-      getTaskStats(scope).then(setStats);
     } else {
       setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
       toast.error(messages.errors.generic);
@@ -636,7 +619,6 @@ export default function Tasks() {
         setQuickAddTitle('');
         setQuickAddColumn(null);
         toast.success('Task added');
-        getTaskStats(scope).then(setStats);
       }
     } catch {
       toast.error(messages.errors.generic);
@@ -768,7 +750,8 @@ export default function Tasks() {
       });
       if (result) {
         toast.success(`Bulk ${action}: ${result.succeeded}/${result.totalRequested} tasks updated`);
-        await loadData();
+        // Read the tasks again now: the save changed many, and none is shown changed yet.
+        await Promise.all([tasksQuery.refetch(), statsQuery.refetch()]);
         exitBulkMode();
       }
     } catch {
@@ -831,7 +814,6 @@ export default function Tasks() {
         setDetailTask(updated);
         // Log activity
         await logTaskActivity(updated, 'updated', 'Task details were modified');
-        getTaskStats(scope).then(setStats);
         return updated;
       }
       return null;
@@ -903,8 +885,25 @@ export default function Tasks() {
 
         {loading ? (
           <KanbanSkeleton columns={4} />
+        ) : tasksQuery.isError && !tasksQuery.data ? (
+          <LoadFailed
+            what="Your tasks"
+            error={tasksQuery.error}
+            onRetry={() => { void tasksQuery.refetch(); void statsQuery.refetch(); }}
+            retrying={tasksQuery.isFetching}
+          />
         ) : (
           <>
+            {tasksQuery.isError && (
+              <LoadFailed
+                stale
+                what="Your tasks"
+                error={tasksQuery.error}
+                onRetry={() => { void tasksQuery.refetch(); }}
+                retrying={tasksQuery.isFetching}
+                className="mb-4"
+              />
+            )}
             {/* Search and filters */}
             <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
               {/* Decorative elements */}

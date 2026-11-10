@@ -7,20 +7,15 @@
 
 import { keepPreviousData, useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { useCallback } from 'react';
+// Through the API's front door, as the pages import it, so what a page's test puts in
+// place of a read is what its queries call.
 import {
   getActivitiesByContact, getActivitiesByDeal, getActivitiesByLead, getActivitiesByLeadIds, getActivitiesPaged,
-  type GetActivitiesPagedOptions,
-} from '@/app/api/activities';
-import { getCompanies, getCompaniesPaged, getCompanySummary } from '@/app/api/companies';
-import { getContactStats, getContacts, getContactsPaged } from '@/app/api/contacts';
-import { getDealBoard, getDeals, getDealsPaged } from '@/app/api/deals';
-import type { DealBoardQuery } from '@/app/api/types';
-import { getLeadSources } from '@/app/api/leadSources';
-import { getLeadStatuses } from '@/app/api/leadStatuses';
-import { getLeadStats, getLeads, getLeadsPaged } from '@/app/api/leads';
-import { getOrgMembers } from '@/app/api/organizations';
-import { getPipelines } from '@/app/api/pipelines';
-import { getTaskStats, getTasks, type GetTasksOptions } from '@/app/api/tasks';
+  getCompanies, getCompaniesPaged, getCompanySummary, getContactStats, getContacts, getContactsPaged,
+  getDealBoard, getDeals, getDealsPaged, getLeadSources, getLeadStatuses, getLeadStats, getLeads, getLeadsPaged,
+  getOrgMembers, getPipelines, getTaskStats, getTasks,
+  type DealBoardQuery, type GetActivitiesPagedOptions, type GetTasksOptions,
+} from '@/app/api';
 import type { WorkScope } from '@/app/lib/workScope';
 import { queryKeys, type WorkspaceScope } from './queryKeys';
 import { timed } from './queryClient';

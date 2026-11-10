@@ -7,6 +7,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { TaskItem } from '@/app/api/types';
+import { withQueries } from '@/test/queryWrapper';
 
 const REFUSED = 'The person you picked cannot see this private deal, so they could not open the task.';
 
@@ -71,7 +72,9 @@ const TASK: TaskItem = {
   createdAtUtc: '2026-10-01T09:00:00Z',
 } as TaskItem;
 
-const show = () => render(<MemoryRouter><Tasks /></MemoryRouter>);
+const show = () => render(withQueries(<MemoryRouter><Tasks /></MemoryRouter>));
+/** The read was handed a signal, so leaving the page or switching scope cancels it. */
+const cancellable = expect.objectContaining({ signal: expect.any(AbortSignal) });
 // The open detail view hides the page behind it from the accessibility tree.
 const card = () => screen.getByRole('article', { name: 'Card Send the offer', hidden: true });
 const assigneePicker = () => {
@@ -144,19 +147,45 @@ describe('whose tasks', () => {
     const { unmount } = show();
     await screen.findByRole('article', { name: 'Card Send the offer' });
 
-    expect(api.getTasks).toHaveBeenCalledWith({ scope: 'mine' });
-    expect(api.getTaskStats).toHaveBeenCalledWith('mine');
+    expect(api.getTasks).toHaveBeenCalledWith({ scope: 'mine' }, cancellable);
+    expect(api.getTaskStats).toHaveBeenCalledWith('mine', cancellable);
     expect(screen.getByRole('button', { name: 'My tasks' })).toHaveAttribute('aria-pressed', 'true');
 
     await userEvent.click(screen.getByRole('button', { name: 'Team' }));
 
-    await waitFor(() => expect(api.getTasks).toHaveBeenLastCalledWith({ scope: 'team' }));
-    expect(api.getTaskStats).toHaveBeenLastCalledWith('team');
+    await waitFor(() => expect(api.getTasks).toHaveBeenLastCalledWith({ scope: 'team' }, cancellable));
+    await waitFor(() => expect(api.getTaskStats).toHaveBeenLastCalledWith('team', cancellable));
     unmount();
 
     api.getTasks.mockClear();
     show();
     await screen.findByRole('article', { name: 'Card Send the offer' });
-    expect(api.getTasks).toHaveBeenCalledWith({ scope: 'team' });
+    expect(api.getTasks).toHaveBeenCalledWith({ scope: 'team' }, cancellable);
+  });
+});
+
+describe('when a read fails', () => {
+  it('says the tasks could not be loaded, instead of "No tasks yet", and loads them on retry', async () => {
+    api.getTasks.mockRejectedValueOnce(new Error('The server is not answering.'));
+    show();
+
+    expect(await screen.findByText('Your tasks could not be loaded.')).toBeInTheDocument();
+    expect(screen.getByText('The server is not answering.')).toBeInTheDocument();
+    expect(screen.queryByText('No tasks yet')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(await screen.findByRole('article', { name: 'Card Send the offer' })).toBeInTheDocument();
+    expect(screen.queryByText('Your tasks could not be loaded.')).toBeNull();
+  });
+
+  it('still shows the tasks when a picker list fails', async () => {
+    // One slow list used to blank the whole page.
+    api.getContacts.mockRejectedValue(new Error('timeout'));
+    api.getLeads.mockRejectedValue(new Error('timeout'));
+    show();
+
+    expect(await screen.findByRole('article', { name: 'Card Send the offer' })).toBeInTheDocument();
+    expect(screen.queryByText(/could not be loaded/)).toBeNull();
   });
 });
