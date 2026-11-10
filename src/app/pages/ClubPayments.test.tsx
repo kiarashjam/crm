@@ -13,6 +13,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { PERMISSION, type Permission } from '@/app/api/organizations';
 import type { Member } from '@/app/api/members';
+import type { Household } from '@/app/api/households';
 import type { BankTransaction, Journal, OnlinePayment, PaymentStatus } from '@/app/api/payments';
 import { withQueries } from '@/test/queryWrapper';
 
@@ -49,6 +50,21 @@ vi.mock('@/app/api/members', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/members')>()),
   getMembers: async () => [JEAN, LEA],
 }));
+/** The households the allocate dialog reads; none unless a test says so. */
+const households = vi.hoisted(() => ({ list: [] as Household[] }));
+vi.mock('@/app/api/households', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/api/households')>()),
+  getHouseholds: async () => households.list,
+}));
+/** Jean heads the household and Léa's bills roll up to his account. */
+const DUPONTS: Household = {
+  id: 'h1', name: 'Dupont', createdAtUtc: '2026-01-01T00:00:00Z', primaryLinkId: 'l1', primaryMemberId: 'm1', primaryName: 'Jean Dupont',
+  people: [
+    { linkId: 'l1', memberId: 'm1', name: 'Jean Dupont', role: 'Primary', isPrimary: true, rollUpBilling: false },
+    { linkId: 'l2', memberId: 'm2', name: 'Léa Meier', role: 'Partner', isPrimary: false, rollUpBilling: true },
+  ],
+  members: 2,
+};
 
 const api = vi.hoisted(() => ({
   status: vi.fn(),
@@ -115,6 +131,7 @@ const JOURNAL: Journal = {
 beforeEach(() => {
   localStorage.clear();
   org.current = null;
+  households.list = [];
   toast.success.mockReset();
   toast.error.mockReset();
   prompt.mockReset();
@@ -199,6 +216,29 @@ describe('bank files', () => {
     // The sender's name is searched for first.
     expect(within(dialog).getByLabelText('Find a member')).toHaveValue('J. Dupont');
     await user.click(await within(dialog).findByRole('option', { name: /Jean Dupont/ }));
+    await user.click(within(dialog).getByRole('button', { name: /Record as Jean Dupont's payment/ }));
+
+    await waitFor(() => expect(api.allocate).toHaveBeenCalledWith('t1', 'm1', 'tv1'));
+  });
+
+  it("says when the member picked has their bills on the household primary's account, and offers the primary", async () => {
+    // Roll-up puts Léa's bills on Jean's account: recorded as hers, the transfer would pay none
+    // of them and sit on her own account as credit, while Jean is reminded for them.
+    as([PERMISSION.ManageMoney]);
+    households.list = [DUPONTS];
+    const user = userEvent.setup();
+    show('bank');
+
+    await user.click(await screen.findByRole('button', { name: /Allocate .* from J\. Dupont/ }));
+    const dialog = await screen.findByRole('dialog');
+    await user.clear(within(dialog).getByLabelText('Find a member'));
+    const lea = await within(dialog).findByRole('option', { name: /Léa Meier/ });
+    await waitFor(() => expect(lea).toHaveTextContent("Bills go on Jean Dupont's account"));
+    expect(within(dialog).getByRole('option', { name: /^Jean Dupont/ })).not.toHaveTextContent('Bills go on');
+    await user.click(lea);
+    expect(within(dialog).getByRole('note')).toHaveTextContent("Léa's bills go on Jean Dupont's account");
+    await user.click(within(dialog).getByRole('button', { name: /Record it as Jean Dupont's payment instead/ }));
+    expect(within(dialog).queryByRole('note')).toBeNull();
     await user.click(within(dialog).getByRole('button', { name: /Record as Jean Dupont's payment/ }));
 
     await waitFor(() => expect(api.allocate).toHaveBeenCalledWith('t1', 'm1', 'tv1'));

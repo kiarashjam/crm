@@ -20,7 +20,7 @@ import {
   type BankImport, type BankTransaction, type BankTransactionStatus, type PaymentStatus,
 } from '@/app/api/payments';
 import type { Member } from '@/app/api/members';
-import { useBankImports, useBankTransactions, useClubMembers } from '@/app/hooks/queries';
+import { useBankImports, useBankTransactions, useClubMembers, useHouseholds } from '@/app/hooks/queries';
 import { useRegional } from '@/app/hooks/useMoney';
 import { formatClubMoney } from '@/app/lib/clubMoney';
 import { BANK_STATUS_BADGE, BANK_STATUS_LABEL, importSummary } from './paymentLabels';
@@ -267,10 +267,32 @@ export function BankFilesPanel({ canTake, status }: { canTake: boolean; status?:
 function AllocateDialog({ transaction, onClose, onConflict }: { transaction: BankTransaction; onClose: () => void; onConflict: () => void }) {
   const { locale } = useRegional();
   const membersQuery = useClubMembers();
+  const householdsQuery = useHouseholds();
   const [search, setSearch] = useState(transaction.debtorName ?? '');
   const [picked, setPicked] = useState<Member | null>(null);
   const [saving, setSaving] = useState(false);
   const amount = formatClubMoney(transaction.amount, transaction.currency, locale);
+
+  // Whose account each member's bills go on. A household member whose bills roll up has their
+  // charges on the primary's account, so a transfer recorded as theirs (the sender's name is
+  // often theirs) would pay none of them: it would sit on their own account as credit while the
+  // primary is reminded, and in time lapsed, for bills already paid. Unread households only
+  // leave the rows unmarked; the dialog works without them.
+  const billedTo = useMemo(() => {
+    const to = new Map<string, { id: string; name: string }>();
+    for (const household of householdsQuery.data ?? []) {
+      const primaryId = household.primaryMemberId;
+      if (!primaryId) continue;
+      for (const person of household.people) {
+        if (person.memberId && person.rollUpBilling && !person.isPrimary && person.memberId !== primaryId) {
+          to.set(person.memberId, { id: primaryId, name: household.primaryName ?? 'the household primary' });
+        }
+      }
+    }
+    return to;
+  }, [householdsQuery.data]);
+  const pickedBillsTo = picked ? billedTo.get(picked.id) : undefined;
+  const pickedPrimary = pickedBillsTo ? (membersQuery.data ?? []).find((m) => m.id === pickedBillsTo.id) : undefined;
 
   const matches = useMemo(() => {
     const members = membersQuery.data ?? [];
@@ -331,11 +353,31 @@ function AllocateDialog({ transaction, onClose, onConflict }: { transaction: Ban
                 >
                   <span className="block font-medium text-slate-800">{m.firstName} {m.lastName}</span>
                   <span className="block text-xs text-slate-500">{m.email}</span>
+                  {billedTo.has(m.id) && (
+                    <span className="block text-xs text-teal-700">Bills go on {billedTo.get(m.id)!.name}&apos;s account</span>
+                  )}
                 </button>
               </li>
             ))}
             {matches.length === 0 && <li className="px-3 py-2 text-sm text-slate-500">No member matches.</li>}
           </ul>
+        )}
+        {picked && pickedBillsTo && (
+          <p role="note" className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {picked.firstName}&apos;s bills go on {pickedBillsTo.name}&apos;s account, so recorded as {picked.firstName}&apos;s payment
+              it settles none of them and stays on {picked.firstName}&apos;s own account as credit.
+              {pickedPrimary && (
+                <>
+                  {' '}
+                  <button type="button" className="font-medium underline" onClick={() => setPicked(pickedPrimary)}>
+                    Record it as {pickedPrimary.firstName} {pickedPrimary.lastName}&apos;s payment instead
+                  </button>
+                </>
+              )}
+            </span>
+          </p>
         )}
         <DialogFooter className="gap-2 sm:gap-2">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
