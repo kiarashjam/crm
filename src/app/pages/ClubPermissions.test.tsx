@@ -84,6 +84,7 @@ const Charges = (await import('./Charges')).default;
 const Donations = (await import('./Donations')).default;
 const Applications = (await import('./Applications')).default;
 const Members = (await import('./Members')).default;
+const MemberImport = (await import('./MemberImport')).default;
 
 const show = (page: React.ReactNode) => render(<MemoryRouter>{page}</MemoryRouter>);
 
@@ -155,5 +156,19 @@ describe('members', () => {
     as([PERMISSION.ClubMembers, PERMISSION.DeleteRecords]);
     show(<Members />);
     expect((await screen.findAllByRole('button', { name: 'Remove member' })).length).toBeGreaterThan(0);
+  });
+});
+
+describe('importing members', () => {
+  it('offers the import to whoever manages club members, and not to finance', async () => {
+    as([PERMISSION.ManageMoney, PERMISSION.VoidMoney, PERMISSION.ExportRecords]);
+    const { unmount } = show(<MemberImport />);
+    expect(await screen.findByRole('button', { name: /sample/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Import\b.*member/ })).toBeNull();
+    unmount();
+
+    as([PERMISSION.EditRecords, PERMISSION.ClubMembers]);
+    show(<MemberImport />);
+    expect(await screen.findByRole('button', { name: /^Import\b.*member/ })).toBeInTheDocument();
   });
 });
