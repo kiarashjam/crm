@@ -228,6 +228,29 @@ public class ClubReservationsTests
     }
 
     [Fact]
+    public async Task ABookingOfAMemberWhoWasDeleted_CanStillBeMarkedANoShow()
+    {
+        // The booking kept the deleted member's id, so the no-show fee went to an account nobody
+        // has, the ledger refused it, and with it the status change.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _) = await ClubAsync(factory);
+        var court = await ResourceAsync(client, "Tennis Court", "Court", 4, noShowFee: 25);
+        var jean = await MemberAsync(client, "Jean");
+        var booking = await Json(await BookAsync(client, court, Tomorrow(9), Tomorrow(10), party: 2, memberId: jean), "Jean books the court");
+        (await client.DeleteAsync($"/api/members/{jean}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var bookings = await Json(await client.GetAsync("/api/reservations"), "bookings");
+        bookings[0].TryGetProperty("memberId", out _).Should().BeFalse("the member it pointed at is gone");
+        bookings[0].GetProperty("memberName").GetString().Should().Be("Jean Dupont", "the booking stays under the name it was made in");
+
+        var noShow = await Json(await client.PutAsync($"/api/reservations/{booking.GetProperty("id").GetString()}",
+            Body(new { status = "NoShow" })), "he does not come");
+        noShow.GetProperty("status").GetString().Should().Be("NoShow");
+        noShow.TryGetProperty("noShowChargeId", out _).Should().BeFalse("there is no member account left to post the fee to");
+        (await Json(await client.GetAsync("/api/charges"), "charges")).GetArrayLength().Should().Be(0);
+    }
+
+    [Fact]
     public async Task ADepositPaidAtTheDeskTakesTheMoneyPermission_AndComesBackAsCreditOnACancellation()
     {
         using var factory = new CustomWebApplicationFactory();

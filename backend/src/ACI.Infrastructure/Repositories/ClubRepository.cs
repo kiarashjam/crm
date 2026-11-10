@@ -45,6 +45,16 @@ public sealed class ClubRepository : IClubRepository
     {
         var row = await MemberAsync(id, organizationId, ct);
         if (row == null) return false;
+        // Their places on event lists, the guests they bring and their bookings stay, under the
+        // names they were made in, but stop pointing at a member who is gone. Left pointing, a
+        // seat that came free for them (or a no-show fee) was posted to an account nobody has;
+        // the ledger refused it, and with it the whole change: someone else's cancellation, say.
+        foreach (var registration in await _db.ClubEventRegistrations.Where(r => r.MemberId == id && r.OrganizationId == organizationId).ToListAsync(ct))
+            registration.MemberId = null;
+        foreach (var registration in await _db.ClubEventRegistrations.Where(r => r.HostMemberId == id && r.OrganizationId == organizationId).ToListAsync(ct))
+            registration.HostMemberId = null;
+        foreach (var booking in await _db.ClubReservations.Where(r => r.MemberId == id && r.OrganizationId == organizationId).ToListAsync(ct))
+            booking.MemberId = null;
         _db.ClubMembers.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;

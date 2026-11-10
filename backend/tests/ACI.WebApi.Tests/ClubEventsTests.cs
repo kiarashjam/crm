@@ -559,6 +559,36 @@ public class ClubEventsTests
     }
 
     [Fact]
+    public async Task AMemberDeletedWhileOnTheWaitlist_DoesNotStopSomeoneElseCancelling()
+    {
+        // The registration kept the deleted member's id. A cancellation gave them the seat and
+        // posted their ticket to that id, the ledger refused an account nobody has, and with it
+        // the whole cancellation: nobody with a seat could cancel until the list was cleaned up.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var eventId = await EventAsync(client, capacity: 1, memberPrice: 35);
+        var jean = await MemberAsync(client, "Jean");
+        var marie = await MemberAsync(client, "Marie");
+        var seat = await Json(await RegisterAsync(client, eventId, jean), "Jean takes the seat");
+        await Json(await RegisterAsync(client, eventId, marie), "Marie waits");
+        var claire = await Json(await AddGuestAsync(client, eventId, "Claire", hostMemberId: marie), "Marie's guest waits too");
+        (await client.DeleteAsync($"/api/members/{marie}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await Json(await SetStatusAsync(client, eventId, seat, "Cancelled"), "Jean cancels");
+
+        var list = await Json(await client.GetAsync($"/api/events/{eventId}/attendees"), "list");
+        var promoted = list.EnumerateArray().Single(a => a.GetProperty("memberName").GetString() == "Marie Dupont");
+        promoted.GetProperty("status").GetString().Should().Be("Reserved", "she was first in line, and is still on the list by name");
+        promoted.TryGetProperty("memberId", out _).Should().BeFalse("the member it pointed at is gone");
+        promoted.GetProperty("chargeState").GetString().Should().Be("to-collect", "there is no member account left to put the ticket on");
+        var guest = list.EnumerateArray().Single(a => a.GetProperty("id").GetString() == claire.GetProperty("id").GetString());
+        guest.TryGetProperty("hostMemberId", out _).Should().BeFalse();
+        guest.GetProperty("hostName").GetString().Should().Be("Marie Dupont", "the name stays on the ticket");
+        (await Json(await client.GetAsync("/api/charges"), "charges")).EnumerateArray()
+            .Count(c => c.GetProperty("status").GetString() != "Voided").Should().Be(0, "Jean's ticket was taken back and nobody else was charged");
+    }
+
+    [Fact]
     public async Task AMembersRegistrationsAreListedForTheirPage()
     {
         using var factory = new CustomWebApplicationFactory();
