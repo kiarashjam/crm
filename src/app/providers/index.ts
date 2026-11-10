@@ -1,1 +1,1 @@
-export { QueryProvider } from './QueryProvider';
+export { QueryProvider, WorkspaceCacheGuard } from './QueryProvider';

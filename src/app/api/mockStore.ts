@@ -1,6 +1,6 @@
 import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
 import { servesDemoData } from './apiClient';
-import { announceDataChanged } from './dataChanged';
+import { announceDataChanged, resourcesChangedBy, type DataChange } from './dataChanged';
 
 /**
  * Tiny localStorage-backed store used by the mock API path (demo mode) so that
@@ -113,8 +113,29 @@ export function createMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<
   return store;
 }
 
+/** Demo stores named differently from the API route their records live under. */
+const STORE_ROUTES: Readonly<Record<string, string>> = {
+  sequenceEnrollments: 'sequences',
+  emails: 'email',
+  customFieldDefs: 'custom-fields',
+  customFieldValues: 'custom-fields',
+  dealLineItems: 'deals',
+  contactRelationships: 'relationships',
+  giftCards: 'gift-cards',
+  giftCardRedemptions: 'gift-cards',
+  householdMembers: 'household-members',
+};
+
+/** What a write to a demo store changes: what the same write to the server would. */
+function changeOfStore(storageKey: string): DataChange {
+  const name = /^crm\.mock\.([^.:]+)/.exec(storageKey)?.[1];
+  if (!name) return { resources: null };
+  return { resources: resourcesChangedBy('POST', `/api/${STORE_ROUTES[name] ?? name}`) };
+}
+
 function buildMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<T>): MockStore<T> {
   const seedIds = new Set(seed.map(idOf));
+  const change = changeOfStore(storageKey);
 
   const read = (key: string): T[] => {
     const stored = readArray<T>(key);
@@ -135,7 +156,7 @@ function buildMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<T>): Moc
       const list = read(key);
       list.unshift(row);
       writeArray(key, list);
-      announceDataChanged();
+      announceDataChanged(change);
       return row;
     },
     update: (id: string, patch: Partial<T>) => {
@@ -146,7 +167,7 @@ function buildMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<T>): Moc
       const next = { ...list[idx], ...patch } as T;
       list[idx] = next;
       writeArray(key, list);
-      announceDataChanged();
+      announceDataChanged(change);
       return next;
     },
     remove: (id: string) => {
@@ -155,13 +176,13 @@ function buildMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<T>): Moc
       const next = list.filter((r) => idOf(r) !== id);
       if (next.length === list.length) return false;
       writeArray(key, next);
-      announceDataChanged();
+      announceDataChanged(change);
       return true;
     },
     reset: () => {
       const key = scopedStorageKey(storageKey);
       writeArray(key, key === storageKey ? [...seed] : []);
-      announceDataChanged();
+      announceDataChanged(change);
     },
     relink: (field: string, fromId: string, toId: string) => {
       const key = scopedStorageKey(storageKey);
@@ -176,7 +197,7 @@ function buildMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<T>): Moc
       });
       if (changed) {
         writeArray(key, next);
-        announceDataChanged();
+        announceDataChanged(change);
       }
       return changed;
     },

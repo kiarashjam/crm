@@ -5,7 +5,7 @@
 // actually fires each step; in demo mode we persist sequences + enrollments
 // locally and track progress so the UI is fully exercisable offline.
 
-import { ApiError, authFetch, authFetchJson, servesDemoData } from './apiClient';
+import { ApiError, authFetch, authFetchJson, servesDemoData, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -128,9 +128,9 @@ async function sendOrThrow(path: string, init: RequestInit): Promise<true> {
   throw new ApiError(message, res.status);
 }
 
-export async function getSequences(): Promise<Sequence[]> {
+export async function getSequences(req?: RequestOptions): Promise<Sequence[]> {
   return liveOrDemo(
-    async () => { const res = await authFetchJson<Sequence[]>('/api/sequences'); return Array.isArray(res) ? res : []; },
+    async () => { const res = await authFetchJson<Sequence[]>('/api/sequences', req); return Array.isArray(res) ? res : []; },
     async () => { await delay(150); return [...sequenceStore.list()].sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc)); },
   );
 }
@@ -190,11 +190,11 @@ export async function deleteSequence(id: string): Promise<boolean> {
 
 // ---- Enrollments ----
 
-export async function getEnrollments(sequenceId?: string): Promise<SequenceEnrollment[]> {
+export async function getEnrollments(sequenceId?: string, req?: RequestOptions): Promise<SequenceEnrollment[]> {
   return liveOrDemo(
     async () => {
       const q = sequenceId ? `?sequenceId=${sequenceId}` : '';
-      const res = await authFetchJson<SequenceEnrollment[]>(`/api/sequences/enrollments${q}`);
+      const res = await authFetchJson<SequenceEnrollment[]>(`/api/sequences/enrollments${q}`, req);
       return Array.isArray(res) ? res : [];
     },
     async () => { await delay(120); return enrollmentStore.list().filter((e) => !sequenceId || e.sequenceId === sequenceId); },

@@ -6,7 +6,7 @@ import RequireAuth from '@/app/components/RequireAuth';
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
 import { PageLoader } from '@/app/components/PageLoader';
 import PageHelp from '@/app/components/PageHelp';
-import { QueryProvider } from '@/app/providers';
+import { QueryProvider, WorkspaceCacheGuard } from '@/app/providers';
 import { OrgProvider, useOrgOptional } from '@/app/contexts/OrgContext';
 import { ThemeProvider } from '@/app/contexts/ThemeContext';
 import { servesDemoData } from '@/app/api/apiClient';
@@ -113,6 +113,7 @@ export default function App() {
             <PageLoadingProvider>
               <RouteProgress />
             <OrgProvider>
+              <WorkspaceCacheGuard />
               <SkipLink />
               <Toaster position="top-center" richColors closeButton />
               <Routes>

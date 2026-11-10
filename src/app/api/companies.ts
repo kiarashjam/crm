@@ -1,5 +1,5 @@
 import type { Company, CurrencyTotal, PagedResult, PaginationParams } from './types';
-import { servesDemoData, authFetchJson, authFetch, ensureOk } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, ensureOk, type RequestOptions } from './apiClient';
 import { mockCompanies } from './mockData';
 import { exportCounts, type ExportResult } from './contacts';
 import { downloadCsv, downloadFile } from '@/app/lib/exportCsv';
@@ -132,7 +132,8 @@ function demoCompanyList(filters: CompanyListFilters): CompanyListItem[] {
 
 /** Get companies with pagination, filters and order, each with its counts (real API or mock). */
 export async function getCompaniesPaged(
-  params: PaginationParams & CompanyListFilters = {}
+  params: PaginationParams & CompanyListFilters = {},
+  req?: RequestOptions,
 ): Promise<PagedResult<CompanyListItem>> {
   const { page = 1, pageSize = 20, ...filters } = params;
 
@@ -140,7 +141,7 @@ export async function getCompaniesPaged(
     const queryParams = companyListQuery(filters);
     queryParams.set('page', String(page));
     queryParams.set('pageSize', String(pageSize));
-    const result = await authFetchJson<ApiPagedResult<CompanyListItemRaw>>(`/api/companies?${queryParams}`);
+    const result = await authFetchJson<ApiPagedResult<CompanyListItemRaw>>(`/api/companies?${queryParams}`, req);
     return {
       items: Array.isArray(result?.items) ? result.items.map(mapListItem) : [],
       totalCount: result?.totalCount ?? 0,
@@ -172,9 +173,9 @@ export async function getCompaniesPaged(
 }
 
 /** The figures above the companies list, counted over the whole workspace. */
-export async function getCompanySummary(): Promise<CompanySummary> {
+export async function getCompanySummary(req?: RequestOptions): Promise<CompanySummary> {
   if (!servesDemoData()) {
-    const summary = await authFetchJson<CompanySummary>('/api/companies/summary');
+    const summary = await authFetchJson<CompanySummary>('/api/companies/summary', req);
     return {
       total: summary?.total ?? 0,
       withContacts: summary?.withContacts ?? 0,
@@ -230,9 +231,9 @@ export async function exportCompanies(filters: CompanyListFilters): Promise<Expo
 }
 
 /** Get all companies (real API or mock) - non-paginated for backward compatibility. */
-export async function getCompanies(): Promise<Company[]> {
+export async function getCompanies(req?: RequestOptions): Promise<Company[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<CompanyRaw[]>('/api/companies/all');
+    const list = await authFetchJson<CompanyRaw[]>('/api/companies/all', req);
     return Array.isArray(list) ? list.map(mapCompany) : [];
   }
   await delay(200);

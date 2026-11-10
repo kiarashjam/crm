@@ -1,7 +1,7 @@
 import type { Lead, PagedResult, PaginationParams } from './types';
 import type { ContactRelationship } from './relationships';
 import { mockLeads } from './mockData';
-import { servesDemoData, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
 import { createMockStore, demoPatch, mockId } from './mockStore';
 import { ensureDemoPersonContacts, getContacts } from './contacts';
 import { QUALIFIED_OR_BEYOND, statusIn } from '@/app/pages/leads/leadStatusSync';
@@ -181,7 +181,7 @@ function applyMockLeadFilters(leads: Lead[], params: LeadListParams): Lead[] {
 }
 
 /** Get leads with pagination, search, filters, and sorting. */
-export async function getLeadsPaged(params: LeadListParams = {}): Promise<PagedResult<Lead>> {
+export async function getLeadsPaged(params: LeadListParams = {}, req?: RequestOptions): Promise<PagedResult<Lead>> {
   const {
     page = 1,
     pageSize = 20,
@@ -205,7 +205,7 @@ export async function getLeadsPaged(params: LeadListParams = {}): Promise<PagedR
     if (source && source !== 'all') queryParams.set('source', source);
     if (converted && converted !== 'all') queryParams.set('converted', converted);
 
-    const result = await authFetchJson<ApiPagedResult<LeadRaw>>(`/api/leads?${queryParams}`);
+    const result = await authFetchJson<ApiPagedResult<LeadRaw>>(`/api/leads?${queryParams}`, req);
     return {
       items: Array.isArray(result?.items) ? result.items.map(mapLead) : [],
       totalCount: result?.totalCount ?? 0,
@@ -237,7 +237,7 @@ export async function getLeadsPaged(params: LeadListParams = {}): Promise<PagedR
 }
 
 /** Aggregate lead statistics for the current organization. */
-export async function getLeadStats(): Promise<LeadStats> {
+export async function getLeadStats(req?: RequestOptions): Promise<LeadStats> {
   if (!servesDemoData()) {
     const s = await authFetchJson<{
       total: number;
@@ -249,7 +249,7 @@ export async function getLeadStats(): Promise<LeadStats> {
       conversionRate: number;
       thisWeek: number;
       hotLeads: number;
-    }>('/api/leads/stats');
+    }>('/api/leads/stats', req);
     return {
       total: s?.total ?? 0,
       converted: s?.converted ?? 0,
@@ -301,9 +301,9 @@ export async function getLeadById(id: string): Promise<Lead | null> {
 }
 
 /** Get all leads (real API or mock) - non-paginated for export and legacy callers. */
-export async function getLeads(): Promise<Lead[]> {
+export async function getLeads(req?: RequestOptions): Promise<Lead[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<LeadRaw[]>('/api/leads/all');
+    const list = await authFetchJson<LeadRaw[]>('/api/leads/all', req);
     return Array.isArray(list) ? list.map(mapLead) : [];
   }
   await delay(300);

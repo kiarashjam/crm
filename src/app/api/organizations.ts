@@ -1,4 +1,4 @@
-import { authFetchJson, authFetch, servesDemoData } from './apiClient';
+import { authFetchJson, authFetch, servesDemoData, type RequestOptions } from './apiClient';
 import { getCurrentUser } from '@/app/lib/auth';
 
 export interface Organization {
@@ -334,14 +334,14 @@ export async function rejectJoinRequest(joinRequestId: string): Promise<JoinRequ
   return jr ?? null;
 }
 
-export async function getOrgMembers(organizationId: string): Promise<OrgMemberDto[]> {
+export async function getOrgMembers(organizationId: string, req?: RequestOptions): Promise<OrgMemberDto[]> {
   if (servesDemoData()) {
     // Demo mode: the only "member" is the demo user themselves.
     const u = getCurrentUser();
     if (!u) return [];
     return [{ userId: u.id, name: u.name, email: u.email, role: 0, preset: 'owner', permissions: [...EVERY_PERMISSION] }];
   }
-  const list = await authFetchJson<OrgMemberDto[]>(`/api/organizations/${organizationId}/members`);
+  const list = await authFetchJson<OrgMemberDto[]>(`/api/organizations/${organizationId}/members`, req);
   return Array.isArray(list) ? list : [];
 }
 

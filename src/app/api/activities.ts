@@ -2,7 +2,7 @@ import type { Activity, PagedResult } from './types';
 import { factsProblem, type ActivityDirection, type ActivityFactsPayload } from '@/app/lib/activityFacts';
 import { toLocalInputValue } from '@/app/lib/dateInputs';
 import { mockActivities } from './mockData';
-import { servesDemoData, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 const activityStore = createMockStore<Activity>({
@@ -73,7 +73,7 @@ export interface GetActivitiesPagedOptions {
 }
 
 /** Get paginated activities with optional search. */
-export async function getActivitiesPaged(options?: GetActivitiesPagedOptions): Promise<PagedResult<Activity>> {
+export async function getActivitiesPaged(options?: GetActivitiesPagedOptions, req?: RequestOptions): Promise<PagedResult<Activity>> {
   if (!servesDemoData()) {
     const params = new URLSearchParams();
     if (options?.page) params.set('page', options.page.toString());
@@ -81,7 +81,7 @@ export async function getActivitiesPaged(options?: GetActivitiesPagedOptions): P
     if (options?.search) params.set('search', options.search);
     if (options?.type) params.set('type', options.type);
     const q = params.toString() ? `?${params.toString()}` : '';
-    const result = await authFetchJson<PagedResult<ActivityRaw>>(`/api/activities${q}`);
+    const result = await authFetchJson<PagedResult<ActivityRaw>>(`/api/activities${q}`, req);
     return {
       items: (result?.items ?? []).map(mapActivity),
       totalCount: result?.totalCount ?? 0,
@@ -134,9 +134,9 @@ export async function getActivities(): Promise<Activity[]> {
 }
 
 /** Get activities by contact. */
-export async function getActivitiesByContact(contactId: string): Promise<Activity[]> {
+export async function getActivitiesByContact(contactId: string, req?: RequestOptions): Promise<Activity[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/contact/${contactId}`);
+    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/contact/${contactId}`, req);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
@@ -144,9 +144,9 @@ export async function getActivitiesByContact(contactId: string): Promise<Activit
 }
 
 /** Get activities by deal. */
-export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
+export async function getActivitiesByDeal(dealId: string, req?: RequestOptions): Promise<Activity[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/deal/${dealId}`);
+    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/deal/${dealId}`, req);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
@@ -154,9 +154,9 @@ export async function getActivitiesByDeal(dealId: string): Promise<Activity[]> {
 }
 
 /** Get activities by lead. */
-export async function getActivitiesByLead(leadId: string): Promise<Activity[]> {
+export async function getActivitiesByLead(leadId: string, req?: RequestOptions): Promise<Activity[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/lead/${leadId}`);
+    const list = await authFetchJson<ActivityRaw[]>(`/api/activities/lead/${leadId}`, req);
     return Array.isArray(list) ? list.map(mapActivity) : [];
   }
   await delay(200);
@@ -164,7 +164,7 @@ export async function getActivitiesByLead(leadId: string): Promise<Activity[]> {
 }
 
 /** Activities for many leads in one request. Falls back to per-lead calls if the batch route is missing. */
-export async function getActivitiesByLeadIds(leadIds: string[]): Promise<Activity[]> {
+export async function getActivitiesByLeadIds(leadIds: string[], req?: RequestOptions): Promise<Activity[]> {
   const ids = [...new Set(leadIds.filter(Boolean))];
   if (!ids.length) return [];
   if (!servesDemoData()) {
@@ -175,11 +175,11 @@ export async function getActivitiesByLeadIds(leadIds: string[]): Promise<Activit
         const params = new URLSearchParams();
         params.set('ids', chunk.join(','));
         try {
-          const list = await authFetchJson<ActivityRaw[]>(`/api/activities/by-leads?${params.toString()}`);
+          const list = await authFetchJson<ActivityRaw[]>(`/api/activities/by-leads?${params.toString()}`, req);
           return Array.isArray(list) ? list.map(mapActivity) : [];
         } catch {
           const perLead = await Promise.all(
-            chunk.map((id) => getActivitiesByLead(id).catch((): Activity[] => [])),
+            chunk.map((id) => getActivitiesByLead(id, req).catch((): Activity[] => [])),
           );
           return perLead.flat();
         }

@@ -3,7 +3,7 @@ import type {
 } from './types';
 import type { MoneyRow, WeightedRow } from './reporting';
 import { mockDeals } from './mockData';
-import { servesDemoData, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
 import { createMockStore, demoPatch, mockId } from './mockStore';
 import { DEFAULT_CURRENCY, parseMoneyInput } from '@/app/lib/money';
 import { getCurrentUser } from '@/app/lib/auth';
@@ -105,7 +105,8 @@ interface ApiPagedResult<T> {
 
 /** Get deals with pagination and optional search (real API or mock). */
 export async function getDealsPaged(
-  params: PaginationParams & { companyId?: string; contactId?: string } = {}
+  params: PaginationParams & { companyId?: string; contactId?: string } = {},
+  req?: RequestOptions,
 ): Promise<PagedResult<Deal>> {
   const { page = 1, pageSize = 20, search, companyId, contactId } = params;
   
@@ -123,7 +124,7 @@ export async function getDealsPaged(
     if (contactId) {
       queryParams.set('contactId', contactId);
     }
-    const result = await authFetchJson<ApiPagedResult<DealRaw>>(`/api/deals?${queryParams}`);
+    const result = await authFetchJson<ApiPagedResult<DealRaw>>(`/api/deals?${queryParams}`, req);
     return {
       items: Array.isArray(result?.items) ? result.items.map(mapDeal) : [],
       totalCount: result?.totalCount ?? 0,
@@ -167,9 +168,9 @@ export async function getDealsPaged(
 }
 
 /** Get all deals (real API or mock) - non-paginated for backward compatibility. */
-export async function getDeals(): Promise<Deal[]> {
+export async function getDeals(req?: RequestOptions): Promise<Deal[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<DealRaw[]>('/api/deals/all');
+    const list = await authFetchJson<DealRaw[]>('/api/deals/all', req);
     return Array.isArray(list) ? list.map(mapDeal) : [];
   }
   await delay(300);
@@ -316,9 +317,9 @@ function demoCurrency(): string {
  * The filters narrow the columns; the summary is the whole pipeline. In demo mode it is
  * worked out here from this browser's deals, by the same rules.
  */
-export async function getDealBoard(query: DealBoardQuery = {}): Promise<DealBoard> {
+export async function getDealBoard(query: DealBoardQuery = {}, req?: RequestOptions): Promise<DealBoard> {
   if (!servesDemoData()) {
-    const raw = await authFetchJson<BoardRaw>(`/api/deals/board?${boardParams(query)}`);
+    const raw = await authFetchJson<BoardRaw>(`/api/deals/board?${boardParams(query)}`, req);
     return {
       ...raw,
       pipelineId: raw.pipelineId ?? undefined,

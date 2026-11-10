@@ -4,7 +4,7 @@
 // what is finished; the assistant's rules decide each record's next step from it.
 
 import type { Deal, Lead, TaskItem } from './types';
-import { authFetchJson, servesDemoData } from './apiClient';
+import { authFetchJson, servesDemoData, type RequestOptions } from './apiClient';
 import { getDeals, mapDeal, type DealRaw } from './deals';
 import { getLeads, mapLead, type LeadRaw } from './leads';
 import { getTasks, isMineInDemo, mapTask, type TaskRaw } from './tasks';
@@ -30,9 +30,9 @@ interface WorkQueueRaw {
 const open = (task: TaskItem) => !task.completed && task.status !== 'completed' && task.status !== 'cancelled';
 const owesStep = (deal: Deal) => deal.isWon == null || (deal.isWon === false && !deal.closedReason?.trim());
 
-export async function getWorkQueue(scope: WorkScope): Promise<WorkQueue> {
+export async function getWorkQueue(scope: WorkScope, req?: RequestOptions): Promise<WorkQueue> {
   if (!servesDemoData()) {
-    const raw = await authFetchJson<WorkQueueRaw>(`/api/work-queue?scope=${scope}`);
+    const raw = await authFetchJson<WorkQueueRaw>(`/api/work-queue?scope=${scope}`, req);
     return {
       scope: raw?.scope === 'team' ? 'team' : 'mine',
       tasks: (raw?.tasks ?? []).map(mapTask),

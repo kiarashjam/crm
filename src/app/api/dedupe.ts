@@ -13,7 +13,7 @@
 // with the same rules: the kept record's values stay, its empty fields are filled
 // from the others, and whatever pointed at a duplicate points at it instead.
 
-import { authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient';
+import { authFetch, authFetchJson, ensureOk, servesDemoData, type RequestOptions } from './apiClient';
 import { relinkMockRecords } from './mockStore';
 import { getContacts, updateContact, deleteContact, mapContact, type ApiContact } from './contacts';
 import { getCompanies, updateCompany, deleteCompany, mapCompany, type CompanyRaw } from './companies';
@@ -300,8 +300,8 @@ export function pairsOf(ids: string[]): string[] {
 }
 
 /** The pairs of this kind the workspace said are not the same. */
-export async function getNotSamePairs(kind: MergeKind): Promise<string[]> {
-  const pairs = await authFetchJson<{ recordIdA: string; recordIdB: string }[]>(`/api/duplicates/${kind}/not-same`);
+export async function getNotSamePairs(kind: MergeKind, req?: RequestOptions): Promise<string[]> {
+  const pairs = await authFetchJson<{ recordIdA: string; recordIdB: string }[]>(`/api/duplicates/${kind}/not-same`, req);
   return Array.isArray(pairs) ? pairs.map((p) => pairKey(p.recordIdA, p.recordIdB)) : [];
 }
 

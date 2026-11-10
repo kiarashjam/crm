@@ -46,9 +46,11 @@ describe('the work queue on the live API', () => {
       truncated: true,
     });
 
-    const queue = await getWorkQueue('mine');
+    // The caller's signal goes with the request, so leaving the page cancels it.
+    const { signal } = new AbortController();
+    const queue = await getWorkQueue('mine', { signal });
 
-    expect(client.json).toHaveBeenCalledWith('/api/work-queue?scope=mine');
+    expect(client.json).toHaveBeenCalledWith('/api/work-queue?scope=mine', { signal });
     expect(queue.scope).toBe('mine');
     expect(queue.tasks[0]).toMatchObject({ id: 't1', title: 'Call the Müllers', priority: 'high' });
     expect(queue.leads[0]).toMatchObject({ id: 'l1', name: 'Ada' });

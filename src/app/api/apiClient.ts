@@ -5,7 +5,7 @@
  */
 
 import { clearSession, getAuthToken, getCurrentOrganizationId, isDemoMode } from '@/app/lib/auth';
-import { announceDataChanged, changesRecords } from './dataChanged';
+import { announceDataChanged, changesRecords, resourcesChangedBy } from './dataChanged';
 import { isNotOnServer } from './notOnServer';
 
 export function getApiBaseUrl(): string | undefined {
@@ -34,6 +34,14 @@ export function servesDemoData(): boolean {
 }
 
 export type AuthFetchOptions = RequestInit & { skipAuth?: boolean };
+
+/**
+ * What a read takes besides its own arguments. `signal` lets the caller give up on
+ * it: a list page passes the one its query hands it, so a search typed over, a page
+ * left or a workspace switched cancels the request instead of letting it finish
+ * and land somewhere it no longer belongs.
+ */
+export type RequestOptions = { signal?: AbortSignal };
 
 export async function authFetch(path: string, options: AuthFetchOptions = {}): Promise<Response> {
   const base = getApiBaseUrl();
@@ -66,8 +74,10 @@ export async function authFetch(path: string, options: AuthFetchOptions = {}): P
   // Every write the app makes passes through here, so this is where "your copy
   // may be stale" is said once for all of them. Anonymous calls (signing a
   // contract, the public capture form) are not the signed-in user's records.
+  // It says which kinds of record changed, so a list of tasks is not re-read
+  // because a lead was saved.
   if (res.ok && !skipAuth && changesRecords(init.method, path)) {
-    announceDataChanged();
+    announceDataChanged({ resources: resourcesChangedBy(init.method, path, init.body) });
   }
   return res;
 }

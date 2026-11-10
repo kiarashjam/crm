@@ -1,5 +1,5 @@
 import type { Pipeline } from './types';
-import { servesDemoData, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
 
 type PipelineRaw = {
   id: string; organizationId: string; name: string; displayOrder: number; staleDealDays?: number | null;
@@ -20,9 +20,9 @@ function mapPipeline(p: PipelineRaw): Pipeline {
 }
 
 /** Get all pipelines for the current org (requires X-Organization-Id). */
-export async function getPipelines(): Promise<Pipeline[]> {
+export async function getPipelines(req?: RequestOptions): Promise<Pipeline[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<PipelineRaw[]>('/api/pipelines');
+    const list = await authFetchJson<PipelineRaw[]>('/api/pipelines', req);
     return Array.isArray(list) ? list.map(mapPipeline) : [];
   }
   return [];

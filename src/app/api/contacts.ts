@@ -1,6 +1,6 @@
 import type { Contact, PagedResult, PaginationParams } from './types';
 import { mockContacts, mockLeads } from './mockData';
-import { servesDemoData, authFetchJson, authFetch, ensureOk } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, ensureOk, type RequestOptions } from './apiClient';
 import { downloadCsv, downloadFile } from '@/app/lib/exportCsv';
 import { createMockStore, demoPatch, mockId } from './mockStore';
 import { isEditConflictCode } from '@/app/lib/editConflict';
@@ -242,7 +242,8 @@ function demoContactList(filters: ContactListFilters): Contact[] {
 
 /** Get contacts with pagination, filters and order (real API or mock). */
 export async function getContactsPaged(
-  params: PaginationParams & ContactListFilters & { includeArchived?: boolean } = {}
+  params: PaginationParams & ContactListFilters & { includeArchived?: boolean } = {},
+  req?: RequestOptions,
 ): Promise<PagedResult<Contact>> {
   const { page = 1, pageSize = 20, includeArchived = false, ...filters } = params;
   const status = filters.status ?? (includeArchived ? 'all' : undefined);
@@ -251,7 +252,7 @@ export async function getContactsPaged(
     const queryParams = contactListQuery({ ...filters, status });
     queryParams.set('page', String(page));
     queryParams.set('pageSize', String(pageSize));
-    const result = await authFetchJson<ApiPagedResult<ApiContact>>(`/api/contacts?${queryParams}`);
+    const result = await authFetchJson<ApiPagedResult<ApiContact>>(`/api/contacts?${queryParams}`, req);
     return {
       items: Array.isArray(result?.items) ? result.items.map(mapContact) : [],
       totalCount: result?.totalCount ?? 0,
@@ -283,9 +284,9 @@ export async function getContactsPaged(
 }
 
 /** The figures above the contacts list, counted over the whole workspace. */
-export async function getContactStats(): Promise<ContactStats> {
+export async function getContactStats(req?: RequestOptions): Promise<ContactStats> {
   if (!servesDemoData()) {
-    const stats = await authFetchJson<ContactStats>('/api/contacts/stats');
+    const stats = await authFetchJson<ContactStats>('/api/contacts/stats', req);
     return {
       total: stats?.total ?? 0,
       withCompany: stats?.withCompany ?? 0,
@@ -351,9 +352,9 @@ export async function exportContacts(filters: ContactListFilters): Promise<Expor
 }
 
 /** Get all contacts (real API or mock) - non-paginated for backward compatibility. */
-export async function getContacts(includeArchived = false): Promise<Contact[]> {
+export async function getContacts(includeArchived = false, req?: RequestOptions): Promise<Contact[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<ApiContact[]>(`/api/contacts/all?includeArchived=${includeArchived}`);
+    const list = await authFetchJson<ApiContact[]>(`/api/contacts/all?includeArchived=${includeArchived}`, req);
     return Array.isArray(list) ? list.map(mapContact) : [];
   }
   await delay(300);

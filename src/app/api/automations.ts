@@ -4,7 +4,7 @@
 // engine that evaluates triggers and executes actions; demo mode persists the
 // rule definitions locally so the builder is fully usable offline.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -91,9 +91,9 @@ const ruleStore = createMockStore<AutomationRule>({
   idOf: (r) => r.id,
 });
 
-export async function getAutomations(): Promise<AutomationRule[]> {
+export async function getAutomations(req?: RequestOptions): Promise<AutomationRule[]> {
   return apiWithFallback(
-    async () => { const res = await authFetchJson<AutomationRule[]>('/api/automations'); return Array.isArray(res) ? res : []; },
+    async () => { const res = await authFetchJson<AutomationRule[]>('/api/automations', req); return Array.isArray(res) ? res : []; },
     async () => { await delay(140); return [...ruleStore.list()].sort((a, b) => Date.parse(b.createdAtUtc) - Date.parse(a.createdAtUtc)); },
   );
 }

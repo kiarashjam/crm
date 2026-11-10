@@ -1,6 +1,6 @@
 import type { TaskItem, TaskStats, TaskStatusType, TaskPriorityType, TaskRecurrence, PagedResult } from './types';
 import { mockTasks } from './mockData';
-import { servesDemoData, authFetchJson, authFetch } from './apiClient';
+import { servesDemoData, authFetchJson, authFetch, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { getCurrentUser } from '@/app/lib/auth';
 import type { WorkScope } from '@/app/lib/workScope';
@@ -156,7 +156,7 @@ export async function getTasksPaged(options?: GetTasksPagedOptions): Promise<Pag
 }
 
 /** Get all tasks with optional filters (HP-1: uses /api/tasks/all to avoid 20-item truncation). */
-export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
+export async function getTasks(options?: GetTasksOptions, req?: RequestOptions): Promise<TaskItem[]> {
   if (!servesDemoData()) {
     const params = new URLSearchParams();
     if (options?.scope) params.set('scope', options.scope);
@@ -169,7 +169,7 @@ export async function getTasks(options?: GetTasksOptions): Promise<TaskItem[]> {
     if (options?.contactId) params.set('contactId', options.contactId);
     const q = params.toString() ? `?${params.toString()}` : '';
     // HP-1: Call /api/tasks/all endpoint which returns ALL matching tasks (not paginated)
-    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/all${q}`);
+    const response = await authFetchJson<TaskRaw[] | PagedResult<TaskRaw>>(`/api/tasks/all${q}`, req);
     // Handle both array response and paginated response formats
     if (Array.isArray(response)) {
       return response.map(mapTask);
@@ -259,9 +259,9 @@ export async function getTasksByContact(contactId: string): Promise<TaskItem[]> 
 }
 
 /** Get task statistics: the caller's own tasks for "mine", else the team's. */
-export async function getTaskStats(scope?: WorkScope): Promise<TaskStats> {
+export async function getTaskStats(scope?: WorkScope, req?: RequestOptions): Promise<TaskStats> {
   if (!servesDemoData()) {
-    const stats = await authFetchJson<TaskStats>(scope ? `/api/tasks/stats?scope=${scope}` : '/api/tasks/stats');
+    const stats = await authFetchJson<TaskStats>(scope ? `/api/tasks/stats?scope=${scope}` : '/api/tasks/stats', req);
     return stats ?? {
       total: 0,
       todo: 0,

@@ -7,7 +7,7 @@
 // other page reads.
 
 import type { CurrencyTotal, DashboardStats } from './types';
-import { servesDemoData, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson, type RequestOptions } from './apiClient';
 import { getDeals } from './deals';
 import { getLeads } from './leads';
 import { amountOf, currencyOf, DEFAULT_CURRENCY } from '@/app/lib/money';
@@ -62,9 +62,9 @@ function totalsByCurrency(
 }
 
 /** Get dashboard stats (active leads, active deals, pipeline value, won/lost). */
-export async function getDashboardStats(): Promise<DashboardStats> {
+export async function getDashboardStats(req?: RequestOptions): Promise<DashboardStats> {
   if (!servesDemoData()) {
-    const res = await authFetchJson<DashboardStats>('/api/reporting/dashboard');
+    const res = await authFetchJson<DashboardStats>('/api/reporting/dashboard', req);
     if (!res) return EMPTY_STATS;
     // The server is the authority, but a field an older deployment does not send
     // must not reach a headline figure as `undefined`.
@@ -102,9 +102,9 @@ export interface PipelineStageValue {
 }
 
 /** Get pipeline value grouped by stage and currency (open deals only). */
-export async function getPipelineValueByStage(): Promise<PipelineStageValue[]> {
+export async function getPipelineValueByStage(req?: RequestOptions): Promise<PipelineStageValue[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<PipelineStageValue[]>('/api/reporting/pipeline-by-stage');
+    const list = await authFetchJson<PipelineStageValue[]>('/api/reporting/pipeline-by-stage', req);
     return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || DEFAULT_CURRENCY })) : [];
   }
   await delay(150);
@@ -139,9 +139,9 @@ export interface PipelineValueByAssignee {
 }
 
 /** Get pipeline value grouped by assignee and currency (open deals only). */
-export async function getPipelineValueByAssignee(): Promise<PipelineValueByAssignee[]> {
+export async function getPipelineValueByAssignee(req?: RequestOptions): Promise<PipelineValueByAssignee[]> {
   if (!servesDemoData()) {
-    const list = await authFetchJson<PipelineValueByAssignee[]>('/api/reporting/pipeline-by-assignee');
+    const list = await authFetchJson<PipelineValueByAssignee[]>('/api/reporting/pipeline-by-assignee', req);
     return Array.isArray(list) ? list.map((r) => ({ ...r, currency: r.currency || DEFAULT_CURRENCY })) : [];
   }
   await delay(150);

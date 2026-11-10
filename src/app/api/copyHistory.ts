@@ -1,6 +1,6 @@
 import type { CopyHistoryItem } from './types';
 import { mockCopyHistory } from './mockData';
-import { servesDemoData, authFetchJson } from './apiClient';
+import { servesDemoData, authFetchJson, type RequestOptions } from './apiClient';
 
 const STORAGE_KEY = 'crm_copy_history';
 
@@ -80,9 +80,9 @@ export async function addToCopyHistory(item: Omit<CopyHistoryItem, 'id' | 'creat
 }
 
 /** Get counts for dashboard (sent this week, total sent). */
-export async function getCopyHistoryStats(): Promise<{ sentThisWeek: number; totalSent: number }> {
+export async function getCopyHistoryStats(req?: RequestOptions): Promise<{ sentThisWeek: number; totalSent: number }> {
   if (!servesDemoData()) {
-    const res = await authFetchJson<{ sentThisWeek: number; totalSent: number }>('/api/copyhistory/stats');
+    const res = await authFetchJson<{ sentThisWeek: number; totalSent: number }>('/api/copyhistory/stats', req);
     return res ?? { sentThisWeek: 0, totalSent: 0 };
   }
   const items = getStored();
