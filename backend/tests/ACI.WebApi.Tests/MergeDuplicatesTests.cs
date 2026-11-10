@@ -257,9 +257,10 @@ public class MergeDuplicatesTests
         db.Add(Link(other.Id, drop.Id, HouseholdRoles.Primary, true));
         db.Add(Link(other.Id, child.Id, HouseholdRoles.Child, false));
         // What the duplicate ran up on someone's account, and the application that admitted them.
+        var spaId = Guid.NewGuid();
         db.Add(new ClubCharge
         {
-            Id = Guid.NewGuid(), OrganizationId = w.Org.Id, MemberId = keep.Id, MemberName = "Amelia Hartwell", Description = "Spa",
+            Id = spaId, OrganizationId = w.Org.Id, MemberId = keep.Id, MemberName = "Amelia Hartwell", Description = "Spa",
             Amount = 10, PostedAtUtc = DateTime.UtcNow, CreatedAtUtc = DateTime.UtcNow, IncurredByMemberId = drop.Id, IncurredByName = "A. Hartwell",
         });
         var application = new ClubApplication
@@ -269,6 +270,23 @@ public class MergeDuplicatesTests
             SubmittedAtUtc = DateTime.UtcNow, CreatedAtUtc = DateTime.UtcNow,
         };
         db.Add(application);
+        // The billing's records of what it sent the duplicate: a reminder of a charge, and the
+        // statements of two months, one the kept member also had.
+        var october = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
+        var september = october.AddMonths(-1);
+        ClubStatementDelivery Statement(Guid memberId, DateTime month) => new()
+        {
+            Id = Guid.NewGuid(), OrganizationId = w.Org.Id, MemberId = memberId, PeriodStartUtc = month, PeriodEndUtc = month.AddMonths(1),
+            Source = StatementSources.Monthly, CreatedAtUtc = DateTime.UtcNow,
+        };
+        var keptOctober = Statement(keep.Id, october);
+        var droppedOctober = Statement(drop.Id, october);
+        var droppedSeptember = Statement(drop.Id, september);
+        db.AddRange(keptOctober, droppedOctober, droppedSeptember);
+        db.Add(new ClubPaymentReminder
+        {
+            Id = Guid.NewGuid(), OrganizationId = w.Org.Id, ChargeId = spaId, MemberId = drop.Id, Step = 1, DaysAfterDue = 3, CreatedAtUtc = DateTime.UtcNow,
+        });
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
@@ -293,6 +311,12 @@ public class MergeDuplicatesTests
         (headed.MemberId, headed.IsPrimary, headed.Role).Should().Be((child.Id, true, HouseholdRoles.Primary));
         (await db.ClubCharges.SingleAsync()).IncurredByMemberId.Should().Be(keep.Id, "what the duplicate ran up was the kept member's doing");
         (await db.ClubApplications.SingleAsync()).MemberId.Should().Be(keep.Id);
+        // Reminders follow their charges; a month's statement moves unless the kept member had
+        // one for it, so the next monthly run sends no second statement for a month done.
+        (await db.ClubPaymentReminders.SingleAsync()).MemberId.Should().Be(keep.Id);
+        (await db.ClubStatementDeliveries.SingleAsync(d => d.Id == droppedSeptember.Id)).MemberId.Should().Be(keep.Id);
+        (await db.ClubStatementDeliveries.SingleAsync(d => d.Id == droppedOctober.Id)).MemberId.Should().Be(drop.Id, "kept as the record of what was sent");
+        (await db.ClubStatementDeliveries.CountAsync(d => d.MemberId == keep.Id && d.PeriodStartUtc == october)).Should().Be(1);
     }
 
     [Fact]
