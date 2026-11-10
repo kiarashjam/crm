@@ -72,6 +72,8 @@ internal sealed class ClubPaymentConfiguration : IEntityTypeConfiguration<ClubPa
         builder.Property(e => e.Notes).HasMaxLength(1000);
         builder.Property(e => e.Reason).HasMaxLength(500);
         builder.Property(e => e.IdempotencyKey).HasMaxLength(100);
+        builder.Property(e => e.Provider).HasMaxLength(20);
+        builder.Property(e => e.ProviderPaymentId).HasMaxLength(200);
         builder.Property(e => e.CreatedByName).HasMaxLength(200);
         builder.HasIndex(e => new { e.OrganizationId, e.MemberId, e.ReceivedAtUtc });
         builder.HasOne<ClubPayment>().WithMany().HasForeignKey(e => e.ReversesPaymentId).OnDelete(DeleteBehavior.NoAction);
