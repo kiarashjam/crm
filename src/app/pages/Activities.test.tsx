@@ -19,9 +19,7 @@ vi.mock('@/app/components/AppHeader', () => ({ default: () => null }));
 
 const Activities = (await import('./Activities')).default;
 
-const CALL: Activity = {
-  id: 'a-1', type: 'call', subject: 'Called the Müllers about the gala', createdAtUtc: '2026-11-09T09:00:00Z',
-} as Activity;
+const CALL: Activity = { id: 'a-1', type: 'call', subject: 'Called the Müllers about the gala', createdAt: '2026-11-09T09:00:00Z' };
 const page = (items: Activity[]) => ({ items, totalCount: items.length, page: 1, pageSize: 20, totalPages: 1, hasNextPage: false, hasPreviousPage: false });
 
 beforeEach(() => {
