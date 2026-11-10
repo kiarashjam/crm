@@ -99,6 +99,9 @@ export default function Households() {
   usePageLoading(reads.loading);
   const may = useMay();
   const canMoney = may(PERMISSION.ManageMoney);
+  // Roll-up is switched through the household's people, which only someone who manages the
+  // club's members may change: the server refuses the switch to anyone else.
+  const canSwitchRollUp = canMoney && may(PERMISSION.ClubMembers);
 
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -313,24 +316,30 @@ export default function Households() {
                     ))}
                   </SelectContent>
                 </Select>
-                <button
-                  type="button"
-                  onClick={() => void makePrimary(h, p)}
-                  disabled={!!busy}
-                  className="rounded px-1.5 py-1 text-[11px] font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-50"
-                  aria-label={`Make ${p.name} the primary`}
-                >
-                  Make primary
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removePerson(h, p)}
-                  disabled={!!busy}
-                  className="rounded p-1 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
-                  aria-label={`Take ${p.name} out of the household`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {/* While anyone's bills roll up the primary pays them, so changing who it is
+                    is money, as is taking out someone whose bills roll up (theirs stop rolling up). */}
+                {(canMoney || !h.people.some((x) => x.rollUpBilling)) && (
+                  <button
+                    type="button"
+                    onClick={() => void makePrimary(h, p)}
+                    disabled={!!busy}
+                    className="rounded px-1.5 py-1 text-[11px] font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-50"
+                    aria-label={`Make ${p.name} the primary`}
+                  >
+                    Make primary
+                  </button>
+                )}
+                {(canMoney || !p.rollUpBilling) && (
+                  <button
+                    type="button"
+                    onClick={() => removePerson(h, p)}
+                    disabled={!!busy}
+                    className="rounded p-1 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                    aria-label={`Take ${p.name} out of the household`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </WriteOnly>
             )}
           </div>
@@ -343,7 +352,7 @@ export default function Households() {
                 ? `Bills go to ${h.primaryName ?? 'the primary'}`
                 : 'Billed on their own account'}
             </p>
-            {canMoney && h.primaryMemberId && (
+            {canSwitchRollUp && h.primaryMemberId && (
               <Switch
                 checked={p.rollUpBilling}
                 onCheckedChange={(on) => void setRollUp(h, p, on)}

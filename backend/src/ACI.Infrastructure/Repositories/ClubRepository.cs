@@ -234,6 +234,15 @@ public sealed class ClubRepository : IClubRepository
             next.Role = Domain.Entities.HouseholdRoles.Primary;
             next.RollUpBilling = false;
             next.UpdatedAtUtc = DateTime.UtcNow;
+            // A contact who is not a member heads it now: there is no account to bill, so the
+            // ledger bills each member on their own, and their roll-up must not say otherwise.
+            if (next.MemberId == null)
+                foreach (var other in await _db.ClubHouseholdMembers
+                             .Where(l => l.HouseholdId == householdId && l.OrganizationId == organizationId && l.Id != next.Id && l.RollUpBilling).ToListAsync(ct))
+                {
+                    other.RollUpBilling = false;
+                    other.UpdatedAtUtc = DateTime.UtcNow;
+                }
         }
         await _db.SaveChangesAsync(ct);
     }

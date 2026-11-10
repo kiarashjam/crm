@@ -129,6 +129,79 @@ public class ClubHouseholdsTests
     }
 
     [Fact]
+    public async Task WhoseAccountBillsGoOn_IsChangedOnlyBySomeoneWhoHandlesMoney_HoweverTheHouseholdIsEdited()
+    {
+        // Switching a member's roll-up needs money.manage. Taking them out of the household, or
+        // making them (or anyone else) the primary while bills roll up, changes the same thing:
+        // whose account their charges go on. Without the check, a reviewer who may not switch
+        // roll-up off did it by taking the spouse out, or by making her the primary.
+        using var factory = new CustomWebApplicationFactory();
+        var (owner, _, org) = await ClubAsync(factory);
+        var director = await JoinAsync(factory, owner, org, "director@pavillon46.ch", "membership_director");
+        var (household, peter, anna, kit, state) = await MeiersAsync(owner);
+        var annaLink = Person(state, anna).GetProperty("linkId").GetGuid();
+        var kitLink = Person(state, kit).GetProperty("linkId").GetGuid();
+
+        await Refused(await director.DeleteAsync($"/api/households/{household}/members/{annaLink}"), HttpStatusCode.Forbidden, "the director takes Anna out");
+        await Refused(await director.PostAsync($"/api/households/{household}/primary", Body(new { linkId = kitLink })), HttpStatusCode.Forbidden,
+            "the director makes Kit the primary, so Anna's bills would go to him");
+        (await factory.Services.Read(db => db.ClubHouseholdMembers.Single(l => l.MemberId == anna).RollUpBilling)).Should().BeTrue();
+        (await factory.Services.Read(db => db.ClubHouseholdMembers.Single(l => l.IsPrimary).MemberId)).Should().Be(peter);
+
+        // Kit's bills are his own: the director may take him out, and once nobody's bills roll
+        // up, the primary is the household's to change.
+        await Json(await director.DeleteAsync($"/api/households/{household}/members/{kitLink}"), "the director takes Kit out");
+        await Json(await owner.PutAsync($"/api/households/{household}/members/{annaLink}", Body(new { rollUpBilling = false })), "the owner switches Anna's roll-up off");
+        await Json(await director.PostAsync($"/api/households/{household}/primary", Body(new { linkId = annaLink })), "the director makes Anna the primary");
+    }
+
+    [Fact]
+    public async Task MakingSomeoneWhoIsNotAMemberThePrimary_StopsTheRollUp_RatherThanSayingBillsGoWhereTheyDoNot()
+    {
+        // Roll-up bills the primary only when the primary is a member: with a contact as primary
+        // the ledger bills each member on their own. Left switched on, the page went on saying
+        // Anna's bills went to someone who never saw them.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var (household, _, anna, _, _) = await MeiersAsync(client);
+        var carla = (await Json(await client.PostAsync("/api/contacts", Body(new { name = "Carla Meier", email = "carla@example.ch" })), "Carla"))
+            .GetProperty("id").GetGuid();
+        var withCarla = await Json(await client.PostAsync($"/api/households/{household}/members", Body(new { contactId = carla, role = "Sibling" })), "Carla joins");
+        var carlaLink = withCarla.GetProperty("people").EnumerateArray().Single(p => p.TryGetProperty("contactId", out var c) && c.GetGuid() == carla)
+            .GetProperty("linkId").GetGuid();
+
+        var moved = await Json(await client.PostAsync($"/api/households/{household}/primary", Body(new { linkId = carlaLink })), "Carla becomes the primary");
+        moved.GetProperty("people").EnumerateArray().Count(p => p.GetProperty("rollUpBilling").GetBoolean()).Should().Be(0,
+            "nobody's bills can go to a primary who is not a member");
+        var spa = await Json(await client.PostAsync("/api/charges", Body(new { memberId = anna, kind = "Spa", description = "Massage", amount = 90 })), "Anna's spa");
+        spa.GetProperty("memberId").GetGuid().Should().Be(anna);
+    }
+
+    [Fact]
+    public async Task AMemberMergeThatLeavesAContactHeadingTheHousehold_StopsTheRollUpToo()
+    {
+        // Peter heads the Meier household; Carla (a contact, not a member) joined it first, then
+        // Anna, whose bills roll up. Peter is merged into Zoe, who heads another household, so
+        // the Meier household passes to the first to have joined it: Carla, with no account.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var peter = await MemberAsync(client, "Peter");
+        var anna = await MemberAsync(client, "Anna");
+        var zoe = await MemberAsync(client, "Zoe", "Other");
+        var meier = (await Json(await client.PostAsync("/api/households", Body(new { name = "Meier", primaryMemberId = peter })), "Meier")).GetProperty("id").GetGuid();
+        await Json(await client.PostAsync("/api/households", Body(new { name = "Other", primaryMemberId = zoe })), "Other");
+        var carla = (await Json(await client.PostAsync("/api/contacts", Body(new { name = "Carla Meier", email = "carla@example.ch" })), "Carla")).GetProperty("id").GetGuid();
+        await Json(await client.PostAsync($"/api/households/{meier}/members", Body(new { contactId = carla, role = "Sibling" })), "Carla joins");
+        await Json(await client.PostAsync($"/api/households/{meier}/members", Body(new { memberId = anna, role = "Spouse", rollUpBilling = true })), "Anna joins");
+
+        (await client.PostAsync($"/api/members/{zoe}/merge", Body(new { otherMemberId = peter }))).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var after = await Json(await client.GetAsync($"/api/households/{meier}"), "the Meier household after");
+        after.GetProperty("primaryName").GetString().Should().Be("Carla Meier");
+        Person(after, anna).GetProperty("rollUpBilling").GetBoolean().Should().BeFalse("nobody's bills can go to a primary who is not a member");
+    }
+
+    [Fact]
     public async Task DuplicateHouseholdsMergeOnTheServer_EachPersonOnce()
     {
         using var factory = new CustomWebApplicationFactory();

@@ -277,6 +277,10 @@ public sealed class ClubHouseholdService : IClubHouseholds
         var link = await _db.ClubHouseholdMembers.FirstOrDefaultAsync(l => l.Id == linkId && l.HouseholdId == householdId && l.OrganizationId == organizationId, ct);
         if (link == null) return DomainErrors.Household.PersonNotFound;
         if (link.IsPrimary) return DomainErrors.Household.PrimaryCannotLeave;
+        // Taking out someone whose bills roll up switches their roll-up off, which is money: from
+        // then on their bills are theirs again. Otherwise switching it off, refused to someone who
+        // may not handle money, was one remove (and an add) away.
+        if (link.RollUpBilling && await MayNotHandleMoneyAsync(organizationId, ct) is { } noMoney) return noMoney;
         _db.ClubHouseholdMembers.Remove(link);
         household.Value.UpdatedAtUtc = DateTime.UtcNow;
         var saved = await SaveAsync(ct);
@@ -294,10 +298,21 @@ public sealed class ClubHouseholdService : IClubHouseholds
         if (next.IsPrimary) return (await BuildOneAsync(organizationId, householdId, ct))!;
         var previous = links.FirstOrDefault(l => l.IsPrimary);
         var now = DateTime.UtcNow;
+        // While anyone's bills roll up, the primary is who pays them: changing it changes whose
+        // account they go on (and the new primary's own stop rolling up), which is money.
+        if (links.Any(l => l.RollUpBilling) && await MayNotHandleMoneyAsync(organizationId, ct) is { } noMoney) return noMoney;
 
         // Roll-up bills the primary, so whose bills roll up changes with them: the new primary's
         // stop rolling up (they are theirs), and the old primary's start nothing on their own.
+        // A primary who is not a member has no account to bill, so nobody's bills roll up to
+        // them: the ledger would bill each member on their own, and the switch would say otherwise.
         var newRole = next.Role;
+        if (next.MemberId == null)
+            foreach (var other in links.Where(l => l.Id != next.Id && l.RollUpBilling))
+            {
+                other.RollUpBilling = false;
+                other.UpdatedAtUtc = now;
+            }
         next.UpdatedAtUtc = now;
         household.Value.UpdatedAtUtc = now;
         // Two saves in one transaction: the old primary steps down before the new one steps up,

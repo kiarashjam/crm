@@ -118,12 +118,25 @@ describe('households', () => {
 
     expect(await screen.findByText('Bills go to Peter Meier')).toBeInTheDocument();
     expect(screen.queryByRole('switch')).toBeNull();
-    // The role and the primary are theirs to change.
-    expect(screen.getByRole('button', { name: 'Make Anna Meier the primary' })).toBeInTheDocument();
+    // The roles are theirs to change. While Anna's bills roll up, the primary pays them: who
+    // that is, and taking Anna out (her bills would stop rolling up), is money.
+    expect(screen.getByRole('combobox', { name: "Anna Meier's role in the household" })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Make Anna Meier the primary' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Make Kit Meier the primary' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Take Anna Meier out of the household' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Take Kit Meier out of the household' })).toBeInTheDocument();
+  });
+
+  it('offers the roll-up switch only to someone who also manages the club\'s members, as the server does', async () => {
+    as([PERMISSION.ManageMoney]);
+    show();
+
+    expect(await screen.findByText('Bills go to Peter Meier')).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).toBeNull();
   });
 
   it('changes a role in place and makes someone else the primary', async () => {
-    as([PERMISSION.ClubMembers]);
+    as([PERMISSION.ClubMembers, PERMISSION.ManageMoney]);
     const user = userEvent.setup();
     show();
 
@@ -138,7 +151,7 @@ describe('households', () => {
   });
 
   it("says a change from a stale page was refused, and shows the household as it is now", async () => {
-    as([PERMISSION.ClubMembers]);
+    as([PERMISSION.ClubMembers, PERMISSION.ManageMoney]);
     const changed = 'Someone changed this household first. Reload it and make your change again.';
     answer = () => HttpResponse.json({ title: 'Conflict', status: 409, detail: changed }, { status: 409 });
     const user = userEvent.setup();
@@ -156,6 +169,6 @@ describe('households', () => {
 
     const card = (await screen.findByText('The Meier household')).closest('article')!;
     expect(within(card).queryByRole('button', { name: 'Take Peter Meier out of the household' })).toBeNull();
-    expect(within(card).getByRole('button', { name: 'Take Anna Meier out of the household' })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Take Kit Meier out of the household' })).toBeInTheDocument();
   });
 });
