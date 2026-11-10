@@ -196,18 +196,19 @@ function SettingsForm({ settings, reload }: { settings: PaymentSettings; reload:
     setSaving(which);
     try {
       await savePaymentSettings({ ...inputOf(draft), ...secrets, version: editing?.version ?? settings.version });
-      setEdit(null);
       setStripeKey('');
       setWebhookSecret('');
       toast.success(which === 'key' && secrets.stripeSecretKey === '' ? 'Stripe key removed' : 'Payment settings saved');
+      // The form shows what was typed until the saved settings are read back, then those.
       await reload();
+      setEdit(null);
     } catch (err) {
       // A value refused (an IBAN's digits, a key Stripe did not accept) says why. Changed by
       // someone else meanwhile: their version is read, and the change is to be made again.
       toast.error(message(err, 'Could not save the payment settings'));
       if (err instanceof ApiError && err.status === 409) {
-        setEdit(null);
         await reload();
+        setEdit(null);
       }
     } finally {
       setSaving(null);
