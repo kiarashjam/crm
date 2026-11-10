@@ -22,9 +22,11 @@ namespace ACI.WebApi;
 /// <para>
 /// Only once the database has what the baseline would have made: every table and column
 /// the model maps. One that lacks any is refused, not recorded, because once recorded
-/// nothing would ever add them. While the start-up DDL still runs first, it adds them;
-/// once that DDL is gone, a database that never started on a release with it has to do
-/// so first, and the refusal says so.
+/// nothing would ever add them. While the start-up DDL still runs first, it adds what it
+/// made; once that DDL is gone, a database that never started on a release with it has to
+/// do so first. What that DDL never made (a column only a migration from before the
+/// baseline added, on a database that migration never ran on) has to be added by hand.
+/// The refusal says both.
 /// </para>
 /// <para>
 /// Two things the old DDL did differently are put right first where they can be, being only
@@ -85,8 +87,11 @@ public static class SchemaBaseline
             throw new InvalidOperationException(
                 "This database was made before the baseline migration but lacks "
                 + string.Join(", ", before.Missing.Take(20)) + (before.Missing.Count > 20 ? $" and {before.Missing.Count - 20} more" : "")
-                + ". It is not recorded at the baseline, as nothing would add them afterwards. They come from the old "
-                + "start-up DDL: start the database once on a release that still runs it, then on this one.");
+                + ". It is not recorded at the baseline, as nothing would add them afterwards, and no migration after the "
+                + "baseline runs on it until it is. The old start-up DDL adds what it made, so on a release that no longer "
+                + "runs it, start the database once on one that does; anything still missing then has to be added as the "
+                + "baseline migration defines it (from backend/, dotnet ef migrations script 0 Baseline "
+                + "-p src/ACI.Infrastructure -s src/ACI.Infrastructure prints that SQL).");
         }
 
         // Names and a key, not anything the app needs to run: if one cannot be put right, the

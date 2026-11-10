@@ -175,9 +175,13 @@ public class SchemaMigrationTests
             (await SchemaBaseline.CompareAsync(db)).Missing
                 .Should().Contain(new[] { "table Notifications", "column Leads.Version" });
 
+            // While the start-up DDL runs, a refusal means it did not make what is missing, so
+            // starting again on a release that runs it would only refuse again: the message
+            // says how to add them.
             var record = () => SchemaBaseline.RecordOnExistingDatabaseAsync(db, NullLogger.Instance);
             (await record.Should().ThrowAsync<InvalidOperationException>())
-                .WithMessage("This database was made before the baseline migration but lacks *");
+                .WithMessage("This database was made before the baseline migration but lacks *"
+                    + "added as the baseline migration defines it*dotnet ef migrations script 0 Baseline*");
 
             (await SqlServerSchema.HistoryAsync(old)).Should().Equal(SqlServerSchema.LegacyMigrationIds);
         }
