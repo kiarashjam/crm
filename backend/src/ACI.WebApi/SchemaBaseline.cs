@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 
 namespace ACI.WebApi;
 
@@ -33,8 +34,9 @@ namespace ACI.WebApi;
 /// names or a check: the primary keys it declared inline, which SQL Server named at random
 /// (PK__Attachme__3214EC07…), are given the names the baseline gives them, so a later
 /// migration that drops or rebuilds one finds it; and sequence steps get the foreign key
-/// to their sequence that the DDL left out, unless a step has lost its sequence. Anything
-/// else that differs from the model is logged and left as it is.
+/// to their sequence that the DDL left out, unless a step has lost its sequence. A plain
+/// index the baseline has and the database lacks is made too (see MissingPlainIndexesSql).
+/// Anything else that differs from the model is logged and left as it is.
 /// </para>
 /// </remarks>
 public static class SchemaBaseline
@@ -109,6 +111,9 @@ public static class SchemaBaseline
         }
         await PutRightAsync(NamePrimaryKeysSql(db.Model, before.PrimaryKeys), "give the primary keys the baseline's names");
         await PutRightAsync(OutreachStepsForeignKeySql, "add the sequence steps' foreign key");
+        var indexes = (await db.Database.SqlQueryRaw<string>(IndexNamesSql).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, sql) in MissingPlainIndexesSql(db, indexes, logger))
+            await PutRightAsync(sql, $"add the index {name}");
 
         await db.Database.ExecuteSqlRawAsync(history.GetCreateIfNotExistsScript(), ct);
         await db.Database.ExecuteSqlRawAsync(string.Join("\n",
@@ -208,6 +213,48 @@ public static class SchemaBaseline
     private static string Quoted(string name) => "[dbo].[" + name.Replace("]", "]]") + "]";
 
     private static string Literal(string text) => text.Replace("'", "''");
+
+    /// <summary>
+    /// The baseline's plain (not unique) indexes that the database lacks, each as the baseline
+    /// creates it.
+    /// </summary>
+    /// <remarks>
+    /// One can be missing where a migration from before the baseline never ran and the old
+    /// DDL never made it either: the old start-up fallback only got past a table that already
+    /// existed, so a pending migration that added a column the DDL had added first stopped the
+    /// chain there on every start. Once the baseline is recorded, nothing would ever make such
+    /// an index. A plain index changes no behaviour, only speed, so it is made here; a unique
+    /// index or a foreign key the data might not meet changes what a save or a delete does,
+    /// and is left to the warnings.
+    /// </remarks>
+    private static List<(string Name, string Sql)> MissingPlainIndexesSql(AppDbContext db, IReadOnlySet<string> existing, ILogger logger)
+    {
+        var model = db.GetService<IDesignTimeModel>().Model;
+        var generator = db.GetService<IMigrationsSqlGenerator>();
+        var missing = new List<(string, string)>();
+        foreach (var index in model.GetRelationalModel().Tables.SelectMany(t => t.Indexes))
+        {
+            if (index.IsUnique || existing.Contains(index.Table.Name + "." + index.Name)) continue;
+            try
+            {
+                var sql = string.Join("\n", generator.Generate(new[] { CreateIndexOperation.CreateFrom(index) }, model)
+                    .Select(command => command.CommandText));
+                // ExecuteSqlRaw formats the text even without parameters.
+                missing.Add((index.Name, sql.Replace("{", "{{").Replace("}", "}}")));
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Could not write the SQL for the index {Index} before recording the baseline", index.Name);
+            }
+        }
+        return missing;
+    }
+
+    // Every named index in dbo as Table.Index, the primary keys' included.
+    private const string IndexNamesSql = @"
+        SELECT t.[name] COLLATE DATABASE_DEFAULT + N'.' + i.[name] COLLATE DATABASE_DEFAULT AS [Value]
+        FROM sys.indexes i JOIN sys.tables t ON t.[object_id] = i.[object_id]
+        WHERE i.[name] IS NOT NULL AND t.[schema_id] = SCHEMA_ID(N'dbo')";
 
     /// <summary>
     /// The one foreign key the model has that the old DDL never made. Without it, deleting a

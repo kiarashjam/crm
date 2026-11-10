@@ -247,6 +247,49 @@ public class SchemaMigrationTests
     }
 
     [SqlServerFact]
+    public async Task IndexesOfAnOldMigrationThatNeverRanThereAreMadeBeforeTheBaselineIsRecorded()
+    {
+        // The old start-up fallback only got past error 2714 (a table already there). Where the
+        // start-up DDL had already added a column that a pending migration then added again
+        // (2705), that migration and every one after it stopped there on every start; production
+        // ran AddDealEnhancements by hand from scripts/. SpeedUpLeadAndActivityLookups came last,
+        // and its three indexes are in the baseline but in no start-up DDL, so once the baseline
+        // is recorded nothing would ever make them. A plain index changes no behaviour and is made
+        // first; the foreign key it added is left to the log, as a key changes what a delete does.
+        await SqlServerApp.WaitForServerAsync();
+        var old = await SqlServerApp.NewDatabaseAsync();
+        var fresh = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            await SqlServerSchema.CreateLegacyAsync(old);
+            await SqlServerApp.ExecuteAsync(old, @"
+                DROP INDEX [IX_Leads_OrganizationId_CreatedAtUtc] ON [Leads];
+                DROP INDEX [IX_Leads_OrganizationId_Status] ON [Leads];
+                DROP INDEX [IX_Activities_OrganizationId_LeadId] ON [Activities];
+                ALTER TABLE [Leads] DROP CONSTRAINT [FK_Leads_Users_AssignedToUserId];
+                DELETE FROM [__EFMigrationsHistory] WHERE [MigrationId] = N'20261005124929_SpeedUpLeadAndActivityLookups';");
+
+            using (var app = SqlServerApp.Start(old))
+                await ShouldWorkAsync(app);
+
+            (await SqlServerSchema.HistoryAsync(old)).Should().Contain(SchemaBaseline.MigrationId);
+            await using (var db = SqlServerSchema.Context(old))
+                (await SchemaBaseline.CompareAsync(db)).Different
+                    .Should().Equal("Leads has no foreign key FK_Leads_Users_AssignedToUserId");
+
+            // Made as the baseline makes them: the same columns, in the same order.
+            await SqlServerSchema.MigrateAloneAsync(fresh);
+            (await SqlServerSchema.ListAsync(fresh)).Except(await SqlServerSchema.ListAsync(old))
+                .Should().ContainSingle().Which.Should().StartWith("FK Leads.FK_Leads_Users_AssignedToUserId ");
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(old);
+            await SqlServerApp.DropDatabaseAsync(fresh);
+        }
+    }
+
+    [SqlServerFact]
     public async Task TwoInstancesStartingTogetherSetUpANewDatabaseOnce()
     {
         // A scale-out or a slot swap starts two at once. Both found the database empty and
