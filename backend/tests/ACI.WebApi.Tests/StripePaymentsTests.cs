@@ -195,6 +195,26 @@ public class StripePaymentsTests
     }
 
     [Fact]
+    public async Task TheBrowserMaySendTheTokenHeaderFromTheApp_AndItsPreflightIsNotRateLimited()
+    {
+        await using var app = new PaymentsApp();
+        var anonymous = app.CreateClient();
+
+        // The header is not a simple one, so the browser asks first; a preflight carries no token,
+        // and twenty of them (more than the per-token limit) are all answered.
+        for (var i = 0; i < 20; i++)
+        {
+            var preflight = new HttpRequestMessage(HttpMethod.Options, "/api/public/pay/checkout");
+            preflight.Headers.Add("Origin", "http://localhost:5173");
+            preflight.Headers.Add("Access-Control-Request-Method", "POST");
+            preflight.Headers.Add("Access-Control-Request-Headers", "x-pay-token");
+            var answer = await anonymous.SendAsync(preflight);
+            answer.StatusCode.Should().Be(HttpStatusCode.NoContent);
+            answer.Headers.GetValues("Access-Control-Allow-Headers").Single().Should().ContainEquivalentOf("x-pay-token");
+        }
+    }
+
+    [Fact]
     public async Task ALinkForAsManyChargesAsStaffMayTickStillOpens()
     {
         await using var app = new PaymentsApp();
