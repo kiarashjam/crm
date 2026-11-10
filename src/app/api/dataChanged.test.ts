@@ -157,6 +157,16 @@ describe('what a write changes', () => {
   it("a club member's merge moves their registrations too", () => {
     expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['events', 'reservations']));
   });
+
+  it("deleting a club member detaches their registrations and bookings, but an edit leaves those lists alone", () => {
+    // The server keeps their places and bookings under the name, with no member: a page still
+    // showing the member on one would send the id of someone who is gone.
+    expect(resourcesChangedBy('DELETE', '/api/members/m-1')).toEqual(
+      expect.arrayContaining(['members', 'charges', 'statements', 'events', 'reservations']),
+    );
+    expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('events');
+    expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('reservations');
+  });
 });
 
 describe('what the signal carries', () => {

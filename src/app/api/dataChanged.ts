@@ -192,6 +192,12 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   // A consent answer changes who a marketing campaign reaches, and nothing on the
   // member's account, so it leaves the money lists alone.
   if (base === 'members' && last === 'consent') return ['members', 'campaigns'];
+  // Deleting a member detaches their places on event lists and their bookings, which stay
+  // under the name they were made in: a screen still showing the member on one would send
+  // the id of someone who is gone.
+  if (base === 'members' && segments.length === 2 && (method ?? 'GET').toUpperCase() === 'DELETE') {
+    return [...(CHANGES.members ?? ['members']), 'events', 'reservations'];
+  }
   // A merge moves everything linked to the record merged away; a conversion makes
   // a contact, a company and a deal from the lead.
   if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];
