@@ -706,6 +706,12 @@ public sealed class ClubBillingService : IClubBilling
             people.Add(new StatementPdfHouseholdLine(gone.First().IncurredByName ?? "A former member of the household", "No longer in the household",
                 charged.GetValueOrDefault(gone.Key), null));
 
+        // It is the primary's account statement, so it carries the QR-bill the primary's own
+        // statement for the period does: the same reference, which pays the primary's account
+        // and with it the household's bills. Without it the page asked for the household's bills
+        // with nothing to pay them by.
+        var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
+        var slip = await _qrBills.ForStatementAsync(organizationId, primaryMemberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, ct);
         var bytes = StatementPdf.Render(new StatementPdfRequest(
             workspace.Name,
             statement.MemberName,
@@ -722,10 +728,10 @@ public sealed class ClubBillingService : IClubBilling
             Owed(statement.ClosingBalance),
             lines,
             DateTime.UtcNow,
+            PaymentSlip: slip,
             Title: "Household statement",
             Household: people,
             HouseholdName: householdName));
-        var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
         var fileName = $"household-{FileName(statement, workspace)}";
         return new StatementFile(fileName, bytes, statement, amountDue);
     }
