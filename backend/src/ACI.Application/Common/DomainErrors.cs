@@ -1315,6 +1315,9 @@ public static readonly Error AlreadyMember = new(
         public static readonly Error NothingToPay = new(
             "Payments.NothingToPay", "There is nothing to pay: the charges are paid, or the account is in credit.");
 
+        public static readonly Error TooManyCharges = new(
+            "Payments.TooManyCharges", "Choose at most 50 charges at a time, or none for everything the member owes.");
+
         public static readonly Error CurrencyNotOffered = new(
             "Payments.CurrencyNotOffered", "The member's account is in a currency online payments do not take.");
 

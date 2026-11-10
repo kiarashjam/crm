@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using ACI.Infrastructure.Services.Payments;
 using ACI.WebApi.Tests.Helpers;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -81,6 +82,65 @@ public class PaymentsOnSqlServerTests
             (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubBankTransactions] WHERE [OrganizationId] = '{org}'")).Should().Be(1);
             (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubPayments] WHERE [MemberId] = '{memberId}' AND [Provider] = N'bank'")).Should().Be(1);
             (await SqlServerApp.ScalarAsync(database, $"SELECT [HouseAccountBalance] FROM [ClubMembers] WHERE [Id] = '{memberId}'")).Should().Be(0m);
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
+    public async Task AMemberWithManyOpenChargesPaysTheirAccountOnline_AndHasTheCardChargedForThem()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            var stripe = new FakeStripe().AcceptingKeys();
+            stripe.On("POST", "/v1/customers", new { id = "cus_many", @object = "customer" });
+            stripe.On("POST", "/v1/checkout/sessions", r => (HttpStatusCode.OK, new
+            {
+                id = "cs_many", @object = "checkout.session", mode = "payment", url = "https://checkout.stripe.com/c/pay/cs_many", status = "open",
+                expires_at = long.Parse(r.Form["expires_at"]), metadata = new Dictionary<string, string>(),
+            }));
+            stripe.On("POST", "/v1/payment_intents", r => (HttpStatusCode.OK, new
+            {
+                id = "pi_many", @object = "payment_intent", status = "succeeded", amount = long.Parse(r.Form["amount"]),
+                amount_received = long.Parse(r.Form["amount"]), currency = "chf", payment_method_types = new[] { "card" }, metadata = new Dictionary<string, string>(),
+            }));
+            using var app = SqlServerApp.Start(database, services: services =>
+                services.AddHttpClient(StripePaymentProvider.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => stripe));
+            var (client, _) = await ClubAsync(app);
+            await Ok(await client.PutAsync("/api/payment-settings", Workspaces.Body(new
+            {
+                stripeSecretKey = "sk_test_good_4242424242abcd", stripeWebhookSecret = "whsec_test_signing_secret",
+                iban = "CH5800791123000889012", qrIban = "CH4431999123000889012",
+                creditorName = "Pavillon 46", creditorPostalCode = "2501", creditorTown = "Biel", creditorCountry = "CH",
+            })), "set Stripe up");
+
+            // A season of bar tabs: more open charges than a list of their ids fits in.
+            var memberId = (await Ok(await client.PostAsync("/api/members", Workspaces.Body(new
+            {
+                firstName = "Jean", lastName = "Dupont", email = "jean@example.ch", tier = "Gold", status = "Active",
+            })), "add Jean")).GetProperty("id").GetGuid();
+            for (var i = 0; i < 150; i++)
+                await Ok(await client.PostAsync("/api/charges", Workspaces.Body(new { memberId, kind = "Bar", description = $"Bar tab {i + 1}", amount = 2 })), "a bar tab");
+
+            var link = await Ok(await client.PostAsync($"/api/members/{memberId}/pay-link", Workspaces.Body(new { purpose = "account" })), "a link for what is owed");
+            var url = link.GetProperty("url").GetString()!;
+            var token = url[(url.IndexOf("/pay/", StringComparison.Ordinal) + 5)..];
+            var pay = new HttpRequestMessage(HttpMethod.Post, "/api/public/pay/checkout");
+            pay.Headers.Add("X-Pay-Token", token);
+            await Ok(await app.CreateClient().SendAsync(pay), "the member presses Pay");
+
+            // Pressing Pay made the member's customer at Stripe; they save a card on it.
+            await SqlServerApp.ExecuteAsync(database, $@"UPDATE [ClubPaymentProfiles] SET [PaymentMethodId] = N'pm_many', [PaymentMethodType] = N'card',
+                [Brand] = N'visa', [Last4] = N'4242', [SavedAtUtc] = SYSUTCDATETIME() WHERE [MemberId] = '{memberId}' AND [CustomerId] = N'cus_many'");
+            var charged = await Ok(await client.PostAsync($"/api/members/{memberId}/card/charge", Workspaces.Body(new { })), "charge the card for everything open");
+            charged.GetProperty("status").GetString().Should().Be("succeeded");
+            charged.GetProperty("amount").GetDecimal().Should().Be(300m);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [HouseAccountBalance] FROM [ClubMembers] WHERE [Id] = '{memberId}'")).Should().Be(0m,
+                "the card's payment settled every tab");
         }
         finally
         {

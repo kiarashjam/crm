@@ -44,6 +44,9 @@ public sealed partial class ClubPaymentsService : IClubPayments
     /// <summary>Dues one run of the payment job charges, across workspaces; the rest go on the next run.</summary>
     public const int MaxAutoPayPerRun = 200;
 
+    /// <summary>The most charges a pay link, or a charge of the saved card, may name: what a link's token and the attempt's list hold.</summary>
+    public const int MaxChargesNamed = 50;
+
     private readonly AppDbContext _db;
     private readonly IClubLedger _ledger;
     private readonly IClubBilling _billing;
@@ -205,9 +208,10 @@ public sealed partial class ClubPaymentsService : IClubPayments
         {
             (amount, description) = await WhatIsOwedAsync(claim.OrganizationId, member.Id, claim, config, ct);
             if (amount <= 0) return DomainErrors.Payments.NothingToPay;
-            chargeIds = claim.Purpose == Charges
-                ? claim.ChargeIds
-                : (await OpenChargesAsync(claim.OrganizationId, member.Id, ct)).Select(c => c.Id).ToList();
+            // A link for what is owed names no charges: the ledger pays the open ones oldest first
+            // when the money comes in. Listing every one overflowed the column for a member with
+            // a season of bar tabs, and Pay failed.
+            if (claim.Purpose == Charges) chargeIds = claim.ChargeIds;
         }
         var purpose = claim.Purpose == Setup ? OnlinePaymentPurposes.SaveCard : OnlinePaymentPurposes.Checkout;
         var chargeText = Join(chargeIds);
@@ -219,7 +223,7 @@ public sealed partial class ClubPaymentsService : IClubPayments
             .Where(p => p.OrganizationId == claim.OrganizationId && p.MemberId == member.Id && p.Purpose == purpose
                 && p.Status == OnlinePaymentStatuses.Open && p.CheckoutUrl != null && p.Amount == amount && p.CreatedAtUtc > now.AddHours(-1))
             .OrderByDescending(p => p.CreatedAtUtc).FirstOrDefaultAsync(ct);
-        if (open != null && open.ChargeIds == chargeText && open.ExpiresAtUtc > now.AddMinutes(10)) return new CheckoutStartedDto(open.CheckoutUrl!);
+        if (open != null && (open.ChargeIds ?? "") == chargeText && open.ExpiresAtUtc > now.AddMinutes(10)) return new CheckoutStartedDto(open.CheckoutUrl!);
 
         var customer = await CustomerAsync(config, member, ct);
         if (!customer.IsSuccess) return customer.Error;
@@ -343,8 +347,10 @@ public sealed partial class ClubPaymentsService : IClubPayments
             .FirstOrDefaultAsync(p => p.OrganizationId == organizationId && p.MemberId == memberId && p.Provider == PaymentProviders.Stripe, ct);
         if (profile?.PaymentMethodId == null || profile.CustomerId == null) return DomainErrors.Payments.NoSavedCard;
 
+        if (request.ChargeIds is { Count: > MaxChargesNamed }) return DomainErrors.Payments.TooManyCharges;
         var open = await OpenChargesAsync(organizationId, memberId, ct);
-        var wanted = request.ChargeIds is { Count: > 0 } ids ? open.Where(c => ids.Contains(c.Id)).ToList() : open;
+        var named = request.ChargeIds is { Count: > 0 };
+        var wanted = named ? open.Where(c => request.ChargeIds!.Contains(c.Id)).ToList() : open;
         // Never more than the account owes: credit the member holds is theirs to pay with first.
         var amount = Math.Min(wanted.Sum(c => c.Amount - c.PaidAmount), await OwedAsync(organizationId, memberId, ct));
         if (wanted.Count == 0 || amount <= 0) return DomainErrors.Payments.NothingToPay;
@@ -358,7 +364,9 @@ public sealed partial class ClubPaymentsService : IClubPayments
             return DomainErrors.Payments.ChargeInProgress;
         var tries = await _db.ClubOnlinePayments.CountAsync(p => p.OrganizationId == organizationId && p.AttemptKey != null && p.AttemptKey.StartsWith(claim), ct);
         var description = wanted.Count == 1 ? $"{config.ClubName}: {wanted[0].Description}" : $"{config.ClubName}: {wanted.Count} charges";
-        var attempt = NewAttempt(organizationId, member, OnlinePaymentPurposes.SavedCard, amount, currency, description, chargeText);
+        // Charges named are paid first; for everything open none are kept, as the ledger pays
+        // the open charges oldest first anyway, and a long list of them would not fit.
+        var attempt = NewAttempt(organizationId, member, OnlinePaymentPurposes.SavedCard, amount, currency, description, named ? chargeText : null);
         attempt.AttemptKey = $"{claim}:{tries + 1}";
         if (!await TryClaimAsync(attempt, ct)) return DomainErrors.Payments.ChargeInProgress;
 
@@ -503,7 +511,8 @@ public sealed partial class ClubPaymentsService : IClubPayments
         var currency = await AccountCurrencyAsync(organizationId, memberId, config, ct);
 
         var chargeIds = purpose == Charges ? (request.ChargeIds ?? []).Distinct().ToList() : [];
-        if (purpose == Charges && (chargeIds.Count is 0 or > 50)) return DomainErrors.Payments.PurposeInvalid;
+        if (purpose == Charges && chargeIds.Count == 0) return DomainErrors.Payments.PurposeInvalid;
+        if (chargeIds.Count > MaxChargesNamed) return DomainErrors.Payments.TooManyCharges;
         var expires = DateTime.UtcNow.Add(purpose == Setup ? SetupLinkLifetime : PayLinkLifetime);
         var claim = new PayLinkClaim(organizationId, memberId, purpose, chargeIds, purpose == Setup && request.AutoPay, expires);
         decimal amount = 0;

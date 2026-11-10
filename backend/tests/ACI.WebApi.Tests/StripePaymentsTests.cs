@@ -208,6 +208,10 @@ public class StripePaymentsTests
         var token = TokenOf(link.GetProperty("url").GetString()!);
         var page = await Json(await OpenAsync(app.CreateClient(), token), "the member opens it");
         page.GetProperty("amount").GetDecimal().Should().Be(500m);
+
+        charges.Add(await ChargeAsync(club.Owner, memberId, 10m, "Bar", "Bar tab 51"));
+        (await Refused(await club.Owner.PostAsync($"/api/members/{memberId}/pay-link", Body(new { purpose = "charges", chargeIds = charges })), HttpStatusCode.BadRequest,
+            "a link for 51 charges")).Should().Contain("50");
     }
 
     [Fact]
