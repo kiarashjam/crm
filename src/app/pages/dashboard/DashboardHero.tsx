@@ -14,7 +14,7 @@ import { Button } from '@/app/components/ui/button';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
 import { useMoney } from '@/app/hooks/useMoney';
 import type { DashboardStats } from './types';
-import { RetryButton } from '@/app/components/LoadFailed';
+import { LoadFailed, RetryButton } from '@/app/components/LoadFailed';
 
 interface DashboardHeroProps {
   displayName: string;
@@ -28,6 +28,11 @@ interface DashboardHeroProps {
   onRetry?: () => void;
   /** A retry is on its way. */
   retrying?: boolean;
+  /**
+   * The figures on screen are the last ones read: a refresh failed since. Said in a
+   * slim strip above them, as they may be out of date.
+   */
+  stale?: boolean;
 }
 
 /**
@@ -42,7 +47,7 @@ function figure(value: number | undefined, loaded: boolean): number | string {
   return value;
 }
 
-export function DashboardHero({ displayName, stats, loaded, failed, onRetry, retrying }: DashboardHeroProps) {
+export function DashboardHero({ displayName, stats, loaded, failed, onRetry, retrying, stale = false }: DashboardHeroProps) {
   const navigate = useNavigate();
   // In the workspace's number format, like every other amount in the app.
   const money = useMoney();
@@ -83,7 +88,7 @@ export function DashboardHero({ displayName, stats, loaded, failed, onRetry, ret
     { label: 'Lost', value: figure(stats?.dealsLostCount, loaded), icon: XCircle, tone: 'rose', hint: 'deals lost' },
   ];
 
-  const notes = failed || others.length > 0 || unreadable > 0;
+  const notes = failed || (stale && !!onRetry) || others.length > 0 || unreadable > 0;
 
   return (
     <PageHero
@@ -133,6 +138,7 @@ export function DashboardHero({ displayName, stats, loaded, failed, onRetry, ret
               {onRetry && <RetryButton onRetry={onRetry} retrying={retrying} />}
             </div>
           )}
+          {stale && !failed && onRetry && <LoadFailed stale what="These figures" onRetry={onRetry} retrying={retrying} />}
           {/* Other currencies are listed, never folded into the pipeline figure:
               there is no exchange rate in this system to fold them with. */}
           {(others.length > 0 || unreadable > 0) && (
