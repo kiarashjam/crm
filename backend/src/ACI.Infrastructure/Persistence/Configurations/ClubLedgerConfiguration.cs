@@ -41,7 +41,10 @@ internal sealed class ClubChargeConfiguration : IEntityTypeConfiguration<ClubCha
         builder.Property(e => e.IdempotencyKey).HasMaxLength(100);
         builder.Property(e => e.CreatedByName).HasMaxLength(200);
         builder.Property(e => e.VatRate).HasPrecision(5, 2);
+        builder.Property(e => e.IncurredByName).HasMaxLength(200);
         builder.HasIndex(e => new { e.OrganizationId, e.MemberId, e.PostedAtUtc });
+        // A household member's page lists what they ran up on the primary's account.
+        builder.HasIndex(e => new { e.OrganizationId, e.IncurredByMemberId }).HasFilter("[IncurredByMemberId] IS NOT NULL");
         // What the billing run chases: charges with a due date that may be past it.
         builder.HasIndex(e => new { e.OrganizationId, e.DueAtUtc }).HasFilter("[DueAtUtc] IS NOT NULL");
         builder.HasOne<ClubCharge>().WithMany().HasForeignKey(e => e.ReversesChargeId).OnDelete(DeleteBehavior.NoAction);

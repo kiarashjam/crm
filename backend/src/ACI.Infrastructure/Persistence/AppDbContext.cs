@@ -98,6 +98,11 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubEventRegistration> ClubEventRegistrations => Set<ClubEventRegistration>();
     public DbSet<ClubResource> ClubResources => Set<ClubResource>();
     public DbSet<ClubReservation> ClubReservations => Set<ClubReservation>();
+    // How people join (applications and the public form) and who belongs together (households).
+    public DbSet<ClubApplication> ClubApplications => Set<ClubApplication>();
+    public DbSet<ClubApplicationForm> ClubApplicationForms => Set<ClubApplicationForm>();
+    public DbSet<ClubHousehold> ClubHouseholds => Set<ClubHousehold>();
+    public DbSet<ClubHouseholdMember> ClubHouseholdMembers => Set<ClubHouseholdMember>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();

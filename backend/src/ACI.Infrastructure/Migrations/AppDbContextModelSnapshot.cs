@@ -368,6 +368,200 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("Campaigns", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.ClubApplication", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ApprovalClaimedUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ApprovalTrigger")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("ApprovedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ApprovedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ContactId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ContractId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("DepositPaymentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("DuesSubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid?>("HouseholdId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("HouseholdRole")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid?>("InitiationChargeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid?>("LeadId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("MemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("MoneyPending")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Occupation")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ReasonForJoining")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ReferredByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("RequestedTier")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("ReviewedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ReviewedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReviewerNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("SubmittedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("WelcomeMessageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "ContactId")
+                        .HasFilter("[ContactId] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "LeadId")
+                        .HasFilter("[LeadId] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "MemberId")
+                        .HasFilter("[MemberId] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "Status", "SubmittedAtUtc");
+
+                    b.ToTable("ClubApplications", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.ClubApplicationForm", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConsentText")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Intro")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PublicToken")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SuccessMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique()
+                        .HasFilter("[OrganizationId] IS NOT NULL");
+
+                    b.HasIndex("PublicToken")
+                        .IsUnique();
+
+                    b.ToTable("ClubApplicationForms", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.ClubBillingRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -610,6 +804,13 @@ namespace ACI.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<Guid?>("IncurredByMemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IncurredByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -666,6 +867,9 @@ namespace ACI.Infrastructure.Migrations
                     b.HasIndex("OrganizationId", "IdempotencyKey")
                         .IsUnique()
                         .HasFilter("[IdempotencyKey] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "IncurredByMemberId")
+                        .HasFilter("[IncurredByMemberId] IS NOT NULL");
 
                     b.HasIndex("SubscriptionId", "BillingPeriodStartUtc")
                         .IsUnique()
@@ -1229,6 +1433,107 @@ namespace ACI.Infrastructure.Migrations
                     b.ToTable("ClubHouseAccounts", (string)null);
                 });
 
+            modelBuilder.Entity("ACI.Domain.Entities.ClubHousehold", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.ToTable("ClubHouseholds", (string)null);
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.ClubHouseholdMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ContactId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("HouseholdId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("MemberId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("RollUpBilling")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HouseholdId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ClubHouseholdMembers_OnePrimary")
+                        .HasFilter("[IsPrimary] = 1");
+
+                    b.HasIndex("HouseholdId", "CreatedAtUtc");
+
+                    b.HasIndex("OrganizationId", "ContactId")
+                        .IsUnique()
+                        .HasFilter("[ContactId] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "MemberId")
+                        .IsUnique()
+                        .HasFilter("[MemberId] IS NOT NULL");
+
+                    b.ToTable("ClubHouseholdMembers", (string)null);
+                });
+
             modelBuilder.Entity("ACI.Domain.Entities.ClubMember", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1237,6 +1542,9 @@ namespace ACI.Infrastructure.Migrations
 
                     b.Property<DateTime?>("BillingLapsedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ContactId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("DuesAmount")
                         .HasPrecision(18, 2)
@@ -1268,6 +1576,9 @@ namespace ACI.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid?>("LeadId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("ManualBalance")
                         .HasPrecision(18, 2)
@@ -1306,6 +1617,12 @@ namespace ACI.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId");
+
+                    b.HasIndex("OrganizationId", "ContactId")
+                        .HasFilter("[ContactId] IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "LeadId")
+                        .HasFilter("[LeadId] IS NOT NULL");
 
                     b.ToTable("ClubMembers", (string)null);
                 });
@@ -4994,6 +5311,15 @@ namespace ACI.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("GiftCardId")
                         .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ACI.Domain.Entities.ClubHouseholdMember", b =>
+                {
+                    b.HasOne("ACI.Domain.Entities.ClubHousehold", null)
+                        .WithMany()
+                        .HasForeignKey("HouseholdId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

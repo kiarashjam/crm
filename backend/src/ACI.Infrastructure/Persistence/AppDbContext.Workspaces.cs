@@ -142,6 +142,13 @@ public partial class AppDbContext
         Scope<ClubPaymentReminder>(model, e => e.OrganizationId);
         Scope<ClubStatementDelivery>(model, e => e.OrganizationId);
         Scope<OutboundAttachment>(model, e => e.OrganizationId);
+        // Applications, the public application form and households: club records, an
+        // organization's alone. A household's people say their organization too, so none is
+        // ever read through a household from another workspace.
+        Scope<ClubApplication>(model, e => e.OrganizationId);
+        Scope<ClubApplicationForm>(model, e => e.OrganizationId);
+        Scope<ClubHousehold>(model, e => e.OrganizationId);
+        Scope<ClubHouseholdMember>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

@@ -131,6 +131,17 @@ public class ClubCharge : Common.BaseEntity
     /// <summary>From the request's Idempotency-Key: a retry with the same key gets this charge back.</summary>
     public string? IdempotencyKey { get; set; }
 
+    /// <summary>
+    /// The member who ran it up, when that is not the member whose account it is on: a
+    /// household member whose bills roll up to the household's primary. <see cref="MemberId"/>
+    /// is always the account it is billed to, so balances, statements, reminders and overdue
+    /// dues follow the bill; this keeps who incurred it, for the line to say so.
+    /// </summary>
+    public Guid? IncurredByMemberId { get; set; }
+
+    /// <summary>Their name when it was posted, so the line still reads after a rename or a merge.</summary>
+    public string? IncurredByName { get; set; }
+
     public DateTime CreatedAtUtc { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public string? CreatedByName { get; set; }
