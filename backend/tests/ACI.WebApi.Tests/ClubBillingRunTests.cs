@@ -300,6 +300,44 @@ public class ClubBillingRunTests
         (await Json(await client.GetAsync("/api/billing/runs"), "runs"))[0].GetProperty("overdueCharges").GetInt32().Should().Be(2);
     }
 
+    /// <summary>The app with a billing that cannot put a member back: its database went away after the payment was saved.</summary>
+    private sealed class AppThatCannotReinstate : CustomWebApplicationFactory
+    {
+        private sealed class CannotReinstate : IClubBilling
+        {
+            public Task ReinstateIfSettledAsync(Guid organizationId, Guid memberId, CancellationToken ct = default) =>
+                throw new InvalidOperationException("The database went away.");
+
+            public Task<ACI.Application.Common.Result<BillingRunDto>> RunNowAsync(Guid organizationId, Guid userId, CancellationToken ct = default) => throw new NotSupportedException();
+            public Task<BillingPreviewDto> PreviewAsync(Guid organizationId, CancellationToken ct = default) => throw new NotSupportedException();
+            public Task<IReadOnlyList<BillingRunDto>> RunsAsync(Guid organizationId, int take = 20, CancellationToken ct = default) => throw new NotSupportedException();
+            public Task<int> RunScheduledAsync(DateTime utcNow, CancellationToken ct = default) => throw new NotSupportedException();
+            public Task<ACI.Application.Common.Result<StatementFile>> StatementPdfAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) => throw new NotSupportedException();
+            public Task<ACI.Application.Common.Result<StatementDeliveryDto>> EmailStatementAsync(Guid organizationId, Guid userId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default) => throw new NotSupportedException();
+        }
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureTestServices(services => services.AddScoped<IClubBilling, CannotReinstate>());
+        }
+    }
+
+    [Fact]
+    public async Task APaymentThatWasSavedIsAnsweredAsSaved_EvenWhenPuttingTheMemberBackFails()
+    {
+        using var factory = new AppThatCannotReinstate();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var charge = await PostChargeAsync(client, memberId, 300, DateTime.UtcNow.AddDays(-45), "Gold dues");
+
+        // Answered as a failure, the payment would be entered again: paid twice.
+        await Json(await client.PostAsync("/api/payments", Body(new { amount = 100, method = "Wire", chargeId = charge })), "pay part of the dues");
+        (await ChargesAsync(client, memberId)).Single().GetProperty("paidAmount").GetDecimal().Should().Be(100);
+        var voidable = await PostChargeAsync(client, memberId, 20, DateTime.UtcNow.AddDays(-45), "Posted twice");
+        await Json(await client.PostAsync($"/api/charges/{voidable}/void", Body(new { reason = "posted twice" })), "void a charge");
+    }
+
     [Fact]
     public async Task AMemberLapsedByTheBillingButSetByHandIsLeftAsSet()
     {

@@ -29,6 +29,25 @@ file static class Ledger
         if (version != null) controller.Response.SetETag(version(result.Value));
         return controller.Ok(result.Value);
     }
+
+    /// <summary>
+    /// After a payment or a void has been saved: puts back a member the billing lapsed, once
+    /// nothing of theirs is overdue. It never fails the request, which has already recorded
+    /// money: answered as a failure, a payment is entered again and paid twice. A member it
+    /// could not put back now is put back by the next daily run.
+    /// </summary>
+    public static async Task ReinstateAsync(ControllerBase controller, IClubBilling billing, Guid organizationId, Guid memberId, CancellationToken ct)
+    {
+        try
+        {
+            await billing.ReinstateIfSettledAsync(organizationId, memberId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            controller.HttpContext.RequestServices.GetRequiredService<ILogger<IClubBilling>>()
+                .LogError(ex, "Member {MemberId} could not be put back after their account was settled; the next billing run will", memberId);
+        }
+    }
 }
 
 [ApiController]
@@ -66,7 +85,7 @@ public class ChargesController : ControllerBase
     {
         var voided = await _ledger.VoidChargeAsync(_user.CurrentOrganizationId, id, body?.Reason, ct);
         // The charge that lapsed a member may be the one taken back.
-        if (voided.IsSuccess) await _billing.ReinstateIfSettledAsync(_user.CurrentOrganizationId!.Value, voided.Value.MemberId, ct);
+        if (voided.IsSuccess) await Ledger.ReinstateAsync(this, _billing, _user.CurrentOrganizationId!.Value, voided.Value.MemberId, ct);
         return Ledger.Answer(this, voided);
     }
 }
@@ -98,7 +117,7 @@ public class PaymentsController : ControllerBase
     public async Task<ActionResult> Create([FromBody] RecordPaymentRequest request, CancellationToken ct)
     {
         var paid = await _ledger.RecordPaymentAsync(_user.CurrentOrganizationId, request, Ledger.Key(Request), ct);
-        if (paid.IsSuccess) await _billing.ReinstateIfSettledAsync(_user.CurrentOrganizationId!.Value, paid.Value.MemberId, ct);
+        if (paid.IsSuccess) await Ledger.ReinstateAsync(this, _billing, _user.CurrentOrganizationId!.Value, paid.Value.MemberId, ct);
         return Ledger.Answer(this, paid);
     }
 
