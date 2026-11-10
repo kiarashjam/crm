@@ -65,6 +65,14 @@ public static class DependencyInjection
         // The club's price catalogue, and the billing that runs on the ledger.
         services.AddScoped<IClubCatalog, ClubCatalogService>();
         services.AddScoped<IClubBilling, ClubBillingService>();
+        // Money from outside the club: payment settings, QR-bills, bank files, Stripe and the
+        // accounting journal. Every payment they take goes through the ledger above.
+        services.AddScoped<ACI.Infrastructure.Services.Payments.ClubPaymentSettingsService>();
+        services.AddScoped<IClubPaymentSettings>(sp => sp.GetRequiredService<ACI.Infrastructure.Services.Payments.ClubPaymentSettingsService>());
+        services.AddScoped<ACI.Infrastructure.Services.Payments.ClubQrBillService>();
+        services.AddScoped<IClubQrBills>(sp => sp.GetRequiredService<ACI.Infrastructure.Services.Payments.ClubQrBillService>());
+        services.AddHttpClient(ACI.Infrastructure.Services.Payments.StripePaymentProvider.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddSingleton<IPaymentProvider, ACI.Infrastructure.Services.Payments.StripePaymentProvider>();
         services.AddScoped<IConsentRepository, ConsentRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IImportRepository, ImportRepository>();

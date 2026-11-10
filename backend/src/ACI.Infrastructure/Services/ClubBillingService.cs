@@ -50,15 +50,18 @@ public sealed class ClubBillingService : IClubBilling
     private readonly IClubRules _rules;
     private readonly IOutbox _outbox;
     private readonly ICurrentUserService _user;
+    private readonly IClubQrBills _qrBills;
     private readonly ILogger<ClubBillingService> _logger;
 
-    public ClubBillingService(AppDbContext db, IClubLedger ledger, IClubRules rules, IOutbox outbox, ICurrentUserService user, ILogger<ClubBillingService> logger)
+    public ClubBillingService(AppDbContext db, IClubLedger ledger, IClubRules rules, IOutbox outbox, ICurrentUserService user,
+        IClubQrBills qrBills, ILogger<ClubBillingService> logger)
     {
         _db = db;
         _ledger = ledger;
         _rules = rules;
         _outbox = outbox;
         _user = user;
+        _qrBills = qrBills;
         _logger = logger;
     }
 
@@ -641,6 +644,10 @@ public sealed class ClubBillingService : IClubBilling
             l.Credit,
             Owed(l.Balance),
             l.VatRate)).ToList();
+        var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
+        // The club's QR-bill for what is due, with a reference that names the member and this
+        // statement, when its bank details are set; none otherwise.
+        var slip = await _qrBills.ForStatementAsync(organizationId, memberId, statement.FromUtc, statement.ToUtc, amountDue, statement.Currency, ct);
         var bytes = StatementPdf.Render(new StatementPdfRequest(
             workspace.Name,
             statement.MemberName,
@@ -656,8 +663,8 @@ public sealed class ClubBillingService : IClubBilling
             statement.TotalCredits,
             Owed(statement.ClosingBalance),
             lines,
-            DateTime.UtcNow));
-        var amountDue = Math.Max(0, Owed(statement.ClosingBalance));
+            DateTime.UtcNow,
+            slip));
         return new StatementFile(FileName(statement, workspace), bytes, statement, amountDue);
     }
 

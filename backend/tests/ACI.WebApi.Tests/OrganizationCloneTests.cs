@@ -232,6 +232,38 @@ public class OrganizationCloneTests
         db.AddRange(gala, court,
             new ClubEventRegistration { Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = gala.Id, MemberId = member.Id, Name = "Ana Silva", Status = "Reserved", TicketPrice = 30, ChargeId = tabCharge.Id, RegisteredAtUtc = now, CreatedAtUtc = now, UpdatedAtUtc = now },
             new ClubReservation { Id = Guid.NewGuid(), OrganizationId = org.Id, ResourceId = court.Id, ResourceName = "Court", MemberId = member.Id, MemberName = "Ana Silva", StartAtUtc = now.AddDays(1), EndAtUtc = now.AddDays(1).AddHours(1), Status = "Confirmed", DepositAmount = 299, DepositChargeId = dues.Id, CreatedAtUtc = now, UpdatedAtUtc = now });
+        // Money from outside: the Stripe and bank settings, a saved card the dues are charged
+        // to, a charge of it still with Stripe and the event Stripe posted about it, a statement's
+        // QR reference, and a bank file whose transfer paid in. The copy takes no money.
+        var bankImport = new ClubBankImport { Id = Guid.NewGuid(), OrganizationId = org.Id, FileName = "camt054.xml", Format = "camt.054", Transactions = 1, Matched = 1, ImportedAtUtc = now };
+        db.AddRange(bankImport,
+            new ClubPaymentSettings
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, StripeSecretKeyProtected = "protected-key", StripeKeyHint = "sk_live_…abcd",
+                StripeWebhookSecretProtected = "protected-secret", WebhookKey = Guid.NewGuid(), Iban = "CH5800791123000889012", CreatedAtUtc = now,
+            },
+            new ClubPaymentProfile
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, CustomerId = $"cus_{name}", PaymentMethodId = $"pm_{name}",
+                PaymentMethodType = "card", Brand = "visa", Last4 = "4242", AutoPayDues = true, AutoPayAgreedAtUtc = now, CreatedAtUtc = now,
+            },
+            new ClubOnlinePayment
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Purpose = OnlinePaymentPurposes.AutoPay,
+                Status = OnlinePaymentStatuses.Processing, Amount = 299, Description = "Gold dues", ChargeIds = dues.Id.ToString(),
+                AttemptKey = $"autopay:{dues.Id}:1", PaymentIntentId = $"pi_{name}", CreatedAtUtc = now,
+            },
+            new ClubProviderEvent { Id = Guid.NewGuid(), OrganizationId = org.Id, EventId = $"evt_{name}", Type = "payment_intent.processing", ObjectId = $"pi_{name}", Status = "processed", ReceivedAtUtc = now },
+            new ClubPaymentReference
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, Number = 1, ScorReference = ACI.Application.Common.Payments.PaymentReferences.CreditorReference(1),
+                MemberId = member.Id, Purpose = "statement", PeriodStartUtc = now.AddMonths(-1), PeriodEndUtc = now, AmountDue = 299, CreatedAtUtc = now,
+            },
+            new ClubBankTransaction
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, ImportId = bankImport.Id, BankReference = $"CH5800791123000889012:{name}-1", Amount = 10,
+                BookedAtUtc = now, Status = BankTransactionStatuses.Matched, MemberId = member.Id, LedgerPaymentId = payment.Id, CreatedAtUtc = now,
+            });
         db.AddRange(
             new LeadStatusEvent { Id = Guid.NewGuid(), LeadId = lead.Id, OrganizationId = org.Id, ToStatus = "Qualified", ChangedByUserId = rep, ChangedAtUtc = now },
             new LeadScoringRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Field = "source", MatchValue = "Website", Points = 10, IsActive = true },
@@ -320,6 +352,31 @@ public class OrganizationCloneTests
         (await CountsAsync(db, original.Org)).Should().Equal(originalBefore, "the original is not changed");
         (await CountsAsync(db, other.Org)).Should().Equal(otherBefore, "another organization is not touched");
         (await db.Leads.IgnoreQueryFilters().CountAsync(l => l.OrganizationId == null)).Should().Be(1, "personal records stay personal");
+    }
+
+    [Fact]
+    public async Task TheCopyTakesNoMoneyOnline_AndChargesNoSavedCard()
+    {
+        var (connection, db, original, _, _) = await WorldAsync();
+        using var _c = connection;
+        await using var _d = db;
+
+        var report = await new OrganizationCloner(db).CloneAsync(original.Org, "Pavillon 46 v2");
+
+        var source = await db.ClubPaymentSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == original.Org);
+        var copied = await db.ClubPaymentSettings.IgnoreQueryFilters().SingleAsync(s => s.OrganizationId == report.CopyId);
+        copied.StripeSecretKeyProtected.Should().BeNull("the Stripe key stays with the original");
+        copied.StripeWebhookSecretProtected.Should().BeNull();
+        copied.WebhookKey.Should().NotBe(source.WebhookKey, "Stripe's posts go to one workspace");
+        copied.Iban.Should().Be(source.Iban, "the bank account is the same club's");
+        source.StripeSecretKeyProtected.Should().Be("protected-key", "the original keeps taking money");
+
+        (await db.ClubPaymentProfiles.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == report.CopyId)).AutoPayDues.Should().BeFalse();
+        (await db.ClubPaymentProfiles.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == original.Org)).AutoPayDues.Should().BeTrue();
+        (await db.ClubOnlinePayments.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == report.CopyId)).Status.Should().Be(OnlinePaymentStatuses.Canceled);
+        (await db.ClubOnlinePayments.IgnoreQueryFilters().SingleAsync(p => p.OrganizationId == original.Org)).Status.Should().Be(OnlinePaymentStatuses.Processing);
+        report.Adjustments.Keys.Should().Contain("Payment settings keep the Stripe key and webhook with the original")
+            .And.Contain("Saved cards are not charged for dues from the copy");
     }
 
     [Fact]

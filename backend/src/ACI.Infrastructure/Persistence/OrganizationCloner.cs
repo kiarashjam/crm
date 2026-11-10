@@ -514,6 +514,24 @@ public sealed class OrganizationCloner
                 }
                 c.ClaimedUntilUtc = null;
                 return "Campaigns waiting to be sent, or being sent, are sent from the original only";
+            case ClubPaymentSettings settings:
+                // The Stripe key and webhook stay with the original: the copy holds the same
+                // members, and must never charge one of them, or hear of a payment, a second
+                // time. Its webhook gets an address of its own, set up again if it is ever wanted.
+                settings.StripeSecretKeyProtected = null;
+                settings.StripeKeyHint = null;
+                settings.StripeWebhookSecretProtected = null;
+                settings.StripeCheckedAtUtc = null;
+                settings.WebhookKey = Guid.NewGuid();
+                return "Payment settings keep the Stripe key and webhook with the original";
+            case ClubPaymentProfile profile when profile.AutoPayDues:
+                profile.AutoPayDues = false;
+                return "Saved cards are not charged for dues from the copy";
+            case ClubOnlinePayment payment when payment.Status is OnlinePaymentStatuses.Open or OnlinePaymentStatuses.Processing:
+                // Stripe tells the original how it ends; the copy keeps the attempt as history.
+                payment.Status = OnlinePaymentStatuses.Canceled;
+                payment.FailureMessage = "Copied with its organization while still with Stripe; the original records how it ends.";
+                return "Online payments still with Stripe are recorded by the original only";
             case Notification n when n.SourceKey != null && n.SourceKey == ((Notification)source).SourceKey:
                 // The key stops a person being told the same thing twice, and is unique per
                 // person. One with no copied record's id in it would be the original's exactly.
