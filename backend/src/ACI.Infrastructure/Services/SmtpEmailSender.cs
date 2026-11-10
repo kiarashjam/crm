@@ -325,7 +325,10 @@ public sealed class SmtpEmailSender : IEmailSender
             {
                 unique_args = new Dictionary<string, string> { [OutboxEmailTags.MessageIdArg] = email.OutboundMessageId.ToString("D") },
             }));
-        message.Body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody }.ToMessageBody();
+        var body = new BodyBuilder { TextBody = email.TextBody, HtmlBody = email.HtmlBody };
+        foreach (var file in email.Attachments ?? [])
+            body.Attachments.Add(file.FileName, file.Content, ContentType.Parse(file.ContentType));
+        message.Body = body.ToMessageBody();
         return message;
     }
 

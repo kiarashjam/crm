@@ -79,6 +79,12 @@ public sealed record OutboundEmailRequest
     /// placeholder that cannot be filled is refused rather than left out.
     /// </summary>
     public bool PersonWaiting { get; init; }
+
+    /// <summary>
+    /// Files that go with it (a statement's PDF), kept with the message so every attempt
+    /// sends the same ones.
+    /// </summary>
+    public IReadOnlyList<EmailAttachment> Attachments { get; init; } = [];
 }
 
 /// <summary>How an attempt at a message ended.</summary>
@@ -319,7 +325,17 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             DealId = request.DealId,
             MemberId = request.MemberId,
         };
-        await _messages.AddAsync(message, ct);
+        var files = request.Attachments.Select(a => new OutboundAttachment
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organizationId,
+            OutboundMessageId = id,
+            FileName = Clip(a.FileName, 255),
+            ContentType = Clip(a.ContentType, 100),
+            Content = a.Content,
+            CreatedAtUtc = now,
+        }).ToList();
+        await _messages.AddAsync(message, files, ct);
         if (!request.PersonWaiting) _signal.Notify();
         return message;
     }
@@ -442,10 +458,12 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             return new OutboxAttempt(OutboxAttemptResult.Suppressed, refusal.Description, refusal.Code);
         }
 
+        var attachments = (await _messages.AttachmentsAsync(message.Id, ct))
+            .Select(a => new EmailAttachment(a.FileName, a.ContentType, a.Content)).ToList();
         var result = await _email.SendOutboxAsync(new OutboxEmail(
             message.FromName, message.FromAddress, Split(message.ReplyTo), to, cc, bcc, message.RecipientName,
             message.Subject ?? "", message.TextBody ?? "", message.HtmlBody ?? "", message.MessageIdHeader ?? $"<{message.Id:N}@{MessageIdDomain(null)}>",
-            message.UnsubscribeUrl, message.Id, message.OneClickUnsubscribe), ct);
+            message.UnsubscribeUrl, message.Id, message.OneClickUnsubscribe, attachments.Count == 0 ? null : attachments), ct);
         message.LastStatusCode = result.Code;
 
         switch (result.Outcome)

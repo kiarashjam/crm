@@ -40,6 +40,7 @@ public sealed record EmailAttachment(string FileName, string ContentType, byte[]
 /// message also says List-Unsubscribe-Post and a mail app's own Unsubscribe button works
 /// without opening a page.
 /// </param>
+/// <param name="Attachments">Files that go with it, such as a statement's PDF; none for most.</param>
 public sealed record OutboxEmail(
     string? FromName,
     string? FromAddress,
@@ -54,7 +55,8 @@ public sealed record OutboxEmail(
     string MessageId,
     string? UnsubscribeUrl,
     Guid OutboundMessageId,
-    bool OneClickUnsubscribe = false);
+    bool OneClickUnsubscribe = false,
+    IReadOnlyList<EmailAttachment>? Attachments = null);
 
 /// <summary>What the outbox puts on a message for the mail service to report back.</summary>
 public static class OutboxEmailTags

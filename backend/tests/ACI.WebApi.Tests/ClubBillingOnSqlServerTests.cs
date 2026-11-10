@@ -3,6 +3,7 @@ using ACI.Domain.Entities;
 using ACI.Infrastructure.Migrations;
 using ACI.Infrastructure.Services;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -87,6 +88,101 @@ public class ClubBillingOnSqlServerTests
             (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [ClubCatalogItems]")).Should().Be(before);
             (await SqlServerApp.ScalarAsync(database, "SELECT COUNT(*) FROM [ClubDocuments] WHERE [Kind] = N'hospitality-settings'"))
                 .Should().Be(3, "the settings are copied, not moved out");
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    private static async Task<System.Text.Json.JsonElement> Ok(HttpResponseMessage res, string step)
+    {
+        var body = await res.Content.ReadAsStringAsync();
+        res.IsSuccessStatusCode.Should().BeTrue($"{step} should succeed — got {(int)res.StatusCode}: {body}");
+        return JsonDocument.Parse(body).RootElement.Clone();
+    }
+
+    /// <summary>A club on the app, with a member three monthly periods behind on their dues.</summary>
+    private static async Task<(HttpClient Client, Guid Org, Guid MemberId)> ClubBehindOnDuesAsync(SqlServerApp app)
+    {
+        var (client, _) = await Workspaces.SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
+        var org = (await Ok(await client.PostAsync("/api/organizations", Workspaces.Body(new { name = "Pavillon46" })), "create the club"))
+            .GetProperty("id").GetGuid();
+        client.In(org);
+        var memberId = (await Ok(await client.PostAsync("/api/members", Workspaces.Body(new
+        {
+            firstName = "Jean", lastName = "Dupont", email = "jean@example.ch", tier = "Gold", status = "Active",
+        })), "add member")).GetProperty("id").GetGuid();
+        var today = DateTime.UtcNow;
+        var first = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-2);
+        await Ok(await client.PostAsync("/api/subscriptions", Workspaces.Body(new
+        {
+            memberId, name = "Gold dues", amount = 299, cadence = "Monthly", nextChargeAtUtc = first.ToString("yyyy-MM-dd"),
+        })), "add subscription");
+        await Ok(await client.PutAsync("/api/hospitality/settings", Workspaces.Body(new { billing = new { automaticBilling = true } })), "turn on automatic billing");
+        return (client, org, memberId);
+    }
+
+    /// <summary>A moment today after 03:00 in Zurich, when the daily run may go.</summary>
+    private static DateTime RunTime()
+    {
+        var zone = ACI.Application.Common.RegionalSettings.ZoneOf("Europe/Zurich");
+        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone);
+        return local.TimeOfDay >= TimeSpan.FromHours(3) ? DateTime.UtcNow : DateTime.UtcNow.Add(TimeSpan.FromHours(3) - local.TimeOfDay + TimeSpan.FromMinutes(1));
+    }
+
+    [SqlServerFact]
+    public async Task TwoServersRunningTheDailyRunAtOnce_TakeTheDayOnce_AndBillEachPeriodOnce()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            using var app = SqlServerApp.Start(database);
+            var (client, org, memberId) = await ClubBehindOnDuesAsync(app);
+            var at = RunTime();
+
+            async Task<int> RunAsync()
+            {
+                using var scope = app.Services.CreateScope();
+                return await scope.ServiceProvider.GetRequiredService<ACI.Application.Services.IClubBilling>().RunScheduledAsync(at);
+            }
+            var ran = await Task.WhenAll(RunAsync(), RunAsync());
+
+            ran.Sum().Should().Be(1, "the day is taken once");
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubBillingRuns] WHERE [OrganizationId] = '{org}'")).Should().Be(1);
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubCharges] WHERE [MemberId] = '{memberId}' AND [SubscriptionId] IS NOT NULL"))
+                .Should().Be(3, "three periods, each billed once");
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
+    }
+
+    [SqlServerFact]
+    public async Task TwoBillingRunsStartedByHandAtOnce_BillEachPeriodOnce()
+    {
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            // Both runs read the subscription before either bills it, every time.
+            var gate = new RaceFactory.ReadGate();
+            using var app = SqlServerApp.Start(database, services: services => services.AddSingleton<ACI.Application.Services.ILedgerReadObserver>(gate));
+            var (client, _, memberId) = await ClubBehindOnDuesAsync(app);
+            gate.Arm("subscriptions");
+
+            var answers = await Task.WhenAll(client.PostAsync("/api/billing/run", null), client.PostAsync("/api/billing/run", null));
+
+            answers.Should().OnlyContain(a => a.IsSuccessStatusCode, "a period billed by the other run is skipped, not a failure");
+            (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [ClubCharges] WHERE [MemberId] = '{memberId}' AND [SubscriptionId] IS NOT NULL"))
+                .Should().Be(3);
+            (await SqlServerApp.ScalarAsync(database,
+                    $"SELECT COUNT(*) FROM (SELECT [BillingPeriodStartUtc] FROM [ClubCharges] WHERE [MemberId] = '{memberId}' GROUP BY [BillingPeriodStartUtc] HAVING COUNT(*) > 1) d"))
+                .Should().Be(0);
+            var member = (await Ok(await client.GetAsync("/api/members"), "members"))[0];
+            member.GetProperty("houseAccountBalance").GetDecimal().Should().Be(-897, "three periods of 299 on the account, no more");
         }
         finally
         {

@@ -11,11 +11,23 @@ internal sealed class FakeOutboxRepository : IOutboxRepository
     public List<InboundEmail> Inbound { get; } = new();
     public int Saves { get; private set; }
 
+    public List<OutboundAttachment> Attachments { get; } = new();
+
     public Task AddAsync(OutboundMessage message, CancellationToken ct = default)
     {
         Messages.Add(message);
         return Task.CompletedTask;
     }
+
+    public Task AddAsync(OutboundMessage message, IReadOnlyList<OutboundAttachment> attachments, CancellationToken ct = default)
+    {
+        Messages.Add(message);
+        Attachments.AddRange(attachments);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<OutboundAttachment>> AttachmentsAsync(Guid messageId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<OutboundAttachment>>(Attachments.Where(a => a.OutboundMessageId == messageId).ToList());
 
     public Task<OutboundMessage?> GetAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(Messages.FirstOrDefault(m => m.Id == id));

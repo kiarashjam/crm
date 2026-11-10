@@ -17,9 +17,13 @@ public sealed class OutboxRepository : IOutboxRepository
 
     public OutboxRepository(AppDbContext db) => _db = db;
 
-    public async Task AddAsync(OutboundMessage message, CancellationToken ct = default)
+    public Task AddAsync(OutboundMessage message, CancellationToken ct = default) =>
+        AddAsync(message, Array.Empty<OutboundAttachment>(), ct);
+
+    public async Task AddAsync(OutboundMessage message, IReadOnlyList<OutboundAttachment> attachments, CancellationToken ct = default)
     {
         _db.OutboundMessages.Add(message);
+        _db.OutboundAttachments.AddRange(attachments);
         try
         {
             await _db.SaveChangesAsync(ct);
@@ -29,9 +33,18 @@ public sealed class OutboxRepository : IOutboxRepository
             // Left in the unit of work, a message that failed to save would be tried
             // again by whatever this request saves next, and fail that too.
             _db.Entry(message).State = EntityState.Detached;
+            foreach (var attachment in attachments) _db.Entry(attachment).State = EntityState.Detached;
             throw;
         }
     }
+
+    // The message's own files, whichever workspace it is: the dispatcher reads them for the
+    // message it holds, acting for that message's workspace.
+    public async Task<IReadOnlyList<OutboundAttachment>> AttachmentsAsync(Guid messageId, CancellationToken ct = default) =>
+        await _db.OutboundAttachments.AsNoTracking()
+            .Where(a => a.OutboundMessageId == messageId)
+            .OrderBy(a => a.CreatedAtUtc)
+            .ToListAsync(ct);
 
     public Task<OutboundMessage?> GetAsync(Guid id, CancellationToken ct = default) =>
         _db.OutboundMessages.FirstOrDefaultAsync(m => m.Id == id, ct);

@@ -61,6 +61,7 @@ public static class DependencyInjection
         services.AddSingleton<ILedgerReadObserver, NoLedgerReadObserver>();
         // The club's price catalogue, and the billing that runs on the ledger.
         services.AddScoped<IClubCatalog, ClubCatalogService>();
+        services.AddScoped<IClubBilling, ClubBillingService>();
         services.AddScoped<IConsentRepository, ConsentRepository>();
         services.AddScoped<ICampaignRepository, CampaignRepository>();
         services.AddScoped<IImportRepository, ImportRepository>();

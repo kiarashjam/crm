@@ -40,8 +40,9 @@ file static class Ledger
 public class ChargesController : ControllerBase
 {
     private readonly IClubLedger _ledger;
+    private readonly IClubBilling _billing;
     private readonly ICurrentUserService _user;
-    public ChargesController(IClubLedger ledger, ICurrentUserService user) { _ledger = ledger; _user = user; }
+    public ChargesController(IClubLedger ledger, IClubBilling billing, ICurrentUserService user) { _ledger = ledger; _billing = billing; _user = user; }
 
     /// <summary>The workspace's charges (or one member's), each with what it has been paid and its status.</summary>
     [HttpGet]
@@ -61,8 +62,13 @@ public class ChargesController : ControllerBase
     /// <summary>Voids a charge with a reason: an entry that takes it back. One with payments standing against it is voided after them.</summary>
     [HttpPost("{id:guid}/void")]
     [Requires(MemberPermissions.VoidMoney, What = "void a charge")]
-    public async Task<ActionResult> Void(Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ReasonRequest? body, CancellationToken ct) =>
-        Ledger.Answer(this, await _ledger.VoidChargeAsync(_user.CurrentOrganizationId, id, body?.Reason, ct));
+    public async Task<ActionResult> Void(Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ReasonRequest? body, CancellationToken ct)
+    {
+        var voided = await _ledger.VoidChargeAsync(_user.CurrentOrganizationId, id, body?.Reason, ct);
+        // The charge that lapsed a member may be the one taken back.
+        if (voided.IsSuccess) await _billing.ReinstateIfSettledAsync(_user.CurrentOrganizationId!.Value, voided.Value.MemberId, ct);
+        return Ledger.Answer(this, voided);
+    }
 }
 
 [ApiController]
@@ -74,18 +80,27 @@ public class ChargesController : ControllerBase
 public class PaymentsController : ControllerBase
 {
     private readonly IClubLedger _ledger;
+    private readonly IClubBilling _billing;
     private readonly ICurrentUserService _user;
-    public PaymentsController(IClubLedger ledger, ICurrentUserService user) { _ledger = ledger; _user = user; }
+    public PaymentsController(IClubLedger ledger, IClubBilling billing, ICurrentUserService user) { _ledger = ledger; _billing = billing; _user = user; }
 
     /// <summary>Money received (or one member's), each with what it paid, and any void or refunds.</summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<PaymentDto>>> List([FromQuery] Guid? memberId, CancellationToken ct) =>
         Ok(await _ledger.PaymentsAsync(_user.CurrentOrganizationId, memberId, ct));
 
-    /// <summary>Records a payment of one charge (chargeId) or several (allocations). Never more than they owe.</summary>
+    /// <summary>
+    /// Records a payment of one charge (chargeId) or several (allocations). Never more than
+    /// they owe. A member the billing lapsed is reinstated by the payment that settles what
+    /// was overdue, rather than at the next night's run.
+    /// </summary>
     [HttpPost]
-    public async Task<ActionResult> Create([FromBody] RecordPaymentRequest request, CancellationToken ct) =>
-        Ledger.Answer(this, await _ledger.RecordPaymentAsync(_user.CurrentOrganizationId, request, Ledger.Key(Request), ct));
+    public async Task<ActionResult> Create([FromBody] RecordPaymentRequest request, CancellationToken ct)
+    {
+        var paid = await _ledger.RecordPaymentAsync(_user.CurrentOrganizationId, request, Ledger.Key(Request), ct);
+        if (paid.IsSuccess) await _billing.ReinstateIfSettledAsync(_user.CurrentOrganizationId!.Value, paid.Value.MemberId, ct);
+        return Ledger.Answer(this, paid);
+    }
 
     /// <summary>Voids a payment with a reason: its charges owe again what it paid.</summary>
     [HttpPost("{id:guid}/void")]
@@ -109,8 +124,9 @@ public class PaymentsController : ControllerBase
 public class MemberAccountController : ControllerBase
 {
     private readonly IClubLedger _ledger;
+    private readonly IClubBilling _billing;
     private readonly ICurrentUserService _user;
-    public MemberAccountController(IClubLedger ledger, ICurrentUserService user) { _ledger = ledger; _user = user; }
+    public MemberAccountController(IClubLedger ledger, IClubBilling billing, ICurrentUserService user) { _ledger = ledger; _billing = billing; _user = user; }
 
     /// <summary>The member's balance now, or at <paramref name="asOf"/>: negative when they owe the club.</summary>
     [HttpGet("balance")]
@@ -121,6 +137,34 @@ public class MemberAccountController : ControllerBase
     [HttpGet("statement")]
     public async Task<ActionResult> Statement(Guid memberId, [FromQuery] DateTime from, [FromQuery] DateTime to, CancellationToken ct) =>
         Ledger.Answer(this, await _ledger.StatementAsync(_user.CurrentOrganizationId, memberId, from.ToUniversalTime(), to.ToUniversalTime(), ct));
+
+    /// <summary>The same statement as a PDF to download: built on the server from the ledger, not printed from the page.</summary>
+    [HttpGet("statement.pdf")]
+    [Produces("application/pdf", "application/json")]
+    public async Task<ActionResult> StatementPdf(Guid memberId, [FromQuery] DateTime from, [FromQuery] DateTime to, CancellationToken ct)
+    {
+        var file = await _billing.StatementPdfAsync(_user.CurrentOrganizationId!.Value, memberId, from.ToUniversalTime(), to.ToUniversalTime(), ct);
+        if (!file.IsSuccess) return file.Error.ToProblemResult();
+        return File(file.Value.Content, "application/pdf", file.Value.FileName);
+    }
+
+    /// <summary>Emails the member their statement for the period, the PDF attached, through the outbox.</summary>
+    [HttpPost("statement/email")]
+    [Requires(MemberPermissions.ManageMoney, What = "email a member their statement")]
+    public async Task<ActionResult> EmailStatement(Guid memberId, [FromBody] StatementPeriodRequest request, CancellationToken ct)
+    {
+        if (_user.UserId is not { } userId) return Unauthorized();
+        var sent = await _billing.EmailStatementAsync(_user.CurrentOrganizationId!.Value, userId, memberId,
+            request.From.ToUniversalTime(), request.To.ToUniversalTime(), ct);
+        return sent.IsSuccess ? Ok(sent.Value) : sent.Error.ToProblemResult();
+    }
+}
+
+/// <summary>The period of a statement: from (included) to (not included).</summary>
+public sealed class StatementPeriodRequest
+{
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
 }
 
 [ApiController]

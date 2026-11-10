@@ -343,6 +343,7 @@ try
     builder.Services.AddHostedService<ACI.WebApi.Services.PersonContactBackfillBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.GiftCardExpiryBackgroundService>();
     builder.Services.AddHostedService<ACI.WebApi.Services.CampaignSchedulerBackgroundService>();
+    builder.Services.AddHostedService<ACI.WebApi.Services.ClubBillingBackgroundService>();
 
     // HTTP Context accessor for current user service
     builder.Services.AddHttpContextAccessor();

@@ -9,9 +9,8 @@ using static ACI.WebApi.Tests.Helpers.Workspaces;
 namespace ACI.WebApi.Tests;
 
 /// <summary>
-/// The club's billing over HTTP: subscriptions billed by calendar period and never twice,
-/// the daily run and what it records, overdue charges chased and lapsed, and statements as
-/// PDF and by email.
+/// Subscriptions over HTTP: billed by calendar period, only once a period has started, and
+/// never twice. The daily run and what follows from it are in ClubBillingRunTests.
 /// </summary>
 /// <remarks>
 /// Dates are worked out from today, so every test reads the same on any day it runs: a
