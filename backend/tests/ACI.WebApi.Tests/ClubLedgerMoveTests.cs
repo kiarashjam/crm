@@ -85,7 +85,8 @@ public class ClubLedgerMoveTests
                 voidReason = status == "Voided" ? "Posted twice" : null, voidedByName = status == "Voided" ? "Manager" : null,
                 voidedAtUtc = status == "Voided" ? Iso(old.AddDays(1)) : null,
             });
-            var shown = status == "Voided" ? "Voided" : paid >= amount && amount > 0 ? "Paid" : paid > 0 ? "PartiallyPaid" : "Overdue";
+            // Their due date is behind them, so what is still owed is overdue.
+            var shown = status == "Voided" ? "Voided" : paid >= amount && amount > 0 ? "Paid" : "Overdue";
             s.Charges[id] = (shown, status == "Voided" ? 0 : paid);
             return id;
         }
@@ -243,6 +244,15 @@ public class ClubLedgerMoveTests
             $@"SELECT ISNULL((SELECT SUM([Amount]) FROM [ClubPayments] WHERE [MemberId] = '{memberId}'), 0)
                     - ISNULL((SELECT SUM([Amount]) FROM [ClubCharges] WHERE [MemberId] = '{memberId}'), 0)"))!;
 
+    private static async Task<List<JsonElement>> ReadAsync(HttpClient client, string path)
+    {
+        var res = await client.GetAsync(path);
+        var body = await res.Content.ReadAsStringAsync();
+        res.IsSuccessStatusCode.Should().BeTrue($"{path}: {body}");
+        using var doc = JsonDocument.Parse(body);
+        return doc.RootElement.EnumerateArray().Select(e => e.Clone()).ToList();
+    }
+
     private static async Task<decimal> CardValueAsync(string database, Guid cardId) =>
         (decimal)(await SqlServerApp.ScalarAsync(database,
             $"SELECT ISNULL(SUM([Amount]), 0) FROM [ClubGiftCardTransactions] WHERE [GiftCardId] = '{cardId}'"))!;
@@ -303,6 +313,53 @@ public class ClubLedgerMoveTests
             await using (var db = SqlServerSchema.Context(database))
                 await db.Database.ExecuteSqlRawAsync(AddClubMoneyLedger.MoveDocumentsSql);
             (await CountsAsync(database)).Should().Equal(counts);
+
+            // And through the API, as the club's screens read it once the app starts.
+            using var app = SqlServerApp.Start(database);
+            var client = app.CreateClient();
+            var login = await client.PostAsJsonAsync("/api/auth/login", new { email = club.Email, password = Password });
+            var loginBody = await login.Content.ReadAsStringAsync();
+            login.IsSuccessStatusCode.Should().BeTrue(loginBody);
+            using (var token = JsonDocument.Parse(loginBody))
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.RootElement.GetProperty("token").GetString());
+            foreach (var org in new[] { club.OrgA, club.OrgB })
+            {
+                client.DefaultRequestHeaders.Remove("X-Organization-Id");
+                client.DefaultRequestHeaders.Add("X-Organization-Id", org.ToString());
+                foreach (var member in await ReadAsync(client, "/api/members"))
+                    member.GetProperty("houseAccountBalance").GetDecimal().Should().Be(club.Balances[member.GetProperty("id").GetGuid()],
+                        "the members list shows the balance the club saw before the move");
+                var listed = await ReadAsync(client, "/api/charges");
+                foreach (var charge in listed.Where(c => c.GetProperty("entryType").GetString() == "Charge"))
+                {
+                    var (status, paid) = club.Charges[charge.GetProperty("id").GetGuid()];
+                    charge.GetProperty("status").GetString().Should().Be(status);
+                    charge.GetProperty("paidAmount").GetDecimal().Should().Be(paid);
+                }
+                // What was owed before the ledger is listed with the charges, to be paid like one.
+                listed.Where(c => c.GetProperty("entryType").GetString() != "Charge")
+                    .Select(c => (c.GetProperty("entryType").GetString(), c.GetProperty("amount").GetDecimal(), c.GetProperty("status").GetString()))
+                    .Should().BeEquivalentTo(org == club.OrgA
+                        ? new[] { ("Opening", 500m, "Pending"), ("Adjustment", 10m, "Pending"), ("Adjustment", 40m, "Pending") }
+                        : Array.Empty<(string, decimal, string)>());
+            }
+            client.DefaultRequestHeaders.Remove("X-Organization-Id");
+            client.DefaultRequestHeaders.Add("X-Organization-Id", club.OrgA.ToString());
+            var cards = await ReadAsync(client, "/api/gift-cards");
+            cards.Select(c => c.GetProperty("id").GetGuid()).Should().BeEquivalentTo(club.CardsLeft.Keys);
+            foreach (var card in cards)
+                card.GetProperty("remainingValue").GetDecimal().Should().Be(club.CardsLeft[card.GetProperty("id").GetGuid()]);
+            cards.Select(c => c.GetProperty("status").GetString()).Should().BeEquivalentTo(
+                new[] { "Active", "Redeemed", "Expired", "Voided", "Active", "Active", "Active" });
+            (await ReadAsync(client, "/api/gift-cards/redemptions")).Should().HaveCount(4);
+            var payments = await ReadAsync(client, "/api/payments");
+            payments.Should().HaveCount(6, "every payment on record; the credit for the spa visit is not money received");
+            payments.Count(p => p.TryGetProperty("status", out var st) && st.GetString() == "Voided").Should().Be(1);
+            var tabs = await ReadAsync(client, "/api/tabs");
+            tabs.Select(t => t.GetProperty("status").GetString()).Should().BeEquivalentTo(new[] { "Closed", "Open", "Voided" });
+            tabs.Single(t => t.GetProperty("status").GetString() == "Open").GetProperty("total").GetDecimal().Should().Be(42);
+            (await ReadAsync(client, "/api/subscriptions")).Should().HaveCount(2);
+            (await ReadAsync(client, "/api/donations")).Should().HaveCount(2);
         }
         finally
         {
