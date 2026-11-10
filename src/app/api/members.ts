@@ -6,7 +6,7 @@
 // Real backend support is optional: the demo store keeps everything working
 // offline so the UI is fully exercisable without server changes.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
 import { createMockStore, demoPatch, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -137,10 +137,10 @@ const memberStore = createMockStore<Member>({
   idOf: (m) => m.id,
 });
 
-export async function getMembers(): Promise<Member[]> {
+export async function getMembers(req?: RequestOptions): Promise<Member[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<Member[]>('/api/members');
+      const res = await authFetchJson<Member[]>('/api/members', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {

@@ -5,7 +5,7 @@
 // balance is derived from the ledger so the books always reconcile. Each tier
 // earns at a configurable multiplier.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import type { MemberTier } from './members';
 
@@ -163,10 +163,10 @@ const ledgerStore = createMockStore<LoyaltyEntry>({
   idOf: (l) => l.id,
 });
 
-export async function getLoyaltyLedger(): Promise<LoyaltyEntry[]> {
+export async function getLoyaltyLedger(req?: RequestOptions): Promise<LoyaltyEntry[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<LoyaltyEntry[]>('/api/loyalty/ledger');
+      const res = await authFetchJson<LoyaltyEntry[]>('/api/loyalty/ledger', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {

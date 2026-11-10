@@ -8,7 +8,7 @@
 // charge or tab was settled, so the member was billed again at statement time.
 // The tiles stay, switched off, saying so, until a redemption settles a bill.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calculator,
@@ -45,16 +45,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import {
-  getMembers,
-  type Member,
-  type MemberTier,
-} from '@/app/api/members';
-import { getLoyaltyLedger } from '@/app/api/loyalty';
+import type { MemberTier } from '@/app/api/members';
 import { checkIn, VISIT_VENUES, type VisitVenue } from '@/app/api/visits';
 import { openTab, TAB_VENUES, VENUE_LABELS as TAB_VENUE_LABELS, type TabVenue } from '@/app/api/tabs';
 import { createCharge, CHARGE_KINDS, type ChargeKind } from '@/app/api/charges';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubMembers, useClubReads, useLoyaltyLedger } from '@/app/hooks/queries';
 import PageHero from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
@@ -79,12 +76,26 @@ const TIER_RING: Record<MemberTier, string> = {
 
 export default function PosTerminal() {
   const { format: formatCurrency, currency } = useClubMoney();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [pointsByMember, setPointsByMember] = useState<Map<string, number>>(new Map());
+  // Read through the app's cache: a failed read says so with a way to try again, rather
+  // than looking like a club with no members; a charge posted here refreshes the balance.
+  const membersQuery = useClubMembers();
+  const loyaltyQuery = useLoyaltyLedger();
+  const reads = useClubReads(membersQuery, loyaltyQuery);
+  const members = membersQuery.data ?? NONE;
+  const ledger = loyaltyQuery.data ?? NONE;
+  const pointsByMember = useMemo(() => {
+    const points = new Map<string, number>();
+    for (const e of ledger) points.set(e.memberId, (points.get(e.memberId) ?? 0) + e.points);
+    return points;
+  }, [ledger]);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<Member | null>(null);
-  const [loading, setLoading] = useState(true);
+  // The member picked, by id: their balance on screen is the one last read, not the one
+  // they had when they were picked.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = members.find((m) => m.id === selectedId) ?? null;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [busy, setBusy] = useState(false);
   const [actionDialog, setActionDialog] = useState<
     null | 'visit' | 'tab' | 'charge'
@@ -97,24 +108,6 @@ export default function PosTerminal() {
     description: '',
     amount: '',
   });
-
-  const load = async () => {
-    try {
-      const [m, l] = await Promise.all([getMembers(), getLoyaltyLedger()]);
-      setMembers(m);
-      const points = new Map<string, number>();
-      for (const e of l) {
-        points.set(e.memberId, (points.get(e.memberId) ?? 0) + e.points);
-      }
-      setPointsByMember(points);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -209,6 +202,7 @@ export default function PosTerminal() {
             noAgentSlot
           />
 
+          <ClubReadState reads={reads} what="Members">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Search */}
             <StaggerItem as="section" index={0} className="lg:col-span-1 bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -234,7 +228,7 @@ export default function PosTerminal() {
                       <li key={m.id}>
                         <button
                           type="button"
-                          onClick={() => setSelected(m)}
+                          onClick={() => setSelectedId(m.id)}
                           className={`w-full text-left rounded-xl p-3 transition flex items-center gap-3 ${
                             active
                               ? 'bg-cyan-50 ring-2 ring-cyan-400'
@@ -391,6 +385,7 @@ export default function PosTerminal() {
               )}
             </StaggerItem>
           </div>
+          </ClubReadState>
         </main>
       </PageTransition>
 

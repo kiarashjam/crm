@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Receipt,
   Plus,
@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   CreditCard,
   Loader2,
+  Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -40,12 +41,11 @@ import {
   TabsContent,
 } from '@/app/components/ui/tabs';
 import {
-  getCharges,
-  getPayments,
   createCharge,
   recordPayment,
   voidCharge,
   voidPayment,
+  refundPayment,
   computeChargeStats,
   CHARGE_KINDS,
   CHARGE_STATUSES,
@@ -56,12 +56,13 @@ import {
   type ChargeStatus,
   type Payment,
 } from '@/app/api/charges';
-import { getMembers, type Member } from '@/app/api/members';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { endOfLocalDay } from '@/app/lib/dateInputs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads } from '@/app/hooks/queries';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -101,11 +102,18 @@ function formatDate(iso?: string): string {
 
 export default function Charges() {
   const { format: formatCurrency, currency } = useClubMoney();
-  const [charges, setCharges] = useState<Charge[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Read through the app's cache: a failed read says so with a way to try again instead
+  // of looking like no charges, and a payment taken elsewhere refreshes these lists.
+  const chargesQuery = useClubCharges();
+  const paymentsQuery = useClubPayments();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(chargesQuery, paymentsQuery, membersQuery);
+  const charges: Charge[] = chargesQuery.data ?? NONE;
+  const payments: Payment[] = paymentsQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | ChargeStatus>('All');
   const [memberFilter, setMemberFilter] = useState<string>('All');
@@ -132,23 +140,6 @@ export default function Charges() {
   const org = useOrgOptional();
   const canVoid = servesDemoData()
     || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.ManageMoney) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
-
-  const load = async () => {
-    try {
-      const [c, p, m] = await Promise.all([getCharges(), getPayments(), getMembers()]);
-      setCharges(c);
-      setPayments(p);
-      setMembers(m);
-    } catch {
-      toast.error('Failed to load charges');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   const stats = useMemo(() => computeChargeStats(charges), [charges]);
 
@@ -260,11 +251,11 @@ export default function Charges() {
   };
 
   /** Asks why; null when the person cancels or gives no reason. */
-  const askReason = (what: string): string | null => {
-    const reason = window.prompt(`Why is ${what} being voided? The reason stays on the record.`);
+  const askReason = (what: string, done: 'voided' | 'refunded' = 'voided'): string | null => {
+    const reason = window.prompt(`Why is ${what} being ${done}? The reason stays on the record.`);
     if (reason === null) return null;
     if (!reason.trim()) {
-      toast.error('A reason is needed to void it');
+      toast.error(done === 'voided' ? 'A reason is needed to void it' : 'A reason is needed to refund it');
       return null;
     }
     return reason.trim();
@@ -296,6 +287,34 @@ export default function Charges() {
       await load();
     } catch (err) {
       toast.error(err instanceof Error && err.message ? err.message : 'Could not void the payment');
+    } finally {
+      setVoidingId(null);
+    }
+  };
+
+  // Money paid back, part or all of a payment, with a reason: an entry of its own on the
+  // ledger. What the payment left unused goes back first; beyond that its charges owe again.
+  const refundOnePayment = async (p: Payment) => {
+    const left = Math.round((p.amount - (p.refundedAmount ?? 0)) * 100) / 100;
+    const typed = window.prompt(
+      `How much of this ${formatCurrency(p.amount)} payment is being paid back? Up to ${formatCurrency(left)}.`,
+      left.toFixed(2),
+    );
+    if (typed === null) return;
+    const amount = Math.round(Number(typed) * 100) / 100;
+    if (!amount || amount <= 0 || amount > left) {
+      toast.error(`Enter an amount up to ${formatCurrency(left)}`);
+      return;
+    }
+    const reason = askReason(`this ${formatCurrency(amount)} refund`, 'refunded');
+    if (!reason) return;
+    setVoidingId(p.id);
+    try {
+      await refundPayment(p.id, amount, reason);
+      toast.success(`Refunded ${formatCurrency(amount)}`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not refund the payment');
     } finally {
       setVoidingId(null);
     }
@@ -349,8 +368,17 @@ export default function Charges() {
   );
 
   const paymentActions = (p: Payment) =>
-    canVoid && p.status !== 'Voided' ? (
+    canVoid && p.status !== 'Voided' && p.status !== 'Refunded' ? (
       <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => refundOnePayment(p)}
+          disabled={voidingId === p.id}
+          className="rounded p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-700 disabled:opacity-50"
+          aria-label={`Refund payment of ${formatCurrency(p.amount)}`}
+        >
+          <Undo2 className="h-4 w-4" />
+        </button>
         <button
           type="button"
           onClick={() => voidOnePayment(p)}
@@ -368,6 +396,11 @@ export default function Charges() {
       <span className="block text-right">
         <span className="block text-slate-500 line-through">{formatCurrency(p.amount)}</span>
         <span className="block text-xs text-slate-500">Voided{p.voidReason ? `: ${p.voidReason}` : ''}</span>
+      </span>
+    ) : p.refundedAmount ? (
+      <span className="block text-right">
+        <span className="block font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
+        <span className="block text-xs text-slate-500">{formatCurrency(p.refundedAmount)} refunded</span>
       </span>
     ) : (
       <span className="font-semibold text-emerald-700">+{formatCurrency(p.amount)}</span>
@@ -454,6 +487,7 @@ export default function Charges() {
             ]}
           />
 
+          <ClubReadState reads={reads} what="House accounts">
           {/* Filters */}
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 mb-6">
             <div className="relative flex-1 max-w-md">
@@ -645,6 +679,7 @@ export default function Charges() {
               )}
             </TabsContent>
           </Tabs>
+          </ClubReadState>
         </main>
       </PageTransition>
 

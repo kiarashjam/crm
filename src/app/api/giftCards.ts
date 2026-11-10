@@ -4,7 +4,7 @@
 // recipient can redeem against any in-house charge until the balance hits
 // zero. Each card has an immutable code.
 
-import { ApiError, apiWithFallback, authFetchJson, servesDemoData } from './apiClient';
+import { ApiError, apiWithFallback, authFetchJson, servesDemoData, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 
 function delay(ms: number): Promise<void> {
@@ -29,6 +29,10 @@ export interface GiftCard {
   /** Set when voided: what was left on the card when it was written off, and why. */
   writtenOffValue?: number;
   voidReason?: string;
+  /** What was left when it expired, written off by the server's expiry run. */
+  expiredValue?: number;
+  /** What was added after it was issued. */
+  toppedUpValue?: number;
 }
 
 export interface GiftCardRedemption {
@@ -141,10 +145,10 @@ const redemptionStore = createMockStore<GiftCardRedemption>({
   idOf: (r) => r.id,
 });
 
-export async function getGiftCards(): Promise<GiftCard[]> {
+export async function getGiftCards(req?: RequestOptions): Promise<GiftCard[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<GiftCard[]>('/api/gift-cards');
+      const res = await authFetchJson<GiftCard[]>('/api/gift-cards', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {
@@ -156,10 +160,10 @@ export async function getGiftCards(): Promise<GiftCard[]> {
   );
 }
 
-export async function getRedemptions(): Promise<GiftCardRedemption[]> {
+export async function getRedemptions(req?: RequestOptions): Promise<GiftCardRedemption[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<GiftCardRedemption[]>('/api/gift-cards/redemptions');
+      const res = await authFetchJson<GiftCardRedemption[]>('/api/gift-cards/redemptions', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {

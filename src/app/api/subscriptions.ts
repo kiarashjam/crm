@@ -4,7 +4,7 @@
 // but also extras like locker rental, fitness add-ons, parking. When a cycle
 // comes due, the billing run drops a charge onto the member's house account.
 
-import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData } from './apiClient';
+import { apiWithFallback, authFetch, authFetchJson, ensureOk, servesDemoData, type RequestOptions } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { createCharge } from './charges';
 
@@ -132,10 +132,10 @@ const subStore = createMockStore<Subscription>({
   idOf: (s) => s.id,
 });
 
-export async function getSubscriptions(): Promise<Subscription[]> {
+export async function getSubscriptions(req?: RequestOptions): Promise<Subscription[]> {
   return apiWithFallback(
     async () => {
-      const res = await authFetchJson<Subscription[]>('/api/subscriptions');
+      const res = await authFetchJson<Subscription[]>('/api/subscriptions', { signal: req?.signal });
       return Array.isArray(res) ? res : [];
     },
     async () => {

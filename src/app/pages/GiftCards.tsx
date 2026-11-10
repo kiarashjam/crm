@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Gift,
   Plus,
@@ -42,8 +42,6 @@ import {
   TabsContent,
 } from '@/app/components/ui/tabs';
 import {
-  getGiftCards,
-  getRedemptions,
   issueGiftCard,
   redeemGiftCard,
   voidGiftCard,
@@ -53,12 +51,13 @@ import {
   type GiftCardStatus,
   type GiftCardRedemption,
 } from '@/app/api/giftCards';
-import { getMembers, type Member } from '@/app/api/members';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { endOfLocalDay } from '@/app/lib/dateInputs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
+import { ClubReadState } from '@/app/components/ClubReadState';
+import { NONE, useClubMembers, useClubReads, useGiftCardRedemptions, useGiftCards } from '@/app/hooks/queries';
 import PageHero, { heroPrimary } from '@/app/components/PageHero';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import {
@@ -82,11 +81,18 @@ function formatDate(iso: string): string {
 
 export default function GiftCards() {
   const { format: formatCurrency, currency } = useClubMoney();
-  const [cards, setCards] = useState<GiftCard[]>([]);
-  const [redemptions, setRedemptions] = useState<GiftCardRedemption[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Read through the app's cache: a failed read says so with a way to try again, rather
+  // than looking like a club with no cards.
+  const cardsQuery = useGiftCards();
+  const redemptionsQuery = useGiftCardRedemptions();
+  const membersQuery = useClubMembers();
+  const reads = useClubReads(cardsQuery, redemptionsQuery, membersQuery);
+  const cards: GiftCard[] = cardsQuery.data ?? NONE;
+  const redemptions: GiftCardRedemption[] = redemptionsQuery.data ?? NONE;
+  const members = membersQuery.data ?? NONE;
+  const loading = reads.loading;
   usePageLoading(loading);
+  const load = reads.reload;
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | GiftCardStatus>('All');
   const [issueDialog, setIssueDialog] = useState(false);
@@ -116,23 +122,6 @@ export default function GiftCards() {
   const org = useOrgOptional();
   const canVoid = servesDemoData()
     || (Boolean(org?.currentOrg) && orgCan(org?.currentOrg, PERMISSION.ManageMoney) && orgCan(org?.currentOrg, PERMISSION.VoidMoney));
-
-  const load = async () => {
-    try {
-      const [c, r, m] = await Promise.all([getGiftCards(), getRedemptions(), getMembers()]);
-      setCards(c);
-      setRedemptions(r);
-      setMembers(m);
-    } catch {
-      toast.error('Failed to load gift cards');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
 
   const stats = useMemo(() => computeGiftCardStats(cards, redemptions), [cards, redemptions]);
 
@@ -383,6 +372,7 @@ export default function GiftCards() {
             ]}
           />
 
+          <ClubReadState reads={reads} what="Gift cards">
           <Tabs defaultValue="cards">
             <TabsList className="mb-4">
               <TabsTrigger value="cards">Cards ({cards.length})</TabsTrigger>
@@ -619,6 +609,7 @@ export default function GiftCards() {
               )}
             </TabsContent>
           </Tabs>
+          </ClubReadState>
         </main>
       </PageTransition>
 
