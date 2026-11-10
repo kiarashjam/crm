@@ -35,7 +35,7 @@ import {
   type MemberTier,
   type MemberStatus,
 } from '@/app/api/members';
-import { isSale, type Charge, type Payment } from '@/app/api/charges';
+import { isSale, PAYMENT_METHOD_LABELS, PAYMENT_PROVIDER_LABELS, type Charge, type Payment } from '@/app/api/charges';
 import type { Visit } from '@/app/api/visits';
 import type { Reservation } from '@/app/api/reservations';
 import type { EventAttendee } from '@/app/api/eventAttendees';
@@ -55,6 +55,7 @@ import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import MemberConsentPanel from '@/app/pages/members/MemberConsentPanel';
 import EmailMemberDialog from '@/app/pages/members/EmailMemberDialog';
+import { MemberPaymentsCard } from '@/app/components/payments/MemberPaymentsCard';
 
 const TIER_BADGE: Record<MemberTier, string> = {
   Bronze: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200',
@@ -156,6 +157,11 @@ export default function MemberDetail() {
   const memberPayments = useMemo(
     () => payments.filter((p) => p.memberId === id),
     [payments, id],
+  );
+  // What a pay link can be for: the charges still owing.
+  const openCharges = useMemo(
+    () => memberCharges.filter((c) => c.status === 'Pending' || c.status === 'PartiallyPaid' || c.status === 'Overdue'),
+    [memberCharges],
   );
   const memberVisits = useMemo(() => visits.filter((v) => v.memberId === id), [visits, id]);
   const memberLedger = useMemo(() => ledger.filter((l) => l.memberId === id), [ledger, id]);
@@ -472,6 +478,13 @@ export default function MemberDetail() {
             </TabsContent>
 
             <TabsContent value="charges">
+              <MemberPaymentsCard
+                memberId={member.id}
+                memberName={`${member.firstName} ${member.lastName}`.trim()}
+                memberEmail={member.email || undefined}
+                openCharges={openCharges}
+                owed={outstandingBalance}
+              />
               {memberCharges.length === 0 ? (
                 <EmptyMini icon={<Receipt className="w-6 h-6" />} text="No charges on this account yet." />
               ) : (
@@ -511,7 +524,9 @@ export default function MemberDetail() {
                         {memberPayments.slice(0, 5).map((p) => (
                           <li key={p.id} className="flex items-center justify-between">
                             <span className="text-slate-600">
-                              {p.method} {p.reference && <span className="text-slate-500">· {p.reference}</span>}
+                              {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
+                              {p.provider && <span className="text-slate-500"> · {PAYMENT_PROVIDER_LABELS[p.provider] ?? p.provider}</span>}
+                              {p.reference && <span className="text-slate-500"> · {p.reference}</span>}
                             </span>
                             {p.status === 'Voided' ? (
                               <span className="text-slate-500 line-through" title={p.voidReason}>{formatCurrency(p.amount)} voided</span>
