@@ -46,6 +46,12 @@ public interface IClubBilling
     /// <summary>A member's statement for [fromUtc, toUtc) as a PDF, built from the ledger.</summary>
     Task<Result<StatementFile>> StatementPdfAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 
+    /// <summary>
+    /// An invoice for one charge as a PDF: what it was for, its VAT, what has been paid and what
+    /// is owed, with a Swiss QR-bill for that amount whose reference pays this charge first.
+    /// </summary>
+    Task<Result<InvoiceFile>> ChargeInvoicePdfAsync(Guid organizationId, Guid chargeId, CancellationToken ct = default);
+
     /// <summary>Emails the member their statement for [fromUtc, toUtc), the PDF attached, through the outbox.</summary>
     Task<Result<StatementDeliveryDto>> EmailStatementAsync(Guid organizationId, Guid userId, Guid memberId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
 
@@ -59,6 +65,9 @@ public interface IClubBilling
 
 /// <summary>A statement as a file to download or attach.</summary>
 public sealed record StatementFile(string FileName, byte[] Content, AccountStatementDto Statement, decimal AmountDue);
+
+/// <summary>An invoice for one charge as a file to download.</summary>
+public sealed record InvoiceFile(string FileName, byte[] Content, decimal AmountDue);
 
 public sealed record BillingRunFailureDto(string What, Guid? Id, string Name, string Error);
 

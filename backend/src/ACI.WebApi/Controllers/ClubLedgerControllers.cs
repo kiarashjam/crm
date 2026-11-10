@@ -73,6 +73,19 @@ public class ChargesController : ControllerBase
     public async Task<ActionResult> Create([FromBody] PostChargeRequest request, CancellationToken ct) =>
         Ledger.Answer(this, await _ledger.PostChargeAsync(_user.CurrentOrganizationId, request, Ledger.Key(Request), ct));
 
+    /// <summary>
+    /// An invoice for the charge as a PDF, with a Swiss QR-bill for what is still owed on it once
+    /// the club's bank details are set: its reference names the charge, so the bank's payment pays it.
+    /// </summary>
+    [HttpGet("{id:guid}/invoice.pdf")]
+    [Produces("application/pdf", "application/json")]
+    public async Task<ActionResult> InvoicePdf(Guid id, CancellationToken ct)
+    {
+        var file = await _billing.ChargeInvoicePdfAsync(_user.CurrentOrganizationId!.Value, id, ct);
+        if (!file.IsSuccess) return file.Error.ToProblemResult();
+        return File(file.Value.Content, "application/pdf", file.Value.FileName);
+    }
+
     // A charge is voided, not deleted, so the record of what was charged stays. Answered
     // with a sentence rather than a bare 405, which the app would read as a missing feature.
     [HttpDelete("{id:guid}")]

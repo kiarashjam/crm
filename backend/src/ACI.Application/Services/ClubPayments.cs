@@ -25,7 +25,7 @@ public interface IClubPaymentSettings
     Task<PaymentStatusDto> StatusAsync(Guid organizationId, CancellationToken ct = default);
 }
 
-/// <summary>The Swiss QR-bill a statement is printed with.</summary>
+/// <summary>The Swiss QR-bill a statement or an invoice is printed with.</summary>
 public interface IClubQrBills
 {
     /// <summary>
@@ -35,6 +35,13 @@ public interface IClubQrBills
     /// details, nothing is due, or the currency is not CHF or EUR: no slip is printed then.
     /// </summary>
     Task<QrBill?> ForStatementAsync(Guid organizationId, Guid memberId, DateTime fromUtc, DateTime toUtc, decimal amountDue, string currency, CancellationToken ct = default);
+
+    /// <summary>
+    /// The QR-bill for an invoice of one charge that asks for <paramref name="amountDue"/>, with
+    /// a reference that names the charge (the same one every time it is printed), so the bank's
+    /// payment pays that charge first. Null as for a statement.
+    /// </summary>
+    Task<QrBill?> ForChargeAsync(Guid organizationId, Guid memberId, Guid chargeId, decimal amountDue, string currency, string message, CancellationToken ct = default);
 
     /// <summary>What a reference printed on a QR-bill pays, for staff looking one up.</summary>
     Task<Result<PaymentReferenceDto>> FindAsync(Guid organizationId, string reference, CancellationToken ct = default);

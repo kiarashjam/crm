@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CreditCard,
+  FileDown,
   Loader2,
   Undo2,
 } from 'lucide-react';
@@ -59,6 +60,7 @@ import {
 } from '@/app/api/charges';
 import { orgCan, PERMISSION } from '@/app/api/organizations';
 import { servesDemoData } from '@/app/api/apiClient';
+import { downloadChargeInvoicePdf } from '@/app/api/billing';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { endOfLocalDay } from '@/app/lib/dateInputs';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
@@ -158,6 +160,7 @@ export default function Charges() {
   });
   const [saving, setSaving] = useState(false);
   const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [invoicingId, setInvoicingId] = useState<string | null>(null);
   // Voiding takes money.void and, like every change to the club's money, money.manage:
   // the server refuses anyone without both.
   const org = useOrgOptional();
@@ -287,6 +290,19 @@ export default function Charges() {
     return reason.trim();
   };
 
+  // An invoice for one charge, built on the server: what is still owed on it, with a QR-bill
+  // whose reference pays that charge once the club's bank details are set.
+  const downloadInvoice = async (c: Charge) => {
+    setInvoicingId(c.id);
+    try {
+      await downloadChargeInvoicePdf(c.id);
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Could not build the invoice');
+    } finally {
+      setInvoicingId(null);
+    }
+  };
+
   // Charges and payments are voided, never deleted: the record stays, with who and why.
   const voidOne = async (c: Charge) => {
     const reason = askReason(c.description);
@@ -376,9 +392,21 @@ export default function Charges() {
     );
   };
 
-  /** Pay and void, the same in every layout. */
+  /** Pay, the invoice and void, the same in every layout. */
   const chargeActions = (c: Charge) => (
     <div className="flex items-center justify-end gap-1">
+      {!servesDemoData() && c.status !== 'Voided' && (
+        <button
+          type="button"
+          onClick={() => void downloadInvoice(c)}
+          disabled={invoicingId === c.id}
+          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+          aria-label={`Invoice for ${c.description}`}
+          title="Invoice (PDF)"
+        >
+          {invoicingId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+        </button>
+      )}
       {(c.status === 'Pending' || c.status === 'PartiallyPaid' || c.status === 'Overdue') && (
         <WriteOnly permission={PERMISSION.ManageMoney}>
           <Button size="sm" variant="outline" onClick={() => openPaymentDialog(c)}>

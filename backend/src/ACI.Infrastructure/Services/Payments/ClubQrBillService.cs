@@ -15,7 +15,9 @@ namespace ACI.Infrastructure.Services.Payments;
 /// <para>
 /// A statement's reference is issued the first time the statement is printed and kept
 /// (ClubPaymentReference), so the same statement always carries the same reference, and a
-/// bank transfer quoting it is matched to the member (IClubBankFiles). Numbers are the
+/// bank transfer quoting it is matched to the member (IClubBankFiles). An invoice for one
+/// charge gets a reference of its own the same way, which also names the charge, so the
+/// transfer pays that charge first. Numbers are the
 /// workspace's own sequence; the database refuses a number, or a statement, taken twice, and
 /// a print that loses that race reads the winner's row.
 /// </para>
@@ -47,10 +49,24 @@ public sealed class ClubQrBillService : IClubQrBills
     {
         if (amountDue <= 0 || currency is not ("CHF" or "EUR")) return null;
         var config = await _settings.ConfigAsync(organizationId, ct);
-        if (config.QrBillProblem != null || config.Creditor is not { } creditor) return null;
+        if (config.QrBillProblem != null || config.Creditor == null) return null;
+        var reference = await IssueAsync(organizationId, config, memberId, new Key(StatementPurpose, fromUtc, toUtc, null), amountDue, currency, ct);
+        return Bill(config, reference, amountDue, currency, $"Statement {PeriodWords(fromUtc, toUtc, RegionalSettings.ZoneOf(config.TimeZone))}", memberId);
+    }
 
-        var reference = await IssueAsync(organizationId, config, memberId, fromUtc, toUtc, amountDue, currency, ct);
-        if (reference == null) return null;
+    public async Task<QrBill?> ForChargeAsync(Guid organizationId, Guid memberId, Guid chargeId, decimal amountDue, string currency, string message, CancellationToken ct = default)
+    {
+        if (amountDue <= 0 || currency is not ("CHF" or "EUR")) return null;
+        var config = await _settings.ConfigAsync(organizationId, ct);
+        if (config.QrBillProblem != null || config.Creditor == null) return null;
+        var reference = await IssueAsync(organizationId, config, memberId, new Key(ChargePurpose, null, null, chargeId), amountDue, currency, ct);
+        return Bill(config, reference, amountDue, currency, message, memberId);
+    }
+
+    /// <summary>The bill for an issued reference; none when it would not validate (and why is logged).</summary>
+    private QrBill? Bill(PaymentConfig config, ClubPaymentReference? reference, decimal amountDue, string currency, string message, Guid memberId)
+    {
+        if (reference == null || config.Creditor is not { } creditor) return null;
         var qr = config.QrIban != null;
         var bill = new QrBill(
             qr ? config.QrIban! : config.Iban!,
@@ -60,11 +76,11 @@ public sealed class ClubQrBillService : IClubQrBills
             null,
             qr ? SwissQrBill.Qrr : SwissQrBill.Scor,
             qr ? reference.QrReference : reference.ScorReference,
-            $"Statement {PeriodWords(fromUtc, toUtc, RegionalSettings.ZoneOf(config.TimeZone))}");
+            message);
         var problems = SwissQrBill.Validate(bill);
         if (problems.Count > 0)
         {
-            _logger.LogWarning("The QR-bill for member {MemberId} was left off the statement: {Problems}", memberId, string.Join(" ", problems));
+            _logger.LogWarning("The QR-bill for member {MemberId} was left off: {Problems}", memberId, string.Join(" ", problems));
             return null;
         }
         return bill;
@@ -91,14 +107,20 @@ public sealed class ClubQrBillService : IClubQrBills
             .FirstOrDefaultAsync(r => r.OrganizationId == organizationId && (r.QrReference == compact || r.ScorReference == compact), ct);
     }
 
-    /// <summary>The statement's reference: the one issued before, or a new number.</summary>
-    private async Task<ClubPaymentReference?> IssueAsync(Guid organizationId, PaymentConfig config, Guid memberId, DateTime fromUtc, DateTime toUtc,
+    /// <summary>What a reference is for: a member's statement of a period, or one charge.</summary>
+    private sealed record Key(string Purpose, DateTime? FromUtc, DateTime? ToUtc, Guid? ChargeId);
+
+    /// <summary>The reference for a statement or a charge: the one issued before, or a new number.</summary>
+    private async Task<ClubPaymentReference?> IssueAsync(Guid organizationId, PaymentConfig config, Guid memberId, Key key,
         decimal amountDue, string currency, CancellationToken ct)
     {
         for (var attempt = 0; attempt < 5; attempt++)
         {
-            var existing = await _db.ClubPaymentReferences.FirstOrDefaultAsync(r => r.OrganizationId == organizationId
-                && r.Purpose == StatementPurpose && r.MemberId == memberId && r.PeriodStartUtc == fromUtc && r.PeriodEndUtc == toUtc, ct);
+            var issued = _db.ClubPaymentReferences.Where(r => r.OrganizationId == organizationId && r.Purpose == key.Purpose);
+            issued = key.ChargeId is { } chargeId
+                ? issued.Where(r => r.ChargeId == chargeId)
+                : issued.Where(r => r.MemberId == memberId && r.PeriodStartUtc == key.FromUtc && r.PeriodEndUtc == key.ToUtc);
+            var existing = await issued.FirstOrDefaultAsync(ct);
             if (existing != null)
             {
                 // Printed before the club had a QR-IBAN: it gets its QR reference now, from the same number.
@@ -132,9 +154,10 @@ public sealed class ClubQrBillService : IClubQrBills
                 QrReference = qrReference,
                 ScorReference = PaymentReferences.CreditorReference(number),
                 MemberId = memberId,
-                Purpose = StatementPurpose,
-                PeriodStartUtc = fromUtc,
-                PeriodEndUtc = toUtc,
+                Purpose = key.Purpose,
+                PeriodStartUtc = key.FromUtc,
+                PeriodEndUtc = key.ToUtc,
+                ChargeId = key.ChargeId,
                 AmountDue = amountDue,
                 Currency = currency,
                 CreatedAtUtc = DateTime.UtcNow,

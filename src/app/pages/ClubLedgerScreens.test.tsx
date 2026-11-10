@@ -96,6 +96,12 @@ vi.mock('@/app/api/donations', async (importOriginal) => ({
   voidDonation: (...a: unknown[]) => donations.voidDonation(...a),
 }));
 
+const billing = vi.hoisted(() => ({ invoice: vi.fn() }));
+vi.mock('@/app/api/billing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/api/billing')>()),
+  downloadChargeInvoicePdf: (...a: unknown[]) => billing.invoice(...a),
+}));
+
 const Charges = (await import('./Charges')).default;
 const Donations = (await import('./Donations')).default;
 const Statements = (await import('./Statements')).default;
@@ -132,6 +138,28 @@ describe('a money screen whose read fails', () => {
     await user.click(screen.getByRole('button', { name: /Try again/ }));
     expect((await screen.findAllByText('Dinner for two')).length).toBeGreaterThan(0);
     expect(screen.queryByText('House accounts could not be loaded.')).toBeNull();
+  });
+});
+
+describe('a charge', () => {
+  it("downloads the server's invoice for it, with its QR-bill, for anyone who can see it", async () => {
+    as([PERMISSION.ClubMembers]);
+    billing.invoice.mockReset().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    show(<Charges />);
+
+    await user.click((await screen.findAllByRole('button', { name: 'Invoice for Dinner for two' }))[0]!);
+
+    await vi.waitFor(() => expect(billing.invoice).toHaveBeenCalledWith('c1'));
+  });
+
+  it('offers no invoice for a voided charge', async () => {
+    as([PERMISSION.ManageMoney]);
+    charges.getCharges.mockResolvedValue([{ ...CHARGE, status: 'Voided', voidReason: 'Entered twice' }]);
+    show(<Charges />);
+
+    expect((await screen.findAllByText('Dinner for two')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Invoice for Dinner for two' })).toBeNull();
   });
 });
 
