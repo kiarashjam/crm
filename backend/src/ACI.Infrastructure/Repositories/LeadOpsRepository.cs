@@ -225,7 +225,10 @@ public sealed class LeadOpsRepository : ILeadOpsRepository
     public async Task SaveLeadAsync(Lead lead, CancellationToken ct = default)
     {
         _db.Leads.Update(lead);
-        await _db.SaveChangesAsync(ct);
+        // Refused when the lead changed after it was read (see IVersioned). The stale copy
+        // is let go of: left tracked, the next read would hand back the same copy, and
+        // every later save in this scope would try to write it again.
+        await _db.SaveRefusingStaleAsync(ct);
     }
 
     public Task<Lead?> GetLeadAsync(Guid id, CancellationToken ct = default) =>

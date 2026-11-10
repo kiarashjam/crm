@@ -807,23 +807,42 @@ public class LeadService : ILeadService
             }
         }
 
-        // Mark lead as converted with full traceability
-        lead.IsConverted = true;
-        lead.ConvertedAtUtc = DateTime.UtcNow;
-        lead.UpdatedAtUtc = DateTime.UtcNow;
-        lead.UpdatedByUserId = userId;
-        
-        if (contactId.HasValue && request.CreateContact)
+        // Mark lead as converted with full traceability. The contact, company and deal
+        // above are already saved, so a lead saved by someone else meanwhile (a call
+        // logged on it, the rescore, an email it opened: see IVersioned) is marked on
+        // its newer copy. Refused, the conversion left them behind as strays, and the
+        // retry it asked for made them all again.
+        for (var attempt = 1; ; attempt++)
         {
-            lead.ConvertedToContactId = contactId;
-            // Asked for in so many words, so a contact deleted earlier no longer stands
-            // in the way of the lead having one.
-            lead.PersonContactRemovedAtUtc = null;
+            lead.IsConverted = true;
+            lead.ConvertedAtUtc = DateTime.UtcNow;
+            lead.UpdatedAtUtc = DateTime.UtcNow;
+            lead.UpdatedByUserId = userId;
+
+            if (contactId.HasValue && request.CreateContact)
+            {
+                lead.ConvertedToContactId = contactId;
+                // Asked for in so many words, so a contact deleted earlier no longer stands
+                // in the way of the lead having one.
+                lead.PersonContactRemovedAtUtc = null;
+            }
+            if (dealId.HasValue && request.CreateDeal) lead.ConvertedToDealId = dealId;
+            if (newCompanyId.HasValue) lead.ConvertedToCompanyId = newCompanyId;
+
+            try
+            {
+                await _repository.UpdateAsync(lead, userId, organizationId, ct);
+                break;
+            }
+            catch (ConcurrencyConflictException) when (attempt < 3)
+            {
+                var fresh = await _repository.GetByIdAsync(leadId, userId, organizationId, ct);
+                if (fresh == null) return DomainErrors.Lead.NotFound;
+                // Converted by another request in that moment, such as a second click.
+                if (fresh.IsConverted) return DomainErrors.Lead.AlreadyConverted;
+                lead = fresh;
+            }
         }
-        if (dealId.HasValue && request.CreateDeal) lead.ConvertedToDealId = dealId;
-        if (newCompanyId.HasValue) lead.ConvertedToCompanyId = newCompanyId;
-        
-        await _repository.UpdateAsync(lead, userId, organizationId, ct);
 
         _logger.LogInformation(
             "Lead {LeadId} converted successfully. CompanyId: {CompanyId}, ContactId: {ContactId}, DealId: {DealId}",

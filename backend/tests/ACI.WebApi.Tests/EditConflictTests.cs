@@ -294,6 +294,49 @@ public class EditConflictTests
         await ALeadSavedFromAnOlderCopyIsRefusedAsync(() => SqliteDb.Open(connection));
     }
 
+    // The server's own bookkeeping on a lead (a first response, the SLA flag) is saved
+    // through LeadOpsRepository. Refused, it has to let go of the old copy: a read in the
+    // same scope would otherwise hand that copy back, and its retry could never land.
+    private static async Task ABookkeepingSaveFromAnOlderCopyIsRefusedAndTheNextReadIsTheNewerOneAsync(Func<AppDbContext> open)
+    {
+        var (_, id) = await SeedLeadAsync(open);
+        await using var mine = open();
+        await using var theirs = open();
+        var ops = new LeadOpsRepository(mine);
+        var lead = await ops.GetLeadAsync(id);
+        var colleague = await theirs.Leads.SingleAsync(l => l.Id == id);
+        colleague.Description = "Met at the open day";
+        await theirs.SaveChangesAsync();
+
+        lead!.FirstResponseAtUtc = DateTime.UtcNow;
+        var stale = () => ops.SaveLeadAsync(lead);
+        await stale.Should().ThrowAsync<ConcurrencyConflictException>("the lead changed after this copy was read");
+
+        var again = await ops.GetLeadAsync(id);
+        again!.Description.Should().Be("Met at the open day", "the next read is the newer copy, not the refused one");
+        again.FirstResponseAtUtc = DateTime.UtcNow;
+        await ops.SaveLeadAsync(again);
+        await using var check = open();
+        var stored = await check.Leads.AsNoTracking().SingleAsync(l => l.Id == id);
+        stored.Description.Should().Be("Met at the open day");
+        stored.FirstResponseAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ABookkeepingSaveFromAnOlderCopyIsRefusedAndTheNextReadIsTheNewerOne_InMemory()
+    {
+        var name = $"edit-conflict-{Guid.NewGuid()}";
+        await ABookkeepingSaveFromAnOlderCopyIsRefusedAndTheNextReadIsTheNewerOneAsync(
+            () => new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(name).Options));
+    }
+
+    [Fact]
+    public async Task ABookkeepingSaveFromAnOlderCopyIsRefusedAndTheNextReadIsTheNewerOne_Relational()
+    {
+        await using var connection = new SqliteConnection("DataSource=:memory:");
+        await ABookkeepingSaveFromAnOlderCopyIsRefusedAndTheNextReadIsTheNewerOneAsync(() => SqliteDb.Open(connection));
+    }
+
     private static async Task<(Guid UserId, Guid DealId)> SeedDealAsync(Func<AppDbContext> open)
     {
         await using var db = open();

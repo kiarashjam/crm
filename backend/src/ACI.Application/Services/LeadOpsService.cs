@@ -394,7 +394,17 @@ public sealed class LeadOpsService : ILeadOpsService
         {
             lead.SlaBreached = true;
             lead.SlaNotifiedAtUtc = DateTime.UtcNow;
-            await _ops.SaveLeadAsync(lead, ct);
+            try
+            {
+                await _ops.SaveLeadAsync(lead, ct);
+            }
+            catch (ConcurrencyConflictException)
+            {
+                // Saved by someone else since it was read, most likely the call that
+                // answered it: the next run sees whether it is still late. Thrown on, it
+                // stopped this run for every lead after it.
+                continue;
+            }
             var recipient = lead.AssignedToUserId ?? lead.UserId;
             await _notifications.CreateAsync(recipient, lead.OrganizationId, new CreateNotificationRequest(
                 "lead_sla",
