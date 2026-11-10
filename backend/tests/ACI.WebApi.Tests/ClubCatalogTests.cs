@@ -324,6 +324,24 @@ public class ClubCatalogTests
     }
 
     [Fact]
+    public async Task ATabOpenWhenItsMembersTierIsRenamed_StillEarnsAtTheTiersMultiplier()
+    {
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client, tier: "Platinum");
+        var tab = await Json(await client.PostAsync("/api/tabs", Body(new { memberId, venue = "Bar" })), "open a tab");
+        var tabId = tab.GetProperty("id").GetGuid();
+        await Json(await client.PostAsync($"/api/tabs/{tabId}/items", Body(new { name = "Champagne", quantity = 1, unitPrice = 50 })), "add a bottle");
+
+        // Renamed while the tab is open: the member is renamed with it, the open tab is not.
+        var platinum = await TierAsync(client, "Platinum");
+        await Json(await client.PutAsync($"/api/catalog/{platinum.GetProperty("id").GetGuid()}", Body(new { name = "Founders" })), "rename Platinum");
+
+        var closed = await Json(await client.PostAsync($"/api/tabs/{tabId}/close", null), "close");
+        closed.GetProperty("pointsAwarded").GetInt32().Should().Be(1000, "50 francs × 10 points × the tier's 2, which a rename does not take away");
+    }
+
+    [Fact]
     public async Task ACheckInEarnsTheVenuesPointsTimesTheTiersMultiplier_WorkedOutAndWrittenByTheServerOnce()
     {
         using var factory = new CustomWebApplicationFactory();

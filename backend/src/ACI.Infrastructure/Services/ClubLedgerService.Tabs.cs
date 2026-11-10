@@ -190,7 +190,9 @@ public sealed partial class ClubLedgerService
         }
         // The base points per unit spent and the tier's multiplier are the club's settings:
         // they used to be 10 and a table written into this method, whatever the club saved.
-        var points = rules.PointsForSpend(total, tab.MemberTier);
+        // The member's tier as it is now: the tab keeps the name it was opened with, which a
+        // tier renamed in the catalogue since (its members are renamed with it) no longer finds.
+        var points = rules.PointsForSpend(total, member?.Tier ?? tab.MemberTier);
         LoyaltyLedgerEntry? earned = null;
         if (points > 0 && member != null)
         {
