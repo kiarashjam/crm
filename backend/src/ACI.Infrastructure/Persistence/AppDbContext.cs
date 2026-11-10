@@ -112,6 +112,14 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubPaymentReference> ClubPaymentReferences => Set<ClubPaymentReference>();
     public DbSet<ClubBankImport> ClubBankImports => Set<ClubBankImport>();
     public DbSet<ClubBankTransaction> ClubBankTransactions => Set<ClubBankTransaction>();
+    // What members buy at the bars, restaurants and shop: sales posted through the ledger, the
+    // POS's closed tickets with where each stands, the POS connection, and the codes that name
+    // a member at the POS.
+    public DbSet<ClubSale> ClubSales => Set<ClubSale>();
+    public DbSet<ClubSaleLine> ClubSaleLines => Set<ClubSaleLine>();
+    public DbSet<ClubMemberCode> ClubMemberCodes => Set<ClubMemberCode>();
+    public DbSet<ClubPosSettings> ClubPosSettings => Set<ClubPosSettings>();
+    public DbSet<ClubPosTicket> ClubPosTickets => Set<ClubPosTicket>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();

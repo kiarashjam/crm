@@ -159,6 +159,14 @@ public partial class AppDbContext
         Scope<ClubPaymentReference>(model, e => e.OrganizationId);
         Scope<ClubBankImport>(model, e => e.OrganizationId);
         Scope<ClubBankTransaction>(model, e => e.OrganizationId);
+        // Sales, the POS's tickets and connection, and members' codes: club money and club records,
+        // an organization's alone. The POS import finds the workspaces it runs for across
+        // workspaces first (IgnoreQueryFilters, said where), then acts for each.
+        Scope<ClubSale>(model, e => e.OrganizationId);
+        Scope<ClubSaleLine>(model, e => e.OrganizationId);
+        Scope<ClubMemberCode>(model, e => e.OrganizationId);
+        Scope<ClubPosSettings>(model, e => e.OrganizationId);
+        Scope<ClubPosTicket>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's
