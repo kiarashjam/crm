@@ -58,6 +58,9 @@ public static class DependencyInjection
         services.AddScoped<IClubRepository, ClubRepository>();
         services.AddScoped<IClubDocumentRepository, ClubDocumentRepository>();
         services.AddScoped<IClubLedger, ClubLedgerService>();
+        // Events and their guest lists, resources and their bookings; their money goes through the ledger.
+        services.AddScoped<IClubEvents, ClubEventService>();
+        services.AddScoped<IClubReservations, ClubReservationService>();
         services.AddSingleton<ILedgerReadObserver, NoLedgerReadObserver>();
         // The club's price catalogue, and the billing that runs on the ledger.
         services.AddScoped<IClubCatalog, ClubCatalogService>();

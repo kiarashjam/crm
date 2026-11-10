@@ -45,6 +45,16 @@ public sealed class ClubRepository : IClubRepository
     {
         var row = await MemberAsync(id, organizationId, ct);
         if (row == null) return false;
+        // Their places on event lists, the guests they bring and their bookings stay, under the
+        // names they were made in, but stop pointing at a member who is gone. Left pointing, a
+        // seat that came free for them (or a no-show fee) was posted to an account nobody has;
+        // the ledger refused it, and with it the whole change: someone else's cancellation, say.
+        foreach (var registration in await _db.ClubEventRegistrations.Where(r => r.MemberId == id && r.OrganizationId == organizationId).ToListAsync(ct))
+            registration.MemberId = null;
+        foreach (var registration in await _db.ClubEventRegistrations.Where(r => r.HostMemberId == id && r.OrganizationId == organizationId).ToListAsync(ct))
+            registration.HostMemberId = null;
+        foreach (var booking in await _db.ClubReservations.Where(r => r.MemberId == id && r.OrganizationId == organizationId).ToListAsync(ct))
+            booking.MemberId = null;
         _db.ClubMembers.Remove(row);
         await _db.SaveChangesAsync(ct);
         return true;
@@ -91,6 +101,23 @@ public sealed class ClubRepository : IClubRepository
             // One account per member: the duplicate's entries are the kept member's now.
             var dropAccount = await _db.ClubHouseAccounts.FirstOrDefaultAsync(a => a.MemberId == dropId && a.OrganizationId == organizationId, ct);
             if (dropAccount != null) _db.ClubHouseAccounts.Remove(dropAccount);
+
+            // Their places on event lists (their own tickets, and the guests they bring) and
+            // their bookings are the kept member's, under the kept member's name and address.
+            // A booking used to find its member by email text, so merging two records left
+            // the duplicate's bookings with nobody.
+            foreach (var row in await _db.ClubEventRegistrations.Where(r => r.MemberId == dropId && r.OrganizationId == organizationId).ToListAsync(ct))
+            {
+                (row.MemberId, row.Name) = (keepId, name);
+                if (!string.IsNullOrWhiteSpace(keep.Email)) row.Email = keep.Email;
+            }
+            foreach (var row in await _db.ClubEventRegistrations.Where(r => r.HostMemberId == dropId && r.OrganizationId == organizationId).ToListAsync(ct))
+                (row.HostMemberId, row.HostName) = (keepId, name);
+            foreach (var row in await _db.ClubReservations.Where(r => r.MemberId == dropId && r.OrganizationId == organizationId).ToListAsync(ct))
+            {
+                (row.MemberId, row.MemberName) = (keepId, name);
+                if (!string.IsNullOrWhiteSpace(keep.Email)) row.MemberEmail = keep.Email;
+            }
 
             // Charges, payments, reservations, gift cards, donations, subscriptions and
             // household links carry the member's id inside their own document. An id is

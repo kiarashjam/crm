@@ -286,6 +286,56 @@ public sealed partial class ClubLedgerService : IClubLedger
         return ToDto(charge, reversal, default, DateTime.UtcNow);
     }
 
+    /// <remarks>
+    /// A cancelled event ticket used to have to wait for whoever could void money: the ticket
+    /// was paid, so its charge could not be voided until the payment was, and the member was
+    /// charged for a seat they had given back. The charge is voided here as VoidChargeAsync
+    /// voids it, and each payment that paid it gives that part back as house credit, by an
+    /// allocation that takes its own back (with no reversal of its own: the payment stands).
+    /// </remarks>
+    public async Task<Result<ChargeDto>> CancelChargeAsync(Guid? organizationId, Guid chargeId, string? reason, CancellationToken ct = default)
+    {
+        if (ReadReason(reason, out var why) is { } noReason) return noReason;
+        var charge = await _db.ClubCharges.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == chargeId && c.OrganizationId == organizationId && c.ReversesChargeId == null, ct);
+        if (charge == null) return DomainErrors.Club.ChargeNotFound;
+        // The account first: whatever is read after it is checked against it on saving.
+        var account = await AccountAsync(organizationId, charge.MemberId, ct);
+        if (await _db.ClubCharges.AnyAsync(c => c.ReversesChargeId == chargeId, ct)) return DomainErrors.Club.ChargeVoided;
+        var paidBy = (await _db.ClubPaymentAllocations.AsNoTracking().Where(a => a.ChargeId == chargeId)
+                .GroupBy(a => a.PaymentId).Select(g => new { PaymentId = g.Key, Net = g.Sum(a => a.Amount) })
+                .ToListAsync(ct))
+            .Where(p => p.Net > 0).ToList();
+        await _reads.ReadAsync("charges", ct);
+
+        var reversal = new ClubCharge
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organizationId,
+            MemberId = charge.MemberId,
+            MemberName = charge.MemberName,
+            EntryType = ClubEntryTypes.Void,
+            Kind = charge.Kind,
+            Description = charge.Description,
+            Amount = -charge.Amount,
+            Currency = charge.Currency,
+            PostedAtUtc = DateTime.UtcNow,
+            ReversesChargeId = charge.Id,
+            Reason = why,
+        };
+        Stamp(reversal);
+        Touch(account);
+        var saved = await SaveAsync(DomainErrors.Club.ChargeChanged, ct, async () =>
+        {
+            _db.ClubCharges.Add(reversal);
+            foreach (var paid in paidBy)
+                _db.ClubPaymentAllocations.Add(Allocate(organizationId, paid.PaymentId, chargeId, -paid.Net, null));
+            await StageBalanceAsync(organizationId, await MemberAsync(organizationId, charge.MemberId, ct), charge.Amount, ct);
+        });
+        if (!saved.IsSuccess) return saved.Error;
+        return ToDto(charge, reversal, default, DateTime.UtcNow);
+    }
+
     // ── payments ─────────────────────────────────────────────────────────────
 
     public async Task<Result<PaymentDto>> RecordPaymentAsync(Guid? organizationId, RecordPaymentRequest request, string? idempotencyKey = null, CancellationToken ct = default)

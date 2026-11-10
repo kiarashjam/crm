@@ -128,5 +128,14 @@ export const queryKeys = {
     settings: (s: WorkspaceScope) => key(s, 'hospitality', 'settings'),
     billingRuns: (s: WorkspaceScope) => key(s, 'billing', 'runs'),
     billingPreview: (s: WorkspaceScope) => key(s, 'billing', 'preview'),
+    // Events and who is coming, the bookable resources and their bookings. A change to an
+    // event's list can post or take back a ticket, so those writes refresh the money too
+    // (api/dataChanged).
+    events: (s: WorkspaceScope) => key(s, 'events', 'all'),
+    event: (s: WorkspaceScope, id: string) => key(s, 'events', 'one', id),
+    attendees: (s: WorkspaceScope, eventId: string) => key(s, 'events', 'attendees', eventId),
+    memberRegistrations: (s: WorkspaceScope, memberId: string) => key(s, 'events', 'member', memberId),
+    resources: (s: WorkspaceScope) => key(s, 'resources', 'all'),
+    reservations: (s: WorkspaceScope, memberId: string | null = null) => key(s, 'reservations', memberId ?? 'all'),
   },
 } as const;

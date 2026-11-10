@@ -190,7 +190,11 @@ public class ClubPaymentAllocation : Common.BaseEntity
     /// <summary>Positive when the payment pays the charge; negative when a void or refund takes that back.</summary>
     public decimal Amount { get; set; }
 
-    /// <summary>The void or refund (a ClubPayment) that took it back; none for an allocation made when the payment was.</summary>
+    /// <summary>
+    /// The void or refund (a ClubPayment) that took it back; none for an allocation made when
+    /// the payment was, and none for one that gave a cancelled charge's money back as credit
+    /// (IClubLedger.CancelChargeAsync), where the payment itself stands.
+    /// </summary>
     public Guid? ReversalId { get; set; }
 
     public DateTime CreatedAtUtc { get; set; }

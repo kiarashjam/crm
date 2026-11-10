@@ -93,7 +93,7 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
  */
 const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
-  'tabs', 'reservations', 'gift-cards', 'donations', 'subscriptions', 'households', 'household-members',
+  'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'household-members',
 ];
 
 /**
@@ -118,6 +118,10 @@ const MEMBER_MERGE = [
  *   the member's balance (on the members list) and their statement, a payment settles
  *   charges, and closing a tab earns loyalty points. A balance set by hand on a member
  *   is an entry too, and a member's merge moves the duplicate's entries.
+ * - A change to an event's list can post a ticket or a no-show fee, take one back (a
+ *   payment for it becoming credit), give a member their check-in points, and email the
+ *   next in line (logged in their communications). A booking can post or give back a
+ *   deposit and a no-show fee; a resource's settings show on its bookings.
  *
  * A base not listed changes only its own records (the club's visits, gift cards,
  * donations…), which is why checking someone in no longer reloads the sales lists.
@@ -160,6 +164,9 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   // Billing posts charges, moves subscriptions on and members' balances, and is a run.
   billing: ['billing', 'charges', 'subscriptions', 'members', 'statements'],
   hospitality: ['hospitality'],
+  events: ['events', 'charges', 'payments', 'members', 'statements', 'loyalty', 'communications'],
+  reservations: ['reservations', 'charges', 'payments', 'members', 'statements'],
+  resources: ['resources', 'reservations'],
   // Sending a campaign writes a message per member into the communications log.
   campaigns: ['campaigns', 'communications'],
 };
@@ -196,6 +203,12 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   if (base === 'members' && last === 'consent') return ['members', 'campaigns'];
   // Emailing a statement writes a line in the member's communications log, nothing more.
   if (base === 'members' && last === 'email') return ['communications'];
+  // Deleting a member detaches their places on event lists and their bookings, which stay
+  // under the name they were made in: a screen still showing the member on one would send
+  // the id of someone who is gone.
+  if (base === 'members' && segments.length === 2 && (method ?? 'GET').toUpperCase() === 'DELETE') {
+    return [...(CHANGES.members ?? ['members']), 'events', 'reservations'];
+  }
   // A merge moves everything linked to the record merged away; a conversion makes
   // a contact, a company and a deal from the lead.
   if (last === 'merge' || (base === 'leads' && last === 'convert')) return [...LINKED];

@@ -225,7 +225,7 @@ public sealed class MemberMessageService : IMemberMessageService
         return Result.Success();
     }
 
-    // ── Shared with campaigns ─────────────────────────────────────────────────
+    // ── Shared with campaigns, and with the events service (a seat come free, an event cancelled) ──
 
     /// <summary>
     /// Adds <paramref name="row"/> and hands its email to the outbox, inside the caller's
@@ -234,7 +234,7 @@ public sealed class MemberMessageService : IMemberMessageService
     /// on the row as the reason it was not sent. False when the row was refused because its
     /// campaign already has one for the member: then nothing was queued.
     /// </summary>
-    internal static async Task<bool> QueueAsync(ICampaignRepository messages, IOutbox outbox, MemberMessage row, OutboundEmailRequest email, CancellationToken ct)
+    public static async Task<bool> QueueAsync(ICampaignRepository messages, IOutbox outbox, MemberMessage row, OutboundEmailRequest email, CancellationToken ct)
     {
         // The row first: for a campaign, the unique index on (campaign, member) is what stops
         // a second sender emailing the member again, and it must stop it before the email exists.

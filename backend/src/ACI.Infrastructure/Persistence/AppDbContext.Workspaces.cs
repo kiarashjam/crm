@@ -124,6 +124,13 @@ public partial class AppDbContext
         Scope<ClubTab>(model, e => e.OrganizationId);
         Scope<ClubTabItem>(model, e => e.OrganizationId);
         Scope<ClubDonation>(model, e => e.OrganizationId);
+        // Events and their guest lists, the bookable resources and their bookings: club
+        // records, an organization's alone. A registration says its organization too, so it is
+        // never read through an event from another workspace.
+        Scope<ClubEvent>(model, e => e.OrganizationId);
+        Scope<ClubEventRegistration>(model, e => e.OrganizationId);
+        Scope<ClubResource>(model, e => e.OrganizationId);
+        Scope<ClubReservation>(model, e => e.OrganizationId);
         // Member communications and consent: club records, so an organization's alone.
         Scope<ConsentRecord>(model, e => e.OrganizationId);
         Scope<Campaign>(model, e => e.OrganizationId);

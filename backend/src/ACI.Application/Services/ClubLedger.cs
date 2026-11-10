@@ -27,6 +27,10 @@ namespace ACI.Application.Services;
 /// <see cref="RefundPaymentAsync"/>. Each adds an entry that reverses the original, with a
 /// reason and who did it; nothing is edited or deleted. A charge with payments standing
 /// against it is voided after them.</item>
+/// <item><b>Cancel what will not happen</b>: <see cref="CancelChargeAsync"/> takes back the charge
+/// for a cancelled event ticket or a booking's deposit given back: a void entry as above, and
+/// whatever was paid against it is house credit again, so a cancellation never waits for a
+/// refund. Paying that credit out stays a refund, by someone allowed to.</item>
 /// <item><b>Correct a balance</b>: <see cref="AdjustBalanceAsync"/>, an entry of its own.</item>
 /// <item><b>Read a balance</b>: <see cref="BalanceAsync"/> at any date, and
 /// <see cref="BalancesAsync"/> for every member at once. A balance is credits less what is
@@ -60,6 +64,15 @@ public interface IClubLedger
     Task<Result<ChargeDto>> PostChargeAsync(Guid? organizationId, PostChargeRequest request, string? idempotencyKey = null, CancellationToken ct = default);
     Task<Result<PaymentDto>> RecordPaymentAsync(Guid? organizationId, RecordPaymentRequest request, string? idempotencyKey = null, CancellationToken ct = default);
     Task<Result<ChargeDto>> VoidChargeAsync(Guid? organizationId, Guid chargeId, string? reason, CancellationToken ct = default);
+
+    /// <summary>
+    /// Takes back a charge for something that is not going to happen after all: the ticket of
+    /// a registration cancelled, the deposit of a booking given back. A void entry, as
+    /// <see cref="VoidChargeAsync"/> makes, except that money paid against the charge is not a
+    /// reason to refuse: it becomes credit on the member's account again, to pay another
+    /// charge (AppliedCredit) or to be refunded by someone allowed to. Nothing is paid out here.
+    /// </summary>
+    Task<Result<ChargeDto>> CancelChargeAsync(Guid? organizationId, Guid chargeId, string? reason, CancellationToken ct = default);
     Task<Result<PaymentDto>> VoidPaymentAsync(Guid? organizationId, Guid paymentId, string? reason, CancellationToken ct = default);
     Task<Result<PaymentDto>> RefundPaymentAsync(Guid? organizationId, Guid paymentId, RefundPaymentRequest request, CancellationToken ct = default);
 
@@ -153,9 +166,13 @@ public interface IClubLedger
 /// Does nothing in the app; a test holds two requests here so both read before either
 /// writes, which makes a race that is a matter of luck in production happen every time.
 /// </summary>
+/// <remarks>
+/// The events and bookings services (IClubEvents, IClubReservations) report here too, once a
+/// change to an event's list or a resource's bookings has read what it decides on.
+/// </remarks>
 public interface ILedgerReadObserver
 {
-    /// <param name="kind">"charges", "gift-cards", "tabs" or "subscriptions".</param>
+    /// <param name="kind">"charges", "gift-cards", "tabs", "subscriptions", "events" or "reservations".</param>
     Task ReadAsync(string kind, CancellationToken ct = default);
 }
 

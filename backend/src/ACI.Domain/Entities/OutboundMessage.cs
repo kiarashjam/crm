@@ -216,6 +216,11 @@ public static class OutboundSources
     public const string Statement = "statement";
     /// <summary>A reminder of charges a member has not paid by their due date, from the billing run.</summary>
     public const string PaymentReminder = "reminder";
+    /// <summary>
+    /// An event's email to someone on its list: a seat that came free for them, or the event
+    /// cancelled; <see cref="OutboundMessage.SourceId"/> is their registration.
+    /// </summary>
+    public const string Event = "event";
     public const string Webhook = "webhook";
 }
 

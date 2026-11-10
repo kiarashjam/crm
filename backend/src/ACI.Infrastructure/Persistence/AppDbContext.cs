@@ -93,6 +93,11 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubBillingRun> ClubBillingRuns => Set<ClubBillingRun>();
     public DbSet<ClubPaymentReminder> ClubPaymentReminders => Set<ClubPaymentReminder>();
     public DbSet<ClubStatementDelivery> ClubStatementDeliveries => Set<ClubStatementDelivery>();
+    // Club events with their guest lists, and the bookable resources with their bookings.
+    public DbSet<ClubEvent> ClubEvents => Set<ClubEvent>();
+    public DbSet<ClubEventRegistration> ClubEventRegistrations => Set<ClubEventRegistration>();
+    public DbSet<ClubResource> ClubResources => Set<ClubResource>();
+    public DbSet<ClubReservation> ClubReservations => Set<ClubReservation>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();

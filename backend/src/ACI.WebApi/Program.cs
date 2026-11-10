@@ -293,7 +293,6 @@ try
     builder.Services.AddScoped<IClubDocumentService, ClubDocumentService>();
     // What the club's settings and price catalogue say the server applies (points, dues, billing).
     builder.Services.AddScoped<IClubRules, ClubRules>();
-    builder.Services.AddScoped<IEventAttendeeService, EventAttendeeService>();
     // Member consent, which the outbox reads before marketing goes to a member.
     builder.Services.AddScoped<ConsentService>();
     builder.Services.AddScoped<IConsentService>(sp => sp.GetRequiredService<ConsentService>());
