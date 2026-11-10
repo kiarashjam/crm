@@ -293,6 +293,46 @@ describe('hospitality settings', () => {
     expect(screen.getByRole('button', { name: /Save changes/ })).toBeInTheDocument();
   });
 
+  it('prices a new item in the workspace currency the accounts are kept in, not the club currency label', async () => {
+    const user = userEvent.setup();
+    // The club labels its amounts in euros; the workspace (every house account) is in francs.
+    api.get.mockResolvedValue({ ...SETTINGS, currency: 'EUR' });
+    catalog.create.mockResolvedValue(tier('Junior', 30, 2));
+    show();
+
+    await user.click(await screen.findByRole('button', { name: /Add a tier/ }));
+    expect(screen.getByText('Price each period (CHF)')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('New item name'), 'Junior');
+    await user.type(screen.getByLabelText('New item price'), '30');
+    await user.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => expect(catalog.create).toHaveBeenCalledTimes(1));
+    expect(catalog.create.mock.calls[0]![0]).toMatchObject({ kind: 'Membership', name: 'Junior', price: 30 });
+    // Left to the server, which prices it in the workspace's currency: priced in the label's,
+    // it could be charged to no member's account.
+    expect(catalog.create.mock.calls[0]![0]).not.toHaveProperty('currency');
+  });
+
+  it('says what is due could not be read, rather than reading for ever, and reads it again', async () => {
+    const user = userEvent.setup();
+    as([PERMISSION.ManageMoney]);
+    billing.preview.mockRejectedValueOnce(new Error('The server did not answer.'))
+      .mockResolvedValue({ subscriptions: 1, periods: 2, amountByCurrency: { CHF: 598 }, items: [] });
+    billing.runs.mockRejectedValueOnce(new Error('The server did not answer.')).mockResolvedValue([RUN]);
+    show();
+
+    await user.click(await screen.findByRole('tab', { name: 'Billing' }));
+    expect(await screen.findByText('What is due could not be read.')).toBeInTheDocument();
+    expect(screen.queryByText(/Reading what is due/)).toBeNull();
+    expect(screen.getByText('The runs could not be read.')).toBeInTheDocument();
+
+    const [retryDue, retryRuns] = screen.getAllByRole('button', { name: 'Try again' });
+    await user.click(retryDue!);
+    expect(await screen.findByText(/2 periods for 1 subscription/)).toBeInTheDocument();
+    await user.click(retryRuns!);
+    expect(await screen.findByText('Started by Anna Keller')).toBeInTheDocument();
+  });
+
   it('offers nothing to change, and reads no runs, for a member who manages neither', async () => {
     const user = userEvent.setup();
     as([PERMISSION.EditRecords]);

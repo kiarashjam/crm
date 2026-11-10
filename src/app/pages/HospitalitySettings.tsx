@@ -40,7 +40,8 @@ import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { setClubCurrency, useClubMoney } from '@/app/hooks/useClubMoney';
-import { CLUB_CURRENCIES, normaliseCurrency } from '@/app/lib/clubMoney';
+import { useRegional } from '@/app/hooks/useMoney';
+import { CLUB_CURRENCIES, formatClubMoney, normaliseCurrency } from '@/app/lib/clubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION, orgCan } from '@/app/api/organizations';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
@@ -144,6 +145,10 @@ export default function HospitalitySettings() {
   };
 
   const currency = normaliseCurrency(draft?.currency ?? 'CHF');
+  // New prices are in the workspace's own currency, which every house account is kept in
+  // (the server prices a new item in it). The club currency above only labels amounts: an
+  // item priced in it, when the two differ, could be charged to no account.
+  const accountCurrency = useRegional().currency;
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
@@ -221,13 +226,13 @@ export default function HospitalitySettings() {
                         <TierCard key={`${tier.id}-${tier.version}`} tier={tier} onSaved={() => void catalogQuery.refetch()} />
                       ))}
                       <WriteOnly permission={CATALOG_EDITORS}>
-                        <NewItemCard kind="Membership" currency={currency} onSaved={() => void catalogQuery.refetch()} />
+                        <NewItemCard kind="Membership" currency={accountCurrency} onSaved={() => void catalogQuery.refetch()} />
                       </WriteOnly>
                     </div>
                   </TabsContent>
 
                   <TabsContent value="catalog">
-                    <CatalogTable items={others} currency={currency} onSaved={() => void catalogQuery.refetch()} />
+                    <CatalogTable items={others} currency={accountCurrency} onSaved={() => void catalogQuery.refetch()} />
                   </TabsContent>
 
                   <TabsContent value="points">
@@ -240,8 +245,11 @@ export default function HospitalitySettings() {
                       onChange={(billing) => setDraft({ ...draft, billing })}
                       canSee={canSeeBilling}
                       runs={runsQuery.data ?? NONE}
-                      runsFailed={runsQuery.isError}
+                      runsFailed={runsQuery.isError && !runsQuery.data}
+                      onRetryRuns={() => void runsQuery.refetch()}
                       preview={previewQuery.data}
+                      previewFailed={previewQuery.isError && !previewQuery.data}
+                      onRetryPreview={() => void previewQuery.refetch()}
                       onBilled={async () => {
                         await Promise.all([runsQuery.refetch(), previewQuery.refetch()]);
                       }}
@@ -397,7 +405,7 @@ function VatSelect({ value, onChange, label }: { value: string; onChange: (v: st
   );
 }
 
-/** Adds an item of one kind: a tier, or any other price. */
+/** Adds an item of one kind: a tier, or any other price, in the workspace's currency (`currency`). */
 function NewItemCard({ kind, currency, onSaved }: { kind: CatalogKind; currency: string; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
   const [itemKind, setItemKind] = useState<CatalogKind>(kind);
@@ -417,11 +425,11 @@ function NewItemCard({ kind, currency, onSaved }: { kind: CatalogKind; currency:
     }
     setBusy(true);
     try {
+      // No currency: the server prices it in the workspace's, as the house accounts are.
       await createCatalogItem({
         kind: itemKind,
         name: name.trim(),
         price: numberOr(price, 0),
-        currency,
         vatRate: numberOr(vat, 0),
         cadence: recurring ? cadence : undefined,
         category: category.trim() || undefined,
@@ -654,6 +662,16 @@ function PointsPanel({ draft, onChange, currency }: { draft: Settings_; onChange
 
 // ── billing ───────────────────────────────────────────────────────────────────
 
+/** A read that failed, said so, with a way to try it again. */
+function ReadFailed({ what, onRetry }: { what: string; onRetry: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <p className="text-sm text-rose-700">{what}</p>
+      <Button size="sm" variant="outline" onClick={onRetry}>Try again</Button>
+    </div>
+  );
+}
+
 const STATUS_LABEL: Record<BillingRun['status'], string> = {
   running: 'Running',
   succeeded: 'Done',
@@ -663,17 +681,21 @@ const STATUS_LABEL: Record<BillingRun['status'], string> = {
 };
 
 function BillingPanel({
-  billing, onChange, canSee, runs, runsFailed, preview, onBilled,
+  billing, onChange, canSee, runs, runsFailed, onRetryRuns, preview, previewFailed, onRetryPreview, onBilled,
 }: {
   billing: BillingSettings;
   onChange: (b: BillingSettings) => void;
   canSee: boolean;
   runs: readonly BillingRun[];
   runsFailed: boolean;
+  onRetryRuns: () => void;
   preview: { subscriptions: number; periods: number; amountByCurrency: Record<string, number> } | undefined;
+  previewFailed: boolean;
+  onRetryPreview: () => void;
   onBilled: () => Promise<void>;
 }) {
   const { format } = useClubMoney();
+  const { locale } = useRegional();
   const [running, setRunning] = useState(false);
   const [reminderText, setReminderText] = useState(billing.reminderDays.join(', '));
   useEffect(() => setReminderText(billing.reminderDays.join(', ')), [billing.reminderDays]);
@@ -759,6 +781,10 @@ function BillingPanel({
           </h3>
           {!canSee ? (
             <p className="text-sm text-slate-500">Whoever manages the money or the settings sees what is due here.</p>
+          ) : previewFailed ? (
+            // Not "reading" for ever: the read failed, and saying so is what tells the club
+            // it does not know what turning automatic billing on would bill.
+            <ReadFailed what="What is due could not be read." onRetry={onRetryPreview} />
           ) : !preview ? (
             <p className="text-sm text-slate-500">Reading what is due…</p>
           ) : preview.periods === 0 ? (
@@ -767,7 +793,7 @@ function BillingPanel({
             <p className="text-sm text-slate-700">
               {preview.periods} period{preview.periods === 1 ? '' : 's'} for {preview.subscriptions} subscription
               {preview.subscriptions === 1 ? '' : 's'}:{' '}
-              {Object.entries(preview.amountByCurrency).map(([c, amount]) => `${c} ${amount.toFixed(2)}`).join(', ')}.
+              {Object.entries(preview.amountByCurrency).map(([c, amount]) => formatClubMoney(amount, c, locale)).join(', ')}.
             </p>
           )}
           <WriteOnly permission={PERMISSION.ManageMoney}>
@@ -782,7 +808,7 @@ function BillingPanel({
           {!canSee ? (
             <p className="text-sm text-slate-500">Whoever manages the money or the settings sees the runs here.</p>
           ) : runsFailed ? (
-            <p className="text-sm text-rose-700">The runs could not be read. Reload the page to try again.</p>
+            <ReadFailed what="The runs could not be read." onRetry={onRetryRuns} />
           ) : runs.length === 0 ? (
             <p className="text-sm text-slate-500">No run yet.</p>
           ) : (
