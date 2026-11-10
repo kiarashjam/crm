@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using ACI.Infrastructure.Persistence;
+using ACI.WebApi.Tests.Helpers;
 using Microsoft.SqlServer.TransactSql.ScriptDom;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
@@ -41,6 +42,45 @@ public class WebhookKeyTests
         wrong.DefaultRequestHeaders.Add("X-Api-Key", stored.WebhookApiKeyHash);
         (await wrong.PostAsync("/api/webhook/leads", Body(new { name = "Eve", email = "eve@example.ch" })))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the stored hash is not a key");
+    }
+
+    [SqlServerFact]
+    public async Task AKeyStillInPlainTextOnADatabaseFromBeforeIsHashedAtStartAndStillPostsLeads()
+    {
+        // The start-up step runs its UPDATE through EXEC, behind a check that the plain column
+        // is there at all (a database the migrations made has none), so the parse below no
+        // longer sees the UPDATE. On a database that still holds a plain key it has to hash it
+        // exactly as the app hashes a key it is sent, or that workspace's form stops posting.
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            await SqlServerSchema.CreateLegacyAsync(database);
+            var ownerId = Guid.NewGuid();
+            var org = Guid.NewGuid();
+            const string key = "aci_3f1c9a7e5b2d4c6e8f0a1b3c5d7e9f21";
+            await SqlServerApp.ExecuteAsync(database, $@"
+                INSERT INTO [Users] ([Id], [Name], [Email], [PasswordHash], [TwoFactorEnabled], [CreatedAtUtc])
+                VALUES ('{ownerId}', N'Owner', N'{ownerId:N}@example.com', NULL, 0, SYSUTCDATETIME());
+                INSERT INTO [Organizations] ([Id], [Name], [OwnerUserId], [CreatedAtUtc], [WebhookApiKey], [WebhookApiKeyCreatedAtUtc])
+                VALUES ('{org}', N'Pavillon 46', '{ownerId}', SYSUTCDATETIME(), N'{key}', SYSUTCDATETIME());");
+
+            using var app = SqlServerApp.Start(database);
+
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [WebhookApiKey] FROM [Organizations] WHERE [Id] = '{org}'"))
+                .Should().BeNull("the plain copy must not survive");
+            (await SqlServerApp.ScalarAsync(database, $"SELECT [WebhookApiKeyHash] FROM [Organizations] WHERE [Id] = '{org}'"))
+                .Should().Be(ACI.Application.Services.OrganizationService.HashApiKey(key));
+
+            var form = app.CreateClient();
+            form.DefaultRequestHeaders.Add("X-Api-Key", key);
+            var posted = await form.PostAsync("/api/webhook/leads", Body(new { name = "Jean Dupont", email = "jean@example.ch" }));
+            posted.StatusCode.Should().Be(HttpStatusCode.Created, await posted.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
+        }
     }
 
     [Fact]
