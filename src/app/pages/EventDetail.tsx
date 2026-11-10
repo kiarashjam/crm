@@ -191,17 +191,22 @@ export default function EventDetail() {
   const cancel = (a: Attendee) => {
     const reason = prompt(`Why is ${a.memberName}'s registration cancelled? It stays on the record.`, '');
     if (reason === null) return;
+    // The server gives a freed seat to the first in line only before the event starts, while it
+    // is a draft or published; after that the seat stays free for a walk-in.
+    const seatGoesOn = a.status === 'Reserved' && byStatus.waiting.length > 0 && !!event
+      && (event.status === 'Draft' || event.status === 'Published') && Date.parse(event.startAtUtc) > Date.now();
     void act(a, async () => {
       await setAttendeeStatus(event!, a, 'Cancelled', reason.trim() || undefined);
       const taken = a.chargeState === 'charged' ? ' Their ticket is taken off the account.' : '';
-      const seat = a.status === 'Reserved' && byStatus.waiting.length > 0 ? ' The first on the waitlist gets the seat and is emailed.' : '';
+      const seat = seatGoesOn ? ' The first on the waitlist gets the seat.' : '';
       return `Cancelled.${taken}${seat}`;
     }, 'Failed to cancel');
   };
 
   const promote = (a: Attendee) => act(a, async () => {
     await setAttendeeStatus(event!, a, 'Reserved');
-    return `${a.memberName} has a seat and is emailed`;
+    // Someone with no address on the list is not emailed.
+    return a.email ? `${a.memberName} has a seat and is emailed` : `${a.memberName} has a seat`;
   }, 'Failed to give them a seat');
 
   const remove = (a: Attendee) => {

@@ -240,6 +240,33 @@ describe('event attendees', () => {
     expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/ticket is taken off the account/));
   });
 
+  it('says the next in line gets a cancelled seat only before the event starts, as the server does it', async () => {
+    // The server gives a freed seat to the waitlist only before the start; the page said the
+    // first in line got it and was emailed whenever someone was waiting.
+    const waiting: EventAttendee = {
+      id: 'a-2', eventId: EVENT_ID, memberName: 'Paul Weber', ticketTier: 'Guest', status: 'Waitlisted', rsvpAtUtc: '2026-10-03T18:00:00Z',
+      email: 'paul@example.ch', waitlistPosition: 1,
+    };
+    onServer = [ENTERED_ON_THE_LAPTOP, waiting];
+    prompt.mockReturnValue('Ill');
+    server.use(http.put(`${BASE}/api/events/${EVENT_ID}/attendees/a-1`, () =>
+      HttpResponse.json({ ...ENTERED_ON_THE_LAPTOP, status: 'Cancelled' })));
+    const user = userEvent.setup();
+    const shown = show();
+
+    await user.click(await screen.findByRole('button', { name: 'Cancel Claire Martin' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(toast.success.mock.calls[0]![0]).not.toMatch(/waitlist/);
+
+    // The same list a week before the event: the seat goes on.
+    shown.unmount();
+    toast.success.mockReset();
+    event = { ...EVENT, startAtUtc: new Date(Date.now() + 7 * 86_400_000).toISOString(), endAtUtc: new Date(Date.now() + 7 * 86_400_000 + 3 * 3_600_000).toISOString() };
+    show();
+    await user.click(await screen.findByRole('button', { name: 'Cancel Claire Martin' }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/first on the waitlist gets the seat/)));
+  });
+
   it('says an event that does not exist is not found', async () => {
     server.use(http.get(`${BASE}/api/events/${EVENT_ID}`, () => HttpResponse.json(
       { title: 'Not Found', status: 404, detail: 'The event was not found.' }, { status: 404 },
