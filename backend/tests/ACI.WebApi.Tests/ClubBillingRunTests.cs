@@ -269,6 +269,38 @@ public class ClubBillingRunTests
     }
 
     [Fact]
+    public async Task CreditAMemberAlreadyHoldsCoversWhatIsOverdue_SoTheyAreRemindedOfAndLapsedForOnlyWhatItDoesNot()
+    {
+        await using var app = new App();
+        var (client, _, _) = await ClubAsync(app);
+        // Jean and Max joined with credit brought over from before (an opening balance), which
+        // no charge has been paid from yet: the charges page shows their dues as owing until
+        // someone applies the credit, but Jean owes the club nothing and Max owes 200.
+        async Task<Guid> WithCreditAsync(string first, decimal credit) =>
+            (await Json(await client.PostAsync("/api/members", Body(new
+            {
+                firstName = first, lastName = "Dupont", email = $"{first.ToLowerInvariant()}@example.ch", tier = "Gold", status = "Active",
+                houseAccountBalance = credit,
+            })), $"add {first}")).GetProperty("id").GetGuid();
+        var jean = await WithCreditAsync("Jean", 500);
+        var max = await WithCreditAsync("Max", 100);
+        var lea = await MemberAsync(client, "Lea");
+        foreach (var member in new[] { jean, max, lea })
+            await PostChargeAsync(client, member, 300, DateTime.UtcNow.AddDays(-45), "Gold dues");
+        await BillingSettingsAsync(client, new { remindersEnabled = true, reminderDays = new[] { 3 }, lapseEnabled = true, gracePeriodDays = 30 });
+
+        await RunDailyAsync(app);
+        await app.DispatchOutboxAsync();
+
+        app.Mail.Sent.Select(m => m.To.Single()).Should().BeEquivalentTo(["max@example.ch", "lea@example.ch"], "Jean's credit covers his dues");
+        app.Mail.Sent.Single(m => m.To.Single() == "max@example.ch").TextBody.Should().Contain("CHF 200.00", "his credit pays 100 of the 300");
+        (await MemberRowAsync(client, jean)).GetProperty("status").GetString().Should().Be("Active", "a member in credit is not lapsed");
+        (await MemberRowAsync(client, max)).GetProperty("status").GetString().Should().Be("Lapsed");
+        (await MemberRowAsync(client, lea)).GetProperty("status").GetString().Should().Be("Lapsed");
+        (await Json(await client.GetAsync("/api/billing/runs"), "runs"))[0].GetProperty("overdueCharges").GetInt32().Should().Be(2);
+    }
+
+    [Fact]
     public async Task AMemberLapsedByTheBillingButSetByHandIsLeftAsSet()
     {
         using var factory = new CustomWebApplicationFactory();
