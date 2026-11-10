@@ -87,7 +87,7 @@ public class DealAmountTests
             foreach (var (id, value) in new[] { (swiss, "CHF 85,500"), (grouped, "1.234"), (vague, "to be agreed") })
             {
                 await SqlServerApp.ExecuteAsync(database,
-                    $"INSERT INTO [Deals] ([Id], [UserId], [Name], [Value], [CreatedAtUtc]) VALUES ('{id}', '{userId}', N'Deal', N'{value}', SYSUTCDATETIME())");
+                    $"INSERT INTO [Deals] ([Id], [UserId], [Name], [Value], [CreatedAtUtc], [IsPrivate], [Version]) VALUES ('{id}', '{userId}', N'Deal', N'{value}', SYSUTCDATETIME(), 0, NEWID())");
             }
 
             using (SqlServerApp.Start(database))

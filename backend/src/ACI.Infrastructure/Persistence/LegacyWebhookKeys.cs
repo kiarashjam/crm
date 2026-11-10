@@ -14,13 +14,20 @@ namespace ACI.Infrastructure.Persistence;
 /// Idempotent: it touches only rows that still hold a plain key, and clears that key,
 /// so a second run finds nothing to do.
 /// </para>
+/// <para>
+/// Only a database from before the baseline migration has the plain column: the model
+/// no longer maps it, so a database the migrations create has none. The UPDATE is in
+/// EXEC because a batch naming a missing column fails before its IF is read.
+/// </para>
 /// </remarks>
 public static class LegacyWebhookKeys
 {
     public const string HashInPlaceSql = @"
-        UPDATE [Organizations]
-        SET [WebhookApiKeyHash] = LOWER(CONVERT(nvarchar(64), HASHBYTES('SHA2_256', CONVERT(varchar(max), [WebhookApiKey])), 2)),
-            [WebhookApiKey] = NULL
-        WHERE [WebhookApiKey] IS NOT NULL AND [WebhookApiKey] <> N'';
+        IF COL_LENGTH(N'dbo.Organizations', N'WebhookApiKey') IS NOT NULL
+            EXEC(N'
+                UPDATE [Organizations]
+                SET [WebhookApiKeyHash] = LOWER(CONVERT(nvarchar(64), HASHBYTES(''SHA2_256'', CONVERT(varchar(max), [WebhookApiKey])), 2)),
+                    [WebhookApiKey] = NULL
+                WHERE [WebhookApiKey] IS NOT NULL AND [WebhookApiKey] <> N'''';');
     ";
 }

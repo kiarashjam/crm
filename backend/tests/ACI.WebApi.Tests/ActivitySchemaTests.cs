@@ -115,8 +115,7 @@ public class ActivitySchemaTests
 
             // As production is before this deploy.
             await SqlServerApp.ExecuteAsync(database, "DROP INDEX [IX_Activities_OrganizationId_OccurredAtUtc] ON [Activities]");
-            await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [Activities] DROP CONSTRAINT [DF_Activities_OccurredAtUtc]");
-            await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [Activities] DROP COLUMN [OccurredAtUtc], [Outcome], [DurationMinutes], [Direction]");
+            await SqlServerApp.DropColumnsAsync(database, "Activities", "OccurredAtUtc", "Outcome", "DurationMinutes", "Direction");
             var old = Guid.NewGuid();
             await SqlServerApp.ExecuteAsync(database,
                 $"INSERT INTO [Activities] ([Id], [UserId], [Type], [Subject], [CreatedAtUtc]) VALUES ('{old}', '{userId}', N'call', N'Called in January', '2026-01-15T10:30:00')");

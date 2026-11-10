@@ -6,13 +6,14 @@ using static ACI.WebApi.Tests.Helpers.Workspaces;
 namespace ACI.WebApi.Tests;
 
 /// <summary>
-/// The Version column of leads, deals, contacts and companies, which only the hand-written
-/// DDL in Program.cs adds.
+/// The Version column of leads, deals, contacts and companies: made with the tables by the
+/// baseline migration on a new database, and added by the start-up DDL on one from before.
 /// </summary>
 /// <remarks>
-/// The four tables already exist in production, so the column arrives only by a guarded
-/// ALTER. Missing, every query on them fails; nullable or without a default, a row written
-/// during a deploy by an instance still running the previous code would have no version.
+/// The four tables already exist in production, so there the column arrives only by a
+/// guarded ALTER. Missing, every query on them fails; nullable or without a default, a row
+/// written during that deploy by an instance still running the previous code would have no
+/// version. A new database never runs code from before the column, so it needs no default.
 /// </remarks>
 public class VersionSchemaTests
 {
@@ -49,7 +50,7 @@ public class VersionSchemaTests
         try
         {
             using (SqlServerApp.Start(database))
-                await ShouldHaveTheVersionsAsync(database);
+                await ShouldHaveTheVersionsAsync(database, withDeployDefault: false);
         }
         finally
         {
@@ -81,13 +82,12 @@ public class VersionSchemaTests
             // As production is before this deploy.
             foreach (var table in new[] { "Leads", "Deals", "Contacts", "Companies" })
             {
-                await SqlServerApp.ExecuteAsync(database, $"ALTER TABLE [{table}] DROP CONSTRAINT [DF_{table}_Version]");
-                await SqlServerApp.ExecuteAsync(database, $"ALTER TABLE [{table}] DROP COLUMN [Version]");
+                await SqlServerApp.DropColumnsAsync(database, table, "Version");
             }
 
             using (SqlServerApp.Start(database))
             {
-                await ShouldHaveTheVersionsAsync(database);
+                await ShouldHaveTheVersionsAsync(database, withDeployDefault: true);
                 foreach (var table in new[] { "Leads", "Deals", "Contacts", "Companies" })
                 {
                     (await SqlServerApp.ScalarAsync(database, $"SELECT COUNT(*) FROM [{table}] WHERE [Version] = '00000000-0000-0000-0000-000000000000'"))
@@ -97,7 +97,7 @@ public class VersionSchemaTests
 
             // And a third start finds it all there already.
             using (SqlServerApp.Start(database))
-                await ShouldHaveTheVersionsAsync(database);
+                await ShouldHaveTheVersionsAsync(database, withDeployDefault: true);
         }
         finally
         {
@@ -105,7 +105,7 @@ public class VersionSchemaTests
         }
     }
 
-    private static async Task ShouldHaveTheVersionsAsync(string database)
+    private static async Task ShouldHaveTheVersionsAsync(string database, bool withDeployDefault)
     {
         foreach (var table in new[] { "Leads", "Deals", "Contacts", "Companies" })
         {
@@ -113,9 +113,10 @@ public class VersionSchemaTests
                 $"SELECT COUNT(*) FROM sys.columns c JOIN sys.types t ON t.user_type_id = c.user_type_id " +
                 $"WHERE c.object_id = OBJECT_ID(N'dbo.{table}') AND c.name = N'Version' AND t.name = N'uniqueidentifier' AND c.is_nullable = 0"))
                 .Should().Be(1, $"{table}.Version is a NOT NULL uniqueidentifier");
-            (await SqlServerApp.ScalarAsync(database,
-                $"SELECT COUNT(*) FROM sys.default_constraints WHERE name = N'DF_{table}_Version' AND parent_object_id = OBJECT_ID(N'dbo.{table}')"))
-                .Should().Be(1, $"a row written by an older instance during a deploy still gets a {table} version");
+            if (withDeployDefault)
+                (await SqlServerApp.ScalarAsync(database,
+                    $"SELECT COUNT(*) FROM sys.default_constraints WHERE name = N'DF_{table}_Version' AND parent_object_id = OBJECT_ID(N'dbo.{table}')"))
+                    .Should().Be(1, $"a row written by an older instance during a deploy still gets a {table} version");
         }
     }
 }

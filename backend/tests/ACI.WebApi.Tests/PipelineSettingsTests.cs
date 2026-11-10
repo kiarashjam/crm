@@ -199,8 +199,7 @@ public class PipelineSettingsTests
                 (_, userId) = await SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
 
             // As production is before this deploy.
-            await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [Organizations] DROP CONSTRAINT [DF_Organizations_StaleDealDays]");
-            await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [Organizations] DROP COLUMN [StaleDealDays]");
+            await SqlServerApp.DropColumnsAsync(database, "Organizations", "StaleDealDays");
             await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [Pipelines] DROP COLUMN [StaleDealDays]");
             await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [DealStages] DROP COLUMN [Probability]");
             var org = Guid.NewGuid();

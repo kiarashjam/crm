@@ -486,14 +486,14 @@ try
             var maskedConnStr = connStr.Length > 30 ? connStr.Substring(0, 30) + "..." : connStr;
             Log.Information("Database connection: {ConnectionString}", maskedConnStr);
             
-            // The schema work below adds to the tables InitialCreate makes (its first
-            // statement points a foreign key at Users), but the migrations only run after
-            // it. So a new database -- missing, or created empty -- failed on its first
-            // statement on every start and was never set up. An empty one is now given the
-            // migrations first. A database with any table in it, as production's has,
-            // skips this and is set up in exactly the order it always was.
+            // The schema comes from the EF migrations (ACI.Infrastructure/Migrations), the
+            // first of which, the baseline, makes the whole schema as it stood when they
+            // became its only source. A new database is made by them, here. One made before
+            // them, by the first migrations and the start-up DDL below, has the baseline
+            // recorded without running it, further down (see SchemaBaseline), and from then
+            // on both get every migration after the baseline from the same MigrateAsync.
             //
-            // A missing one is only created in development (docker-compose's first
+            // A missing database is only created in development (docker-compose's first
             // start). Anywhere else the database is provisioned first, so a missing one
             // means a mistyped name in the connection string: creating it would start
             // the app on a new, empty database (on Azure, one at the default, paid tier)
@@ -506,13 +506,43 @@ try
                     "The database named in the connection string does not exist. Outside development it is not "
                     + "created at start-up: create it first (the scripts in scripts/ do), or correct the name.");
             }
-            if (!databaseExists || !await databaseCreator.HasTablesAsync())
+            if (!databaseExists)
             {
-                Log.Information("Empty database: creating the core tables from the migrations first...");
+                Log.Information("No database yet: creating it (development only)...");
+                await databaseCreator.CreateAsync();
+            }
+
+            // One instance at a time from here to the end of the schema work and seeding
+            // (see SchemaLock): two starting together both ran the same migrations.
+            await using var schemaLock = await ACI.WebApi.SchemaLock.AcquireAsync(
+                db.Database.GetConnectionString()!, TimeSpan.FromMinutes(10));
+
+            // Empty but for, at most, the history table a cut-off first start left behind
+            // (see SchemaBaseline.IsEmptyAsync).
+            if (await ACI.WebApi.SchemaBaseline.IsEmptyAsync(db))
+            {
+                Log.Information("Empty database: creating it from the migrations...");
                 await db.Database.MigrateAsync();
             }
-            
-            // First, create missing tables and fix schema
+
+            // SAFETY NET, FOR ONE RELEASE: the start-up DDL that made the schema before the
+            // baseline migration, left to run as it always has so that a database made
+            // before the baseline is brought fully up to date before the baseline is recorded
+            // on it. Every statement is guarded, so on a database the migrations made it
+            // changes nothing but the AppliedDataFixes ledger (SchemaMigrationTests compares
+            // the two).
+            //
+            // - Add nothing to it. A schema change is a migration now, from backend/:
+            //   dotnet ef migrations add <Name> -p src/ACI.Infrastructure -s src/ACI.Infrastructure -o Migrations
+            // - While it is here, a migration must not drop or rename anything it adds, or
+            //   it would put that back on the next start.
+            // - Once every database has started on this release (its __EFMigrationsHistory
+            //   holds the baseline), delete everything from here to "Schema check complete",
+            //   the one-time data fixes in it and the lead status alignment further down
+            //   included (each is in AppliedDataFixes by then). Keep the ContactEmailIndexes
+            //   call: where active contacts in one workspace share an email it has not yet
+            //   been able to build the two unique indexes, and it builds them once the
+            //   duplicates are merged (until then each start logs that they are missing).
             Log.Information("Checking and fixing database schema...");
             
             // Create Organizations table if missing
@@ -1758,8 +1788,6 @@ try
                     ALTER TABLE [Contacts] ADD [DoNotContact] bit NOT NULL DEFAULT 0;
                     CREATE INDEX [IX_Contacts_DoNotContact] ON [Contacts] ([DoNotContact]);
                 END;
-                IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'DoNotContactReason')
-                    ALTER TABLE [Contacts] ADD [DoNotContactReason] nvarchar(512) NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'ConvertedAtUtc')
                     ALTER TABLE [Contacts] ADD [ConvertedAtUtc] datetime2 NULL;
                 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Contacts') AND name = 'JobTitle')
@@ -2199,49 +2227,28 @@ try
                 WHERE [UserId] IS NULL AND [IsSystemTemplate] = 0;
             ");
             Log.Information("Schema check complete");
-            
+
+            // A database made before the baseline migration, now up to date, is recorded at
+            // the baseline without running it; one that still lacks a table or column the
+            // model maps is refused instead (see SchemaBaseline). This replaces marking
+            // InitialCreate as applied whenever MigrateAsync hit a table that already
+            // existed, which left every later migration to fail the same way.
+            await ACI.WebApi.SchemaBaseline.RecordOnExistingDatabaseAsync(
+                db, scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("ACI.WebApi.SchemaBaseline"));
+
             Log.Information("Applying database migrations...");
-            try
-            {
-                await db.Database.MigrateAsync();
-            }
-            catch (Microsoft.Data.SqlClient.SqlException sqlEx) when (sqlEx.Number == 2714) // Object already exists
-            {
-                Log.Warning("Tables already exist (error 2714), marking InitialCreate migration as applied...");
-                
-                // Ensure __EFMigrationsHistory table exists and mark InitialCreate as applied
-                await db.Database.ExecuteSqlRawAsync(@"
-                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = '__EFMigrationsHistory')
-                    BEGIN
-                        CREATE TABLE [__EFMigrationsHistory] (
-                            [MigrationId] nvarchar(150) NOT NULL,
-                            [ProductVersion] nvarchar(32) NOT NULL,
-                            CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
-                        );
-                    END;
-                    
-                    IF NOT EXISTS (SELECT 1 FROM [__EFMigrationsHistory] WHERE [MigrationId] = '20260206130556_InitialCreate')
-                    BEGIN
-                        INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion]) 
-                        VALUES ('20260206130556_InitialCreate', '8.0.11');
-                    END;
-                ");
-                
-                Log.Information("InitialCreate marked as applied, migration history fixed");
-            }
-            
+            await db.Database.MigrateAsync();
+
             Log.Information("Seeding database...");
             await SeedData.SeedAsync(db, passwordHasher, seedDemoUser: app.Environment.IsDevelopment());
             
             // Bring EXISTING organisations onto the agreed lead status vocabulary.
             //
-            // This app applies schema by the hand-written DDL above, not by EF
-            // migrations -- MigrateAsync only ever sees the three migrations that
-            // have a .Designer.cs, and AlignLeadStatusVocabulary has none, so it
-            // was never discovered and never ran. Established tenants kept the old
-            // six labels, the pipeline could not resolve a status against them, and
-            // leads stayed on "New" however much work was logged. So the alignment
-            // lives here, where this application's schema work actually happens.
+            // The AlignLeadStatusVocabulary migration that was meant to do this had no
+            // .Designer.cs, so EF never discovered it and it never ran. Established
+            // tenants kept the old six labels, the pipeline could not resolve a status
+            // against them, and leads stayed on "New" however much work was logged. So
+            // the alignment has lived here, next to the rest of the start-up work.
             //
             // It runs once, as a data fix (see DataFixes): run on every start, it
             // deleted statuses managers had made and put back ones they had removed.

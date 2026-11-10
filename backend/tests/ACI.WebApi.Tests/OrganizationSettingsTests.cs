@@ -113,14 +113,10 @@ public class OrganizationSettingsTests
             using (var app = SqlServerApp.Start(database))
                 (_, userId) = await SignInAsync(app, $"{Guid.NewGuid():N}@example.com");
 
-            foreach (var column in new[] { "Currency", "Locale", "TimeZone" })
-            {
-                await SqlServerApp.ExecuteAsync(database, $"ALTER TABLE [Organizations] DROP CONSTRAINT [DF_Organizations_{column}]");
-                await SqlServerApp.ExecuteAsync(database, $"ALTER TABLE [Organizations] DROP COLUMN [{column}]");
-            }
+            await SqlServerApp.DropColumnsAsync(database, "Organizations", "Currency", "Locale", "TimeZone");
             var org = Guid.NewGuid();
             await SqlServerApp.ExecuteAsync(database,
-                $"INSERT INTO [Organizations] ([Id], [Name], [OwnerUserId], [CreatedAtUtc]) VALUES ('{org}', N'Pavillon46', '{userId}', SYSUTCDATETIME())");
+                $"INSERT INTO [Organizations] ([Id], [Name], [OwnerUserId], [CreatedAtUtc], [StaleDealDays]) VALUES ('{org}', N'Pavillon46', '{userId}', SYSUTCDATETIME(), 30)");
 
             using (SqlServerApp.Start(database))
             {

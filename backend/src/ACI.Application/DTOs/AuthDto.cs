@@ -45,8 +45,14 @@ public record TwoFactorLoginRequest
     /// <summary>
     /// Two-factor token from initial login.
     /// </summary>
+    /// <remarks>
+    /// The token login hands out is about 600 characters (its claims carry their full
+    /// type names, and the session stamp since it was added), so a limit of 500 refused
+    /// every one of them and nobody with 2FA on could finish signing in. The limit only
+    /// keeps absurd input out.
+    /// </remarks>
     [Required(ErrorMessage = "TwoFactorToken is required")]
-    [StringLength(500, ErrorMessage = "TwoFactorToken cannot exceed 500 characters")]
+    [StringLength(4096, ErrorMessage = "TwoFactorToken cannot exceed 4096 characters")]
     public required string TwoFactorToken { get; init; }
 
     /// <summary>
