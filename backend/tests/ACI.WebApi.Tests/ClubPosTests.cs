@@ -192,6 +192,29 @@ public class ClubPosTests
     }
 
     [Fact]
+    public async Task CashWithChangeGivenBack_IsRecordedAsWhatTheTicketCameTo_AndCashRoundingIsEvenedOut()
+    {
+        using var app = new PosApp();
+        var (client, _, jean) = await ConnectedClubAsync(app);
+        app.Lightspeed.Sales.AddRange(
+        [
+            // 50 handed over for a 42 dinner, 8 given back: the POS lists the change as a negative cash payment.
+            Sale("R12", Now.AddMinutes(-6), [Line("Dinner", 1, 42.00m, 8.1m)], [Payment("CASH", "Bargeld", 50.00m), Payment("CASH", "Bargeld", -8.00m)], accountName: "1042"),
+            // Lines of 32.47 paid with 32.45 in cash: five-centime rounding.
+            Sale("R13", Now.AddMinutes(-5), [Line("Lunch", 1, 32.47m, 8.1m)], [Payment("CASH", "Bargeld", 32.45m)], accountName: "1042"),
+        ]);
+
+        var result = await ImportAsync(client);
+        result.GetProperty("posted").GetInt32().Should().Be(2);
+
+        var payments = (await Club.Json(await client.GetAsync($"/api/payments?memberId={jean}"), "list payments")).EnumerateArray()
+            .Select(p => (p.GetProperty("method").GetString(), p.GetProperty("amount").GetDecimal())).ToList();
+        payments.Should().BeEquivalentTo([("Cash", 42.00m), ("Cash", 32.47m)]);
+        (await Club.ChargesAsync(client, jean)).Select(c => c.GetProperty("amount").GetDecimal()).Should().BeEquivalentTo([42.00m, 32.47m]);
+        (await Club.BalanceAsync(client, jean)).Should().Be(0m, "both were paid at the POS");
+    }
+
+    [Fact]
     public async Task OneImportAtATime_ASecondIsRefusedWhileTheFirstRuns()
     {
         using var app = new PosApp();

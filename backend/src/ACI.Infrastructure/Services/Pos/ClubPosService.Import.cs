@@ -473,14 +473,16 @@ public sealed partial class ClubPosService
         if (houseTips > 0)
             lines.Add(new SaleLineRequest { Name = "Tip", Quantity = 1, UnitPrice = houseTips, Kind = "Other", EarnsPoints = false });
 
-        // How it was settled; a tip paid at the POS is the staff's, not the member's spend.
-        var tenders = payments.Where(p => p.Payment.Amount > 0)
+        // How it was settled, each way netted (change given back is a negative cash payment); a tip
+        // paid at the POS is the staff's, not the member's spend.
+        var tenders = payments
             .GroupBy(p => p.Means)
             .Select(g => new SaleTenderRequest
             {
                 Method = g.Key,
                 Amount = g.Sum(p => p.Payment.Amount) + (g.Key == SaleTenders.HouseAccount ? houseTips : 0),
             })
+            .Where(t => t.Amount > 0)
             .ToList();
         // The lines taken back are already in the total; the ledger takes them off as the discount.
         var due = total + houseTips;
