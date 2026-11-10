@@ -188,6 +188,9 @@ public sealed class ImportRepository : IImportRepository
         Keep(await _db.OutreachEnrollments.Where(e => e.TargetType == "lead" && leadIds.Contains(e.TargetId)).Select(e => e.TargetId).Distinct().ToListAsync(ct), "is in a sequence");
         Keep(await AttachedAsync(RecordTypes.Lead, leadIds, ct), "has files attached");
         Keep(await CustomFieldsSinceAsync(RecordTypes.Lead, leadIds, since, ct), "has custom fields filled in after the import");
+        // The club's side: a member who came from the lead, or an application for them.
+        Keep(await _db.ClubMembers.Where(m => m.LeadId != null && leadIds.Contains(m.LeadId.Value)).Select(m => m.LeadId!.Value).Distinct().ToListAsync(ct), "is a club member's lead");
+        Keep(await _db.ClubApplications.Where(a => a.LeadId != null && leadIds.Contains(a.LeadId.Value)).Select(a => a.LeadId!.Value).Distinct().ToListAsync(ct), "has a membership application");
 
         Keep(contactRows.Where(c => c.IsArchived).Select(c => c.Id), "was archived");
         Keep(contactRows.Where(c => c.Edited).Select(c => c.Id), Edited);
@@ -201,6 +204,11 @@ public sealed class ImportRepository : IImportRepository
         Keep(await _db.OutreachEnrollments.Where(e => e.TargetType == "contact" && contactIds.Contains(e.TargetId)).Select(e => e.TargetId).Distinct().ToListAsync(ct), "is in a sequence");
         Keep(await _db.ContactRelationships.Where(r => contactIds.Contains(r.ContactId)).Select(r => r.ContactId).Distinct().ToListAsync(ct), "has family or other relationships recorded");
         Keep(await _db.ContactRelationships.Where(r => contactIds.Contains(r.RelatedContactId)).Select(r => r.RelatedContactId).Distinct().ToListAsync(ct), "has family or other relationships recorded");
+        // A spouse or partner is kept in a household, not as a relationship row; and the club's
+        // side: a member linked to the contact, or an application for them.
+        Keep(await _db.ClubHouseholdMembers.Where(l => l.ContactId != null && contactIds.Contains(l.ContactId.Value)).Select(l => l.ContactId!.Value).Distinct().ToListAsync(ct), "has family or other relationships recorded");
+        Keep(await _db.ClubMembers.Where(m => m.ContactId != null && contactIds.Contains(m.ContactId.Value)).Select(m => m.ContactId!.Value).Distinct().ToListAsync(ct), "is a club member's contact");
+        Keep(await _db.ClubApplications.Where(a => a.ContactId != null && contactIds.Contains(a.ContactId.Value)).Select(a => a.ContactId!.Value).Distinct().ToListAsync(ct), "has a membership application");
         Keep(await _db.Leads.Where(l => l.ReferredByContactId != null && contactIds.Contains(l.ReferredByContactId.Value)).Select(l => l.ReferredByContactId!.Value).Distinct().ToListAsync(ct), "referred someone");
         Keep(await AttachedAsync(RecordTypes.Contact, contactIds, ct), "has files attached");
         Keep(await CustomFieldsSinceAsync(RecordTypes.Contact, contactIds, since, ct), "has custom fields filled in after the import");
