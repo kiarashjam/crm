@@ -330,8 +330,8 @@ public sealed class OutboxService : IOutbox, IOutboundWebhookPublisher
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
             OutboundMessageId = id,
-            FileName = Clip(a.FileName, 255),
-            ContentType = Clip(a.ContentType, 100),
+            FileName = Clip(a.FileName, 255) ?? "attachment",
+            ContentType = Clip(a.ContentType, 100) ?? "application/octet-stream",
             Content = a.Content,
             CreatedAtUtc = now,
         }).ToList();

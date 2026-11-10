@@ -80,7 +80,9 @@ public class OutboxSchemaTests
         {
             using (SqlServerApp.Start(database)) { }
 
-            // As production is before this deploy.
+            // As production is before this deploy. The messages' attachments (a statement's
+            // PDF) came later, by a migration, and refer to the messages: they go first.
+            await SqlServerApp.ExecuteAsync(database, "DROP TABLE [OutboundAttachments]");
             foreach (var table in new[] { "OutboundMessages", "EmailSuppressions", "InboundEmails" })
                 await SqlServerApp.ExecuteAsync(database, $"DROP TABLE [{table}]");
             await SqlServerApp.ExecuteAsync(database, "ALTER TABLE [Organizations] DROP COLUMN [SendingAddress]");
