@@ -137,7 +137,10 @@ public class ClubApplication : Common.BaseEntity, Common.IVersioned
     /// </summary>
     public bool ReturningMember { get; set; }
 
-    /// <summary>The deposit the applicant paid, recorded on their new account when they were admitted for it.</summary>
+    /// <summary>
+    /// The paid deposit that admitted them, as the payment's id the deposit hook was given. The
+    /// hook only notes it here: putting the deposit on their account is the caller's (Phase 3).
+    /// </summary>
     public Guid? DepositPaymentId { get; set; }
 
     /// <summary>The welcome email the approval queued on the outbox.</summary>
