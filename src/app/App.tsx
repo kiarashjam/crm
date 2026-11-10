@@ -41,6 +41,7 @@ const ContactImport = lazy(() => import('@/app/pages/ContactImport'));
 const CompanyImport = lazy(() => import('@/app/pages/CompanyImport'));
 const LeadRouting = lazy(() => import('@/app/pages/LeadRouting'));
 const PublicCapture = lazy(() => import('@/app/pages/PublicCapture'));
+const PublicApply = lazy(() => import('@/app/pages/PublicApply'));
 const Unsubscribe = lazy(() => import('@/app/pages/Unsubscribe'));
 const Pipeline = lazy(() => import('@/app/pages/Pipeline'));
 const DealDetail = lazy(() => import('@/app/pages/DealDetail'));
@@ -152,6 +153,12 @@ export default function App() {
                 <Route path="/capture/:token" element={
                   <Suspense fallback={<PageLoader />}>
                     <PublicCapture />
+                  </Suspense>
+                } />
+                {/* The club's membership application: a stranger applies without an account. */}
+                <Route path="/apply/:token" element={
+                  <Suspense fallback={<PageLoader />}>
+                    <PublicApply />
                   </Suspense>
                 } />
                 {/* The unsubscribe link in a workspace's email. Public for the same

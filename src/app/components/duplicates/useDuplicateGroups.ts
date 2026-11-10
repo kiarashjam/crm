@@ -28,7 +28,7 @@ const SETTLE_MS = 900;
  * whole list again, which every save anywhere used to be.
  */
 function watchedBy(kind: string): string[] {
-  return kind === 'households' ? ['households', 'household-members', 'duplicates'] : [kind, 'duplicates'];
+  return [kind, 'duplicates'];
 }
 
 const storageKey = (kind: string) => `cadence.duplicates.notSame.${kind}`;

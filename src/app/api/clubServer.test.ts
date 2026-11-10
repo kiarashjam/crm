@@ -15,7 +15,7 @@ import { removeItemFromTab } from './tabs';
 import { runDueBillingCycles } from './subscriptions';
 import { redeemGiftCard } from './giftCards';
 import { resetHospitalitySettings } from './hospitalitySettings';
-import { createHousehold, getHouseholdMembers } from './households';
+import { createHousehold, getHouseholds, mergeHouseholds } from './households';
 import { mergeContacts } from './dedupe';
 import { approveApplication } from './applications';
 
@@ -103,33 +103,50 @@ describe('on the server', () => {
     expect(settings.billing.reminderDays).toEqual([3, 14, 30]);
   });
 
-  it("leaves a new household's primary link to the server", async () => {
+  it("leaves a new household's primary link to the server, and reads the people it answers with", async () => {
+    const dupont = {
+      id: 'h1', name: 'Dupont', createdAtUtc: '', primaryMemberId: 'm1', members: 1, version: 'v1',
+      people: [{ linkId: 'l1', memberId: 'm1', name: 'Jean Dupont', role: 'Primary', isPrimary: true, rollUpBilling: false }],
+    };
     server.use(
-      http.post(`${BASE}/api/households`, () => HttpResponse.json({ id: 'h1', name: 'Dupont', primaryMemberId: 'm1', createdAtUtc: '' })),
-      http.get(`${BASE}/api/household-members`, () => HttpResponse.json([{ id: 'l1', householdId: 'h1', memberId: 'm1', role: 'Primary', rollUpBilling: true }])),
+      http.post(`${BASE}/api/households`, () => HttpResponse.json(dupont)),
+      http.get(`${BASE}/api/households`, () => HttpResponse.json([dupont])),
     );
 
-    await createHousehold({ name: 'Dupont', primaryMemberId: 'm1' });
+    const created = await createHousehold({ name: 'Dupont', primaryMemberId: 'm1' });
+    const [listed] = await getHouseholds();
 
-    expect(await getHouseholdMembers()).toHaveLength(1);
-    expect(Object.keys(localStorage).some((k) => k.includes('householdMember'))).toBe(false);
+    expect(created.people[0]?.isPrimary).toBe(true);
+    expect(listed?.people).toHaveLength(1);
+    expect(requests).toEqual(['POST /api/households', 'GET /api/households']);
+    expect(Object.keys(localStorage).some((k) => k.includes('households'))).toBe(false);
   });
 
-  it("approves an application once: a second approval doesn't add the member again", async () => {
-    let status = 'Submitted';
-    server.use(
-      http.get(`${BASE}/api/applications`, () => HttpResponse.json([{ id: 'a1', firstName: 'Jean', lastName: 'Dupont', email: 'jean@example.ch', requestedTier: 'Gold', status }])),
-      http.post(`${BASE}/api/members`, () => HttpResponse.json({ id: 'm1' })),
-      http.put(`${BASE}/api/applications/a1`, () => {
-        status = 'Approved';
-        return HttpResponse.json({ id: 'a1', status });
-      }),
-    );
+  it('merges households on the server in one request, not person by person from the browser', async () => {
+    server.use(http.post(`${BASE}/api/households/h1/merge`, async ({ request }) => {
+      expect(await request.json()).toEqual({ duplicateIds: ['h2', 'h3'] });
+      return HttpResponse.json({ id: 'h1', name: 'Dupont', createdAtUtc: '', members: 3, people: [] });
+    }));
 
-    await approveApplication('a1');
-    await approveApplication('a1');
+    await mergeHouseholds('h1', ['h2', 'h3']);
 
-    expect(requests.filter((r) => r === 'POST /api/members')).toHaveLength(1);
+    expect(requests).toEqual(['POST /api/households/h1/merge']);
+  });
+
+  it('approves an application with one request: the server makes the member, not the browser', async () => {
+    server.use(http.post(`${BASE}/api/applications/a1/approve`, async ({ request }) => {
+      expect(await request.json()).toEqual({ reviewerNotes: 'Lovely' });
+      return HttpResponse.json({
+        application: { id: 'a1', status: 'Approved', memberId: 'm1' }, memberId: 'm1', memberName: 'Jean Dupont',
+        memberCreated: true, approved: true, duesStarted: true, feeCharged: true, joinedHousehold: false,
+        welcomeQueued: true, moneyPending: false, notes: [],
+      });
+    }));
+
+    const result = await approveApplication('a1', { reviewerNotes: 'Lovely' });
+
+    expect(result.memberId).toBe('m1');
+    expect(requests).toEqual(['POST /api/applications/a1/approve']);
   });
 });
 

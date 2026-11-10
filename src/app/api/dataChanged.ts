@@ -93,8 +93,15 @@ const LINKED = ['leads', 'contacts', 'companies', 'deals', 'tasks', 'activities'
  */
 const MEMBER_MERGE = [
   'members', 'campaigns', 'communications', 'duplicates', 'visits', 'loyalty', 'charges', 'payments', 'statements',
-  'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'household-members',
+  'tabs', 'reservations', 'events', 'gift-cards', 'donations', 'subscriptions', 'households', 'applications',
 ];
+
+/**
+ * What a household write changes: the household, what a member's page says of it (whose
+ * account their bills go on), the relationships cards of the contacts and leads in it, and
+ * for a merge, the duplicates list.
+ */
+const HOUSEHOLD_WRITE = ['households', 'members', 'contacts', 'leads', 'duplicates'];
 
 /**
  * What a write under /api/<base> may change, beyond its own records. The server
@@ -169,6 +176,11 @@ const CHANGES: Readonly<Record<string, readonly string[]>> = {
   resources: ['resources', 'reservations'],
   // Sending a campaign writes a message per member into the communications log.
   campaigns: ['campaigns', 'communications'],
+  // An approval makes the member, starts their dues, charges the initiation fee, joins the
+  // household, records their consent and queues the welcome (logged in their communications);
+  // the lead's and the contact's pages show the application and the member.
+  applications: ['applications', 'members', 'charges', 'payments', 'subscriptions', 'statements', 'communications', 'households', 'billing', 'leads', 'contacts', 'campaigns'],
+  households: HOUSEHOLD_WRITE,
 };
 
 /** Which records an activity is about, from the body it was saved with. */
@@ -208,6 +220,13 @@ export function resourcesChangedBy(method: string | undefined, path: string, bod
   // the id of someone who is gone.
   if (base === 'members' && segments.length === 2 && (method ?? 'GET').toUpperCase() === 'DELETE') {
     return [...(CHANGES.members ?? ['members']), 'events', 'reservations'];
+  }
+  // Households merge on their own: the people move to the household kept.
+  if (base === 'households') return [...HOUSEHOLD_WRITE];
+  // A spouse or partner recorded on a contact's or a lead's page is a household's couple,
+  // and a tie between two of one household is held by it.
+  if ((base === 'contacts' || base === 'leads') && segments.includes('relationships')) {
+    return [...new Set([...(CHANGES[base] ?? [base]), 'households', 'members'])];
   }
   // A merge moves everything linked to the record merged away; a conversion makes
   // a contact, a company and a deal from the lead.

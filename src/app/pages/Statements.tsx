@@ -265,9 +265,9 @@ export default function Statements() {
                             <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{formatDate(line.atUtc)}</td>
                             <td className="py-2 pr-3 text-slate-800">
                               <span className="block">{line.description}</span>
-                              {(ENTRY_LABEL[line.entryType] || line.reason || line.reference) && (
+                              {(ENTRY_LABEL[line.entryType] || line.reason || line.reference || line.incurredByName) && (
                                 <span className="block text-xs text-slate-500">
-                                  {[ENTRY_LABEL[line.entryType], line.reason, line.reference].filter(Boolean).join(' · ')}
+                                  {[line.incurredByName ? `Incurred by ${line.incurredByName}` : undefined, ENTRY_LABEL[line.entryType], line.reason, line.reference].filter(Boolean).join(' · ')}
                                 </span>
                               )}
                             </td>

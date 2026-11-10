@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
-import { ArrowUpRight, Heart, Loader2, Plus, X } from 'lucide-react';
+import { ArrowUpRight, Heart, HomeIcon, Loader2, Plus, X } from 'lucide-react';
 import { getContacts } from '@/app/api/contacts';
 import type { Contact } from '@/app/api/types';
 import {
@@ -329,6 +329,16 @@ export default function RelationshipsCard({
                           )}
                           {isCouple(relationship.type) && (
                             <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">Couple</span>
+                          )}
+                          {relationship.householdName && (
+                            <Link
+                              to="/households"
+                              className="inline-flex items-center gap-1 rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 ring-1 ring-teal-200 hover:bg-teal-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-400"
+                              title="Kept in a household: the club sees the same family"
+                            >
+                              <HomeIcon className="h-3 w-3" aria-hidden="true" />
+                              {relationship.householdName} household
+                            </Link>
                           )}
                           {relationship.relatedContactIsArchived && (
                             <span className="text-[11px] text-amber-700">Archived</span>

@@ -137,5 +137,15 @@ export const queryKeys = {
     memberRegistrations: (s: WorkspaceScope, memberId: string) => key(s, 'events', 'member', memberId),
     resources: (s: WorkspaceScope) => key(s, 'resources', 'all'),
     reservations: (s: WorkspaceScope, memberId: string | null = null) => key(s, 'reservations', memberId ?? 'all'),
+    // Applications and households. An approval makes a member, their dues, fee, household
+    // link and welcome, so it refreshes those too; what a member's, a lead's or a contact's
+    // page shows of the other side is read under 'members', which applications, households
+    // and members all refresh (api/dataChanged).
+    applications: (s: WorkspaceScope) => key(s, 'applications', 'all'),
+    applicationForm: (s: WorkspaceScope) => key(s, 'applications', 'form'),
+    households: (s: WorkspaceScope) => key(s, 'households', 'all'),
+    memberHousehold: (s: WorkspaceScope, memberId: string) => key(s, 'households', 'member', memberId),
+    memberLinks: (s: WorkspaceScope, memberId: string) => key(s, 'members', 'links', memberId),
+    personMembership: (s: WorkspaceScope, kind: 'lead' | 'contact', id: string) => key(s, 'members', 'membership', kind, id),
   },
 } as const;

@@ -170,6 +170,31 @@ describe('what a write changes', () => {
     expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('events');
     expect(resourcesChangedBy('PUT', '/api/members/m-1')).not.toContain('reservations');
   });
+
+  it('an approval refreshes the member it made, their dues, fee and welcome, and the lead and contact pages', () => {
+    expect(resourcesChangedBy('POST', '/api/applications/a-1/approve')).toEqual(expect.arrayContaining([
+      'applications', 'members', 'charges', 'subscriptions', 'statements', 'communications', 'households', 'leads', 'contacts',
+    ]));
+  });
+
+  it("a household's merge refreshes the households, not every sales list", () => {
+    // It used to be read as any merge, which refreshed the leads and deals and left the
+    // households list showing the duplicates merged away.
+    const merged = resourcesChangedBy('POST', '/api/households/h-1/merge');
+    expect(merged).toEqual(expect.arrayContaining(['households', 'duplicates', 'members']));
+    expect(merged).not.toContain('deals');
+    expect(resourcesChangedBy('PUT', '/api/households/h-1/members/l-1')).toEqual(expect.arrayContaining(['households', 'members']));
+  });
+
+  it("a spouse recorded on a contact's or a lead's page refreshes the households: a couple is one", () => {
+    expect(resourcesChangedBy('POST', '/api/contacts/c-1/relationships')).toContain('households');
+    expect(resourcesChangedBy('DELETE', '/api/leads/l-1/relationships/r-1')).toContain('households');
+    expect(resourcesChangedBy('PUT', '/api/contacts/c-1')).not.toContain('households');
+  });
+
+  it("a club member's merge moves their applications and household links", () => {
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(expect.arrayContaining(['applications', 'households']));
+  });
 });
 
 describe('what the signal carries', () => {

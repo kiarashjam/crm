@@ -39,6 +39,12 @@ export interface Charge {
   voidReason?: string;
   voidedAtUtc?: string;
   voidedByName?: string;
+  /**
+   * The household member who ran it up, when their bills roll up to this account's
+   * holder (the household's primary); left out for the account holder's own charges.
+   */
+  incurredByMemberId?: string;
+  incurredByName?: string;
 }
 
 export interface Payment {
@@ -88,6 +94,9 @@ export interface StatementLine {
   method?: string;
   reference?: string;
   reason?: string;
+  /** Who in the household ran it up, on a charge rolled up to this account. */
+  incurredByMemberId?: string;
+  incurredByName?: string;
 }
 
 /** A member's entries for [fromUtc, toUtc), from the ledger. Balances are negative while the member owes. */

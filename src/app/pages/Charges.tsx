@@ -449,6 +449,7 @@ export default function Charges() {
       cell: (c) => (
         <span className="block">
           <span className="block text-slate-700">{c.description}</span>
+          {c.incurredByName && <span className="mt-0.5 block text-xs text-teal-700">Incurred by {c.incurredByName}</span>}
           {c.reference && <span className="mt-0.5 block text-xs text-slate-500">{c.reference}</span>}
           {c.status === 'Voided' && c.voidReason && (
             <span className="mt-0.5 block text-xs text-slate-500">

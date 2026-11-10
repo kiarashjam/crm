@@ -28,6 +28,10 @@ import { getBillingPreview, getBillingRuns } from '@/app/api/billing';
 import { getEvent, getEvents } from '@/app/api/events';
 import { getEventAttendees, getMemberRegistrations } from '@/app/api/eventAttendees';
 import { getReservations, getResources } from '@/app/api/reservations';
+import {
+  getApplicationForm, getApplications, getContactMembership, getLeadMembership, getMemberLinks,
+} from '@/app/api/applications';
+import { getHouseholds, getMemberHousehold } from '@/app/api/households';
 import { queryKeys, workspacePrefix, type WorkspaceScope } from './queryKeys';
 import { timed } from './queryClient';
 import { useWorkspaceScope } from './useWorkspaceScope';
@@ -142,6 +146,58 @@ export function useMemberStatement(memberId: string | null, fromUtc: string, toU
     queryKey: queryKeys.club.statement(ws, memberId ?? '', fromUtc, toUtc),
     queryFn: ({ signal }) => timed(signal, (s) => getMemberStatement(memberId!, fromUtc, toUtc, { signal: s })),
     enabled: !!memberId,
+  });
+}
+
+/** Membership applications, newest first. */
+export function useApplications() {
+  const ws = useWorkspaceScope();
+  return useQuery({ queryKey: queryKeys.club.applications(ws), queryFn: ({ signal }) => timed(signal, (s) => getApplications({ signal: s })) });
+}
+
+/** The public application form's settings, or null before one is opened. Off for someone who may not see it. */
+export function useApplicationForm(enabled = true) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.applicationForm(ws),
+    queryFn: ({ signal }) => timed(signal, (s) => getApplicationForm({ signal: s })),
+    enabled,
+  });
+}
+
+/** Households, each with its people, primary first. */
+export function useHouseholds() {
+  const ws = useWorkspaceScope();
+  return useQuery({ queryKey: queryKeys.club.households(ws), queryFn: ({ signal }) => timed(signal, (s) => getHouseholds({ signal: s })) });
+}
+
+/** The household a member is in (null when none). Off while `memberId` is empty. */
+export function useMemberHousehold(memberId: string) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.memberHousehold(ws, memberId),
+    queryFn: ({ signal }) => timed(signal, (s) => getMemberHousehold(memberId, { signal: s })),
+    enabled: memberId.length > 0,
+  });
+}
+
+/** A member's lead, contact and applications. Off while `memberId` is empty. */
+export function useMemberLinks(memberId: string) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.memberLinks(ws, memberId),
+    queryFn: ({ signal }) => timed(signal, (s) => getMemberLinks(memberId, { signal: s })),
+    enabled: memberId.length > 0,
+  });
+}
+
+/** What a lead's or a contact's page shows of the club: the member they are, their applications, their household. */
+export function usePersonMembership(kind: 'lead' | 'contact', id: string, enabled = true) {
+  const ws = useWorkspaceScope();
+  return useQuery({
+    queryKey: queryKeys.club.personMembership(ws, kind, id),
+    queryFn: ({ signal }) => timed(signal, (s) => (kind === 'lead' ? getLeadMembership(id, { signal: s }) : getContactMembership(id, { signal: s }))),
+    enabled: enabled && id.length > 0,
   });
 }
 

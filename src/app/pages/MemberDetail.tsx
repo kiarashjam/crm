@@ -44,6 +44,7 @@ import { commStatusLabel, getCommunications, type Communication } from '@/app/ap
 import type { GiftCard } from '@/app/api/giftCards';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
+import { MemberLinksCard } from '@/app/components/MembershipLinks';
 import {
   NONE, useClubCharges, useClubMembers, useClubPayments, useClubReads, useClubVisits, useGiftCards, useLoyaltyLedger,
   useMemberRegistrations, useReservations,
@@ -371,6 +372,9 @@ export default function MemberDetail() {
                   </dl>
                 </SectionCard>
 
+                {/* Their lead and contact on the sales side, how they joined, and their household. */}
+                <MemberLinksCard memberId={member.id} />
+
                 <SectionCard
                   title="Upcoming"
                   icon={<CalendarHeart className="w-4 h-4" />}
@@ -489,7 +493,10 @@ export default function MemberDetail() {
                     <tbody>
                       {memberCharges.map((c) => (
                         <tr key={c.id} className="border-b border-slate-100">
-                          <td className="px-4 py-3">{c.description}</td>
+                          <td className="px-4 py-3">
+                            {c.description}
+                            {c.incurredByName && <span className="block text-xs text-teal-700">Incurred by {c.incurredByName}</span>}
+                          </td>
                           <td className="px-4 py-3 text-slate-600">{c.kind}</td>
                           <td className="px-4 py-3">
                             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">

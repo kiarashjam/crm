@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { Lead } from '@/app/api/types';
+import { withQueries } from '@/test/queryWrapper';
 
 const lead: Lead = {
   id: 'l1', name: 'Jean Dupont', email: 'jean@example.ch', phone: '+41 79 123 45 67', status: 'Contacted',
@@ -53,13 +54,14 @@ beforeEach(() => {
 });
 
 async function renderPage() {
-  render(
+  // Under the app's query cache, as in the app: the club membership card reads through it.
+  render(withQueries(
     <MemoryRouter initialEntries={['/leads/l1']}>
       <Routes>
         <Route path="/leads/:id" element={<LeadDetailPage />} />
       </Routes>
     </MemoryRouter>,
-  );
+  ));
   return screen.findByRole('button', { name: 'Edit' }, { timeout: 5000 });
 }
 
