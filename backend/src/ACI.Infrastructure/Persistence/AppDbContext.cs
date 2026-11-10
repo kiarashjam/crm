@@ -77,6 +77,16 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubVisit> ClubVisits => Set<ClubVisit>();
     public DbSet<LoyaltyLedgerEntry> LoyaltyLedger => Set<LoyaltyLedgerEntry>();
     public DbSet<ClubDocument> ClubDocuments => Set<ClubDocument>();
+    public DbSet<ClubHouseAccount> ClubHouseAccounts => Set<ClubHouseAccount>();
+    public DbSet<ClubCharge> ClubCharges => Set<ClubCharge>();
+    public DbSet<ClubPayment> ClubPayments => Set<ClubPayment>();
+    public DbSet<ClubPaymentAllocation> ClubPaymentAllocations => Set<ClubPaymentAllocation>();
+    public DbSet<ClubSubscription> ClubSubscriptions => Set<ClubSubscription>();
+    public DbSet<ClubGiftCard> ClubGiftCards => Set<ClubGiftCard>();
+    public DbSet<ClubGiftCardTransaction> ClubGiftCardTransactions => Set<ClubGiftCardTransaction>();
+    public DbSet<ClubTab> ClubTabs => Set<ClubTab>();
+    public DbSet<ClubTabItem> ClubTabItems => Set<ClubTabItem>();
+    public DbSet<ClubDonation> ClubDonations => Set<ClubDonation>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();

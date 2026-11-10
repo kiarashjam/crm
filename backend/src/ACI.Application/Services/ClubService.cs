@@ -100,12 +100,27 @@ public interface IClubService
 public sealed class ClubService : IClubService
 {
     private readonly IClubRepository _club;
-    public ClubService(IClubRepository club) => _club = club;
+    private readonly IClubLedger _ledger;
+    private readonly IPermissionService _permissions;
+    private readonly ICurrentUserService _user;
 
+    public ClubService(IClubRepository club, IClubLedger ledger, IPermissionService permissions, ICurrentUserService user)
+    {
+        _club = club;
+        _ledger = ledger;
+        _permissions = permissions;
+        _user = user;
+    }
+
+    /// <remarks>
+    /// The house balance is worked out from the ledger, each member's entries added up, so
+    /// the list shows what the statement and the member's account say.
+    /// </remarks>
     public async Task<IReadOnlyList<MemberDto>> MembersAsync(Guid userId, Guid? organizationId, CancellationToken ct = default)
     {
         var rows = await _club.MembersAsync(organizationId, ct);
-        return rows.Select(ToDto).OrderBy(m => m.LastName).ToList();
+        var balances = await _ledger.BalancesAsync(organizationId, null, ct);
+        return rows.Select(m => ToDto(m, balances.GetValueOrDefault(m.Id))).OrderBy(m => m.LastName).ToList();
     }
 
     public async Task<Result<MemberDto>> CreateMemberAsync(Guid userId, Guid? organizationId, MemberWriteRequest request, CancellationToken ct = default)
@@ -118,6 +133,8 @@ public sealed class ClubService : IClubService
         if (MemberTooLong(request) is { } tooLong) return tooLong;
         if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
             return MoneyInvalid;
+        var opening = request.HouseAccountBalance ?? 0;
+        if (opening != 0 && await MayNotHandleMoneyAsync(organizationId, ct) is { } refused) return refused;
         var row = new ClubMember
         {
             Id = Guid.NewGuid(),
@@ -133,13 +150,13 @@ public sealed class ClubService : IClubService
             RenewsAtUtc = request.RenewsAtUtc ?? DateTime.UtcNow.AddYears(1),
             DuesAmount = request.DuesAmount ?? 0,
             DuesFrequency = string.IsNullOrWhiteSpace(request.DuesFrequency) ? "Monthly" : request.DuesFrequency.Trim(),
-            HouseAccountBalance = request.HouseAccountBalance ?? 0,
-            // A new member has no charges yet, so all of an opening balance is theirs to keep.
-            ManualBalance = request.HouseAccountBalance ?? 0,
             Notes = request.Notes,
         };
         await _club.SaveMemberAsync(row, ct);
-        return ToDto(row);
+        // The house account opens with the member, and an opening balance is its first entry.
+        var opened = await _ledger.OpenWithBalanceAsync(organizationId, row.Id, opening, ct);
+        if (!opened.IsSuccess) return opened.Error;
+        return ToDto(row, opening);
     }
 
     public async Task<Result<MemberDto>> UpdateMemberAsync(Guid id, Guid? organizationId, MemberWriteRequest request, CancellationToken ct = default)
@@ -149,6 +166,16 @@ public sealed class ClubService : IClubService
         if (MemberTooLong(request) is { } tooLong) return tooLong;
         if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
             return MoneyInvalid;
+        var balance = (await _ledger.BalancesAsync(organizationId, null, ct)).GetValueOrDefault(row.Id);
+        if (request.HouseAccountBalance is { } wanted && wanted != balance)
+        {
+            // A correction by hand is an entry on the ledger, for the difference, saying who
+            // made it: no longer a figure typed over the balance that the next charge undid.
+            if (await MayNotHandleMoneyAsync(organizationId, ct) is { } refused) return refused;
+            var adjusted = await _ledger.AdjustBalanceAsync(organizationId, row.Id, wanted, null, ct);
+            if (!adjusted.IsSuccess) return adjusted.Error;
+            balance = adjusted.Value.Balance;
+        }
         if (!string.IsNullOrWhiteSpace(request.FirstName)) row.FirstName = request.FirstName.Trim();
         if (!string.IsNullOrWhiteSpace(request.LastName)) row.LastName = request.LastName.Trim();
         if (!string.IsNullOrWhiteSpace(request.Email)) row.Email = request.Email.Trim();
@@ -163,23 +190,26 @@ public sealed class ClubService : IClubService
         if (request.RenewsAtUtc.HasValue) row.RenewsAtUtc = request.RenewsAtUtc.Value;
         if (request.DuesAmount.HasValue) row.DuesAmount = request.DuesAmount.Value;
         if (!string.IsNullOrWhiteSpace(request.DuesFrequency)) row.DuesFrequency = request.DuesFrequency.Trim();
-        if (request.HouseAccountBalance is { } balance && balance != row.HouseAccountBalance)
-        {
-            // A correction by hand: kept as the part of the balance no charge explains, so
-            // the next charge adds to it instead of putting the old figure back.
-            row.ManualBalance += balance - row.HouseAccountBalance;
-            row.HouseAccountBalance = balance;
-        }
         if (request.Notes != null) row.Notes = request.Notes;
         else if (request.Clears(nameof(request.Notes))) row.Notes = null;
         await _club.SaveMemberAsync(row, ct);
-        return ToDto(row);
+        return ToDto(row, balance);
     }
 
-    public async Task<Result> DeleteMemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default) =>
-        await _club.DeleteMemberAsync(id, organizationId, ct)
+    /// <remarks>
+    /// A member who still owes the club, is owed by it, has a tab open or a subscription
+    /// running is not deleted: their charges and payments would stay on the books saying
+    /// they were someone nobody can find, and a running subscription would go on billing.
+    /// They are set Resigned or Lapsed instead, or settled first.
+    /// </remarks>
+    public async Task<Result> DeleteMemberAsync(Guid id, Guid? organizationId, CancellationToken ct = default)
+    {
+        if (await _club.MemberAsync(id, organizationId, ct) == null) return new Error("Member.NotFound", "That member was not found.");
+        if (await _ledger.HasOpenAccountAsync(organizationId, id, ct)) return DomainErrors.Club.MemberHasOpenAccount;
+        return await _club.DeleteMemberAsync(id, organizationId, ct)
             ? Result.Success()
             : new Error("Member.NotFound", "That member was not found.");
+    }
 
     public async Task<Result> MergeMembersAsync(Guid keepId, Guid dropId, Guid? organizationId, CancellationToken ct = default) =>
         keepId != dropId && await _club.MergeMembersAsync(keepId, dropId, organizationId, ct)
@@ -269,7 +299,20 @@ public sealed class ClubService : IClubService
         : Longer(r.DuesFrequency, 32) ? TooLong("A dues frequency", 32)
         : null;
 
-    private static MemberDto ToDto(ClubMember m) => new(
+    /// <summary>
+    /// A balance set when the member is added or changed is money, so it takes the money
+    /// permission on top of managing members. Null when the caller holds it.
+    /// </summary>
+    private async Task<Error?> MayNotHandleMoneyAsync(Guid? organizationId, CancellationToken ct)
+    {
+        if (_user.UserId is not { } userId) return DomainErrors.Permission.Missing(Domain.Common.MemberPermissions.ManageMoney);
+        var held = await _permissions.PermissionsAsync(userId, organizationId, ct);
+        return held.Contains(Domain.Common.MemberPermissions.ManageMoney)
+            ? null
+            : DomainErrors.Permission.Missing(Domain.Common.MemberPermissions.ManageMoney, "set a member's house balance");
+    }
+
+    private static MemberDto ToDto(ClubMember m, decimal balance) => new(
         m.Id, m.FirstName, m.LastName, m.Email, m.Phone, m.Tier, m.Status,
-        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, m.HouseAccountBalance, m.Notes);
+        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, balance, m.Notes);
 }

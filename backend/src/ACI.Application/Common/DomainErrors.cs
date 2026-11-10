@@ -978,6 +978,67 @@ public static readonly Error AlreadyMember = new(
 
         public static Error TooLong(string what, int max) => new(
             "Club.TooLong", $"{what} can be at most {max} characters.");
+
+        // ── the typed ledger ─────────────────────────────────────────────────────
+
+        public static readonly Error AllocationsInvalid = new(
+            "Payment.AllocationsInvalid", "What a payment pays each charge must be more than 0 and add up to the payment.");
+
+        public static readonly Error ChargeOfAnotherMember = new(
+            "Payment.ChargeOfAnotherMember", "A payment pays one member's charges, and one of those charges is another member's.");
+
+        public static Error CreditTooLow(decimal available, decimal amount) => new(
+            "Payment.CreditTooLow", string.Create(CultureInfo.InvariantCulture,
+                $"The member has {available:0.00} of house credit, so {amount:0.00} can't be paid from it."));
+
+        public static Error RefundTooMuch(decimal left, decimal amount) => new(
+            "Payment.RefundTooMuch", string.Create(CultureInfo.InvariantCulture,
+                $"{left:0.00} of this payment is left to refund, so a refund of {amount:0.00} would be more than was paid."));
+
+        public static readonly Error NothingToRefund = new(
+            "Payment.NothingToRefund.Conflict", "This payment has been refunded or voided in full already.");
+
+        public static readonly Error ReasonRequiredForRefund = new(
+            "Club.ReasonRequired", "Say why this is being refunded. The reason stays on the record.");
+
+        public static readonly Error PeriodBilled = new(
+            "Subscription.PeriodBilled.Conflict", "This period was billed already, so nothing more was charged.");
+
+        public static readonly Error SubscriptionHasCharges = new(
+            "Subscription.HasCharges.Conflict", "This subscription has billed charges, so it can't be deleted. Cancel it instead; its charges stay on the account.");
+
+        public static readonly Error SubscriptionChanged = new(
+            "Subscription.Changed.Conflict", "Someone else changed this subscription at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error NameRequired = new(
+            "Subscription.NameRequired", "A subscription needs a name.");
+
+        public static readonly Error DonationNotFound = new(
+            "Donation.NotFound", "That donation was not found.");
+
+        public static readonly Error DonationVoided = new(
+            "Donation.Voided.Conflict", "This donation is already voided.");
+
+        public static readonly Error DonationChanged = new(
+            "Donation.Changed.Conflict", "Someone else changed this donation at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error DonationCannotDelete = new(
+            "Donation.CannotDelete", "A donation can't be deleted. Someone allowed to void money can void it, with a reason, and the record stays.");
+
+        public static readonly Error CauseInvalid = new(
+            "Donation.CauseInvalid", "A donation needs a cause of at most 60 characters.");
+
+        public static readonly Error GiftCardCodeRequired = new(
+            "GiftCard.CodeRequired", "Type the gift card's code.");
+
+        public static readonly Error AccountChanged = new(
+            "HouseAccount.Changed.Conflict", "Something else was posted to this member's account at the same moment, so nothing was saved. Reload and try again.");
+
+        public static readonly Error MemberHasOpenAccount = new(
+            "ClubMember.OpenAccount.Conflict", "This member still has a balance, an open tab or a running subscription. Settle or close them first, or set the member Resigned or Lapsed instead, so the club's books keep saying whose they were.");
+
+        public static readonly Error PeriodInvalid = new(
+            "Club.PeriodInvalid", "A statement's period has to start before it ends and cover at most five years.");
     }
 
     /// <summary>

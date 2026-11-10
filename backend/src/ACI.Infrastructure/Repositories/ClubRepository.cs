@@ -70,6 +70,28 @@ public sealed class ClubRepository : IClubRepository
                 entry.MemberName = name;
             }
 
+            // The money ledger names the member on each row, with the name they had when it
+            // was posted. A merge says the two records were one person all along, so the
+            // rows move to the member kept, under their name; no amount or date changes,
+            // which is the one way a posted entry is ever touched.
+            foreach (var row in await _db.ClubCharges.Where(c => c.MemberId == dropId && c.OrganizationId == organizationId).ToListAsync(ct))
+                (row.MemberId, row.MemberName) = (keepId, name);
+            foreach (var row in await _db.ClubPayments.Where(p => p.MemberId == dropId && p.OrganizationId == organizationId).ToListAsync(ct))
+                (row.MemberId, row.MemberName) = (keepId, name);
+            foreach (var row in await _db.ClubSubscriptions.Where(s => s.MemberId == dropId && s.OrganizationId == organizationId).ToListAsync(ct))
+                (row.MemberId, row.MemberName) = (keepId, name);
+            foreach (var row in await _db.ClubTabs.Where(t => t.MemberId == dropId && t.OrganizationId == organizationId).ToListAsync(ct))
+                (row.MemberId, row.MemberName) = (keepId, name);
+            foreach (var row in await _db.ClubDonations.Where(d => d.MemberId == dropId && d.OrganizationId == organizationId).ToListAsync(ct))
+                (row.MemberId, row.MemberName) = (keepId, name);
+            foreach (var row in await _db.ClubGiftCards.Where(g => g.PurchaserMemberId == dropId && g.OrganizationId == organizationId).ToListAsync(ct))
+                row.PurchaserMemberId = keepId;
+            foreach (var row in await _db.ClubGiftCardTransactions.Where(t => t.MemberId == dropId && t.OrganizationId == organizationId).ToListAsync(ct))
+                row.MemberId = keepId;
+            // One account per member: the duplicate's entries are the kept member's now.
+            var dropAccount = await _db.ClubHouseAccounts.FirstOrDefaultAsync(a => a.MemberId == dropId && a.OrganizationId == organizationId, ct);
+            if (dropAccount != null) _db.ClubHouseAccounts.Remove(dropAccount);
+
             // Charges, payments, reservations, gift cards, donations, subscriptions and
             // household links carry the member's id inside their own document. An id is
             // unique, so wherever it appears it is this member.
@@ -102,10 +124,8 @@ public sealed class ClubRepository : IClubRepository
                 : string.IsNullOrWhiteSpace(keep.Notes) ? drop.Notes : $"{keep.Notes.TrimEnd()}\n\n{drop.Notes.Trim()}";
             keep.JoinedAtUtc = keep.JoinedAtUtc <= drop.JoinedAtUtc ? keep.JoinedAtUtc : drop.JoinedAtUtc;
             keep.RenewsAtUtc = keep.RenewsAtUtc >= drop.RenewsAtUtc ? keep.RenewsAtUtc : drop.RenewsAtUtc;
-            // What the duplicate owed moved with its charges, and its opening or corrected
-            // part with it, so the next recompute keeps both.
+            // What the duplicate owed moved with its entries; the figure the lists show follows.
             keep.HouseAccountBalance += drop.HouseAccountBalance;
-            keep.ManualBalance += drop.ManualBalance;
 
             _db.ClubMembers.Remove(drop);
             await _db.SaveChangesAsync(ct);

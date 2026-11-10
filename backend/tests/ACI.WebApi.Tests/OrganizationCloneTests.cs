@@ -154,7 +154,24 @@ public class OrganizationCloneTests
             new InboundEmail { Id = Guid.NewGuid(), OrganizationId = org.Id, OutboundMessageId = sentEmail.Id, MessageIdHeader = $"<reply-{name}@example.ch>", FromAddress = $"jean@{name}.ch", MatchedBy = "token", ReceivedAtUtc = now },
             new ClubVisit { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", MemberTier = "Gold", Venue = "Lounge", VisitedAtUtc = now },
             new LoyaltyLedgerEntry { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Points = 450, CreatedAtUtc = now },
-            new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org.Id, Kind = "tabs", UpdatedAtUtc = now, Payload = JsonSerializer.Serialize(new { memberId = member.Id.ToString().ToUpperInvariant(), venue = "Bar" }) },
+            new ClubDocument { Id = Guid.NewGuid(), OrganizationId = org.Id, Kind = "tabs", UpdatedAtUtc = now, Payload = JsonSerializer.Serialize(new { memberId = member.Id.ToString().ToUpperInvariant(), venue = "Bar" }) });
+        // The club's money ledger: a tab that posted a charge, part paid; a subscription that
+        // billed one; a gift card part spent; a donation. Each row points at others the copy
+        // must point at its own copies of.
+        var tab = new ClubTab { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", MemberTier = "Gold", Venue = "Bar", Status = "Closed", OpenedAtUtc = now, Total = 30, CreatedAtUtc = now };
+        var subscription = new ClubSubscription { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Name = "Gold dues", Amount = 299, StartedAtUtc = now, CreatedAtUtc = now };
+        var tabCharge = new ClubCharge { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Kind = "Bar", Description = "Bar tab", Amount = 30, PostedAtUtc = now, TabId = tab.Id, CreatedAtUtc = now };
+        var dues = new ClubCharge { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Kind = "Dues", Description = "Gold dues", Amount = 299, PostedAtUtc = now, SubscriptionId = subscription.Id, BillingPeriodStartUtc = now, CreatedAtUtc = now };
+        var payment = new ClubPayment { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Method = "Cash", Amount = 10, ReceivedAtUtc = now, CreatedAtUtc = now };
+        var card = new ClubGiftCard { Id = Guid.NewGuid(), OrganizationId = org.Id, Code = $"GIFT-{name.ToUpperInvariant()}", FaceValue = 100, PurchaserMemberId = member.Id, IssuedAtUtc = now, CreatedAtUtc = now };
+        tab.ChargeId = tabCharge.Id;
+        db.AddRange(tab, subscription, tabCharge, dues, payment, card,
+            new ClubHouseAccount { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, OpenedAtUtc = now },
+            new ClubPaymentAllocation { Id = Guid.NewGuid(), OrganizationId = org.Id, PaymentId = payment.Id, ChargeId = tabCharge.Id, Amount = 10, CreatedAtUtc = now },
+            new ClubTabItem { Id = Guid.NewGuid(), OrganizationId = org.Id, TabId = tab.Id, Name = "Negroni", Quantity = 2, UnitPrice = 15, AddedAtUtc = now },
+            new ClubGiftCardTransaction { Id = Guid.NewGuid(), OrganizationId = org.Id, GiftCardId = card.Id, Type = "Issue", Amount = 100, AtUtc = now, CreatedAtUtc = now },
+            new ClubDonation { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Cause = "Arts", Amount = 50, ReceivedAtUtc = now, CreatedAtUtc = now });
+        db.AddRange(
             new LeadStatusEvent { Id = Guid.NewGuid(), LeadId = lead.Id, OrganizationId = org.Id, ToStatus = "Qualified", ChangedByUserId = rep, ChangedAtUtc = now },
             new LeadScoringRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Field = "source", MatchValue = "Website", Points = 10, IsActive = true },
             new LeadAssignmentRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Name = "Geneva desk", Kind = "territory", TerritoryId = territory.Id, QueueId = queue.Id, IsActive = true },
