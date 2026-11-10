@@ -7,6 +7,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom';
 import type { Contact } from '@/app/api/types';
 import type { ContactStats } from '@/app/api/contacts';
+import { withQueries } from '@/test/queryWrapper';
 
 const people: Contact[] = [
   {
@@ -49,11 +50,11 @@ const Contacts = (await import('./Contacts')).default;
 const lastQuery = () => api.getContactsPaged.mock.calls[api.getContactsPaged.mock.calls.length - 1]![0];
 
 function show(url = '/contacts') {
-  render(
+  render(withQueries(
     <MemoryRouter initialEntries={[url]}>
       <Contacts />
     </MemoryRouter>,
-  );
+  ));
 }
 
 beforeEach(() => {
@@ -132,6 +133,49 @@ describe('Contacts', () => {
     await screen.findByText('Anna Keller');
     fireEvent.click(screen.getByRole('button', { name: 'Export the contacts this list shows' }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith(`Exported the first ${(50000).toLocaleString()} of ${(61200).toLocaleString()} contacts`));
+  });
+
+  it('says the contacts could not be loaded, with a retry, instead of the empty first-day screen', async () => {
+    api.getContactsPaged.mockRejectedValueOnce(new Error('The server took too long to answer.'));
+    contactsApi.getContactStats.mockRejectedValueOnce(new Error('offline'));
+    show();
+
+    expect(await screen.findByText('Contacts could not be loaded.')).toBeTruthy();
+    expect(screen.queryByText('Build Your Contact Network')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Anna Keller')).toBeTruthy();
+  });
+
+  it("still lists the contacts when their rows' deals and the companies cannot be read", async () => {
+    // One slow side list used to blank the whole page.
+    api.getDealsPaged.mockRejectedValue(new Error('timeout'));
+    api.getCompanies.mockRejectedValue(new Error('timeout'));
+    show();
+    expect(await screen.findByText('Anna Keller')).toBeTruthy();
+    expect(screen.queryByText(/could not be loaded/)).toBeNull();
+  });
+
+  it('cancels the read for a search typed over, so it cannot land over the newer one', async () => {
+    show();
+    await screen.findByText('Anna Keller');
+    const signals = new Map<string, AbortSignal>();
+    api.getContactsPaged.mockImplementation((q: { search?: string }, req?: { signal?: AbortSignal }) => {
+      if (q.search && req?.signal) signals.set(q.search, req.signal);
+      // The earlier search never answers on its own.
+      return q.search === 'kel'
+        ? new Promise(() => {})
+        : Promise.resolve({ items: people.slice(0, 1), totalCount: 1, page: 1, pageSize: 20, totalPages: 1, hasNextPage: false, hasPreviousPage: false });
+    });
+
+    const box = screen.getByLabelText('Search contacts');
+    fireEvent.change(box, { target: { value: 'kel' } });
+    await waitFor(() => expect(signals.has('kel')).toBe(true));
+    fireEvent.change(box, { target: { value: 'keller' } });
+    await waitFor(() => expect(signals.has('keller')).toBe(true));
+
+    await waitFor(() => expect(signals.get('kel')!.aborted).toBe(true));
+    expect(signals.get('keller')!.aborted).toBe(false);
   });
 
   describe('editing a contact', () => {

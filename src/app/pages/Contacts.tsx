@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Search, Plus, Pencil, Trash2, Building2, Mail, Phone, Briefcase,
@@ -12,14 +12,15 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getContactsPaged, getContactById, createContact, updateContact, deleteContact, getCompanies, getDealsPaged, messages } from '@/app/api';
+import { getContactById, createContact, updateContact, deleteContact, messages } from '@/app/api';
+import { useAllCompanies, useContactStats, useContactsPage, useDealsPage, useTasksList } from '@/app/hooks/queries';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import { showEditConflict } from '@/app/lib/editConflict';
 import { whenChosen } from '@/app/lib/whenChosen';
 import {
-  archiveContact, unarchiveContact, exportContacts, getContactStats,
+  archiveContact, unarchiveContact, exportContacts,
   type ContactActivity, type ContactListFilters, type ContactSortField, type ContactStats, type ContactStatus,
 } from '@/app/api/contacts';
-import { getTasks } from '@/app/api/tasks';
 import type { Contact, Company, Deal, TaskItem } from '@/app/api/types';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
 import { Input } from '@/app/components/ui/input';
@@ -77,6 +78,11 @@ function parseSort(value: string | null): [ContactSortField, 'asc' | 'desc'] {
     : ['name', 'asc'];
 }
 
+const NO_CONTACTS: Contact[] = [];
+const NO_COMPANIES: Company[] = [];
+const NO_DEALS: Deal[] = [];
+const NO_TASKS: TaskItem[] = [];
+
 export default function Contacts() {
   const money = useMoney();
   const navigate = useNavigate();
@@ -95,21 +101,7 @@ export default function Contacts() {
   const filterActivity: 'all' | ContactActivity = activityParam === 'recent' || activityParam === 'quiet' ? activityParam : 'all';
   const [sortField, sortDirection] = parseSort(searchParams.get('sort'));
   
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  // The figures above the list, over the whole workspace (null until read, or if they could not be).
-  const [stats, setStats] = useState<ContactStats | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  // HP-9: Deals linked to contacts
-  const [allDeals, setAllDeals] = useState<Deal[]>([]);
-  // HP-12: Task visibility on contacts
-  const [allTasks, setAllTasks] = useState<TaskItem[]>([]);
-  // Only the first load blanks the list and holds the overlay; a search keystroke
-  // or page change keeps the list on screen (see Leads.tsx).
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const loadedOnceRef = useRef(false);
-  usePageLoading(loading);
   const [searchQuery, setSearchQuery] = useState(searchFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(searchFromUrl);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -119,10 +111,6 @@ export default function Contacts() {
   const [deleteConfirmContact, setDeleteConfirmContact] = useState<Contact | null>(null);
   const [deleting, setDeleting] = useState(false);
   
-  
-  // Pagination state
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
   
   const [showFilters, setShowFilters] = useState(false);
 
@@ -171,39 +159,27 @@ export default function Contacts() {
     setSearchParams(params, { replace: true });
   }, [debouncedSearch]);
 
-  // Fetch contacts with pagination
-  const fetchContacts = useCallback(async () => {
-    if (loadedOnceRef.current) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const [pagedResult, statsData, companiesData, dealsResult, tasksResult] = await Promise.all([
-        getContactsPaged({ page: currentPage, pageSize, ...listFilters }),
-        // The figures help; the page still works without them.
-        getContactStats().catch(() => null),
-        getCompanies(),
-        getDealsPaged({ page: 1, pageSize: 100 }), // server clamps to max 100
-        getTasks(), // HP-12: Load all tasks for contact visibility
-      ]);
-      setContacts(pagedResult.items);
-      setStats(statsData);
-      setTotalCount(pagedResult.totalCount);
-      setTotalPages(pagedResult.totalPages);
-      setCompanies(companiesData);
-      setAllDeals(dealsResult.items);
-      setAllTasks(tasksResult);
-      loadedOnceRef.current = true;
-    } catch (error) {
-      console.error('Failed to fetch contacts:', error);
-      toast.error('Failed to load contacts');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [currentPage, pageSize, listFilters]);
-
-  useEffect(() => {
-    fetchContacts();
-  }, [fetchContacts]);
+  // The page of contacts and everything around it, through the shared cache: keyed by
+  // page and filters, so a later search can never be overwritten by an earlier one's
+  // answer, and re-read after a save that changed contacts. Each side list fails on its
+  // own: the deals or tasks timing out used to blank the whole list.
+  const contactsQuery = useContactsPage({ page: currentPage, pageSize, ...listFilters });
+  const contacts = contactsQuery.data?.items ?? NO_CONTACTS;
+  const totalCount = contactsQuery.data?.totalCount ?? 0;
+  const totalPages = contactsQuery.data?.totalPages ?? 0;
+  // The figures help; the page still works without them.
+  const stats: ContactStats | null = useContactStats().data ?? null;
+  const companies: Company[] = useAllCompanies().data ?? NO_COMPANIES;
+  // HP-9: Deals linked to contacts (the server gives at most 100 a page).
+  const allDeals: Deal[] = useDealsPage({ page: 1, pageSize: 100 }).data?.items ?? NO_DEALS;
+  // HP-12: Task visibility on contacts
+  const allTasks: TaskItem[] = useTasksList().data ?? NO_TASKS;
+  // Only the first load blanks the list and holds the overlay; a search keystroke or a
+  // page change keeps the last page on screen while the next one is read.
+  const loading = contactsQuery.isPending;
+  const refreshing = contactsQuery.isFetching && !loading;
+  usePageLoading(loading);
+  const reloadContacts = () => { void contactsQuery.refetch(); };
 
   // Pagination handlers
   const handlePageChange = (page: number) => {
@@ -296,14 +272,13 @@ export default function Contacts() {
         if (updated) {
           toast.success(messages.success.contactUpdated);
           setDialogOpen(false);
-          fetchContacts(); // Refresh data
         } else if (conflict) {
           const contactId = editingContact.id;
           showEditConflict(error, () => {
             void getContactById(contactId)
               .then((fresh) => { if (fresh) openEdit(fresh); })
               .catch(() => toast.error(messages.errors.generic));
-            fetchContacts();
+            reloadContacts();
           });
         } else {
           toast.error(error ?? messages.errors.generic);
@@ -322,7 +297,6 @@ export default function Contacts() {
         if (created) {
           toast.success(messages.success.contactCreated);
           setDialogOpen(false);
-          fetchContacts(); // Refresh data
         } else {
           toast.error(error ?? messages.errors.generic);
         }
@@ -341,7 +315,6 @@ export default function Contacts() {
         const ok = await unarchiveContact(contact.id);
         if (ok) {
           toast.success('Contact unarchived');
-          fetchContacts();
         } else {
           toast.error(messages.errors.generic);
         }
@@ -349,7 +322,6 @@ export default function Contacts() {
         const ok = await archiveContact(contact.id);
         if (ok) {
           toast.success('Contact archived');
-          fetchContacts();
         } else {
           toast.error(messages.errors.generic);
         }
@@ -368,7 +340,6 @@ export default function Contacts() {
       if (ok) {
         toast.success(messages.success.contactDeleted);
         setDeleteConfirmContact(null);
-        fetchContacts(); // Refresh data
       } else {
         toast.error(messages.errors.generic);
       }
@@ -580,7 +551,7 @@ export default function Contacts() {
             )}
           </PageHero>
 
-        <DuplicateMerge spec={CONTACT_DUPLICATES} onMerged={() => { void fetchContacts(); }} />
+        <DuplicateMerge spec={CONTACT_DUPLICATES} onMerged={reloadContacts} />
 
         {/* Search, filter and sort */}
         <div className="relative mb-6 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
@@ -854,8 +825,13 @@ export default function Contacts() {
           )}
         </div>
 
+        {!loading && contactsQuery.isError && contactsQuery.data && (
+          <LoadFailed stale what="Contacts" error={contactsQuery.error} onRetry={reloadContacts} retrying={contactsQuery.isFetching} className="mb-4" />
+        )}
         {loading ? (
           <ContentSkeleton rows={6} />
+        ) : contactsQuery.isError && !contactsQuery.data ? (
+          <LoadFailed what="Contacts" error={contactsQuery.error} onRetry={reloadContacts} retrying={contactsQuery.isFetching} />
         ) : contacts.length === 0 && !filtered && (stats?.total ?? 0) === 0 ? (
           /* Enhanced Empty State */
           <div className="w-full">
