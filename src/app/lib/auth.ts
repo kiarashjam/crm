@@ -24,7 +24,7 @@ export function setSession(token: string, user: AuthUser): void {
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(user));
     // New login must not keep another user's workspace id (breaks org list / APIs).
-    localStorage.removeItem(ORG_ID_KEY);
+    forgetWorkspace();
     notifySessionChanged();
   } catch {
     // ignore (e.g. private mode / quota) — do not notify; org refetch would see stale auth
@@ -44,21 +44,82 @@ export function replaceToken(token: string): void {
   }
 }
 
-export function getCurrentOrganizationId(): string | null {
+// The workspace is kept per browser tab. With one copy in localStorage for every
+// tab, switching workspace in one tab moved all the others: a tab whose header still
+// said Pavillon 46 sent its next write, and read its next list, as Lac Léman SA.
+// Each tab now keeps its own (sessionStorage). localStorage keeps the workspace a
+// new tab opens in: the one last picked, or last used in a tab that had focus.
+
+function read(storage: Storage, key: string): string | null {
   try {
-    return localStorage.getItem(ORG_ID_KEY);
+    return storage.getItem(key);
   } catch {
     return null;
   }
 }
 
-export function setCurrentOrganizationId(orgId: string | null): void {
+function write(storage: Storage, key: string, value: string | null): void {
   try {
-    if (orgId == null) localStorage.removeItem(ORG_ID_KEY);
-    else localStorage.setItem(ORG_ID_KEY, orgId);
+    if (value == null) storage.removeItem(key);
+    else storage.setItem(key, value);
   } catch {
-    // ignore
+    // ignore (private mode, quota)
   }
+}
+
+function forgetWorkspace(): void {
+  write(sessionStorage, ORG_ID_KEY, null);
+  write(localStorage, ORG_ID_KEY, null);
+}
+
+/** The workspace this tab works in: its own, or before it has one, the one a new tab opens in. */
+export function getCurrentOrganizationId(): string | null {
+  return read(sessionStorage, ORG_ID_KEY) ?? read(localStorage, ORG_ID_KEY);
+}
+
+/** Pick this tab's workspace. A tab opened after this opens in it too. */
+export function setCurrentOrganizationId(orgId: string | null): void {
+  write(sessionStorage, ORG_ID_KEY, orgId);
+  write(localStorage, ORG_ID_KEY, orgId);
+}
+
+/**
+ * Give this tab its own copy of the workspace it opened in. Until then it reads the
+ * shared one, which a switch in any other tab would change under it. Called once, as
+ * the workspaces load.
+ */
+export function keepWorkspaceInThisTab(): string | null {
+  const own = read(sessionStorage, ORG_ID_KEY);
+  if (own) return own;
+  const shared = read(localStorage, ORG_ID_KEY);
+  if (shared) write(sessionStorage, ORG_ID_KEY, shared);
+  return shared;
+}
+
+/**
+ * Make this tab's workspace the one a new tab opens in. Called when the tab gets the
+ * focus, so a deal opened in a new tab from here (or any link middle-clicked) opens in
+ * this tab's workspace, not in the one last picked in another tab.
+ */
+export function offerWorkspaceToNewTabs(): void {
+  const own = read(sessionStorage, ORG_ID_KEY);
+  if (own) write(localStorage, ORG_ID_KEY, own);
+}
+
+/**
+ * Tell this tab when another tab signs in or out. They share one sign-in (the token is
+ * in localStorage), and without this a tab went on showing the last account's
+ * workspace while its requests already went out as the next one.
+ */
+export function watchSessionInOtherTabs(): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const onStorage = (event: StorageEvent) => {
+    if (event.storageArea !== localStorage) return;
+    // localStorage.clear() in another tab reports a null key.
+    if (event.key === TOKEN_KEY || event.key === USER_KEY || event.key === null) notifySessionChanged();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
 }
 
 export function getAuthToken(): string | null {
@@ -110,7 +171,7 @@ export function clearSession(): void {
   try {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(ORG_ID_KEY);
+    forgetWorkspace();
     // The next person at this browser must not find the last one's questions about customers.
     forgetAgentConversations(localStorage);
     forgetAgentConversations(sessionStorage);
