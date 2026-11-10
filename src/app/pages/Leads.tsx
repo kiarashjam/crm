@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
 import { createLeadOrOfferDuplicate } from './leads/createLeadOrOfferDuplicate';
 import AppHeader from '@/app/components/AppHeader';
 import PageHero, { heroPrimary, heroSecondary, type PageStat } from '@/app/components/PageHero';
@@ -1299,15 +1300,19 @@ export default function Leads() {
         const updated = await updateLead(editingLead.id, {
           name: form.name.trim(),
           email: form.email.trim(),
-          phone: form.phone.trim() || undefined,
-          companyId: form.companyId || undefined,
+          // An emptied field is sent as null, which takes it off; left out, it was kept.
+          phone: form.phone.trim() || null,
+          companyId: form.companyId || null,
           source: form.source || undefined,
           status: form.status,
           leadSourceId: validLeadSourceId,
           leadStatusId: validLeadStatusId,
           leadScore: validLeadScore,
-          description: form.description.trim() || undefined,
-          lifecycleStage: form.lifecycleStage || undefined,
+          description: form.description.trim() || null,
+          lifecycleStage: form.lifecycleStage || null,
+          // The dialog sends back every field it shows, so the save is refused, rather
+          // than written over, when someone saved the lead after the list was read.
+          version: editingLead.version,
         });
         if (updated) {
           // The referrer has its own endpoint, saved for the whole team.
@@ -1347,8 +1352,22 @@ export default function Leads() {
         else toast.error(messages.errors.generic);
       }
     } catch (err) {
-      // The server's reason when it gave one (e.g. "An open lead with this email already exists").
-      toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
+      if (isEditConflict(err) && editingLead) {
+        // The latest copy in the list and in the dialog, for the change to be made again.
+        const leadId = editingLead.id;
+        showEditConflict(err.message, () => {
+          void getLeadById(leadId)
+            .then((fresh) => {
+              if (!fresh) return;
+              handleLeadUpdate(fresh);
+              openEdit(fresh);
+            })
+            .catch(() => toast.error(messages.errors.generic));
+        });
+      } else {
+        // The server's reason when it gave one (e.g. "An open lead with this email already exists").
+        toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
+      }
     } finally {
       setSaving(false);
     }

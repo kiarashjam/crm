@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ApiError } from '@/app/api/apiClient';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
+import { whenChosen } from '@/app/lib/whenChosen';
 import { NextActionsSlot } from '@/app/salesAgent/NextActionsSlot';
 import AppHeader from '@/app/components/AppHeader';
 import { RecordSkeleton } from '@/app/components/PageSkeleton';
@@ -491,7 +493,9 @@ export default function LeadDetailPage() {
   };
 
   const setCompanyId = (companyId: string | '') => {
-    const next = companyId ? companyId : undefined;
+    // Null takes the company off. Left out, as it was, the timeline said "Company
+    // cleared" while the company, and its score points, stayed.
+    const next = companyId ? companyId : null;
     const c = companies.find((x) => x.id === companyId);
     return patchLead({ companyId: next }, { subject: c ? `Linked to ${c.name}` : 'Company cleared' });
   };
@@ -499,8 +503,10 @@ export default function LeadDetailPage() {
   // Inline-edit savers for text fields — return boolean for InlineField.
   const saveName = (v: string) => patchLead({ name: v }, { subject: 'Name updated' });
   const saveEmail = (v: string) => patchLead({ email: v }, { subject: 'Email updated' });
-  const savePhone = (v: string) => patchLead({ phone: v }, { subject: 'Phone updated' });
-  const saveDescription = (v: string) => patchLead({ description: v }, { subject: 'Description updated' });
+  // Emptied, the phone and description are sent as null, which takes them off: an empty
+  // phone was refused as not a phone number.
+  const savePhone = (v: string) => patchLead({ phone: v.trim() || null }, { subject: 'Phone updated' });
+  const saveDescription = (v: string) => patchLead({ description: v.trim() || null }, { subject: 'Description updated' });
   const saveScore = async (v: string): Promise<boolean> => {
     const n = parseInt(v, 10);
     if (Number.isNaN(n) || n < 0 || n > 100) {
@@ -736,15 +742,19 @@ export default function LeadDetailPage() {
       const updated = await updateLead(lead.id, {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
-        phone: editForm.phone.trim() || undefined,
-        companyId: editForm.companyId || undefined,
+        // An emptied field is sent as null, which takes it off; left out, it was kept.
+        phone: editForm.phone.trim() || null,
+        companyId: editForm.companyId || null,
         source: editForm.source || undefined,
         status: editForm.status,
         leadSourceId: validLeadSourceId,
         leadStatusId: validLeadStatusId,
         leadScore: validLeadScore,
-        description: editForm.description.trim() || undefined,
-        lifecycleStage: editForm.lifecycleStage || undefined,
+        description: editForm.description.trim() || null,
+        lifecycleStage: editForm.lifecycleStage || null,
+        // The editor sends back every field it shows, so the save is refused, rather
+        // than written over, when someone saved the lead after this page read it.
+        version: lead.version,
       });
       if (!updated) {
         toast.error(messages.errors.generic);
@@ -762,8 +772,16 @@ export default function LeadDetailPage() {
       toast.success(messages.success.leadUpdated);
       setEditOpen(false);
     } catch (err) {
-      // The server's reason when it gave one — e.g. another open lead already has this email.
-      toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
+      if (isEditConflict(err)) {
+        // Reload closes the editor and brings the latest copy in; editing again starts from it.
+        showEditConflict(err.message, () => {
+          setEditOpen(false);
+          refreshLead();
+        });
+      } else {
+        // The server's reason when it gave one — e.g. another open lead already has this email.
+        toast.error(err instanceof ApiError && err.message ? err.message : messages.errors.generic);
+      }
     } finally {
       setSavingEdit(false);
     }
@@ -1409,7 +1427,7 @@ export default function LeadDetailPage() {
                 <SideCard title="Details" tone="violet" icon={<Sparkles className="w-3.5 h-3.5" />}>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-2.5">
                     <SidebarSelectField label="Company" htmlFor="lead-company" icon={<Building2 className="w-3 h-3 text-indigo-400" />}>
-                      <Select value={lead.companyId ?? ''} disabled={isReadOnly} onValueChange={(v) => setCompanyId(v === '__none__' ? '' : v)}>
+                      <Select value={lead.companyId ?? ''} disabled={isReadOnly} onValueChange={whenChosen((v) => setCompanyId(v === '__none__' ? '' : v))}>
                         <SelectTrigger id="lead-company" className="h-9 text-sm">
                           <SelectValue placeholder="No company" />
                         </SelectTrigger>

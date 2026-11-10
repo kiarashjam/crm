@@ -8,7 +8,7 @@
 // anything they entered before the store was scoped.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createMockStore, LEGACY_BACKUP_SUFFIX, scopedStorageKey } from './mockStore';
+import { createMockStore, demoPatch, LEGACY_BACKUP_SUFFIX, scopedStorageKey } from './mockStore';
 
 type Row = { id: string; name: string };
 const KEY = 'crm.mock.widgets.v1';
@@ -115,5 +115,14 @@ describe('against the real API', () => {
       expect(localStorage.getItem(KEY)).toBeNull();
       expect(JSON.parse(localStorage.getItem(KEY + LEGACY_BACKUP_SUFFIX) ?? '[]')).toEqual(legacy);
     });
+  });
+});
+
+describe('demoPatch — an update as demo mode keeps it', () => {
+  it('leaves a field taken off unset, as the server does, and keeps no version', () => {
+    const patch = demoPatch<{ name: string; phone?: string }>({ name: 'Anna', phone: null, version: 'v1' });
+
+    expect(patch).toEqual({ name: 'Anna', phone: undefined });
+    expect('version' in patch).toBe(false);
   });
 });

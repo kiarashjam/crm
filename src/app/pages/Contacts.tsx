@@ -12,7 +12,9 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getContactsPaged, createContact, updateContact, deleteContact, getCompanies, getDealsPaged, messages } from '@/app/api';
+import { getContactsPaged, getContactById, createContact, updateContact, deleteContact, getCompanies, getDealsPaged, messages } from '@/app/api';
+import { showEditConflict } from '@/app/lib/editConflict';
+import { whenChosen } from '@/app/lib/whenChosen';
 import {
   archiveContact, unarchiveContact, exportContacts, getContactStats,
   type ContactActivity, type ContactListFilters, type ContactSortField, type ContactStats, type ContactStatus,
@@ -277,19 +279,31 @@ export default function Contacts() {
     setSaving(true);
     try {
       if (editingContact) {
-        const { contact: updated, error } = await updateContact(editingContact.id, {
+        // An emptied field is sent as null, which takes it off: left out, as it was, a
+        // contact who left a company stayed linked to it. The version makes the save
+        // refused, rather than written over, when someone saved the contact since.
+        const { contact: updated, error, conflict } = await updateContact(editingContact.id, {
           name: form.name.trim(),
           email: form.email.trim(),
-          phone: form.phone.trim() || undefined,
-          jobTitle: form.jobTitle.trim() || undefined,
-          companyId: form.companyId || undefined,
-          description: form.description?.trim() || undefined,
+          phone: form.phone.trim() || null,
+          jobTitle: form.jobTitle.trim() || null,
+          companyId: form.companyId || null,
+          description: form.description?.trim() || null,
           doNotContact: form.doNotContact,
+          version: editingContact.version,
         });
         if (updated) {
           toast.success(messages.success.contactUpdated);
           setDialogOpen(false);
           fetchContacts(); // Refresh data
+        } else if (conflict) {
+          const contactId = editingContact.id;
+          showEditConflict(error, () => {
+            void getContactById(contactId)
+              .then((fresh) => { if (fresh) openEdit(fresh); })
+              .catch(() => toast.error(messages.errors.generic));
+            fetchContacts();
+          });
         } else {
           toast.error(error ?? messages.errors.generic);
         }
@@ -1257,7 +1271,7 @@ export default function Contacts() {
                 </Label>
                 <Select
                   value={form.companyId || 'none'}
-                  onValueChange={(v) => setForm((f) => ({ ...f, companyId: v === 'none' ? '' : v }))}
+                  onValueChange={whenChosen((v) => setForm((f) => ({ ...f, companyId: v === 'none' ? '' : v })))}
                 >
                   <SelectTrigger aria-label="Company" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-blue-300 focus:ring-blue-100">
                     <SelectValue placeholder="Select a company" />

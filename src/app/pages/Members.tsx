@@ -259,7 +259,9 @@ export default function Members() {
         notes: form.notes.trim() || undefined,
       };
       if (editing) {
-        await updateMember(editing.id, payload);
+        // An emptied phone or note is sent as null, which takes it off. Left out, as it
+        // was, the member kept the number they asked the club to delete.
+        await updateMember(editing.id, { ...payload, phone: payload.phone ?? null, notes: payload.notes ?? null });
         toast.success('Member updated');
       } else {
         await createMember(payload);

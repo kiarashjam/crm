@@ -187,3 +187,17 @@ function buildMockStore<T>({ storageKey, seed, idOf }: MockStoreOptions<T>): Moc
 export function mockId(prefix = 'demo'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+/**
+ * An update's fields as a demo store keeps them. A field sent as null, which the server
+ * reads as "take it off", is left unset, as the server leaves it; the version, which only
+ * the server checks, is not stored.
+ */
+export function demoPatch<T>(params: object): Partial<T> {
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (key === 'version') continue;
+    fields[key] = value === null ? undefined : value;
+  }
+  return fields as Partial<T>;
+}

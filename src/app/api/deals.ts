@@ -4,7 +4,7 @@ import type {
 import type { MoneyRow, WeightedRow } from './reporting';
 import { mockDeals } from './mockData';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
-import { createMockStore, mockId } from './mockStore';
+import { createMockStore, demoPatch, mockId } from './mockStore';
 import { DEFAULT_CURRENCY, parseMoneyInput } from '@/app/lib/money';
 import { getCurrentUser } from '@/app/lib/auth';
 import { demoBoard, demoBoardColumn } from './dealBoardDemo';
@@ -54,6 +54,7 @@ export type DealRaw = {
   isPrivate?: boolean | null;
   stageEnteredAtUtc?: string | null; idleSinceUtc?: string | null;
   isStale?: boolean | null; staleAfterDays?: number | null;
+  version?: string | null;
 };
 export function mapDeal(d: DealRaw): Deal {
   return {
@@ -88,6 +89,7 @@ export function mapDeal(d: DealRaw): Deal {
     idleSinceUtc: d.idleSinceUtc ?? undefined,
     isStale: d.isStale ?? undefined,
     staleAfterDays: d.staleAfterDays ?? undefined,
+    version: d.version ?? undefined,
   };
 }
 
@@ -237,8 +239,22 @@ export async function createDeal(params: { name: string; amount: number; currenc
   return dealStore.add(created);
 }
 
+/**
+ * Fields a deal update can send. A field left out is kept; the company, contact, owner,
+ * expected close date, description and probability are taken off when sent as null.
+ * `version` is the deal as the edit read it: with it, a save made after someone else
+ * saved the deal is refused (409, see lib/editConflict.ts). An edit dialog sends it; a
+ * change to one field that reads nothing else, such as a move on the board, does not.
+ */
+export type DealUpdate = Partial<{
+  name: string; amount: number; currency: string; stage: string; pipelineId: string; dealStageId: string;
+  companyId: string | null; contactId: string | null; assigneeId: string | null; expectedCloseDateUtc: string | null;
+  isWon: boolean; description: string | null; probability: number | null; closedReason: string; isPrivate: boolean;
+  version: string;
+}>;
+
 /** Update a deal (stage, amount, contact, expected close date, won/lost, pipeline, assignee, description, probability, close reason). */
-export async function updateDeal(id: string, params: Partial<{ name: string; amount: number; currency: string; stage: string; pipelineId: string; dealStageId: string; companyId: string; contactId: string; assigneeId: string; expectedCloseDateUtc: string; isWon: boolean; description: string; probability: number; closedReason: string; isPrivate: boolean }>): Promise<Deal | null> {
+export async function updateDeal(id: string, params: DealUpdate): Promise<Deal | null> {
   if (!servesDemoData()) {
     const deal = await authFetchJson<DealRaw>(`/api/deals/${id}`, {
       method: 'PUT',
@@ -248,7 +264,7 @@ export async function updateDeal(id: string, params: Partial<{ name: string; amo
   }
   await delay(200);
   const money = typeof params.amount === 'number' ? { amount: params.amount, value: valueText(params.amount) } : {};
-  const updated = dealStore.update(id, { ...(params as Partial<Deal>), ...money, updatedAtUtc: new Date().toISOString() });
+  const updated = dealStore.update(id, { ...demoPatch<Deal>(params), ...money, updatedAtUtc: new Date().toISOString() });
   return updated ? withAmount(updated) : updated;
 }
 

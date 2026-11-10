@@ -9,7 +9,10 @@ import type { Contact } from '@/app/api/types';
 import type { ContactStats } from '@/app/api/contacts';
 
 const people: Contact[] = [
-  { id: 'c1', name: 'Anna Keller', email: 'anna@example.ch', createdAtUtc: '2026-10-01T10:00:00Z' },
+  {
+    id: 'c1', name: 'Anna Keller', email: 'anna@example.ch', createdAtUtc: '2026-10-01T10:00:00Z',
+    phone: '+41 79 123 45 67', jobTitle: 'CFO', companyId: 'co1', version: 'v1',
+  },
   { id: 'c2', name: 'Bruno Meier', email: 'bruno@example.ch', createdAtUtc: '2026-10-02T10:00:00Z' },
 ];
 const archivedPerson: Contact = { id: 'c9', name: 'Old Member', email: 'old@example.ch', isArchived: true };
@@ -18,7 +21,7 @@ const stats: ContactStats = {
 };
 
 const api = vi.hoisted(() => ({
-  getContactsPaged: vi.fn(), getCompanies: vi.fn(), getDealsPaged: vi.fn(),
+  getContactsPaged: vi.fn(), getCompanies: vi.fn(), getDealsPaged: vi.fn(), updateContact: vi.fn(), getContactById: vi.fn(),
 }));
 vi.mock('@/app/api', async () => ({ ...(await vi.importActual<typeof import('@/app/api')>('@/app/api')), ...api }));
 const contactsApi = vi.hoisted(() => ({
@@ -129,5 +132,59 @@ describe('Contacts', () => {
     await screen.findByText('Anna Keller');
     fireEvent.click(screen.getByRole('button', { name: 'Export the contacts this list shows' }));
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith(`Exported the first ${(50000).toLocaleString()} of ${(61200).toLocaleString()} contacts`));
+  });
+
+  describe('editing a contact', () => {
+    const openEdit = async () => {
+      show();
+      await screen.findByText('Anna Keller');
+      fireEvent.pointerDown(screen.getByText('Actions for Anna Keller').closest('button')!, { button: 0, ctrlKey: false });
+      fireEvent.click(await screen.findByRole('menuitem', { name: /Edit/ }));
+      return screen.findByLabelText(/Phone/);
+    };
+
+    it('sends an emptied field as null so it is taken off, with the version it was opened on', async () => {
+      api.updateContact.mockResolvedValue({ contact: { ...people[0], phone: undefined, jobTitle: undefined }, error: null });
+      // The contact's company is not among the companies the form offers.
+      api.getCompanies.mockResolvedValue([{ id: 'co2', name: 'Hotel Schweizerhof' }]);
+      const phone = await openEdit();
+
+      fireEvent.change(phone, { target: { value: '' } });
+      fireEvent.change(screen.getByLabelText(/Job Title/), { target: { value: '' } });
+      fireEvent.click(screen.getByRole('button', { name: /Update Contact/ }));
+
+      await waitFor(() => expect(api.updateContact).toHaveBeenCalledTimes(1));
+      expect(api.updateContact.mock.calls[0]).toEqual(['c1', expect.objectContaining({
+        phone: null, jobTitle: null, version: 'v1',
+        // Still linked: a company the form's list does not hold is kept, not taken off.
+        companyId: 'co1',
+      })]);
+      await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    });
+
+    it('says someone else changed the contact, and Reload opens the latest copy', async () => {
+      api.updateContact.mockResolvedValue({
+        contact: null, conflict: true,
+        error: 'Someone else changed this contact after you opened it, so your changes were not saved. Reload it to see the latest, then make your change again.',
+      });
+      api.getContactById.mockResolvedValue({ ...people[0], jobTitle: 'Chief Financial Officer', version: 'v2' });
+      await openEdit();
+
+      fireEvent.change(screen.getByLabelText(/Job Title/), { target: { value: 'Treasurer' } });
+      fireEvent.click(screen.getByRole('button', { name: /Update Contact/ }));
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+      const [message, options] = toast.error.mock.calls[0] as [string, { action: { label: string; onClick: () => void } }];
+      expect(message).toMatch(/someone else changed this contact/i);
+      expect(options.action.label).toBe('Reload');
+      expect(toast.success).not.toHaveBeenCalled();
+
+      options.action.onClick();
+      expect(await screen.findByDisplayValue('Chief Financial Officer')).toBeTruthy();
+      api.updateContact.mockResolvedValue({ contact: people[0], error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Update Contact/ }));
+      await waitFor(() => expect(api.updateContact).toHaveBeenCalledTimes(2));
+      expect(api.updateContact.mock.calls[1]![1]).toMatchObject({ jobTitle: 'Chief Financial Officer', version: 'v2' });
+    });
   });
 });

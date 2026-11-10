@@ -2,7 +2,7 @@ import type { Lead, PagedResult, PaginationParams } from './types';
 import type { ContactRelationship } from './relationships';
 import { mockLeads } from './mockData';
 import { servesDemoData, authFetchJson, authFetch } from './apiClient';
-import { createMockStore, mockId } from './mockStore';
+import { createMockStore, demoPatch, mockId } from './mockStore';
 import { ensureDemoPersonContacts, getContacts } from './contacts';
 import { QUALIFIED_OR_BEYOND, statusIn } from '@/app/pages/leads/leadStatusSync';
 import { applyPipelinePatch } from '@/app/pages/leads/leadPipeline';
@@ -53,6 +53,7 @@ export type LeadRaw = {
   referredByContactId?: string | null;
   referredByContactName?: string | null;
   relationships?: ContactRelationship[] | null;
+  version?: string | null;
 };
 
 export function mapLead(d: LeadRaw): Lead {
@@ -92,6 +93,7 @@ export function mapLead(d: LeadRaw): Lead {
     referredByContactId: d.referredByContactId ?? undefined,
     referredByContactName: d.referredByContactName ?? undefined,
     relationships: d.relationships?.length ? d.relationships : undefined,
+    version: d.version ?? undefined,
   };
 }
 
@@ -382,22 +384,29 @@ export async function createLead(params: {
   return saved;
 }
 
-/** Update a lead. */
+/**
+ * Update a lead. A field left out is kept; the phone, company, description and lifecycle
+ * stage are taken off when sent as null. `version` is the lead as the edit read it: with
+ * it, a save made after someone else saved the lead is refused (409, see
+ * lib/editConflict.ts). The edit dialogs send it; a change to one field, or a pipeline
+ * step, does not.
+ */
 export async function updateLead(
   id: string,
   params: Partial<{
     name: string;
     email: string;
-    phone: string;
-    companyId: string;
+    phone: string | null;
+    companyId: string | null;
     source: string;
     status: string;
     leadSourceId: string;
     leadStatusId: string;
     leadScore: number;
     lastContactedAt: string;
-    description: string;
-    lifecycleStage: string;
+    description: string | null;
+    lifecycleStage: string | null;
+    version: string;
     /** The steps to change, which the server merges into the stored pipeline (a step sent as null is taken off). See pipelinePatch. */
     pipelineState: string;
   }>,
@@ -417,7 +426,7 @@ export async function updateLead(
       ? applyPipelinePatch(leadStore.byId(id)?.pipelineState, params.pipelineState)
       : undefined,
   };
-  const updated = leadStore.update(id, changes as Partial<Lead>);
+  const updated = leadStore.update(id, demoPatch<Lead>(changes));
   ensureDemoPersonContacts();
   return updated;
 }

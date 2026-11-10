@@ -48,7 +48,9 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDeals, getDealBoard, getDealBoardColumn, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
+import { getDeals, getDealBoard, getDealBoardColumn, getDealById, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
+import { whenChosen } from '@/app/lib/whenChosen';
 import { getActivitiesByDeal, createActivity } from '@/app/api/activities';
 import type { Deal, Company, Contact, Pipeline, Activity, DealBoard, DealBoardColumn, DealBoardQuery } from '@/app/api/types';
 import { useDebounce } from '@/app/hooks/useDebounce';
@@ -104,6 +106,22 @@ import { activityFactsLine, activityTime, factsPayload, factsProblem, EMPTY_FACT
 
 /** Cards per column in each page of the board. */
 const BOARD_PAGE = 25;
+
+/** The edit dialog's fields for a deal, as the dialog opens on it. */
+function editFormFor(deal: Deal) {
+  return {
+    name: deal.name,
+    value: amountInput(deal.amount),
+    currency: deal.currency ?? '',
+    expectedCloseDate: deal.expectedCloseDateUtc ? deal.expectedCloseDateUtc.slice(0, 10) : '',
+    companyId: deal.companyId || '',
+    pipelineId: deal.pipelineId ?? '',
+    stageId: deal.dealStageId ?? (deal.stage ?? ''),
+    assigneeId: deal.assigneeId ?? '',
+    description: deal.description ?? '',
+    probability: deal.probability?.toString() ?? '',
+  };
+}
 
 export default function Pipeline() {
   const { isReadOnly } = useOrg();
@@ -409,21 +427,43 @@ export default function Pipeline() {
   }, []);
 
   useEffect(() => {
-    if (editDeal) {
-      setEditForm({
-        name: editDeal.name,
-        value: amountInput(editDeal.amount),
-        currency: editDeal.currency ?? '',
-        expectedCloseDate: editDeal.expectedCloseDateUtc ? editDeal.expectedCloseDateUtc.slice(0, 10) : '',
-        companyId: editDeal.companyId || '',
-        pipelineId: editDeal.pipelineId ?? '',
-        stageId: editDeal.dealStageId ?? (editDeal.stage ?? ''),
-        assigneeId: editDeal.assigneeId ?? '',
-        description: editDeal.description ?? '',
-        probability: editDeal.probability?.toString() ?? '',
-      });
-    }
+    if (editDeal) setEditForm(editFormFor(editDeal));
   }, [editDeal]);
+
+  // The board may have loaded minutes ago, and the dialog's save is checked against the
+  // version it opened with. So the dialog takes the deal as it is now, read when it
+  // opens, as long as nothing has been typed yet: a fresher copy never throws away what
+  // someone entered, and a save from the older one is refused and offers a reload.
+  const [freshEditDeal, setFreshEditDeal] = useState<Deal | null>(null);
+  const editDealId = editDeal?.id;
+  useEffect(() => {
+    if (!editDealId) return;
+    let live = true;
+    getDealById(editDealId)
+      .then((fresh) => { if (live && fresh) setFreshEditDeal(fresh); })
+      .catch(() => { /* the board's copy stands */ });
+    return () => { live = false; };
+  }, [editDealId]);
+  useEffect(() => {
+    if (!freshEditDeal) return;
+    setFreshEditDeal(null);
+    if (!editDeal || editDeal.id !== freshEditDeal.id) return;
+    const untouched = JSON.stringify(editForm) === JSON.stringify(editFormFor(editDeal));
+    if (untouched) setEditDeal(freshEditDeal);
+  }, [freshEditDeal, editDeal, editForm]);
+
+  /** After a refused save: the deal as it is now, in the dialog and on the board. */
+  const reloadEditDeal = async (id: string) => {
+    try {
+      const fresh = await getDealById(id);
+      if (!fresh) return;
+      setEditDeal(fresh);
+      setDeals((prev) => prev.map((d) => (d.id === id ? fresh : d)));
+      refresh();
+    } catch {
+      toast.error(messages.errors.generic);
+    }
+  };
 
   // Drawn by count: a bar per stage cannot hold money in more than one currency. The
   // count is the stage's, from the server, not the cards loaded so far.
@@ -507,11 +547,16 @@ export default function Pipeline() {
         stage: stageName,
         pipelineId: editForm.pipelineId || undefined,
         dealStageId: /^[0-9a-f-]{36}$/i.test(editForm.stageId) ? editForm.stageId : undefined,
-        expectedCloseDateUtc,
-        companyId: editForm.companyId || undefined,
-        assigneeId: editForm.assigneeId || undefined,
-        description: editForm.description.trim() || undefined,
-        probability: editForm.probability ? parseInt(editForm.probability, 10) : undefined,
+        // An emptied field is sent as null, which takes it off. Left out, as it was,
+        // choosing no company or no owner said "Deal updated" and changed nothing.
+        expectedCloseDateUtc: expectedCloseDateUtc ?? null,
+        companyId: editForm.companyId || null,
+        assigneeId: editForm.assigneeId || null,
+        description: editForm.description.trim() || null,
+        probability: editForm.probability ? parseInt(editForm.probability, 10) : null,
+        // The dialog sends back every field it shows, so the save is refused, rather
+        // than written over, when someone saved the deal after this copy was read.
+        version: editDeal.version,
       });
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === editDeal.id ? updated : d)));
@@ -523,9 +568,14 @@ export default function Pipeline() {
         toast.error(messages.errors.generic);
       }
     } catch (err) {
-      // The server says why ("A currency is a three-letter ISO code"); "Something went
-      // wrong" left people guessing which field it was.
-      toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
+      if (isEditConflict(err)) {
+        const dealId = editDeal.id;
+        showEditConflict(err.message, () => { void reloadEditDeal(dealId); });
+      } else {
+        // The server says why ("A currency is a three-letter ISO code"); "Something went
+        // wrong" left people guessing which field it was.
+        toast.error(err instanceof Error && err.message ? err.message : messages.errors.generic);
+      }
     } finally {
       setSavingEdit(false);
     }
@@ -2125,7 +2175,7 @@ export default function Pipeline() {
               <Label>Company</Label>
               <Select
                 value={editForm.companyId || 'none'}
-                onValueChange={(v) => setEditForm((f) => ({ ...f, companyId: v === 'none' ? '' : v }))}
+                onValueChange={whenChosen((v) => setEditForm((f) => ({ ...f, companyId: v === 'none' ? '' : v })))}
               >
                 <SelectTrigger aria-label="Company" className="mt-1">
                   <SelectValue placeholder="Optional" />
@@ -2145,7 +2195,7 @@ export default function Pipeline() {
                 <Label>Assignee</Label>
                 <Select
                   value={editForm.assigneeId || 'none'}
-                  onValueChange={(v) => setEditForm((f) => ({ ...f, assigneeId: v === 'none' ? '' : v }))}
+                  onValueChange={whenChosen((v) => setEditForm((f) => ({ ...f, assigneeId: v === 'none' ? '' : v })))}
                 >
                   <SelectTrigger aria-label="Assignee" className="mt-1">
                     <SelectValue placeholder="Optional" />

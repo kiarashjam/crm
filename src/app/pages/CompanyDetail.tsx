@@ -12,7 +12,8 @@ import CustomFieldsCard from '@/app/components/CustomFieldsCard';
 import AttachmentsCard from '@/app/components/AttachmentsCard';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getCompanies, getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
+import { getCompanies, getCompanyById, getContactsPaged, getDealsPaged, updateCompany, deleteCompany, messages } from '@/app/api';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
 import { authFetchJson, servesDemoData } from '@/app/api/apiClient';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
 import type { Company, Contact, Deal } from '@/app/api/types';
@@ -140,14 +141,26 @@ export default function CompanyDetail() {
         description: editForm.description.trim(),
         website: editForm.website.trim(),
         location: editForm.location.trim(),
+        // Refused, rather than written over, when someone saved the company since.
+        version: company.version,
       });
       if (updated) {
         setCompany(updated);
         toast.success('Company updated');
         setEditOpen(false);
       }
-    } catch {
-      toast.error(messages.errors?.generic || 'Failed to update company');
+    } catch (err) {
+      if (isEditConflict(err)) {
+        // The latest copy refills the form (the effect above), for the change to be made again.
+        const companyId = company.id;
+        showEditConflict(err.message, () => {
+          void getCompanyById(companyId)
+            .then((fresh) => { if (fresh) setCompany(fresh); })
+            .catch(() => toast.error('Failed to load company'));
+        });
+      } else {
+        toast.error(messages.errors?.generic || 'Failed to update company');
+      }
     } finally {
       setEditing(false);
     }

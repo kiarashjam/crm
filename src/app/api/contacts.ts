@@ -2,7 +2,8 @@ import type { Contact, PagedResult, PaginationParams } from './types';
 import { mockContacts, mockLeads } from './mockData';
 import { servesDemoData, authFetchJson, authFetch, ensureOk } from './apiClient';
 import { downloadCsv, downloadFile } from '@/app/lib/exportCsv';
-import { createMockStore, mockId } from './mockStore';
+import { createMockStore, demoPatch, mockId } from './mockStore';
+import { isEditConflictCode } from '@/app/lib/editConflict';
 
 const contactStore = createMockStore<Contact>({
   storageKey: 'crm.mock.contacts.v1',
@@ -130,6 +131,7 @@ export interface ApiContact {
   description?: string | null;
   createdAtUtc?: string | null;
   updatedAtUtc?: string | null;
+  version?: string | null;
 }
 
 export function mapContact(d: ApiContact): Contact {
@@ -150,6 +152,7 @@ export function mapContact(d: ApiContact): Contact {
     description: d.description ?? undefined,
     createdAtUtc: d.createdAtUtc ?? undefined,
     updatedAtUtc: d.updatedAtUtc ?? undefined,
+    version: d.version ?? undefined,
   };
 }
 
@@ -421,19 +424,26 @@ export async function createContact(params: {
 }
 
 /** Update a contact. Returns { contact, error } */
+/**
+ * Update a contact. A field left out is kept; the phone, job title, company, description
+ * and preferred contact method are taken off when sent as null. `version` is the contact
+ * as the edit read it: with it, a save made after someone else saved the contact comes
+ * back with `conflict` set (see lib/editConflict.ts).
+ */
 export async function updateContact(
   id: string,
   params: Partial<{
     name: string;
     email: string;
-    phone: string;
-    jobTitle: string;
-    companyId: string;
-    description: string;
+    phone: string | null;
+    jobTitle: string | null;
+    companyId: string | null;
+    description: string | null;
     doNotContact: boolean;
-    preferredContactMethod: string;
+    preferredContactMethod: string | null;
+    version: string;
   }>
-): Promise<{ contact: Contact | null; error: string | null }> {
+): Promise<{ contact: Contact | null; error: string | null; conflict?: boolean }> {
   if (!servesDemoData()) {
     const res = await authFetch(`/api/contacts/${id}`, {
       method: 'PUT',
@@ -443,15 +453,22 @@ export async function updateContact(
       const data = await res.json() as ApiContact;
       return { contact: mapContact(data), error: null };
     }
+    // The server answers with problem+json: its sentence is in `detail`, and its code
+    // says whether the contact changed under this edit. Reading `error` lost both, so a
+    // duplicate email or a stale save read "Failed to update contact".
     try {
-      const err = await res.json() as { error?: string };
-      return { contact: null, error: err.error ?? 'Failed to update contact' };
+      const problem = await res.json() as { detail?: string; title?: string; errorCode?: string };
+      return {
+        contact: null,
+        error: problem.detail || problem.title || 'Failed to update contact',
+        conflict: res.status === 409 && isEditConflictCode(problem.errorCode),
+      };
     } catch {
       return { contact: null, error: 'Failed to update contact' };
     }
   }
   await delay(200);
-  const updated = contactStore.update(id, params as Partial<Contact>);
+  const updated = contactStore.update(id, demoPatch<Contact>(params));
   return updated
     ? { contact: updated, error: null }
     : { contact: null, error: 'Contact not found' };

@@ -19,6 +19,7 @@ export type CompanyRaw = {
   location?: string | null;
   createdAtUtc?: string | null;
   updatedAtUtc?: string | null;
+  version?: string | null;
 };
 export function mapCompany(c: CompanyRaw): Company {
   return {
@@ -32,6 +33,7 @@ export function mapCompany(c: CompanyRaw): Company {
     location: c.location ?? undefined,
     createdAtUtc: c.createdAtUtc ?? undefined,
     updatedAtUtc: c.updatedAtUtc ?? undefined,
+    version: c.version ?? undefined,
   };
 }
 
@@ -237,6 +239,16 @@ export async function getCompanies(): Promise<Company[]> {
   return [...mockCompanies];
 }
 
+/** One company as it is now (real API or mock), to edit the latest copy after a refused save. */
+export async function getCompanyById(id: string): Promise<Company | null> {
+  if (!servesDemoData()) {
+    const company = await authFetchJson<CompanyRaw>(`/api/companies/${id}`);
+    return company ? mapCompany(company) : null;
+  }
+  await delay(100);
+  return mockCompanies.find((c) => c.id === id) ?? null;
+}
+
 /** Create a company. */
 export async function createCompany(params: { name: string; domain?: string; industry?: string; size?: string; description?: string; website?: string; location?: string }): Promise<Company | null> {
   if (!servesDemoData()) {
@@ -250,8 +262,12 @@ export async function createCompany(params: { name: string; domain?: string; ind
   return null;
 }
 
-/** Update a company. */
-export async function updateCompany(id: string, params: { name?: string; domain?: string; industry?: string; size?: string; description?: string; website?: string; location?: string }): Promise<Company | null> {
+/**
+ * Update a company. A field left out is kept; any field but the name is taken off when
+ * sent empty or as null. `version` is the company as the edit read it: with it, a save
+ * made after someone else saved the company is refused (409, see lib/editConflict.ts).
+ */
+export async function updateCompany(id: string, params: { name?: string; domain?: string | null; industry?: string | null; size?: string | null; description?: string | null; website?: string | null; location?: string | null; version?: string }): Promise<Company | null> {
   if (!servesDemoData()) {
     const company = await authFetchJson<CompanyRaw>(`/api/companies/${id}`, {
       method: 'PUT',

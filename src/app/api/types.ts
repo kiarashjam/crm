@@ -63,6 +63,11 @@ export interface Contact {
   description?: string;
   createdAtUtc?: string;
   updatedAtUtc?: string;
+  /**
+   * The record as of this read. An edit dialog sends it back, and the server refuses the
+   * save (409) when someone has saved the record since. See lib/editConflict.ts.
+   */
+  version?: string;
 }
 
 export interface Company {
@@ -76,6 +81,11 @@ export interface Company {
   location?: string;
   createdAtUtc?: string;
   updatedAtUtc?: string;
+  /**
+   * The record as of this read. An edit dialog sends it back, and the server refuses the
+   * save (409) when someone has saved the record since. See lib/editConflict.ts.
+   */
+  version?: string;
 }
 
 export interface Lead {
@@ -118,6 +128,11 @@ export interface Lead {
   emailOpenCount?: number;
   enrichedDomain?: string;
   scoreIsManual?: boolean;
+  /**
+   * The record as of this read. An edit dialog sends it back, and the server refuses the
+   * save (409) when someone has saved the record since. See lib/editConflict.ts.
+   */
+  version?: string;
 }
 
 export interface Deal {
@@ -168,6 +183,11 @@ export interface Deal {
   isStale?: boolean;
   /** Days without activity after which this deal goes stale; 0 never. */
   staleAfterDays?: number;
+  /**
+   * The record as of this read. An edit dialog sends it back, and the server refuses the
+   * save (409) when someone has saved the record since. See lib/editConflict.ts.
+   */
+  version?: string;
 }
 
 /** A deal coming into a stage, as its history shows it. Names are as the stages were called then. */

@@ -12,7 +12,8 @@ import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import DataPagination from '@/app/components/DataPagination';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getCompaniesPaged, createCompany, updateCompany, deleteCompany, getDealsPaged, messages } from '@/app/api';
+import { getCompaniesPaged, getCompanyById, createCompany, updateCompany, deleteCompany, getDealsPaged, messages } from '@/app/api';
+import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
 import {
   exportCompanies, getCompanySummary,
   type CompanyListFilters, type CompanyListItem, type CompanySortField, type CompanySummary,
@@ -309,6 +310,8 @@ export default function Companies() {
           description: form.description.trim(),
           website: form.website.trim(),
           location: form.location.trim(),
+          // Refused, rather than written over, when someone saved the company since.
+          version: editingCompany.version,
         });
         if (updated) {
           toast.success(messages.success.companyUpdated);
@@ -338,7 +341,15 @@ export default function Companies() {
     } catch (error: unknown) {
       // HP-2: Handle duplicate company name error from backend (409 Conflict)
       const msg = error instanceof Error ? error.message : '';
-      if (msg.includes('DuplicateName') || msg.includes('already exists')) {
+      if (isEditConflict(error) && editingCompany) {
+        const companyId = editingCompany.id;
+        showEditConflict(error.message, () => {
+          void getCompanyById(companyId)
+            .then((fresh) => { if (fresh) openEdit(fresh); })
+            .catch(() => toast.error(messages.errors.generic));
+          fetchCompanies();
+        });
+      } else if (msg.includes('DuplicateName') || msg.includes('already exists')) {
         toast.error('A company with this name already exists.');
       } else {
         toast.error(messages.errors.generic);

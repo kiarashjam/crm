@@ -54,6 +54,7 @@ import { RecordAvatar, RecordCard } from '@/app/components/RecordCard';
 import { StaggerItem, liftOnHover } from '@/app/components/motion/Stagger';
 import { ActivityLogForm, ActivityRow, withActivity, type ActivityDraft } from '@/app/components/RecordActivity';
 import { factsPayload } from '@/app/lib/activityFacts';
+import { showEditConflict } from '@/app/lib/editConflict';
 
 export default function ContactDetail() {
   const money = useMoney();
@@ -144,17 +145,19 @@ export default function ContactDetail() {
       .finally(() => setDealsLoading(false));
   }, [id, recordRevision]);
 
+  const seedEditForm = (c: Contact) => setEditForm({
+    name: c.name,
+    email: c.email,
+    phone: c.phone ?? '',
+    jobTitle: c.jobTitle ?? '',
+    description: c.description ?? '',
+    doNotContact: c.doNotContact ?? false,
+    preferredContactMethod: c.preferredContactMethod ?? '',
+  });
+
   const openEdit = () => {
     if (!contact) return;
-    setEditForm({
-      name: contact.name,
-      email: contact.email,
-      phone: contact.phone ?? '',
-      jobTitle: contact.jobTitle ?? '',
-      description: contact.description ?? '',
-      doNotContact: contact.doNotContact ?? false,
-      preferredContactMethod: contact.preferredContactMethod ?? '',
-    });
+    seedEditForm(contact);
     setEditOpen(true);
   };
 
@@ -166,19 +169,33 @@ export default function ContactDetail() {
     }
     setSaving(true);
     try {
-      const { contact: updated, error } = await updateContact(contact.id, {
+      // An emptied field is sent as null, which takes it off; the version makes the save
+      // refused, rather than written over, when someone saved the contact since.
+      const { contact: updated, error, conflict } = await updateContact(contact.id, {
         name: editForm.name.trim(),
         email: editForm.email.trim(),
-        phone: editForm.phone.trim() || undefined,
-        jobTitle: editForm.jobTitle.trim() || undefined,
-        description: editForm.description.trim() || undefined,
+        phone: editForm.phone.trim() || null,
+        jobTitle: editForm.jobTitle.trim() || null,
+        description: editForm.description.trim() || null,
         doNotContact: editForm.doNotContact,
-        preferredContactMethod: editForm.preferredContactMethod.trim() || undefined,
+        preferredContactMethod: editForm.preferredContactMethod.trim() || null,
+        version: contact.version,
       });
       if (updated) {
         setContact(updated);
         setEditOpen(false);
         toast.success('Contact updated');
+      } else if (conflict) {
+        const contactId = contact.id;
+        showEditConflict(error, () => {
+          void getContactById(contactId)
+            .then((fresh) => {
+              if (!fresh) return;
+              setContact(fresh);
+              seedEditForm(fresh);
+            })
+            .catch(() => toast.error('Failed to load the contact'));
+        });
       } else if (error) {
         toast.error(error);
       }
