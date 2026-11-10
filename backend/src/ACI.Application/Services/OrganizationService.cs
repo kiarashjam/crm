@@ -19,19 +19,22 @@ public sealed class OrganizationService : IOrganizationService
     private readonly ILeadSourceRepository _leadSourceRepository;
     private readonly IUserRepository _userRepository;
     private readonly ILogger<OrganizationService> _logger;
+    private readonly ICollaborationNotifier? _collaboration;
 
     public OrganizationService(
-        IOrganizationRepository organizationRepository, 
-        ILeadStatusRepository leadStatusRepository, 
+        IOrganizationRepository organizationRepository,
+        ILeadStatusRepository leadStatusRepository,
         ILeadSourceRepository leadSourceRepository,
         IUserRepository userRepository,
-        ILogger<OrganizationService> logger)
+        ILogger<OrganizationService> logger,
+        ICollaborationNotifier? collaboration = null)
     {
         _organizationRepository = organizationRepository;
         _leadStatusRepository = leadStatusRepository;
         _leadSourceRepository = leadSourceRepository;
         _userRepository = userRepository;
         _logger = logger;
+        _collaboration = collaboration;
     }
 
     public async Task<IReadOnlyList<OrganizationDto>> ListMyOrganizationsAsync(Guid userId, CancellationToken ct = default)
@@ -258,7 +261,7 @@ public sealed class OrganizationService : IOrganizationService
         return Result.Success();
     }
 
-    public async Task<Result> RemoveMemberAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, CancellationToken ct = default)
+    public async Task<Result<MemberRemovedDto>> RemoveMemberAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, Guid? handOverToUserId = null, CancellationToken ct = default)
     {
         _logger.LogInformation("Removing member {MemberUserId} from organization {OrganizationId} by user {RequestingUserId}", 
             memberUserId, organizationId, requestingUserId);
@@ -282,11 +285,33 @@ public sealed class OrganizationService : IOrganizationService
             _logger.LogWarning("Cannot remove owner from organization {OrganizationId}", organizationId);
             return DomainErrors.Organization.CannotRemoveOwner;
         }
-        
-        await _organizationRepository.RemoveMemberAsync(organizationId, memberUserId, ct);
-        
-        _logger.LogInformation("Successfully removed member {MemberUserId} from organization {OrganizationId}", memberUserId, organizationId);
-        return Result.Success();
+
+        // Their open work goes to someone who can carry it on: the member chosen, or the
+        // owner. Left with them, their leads and deals showed an owner nobody could act
+        // as, and their tasks kept emailing reminders, with customers' details, to
+        // someone who no longer works here.
+        var org = await _organizationRepository.GetByIdAsync(organizationId, ct);
+        if (org == null) return DomainErrors.Organization.NotFound;
+        var heir = handOverToUserId ?? org.OwnerUserId;
+        if (heir == memberUserId) return DomainErrors.Organization.HandOverToLeaver;
+        var heirMember = await _organizationRepository.GetMemberAsync(organizationId, heir, ct);
+        if (heirMember == null) return DomainErrors.Organization.HandOverOutsider;
+        if (heirMember.Role == OrgMemberRole.Viewer) return DomainErrors.Organization.HandOverReadOnly;
+
+        var handedOver = await _organizationRepository.RemoveMemberAsync(organizationId, memberUserId, heir, requestingUserId, ct);
+
+        // One notice for each kind of record that moved, rather than one per record.
+        if (_collaboration != null)
+        {
+            await _collaboration.RecordsAssignedAsync(RecordTypes.Lead, heir, organizationId, handedOver.Leads, requestingUserId, ct);
+            await _collaboration.RecordsAssignedAsync(RecordTypes.Deal, heir, organizationId, handedOver.Deals, requestingUserId, ct);
+            await _collaboration.TasksAssignedAsync(heir, handedOver.Tasks, requestingUserId, ct);
+        }
+
+        _logger.LogInformation(
+            "Removed member {MemberUserId} from organization {OrganizationId}; {Leads} leads, {Deals} deals and {Tasks} tasks handed to {HeirUserId}",
+            memberUserId, organizationId, handedOver.Leads.Count, handedOver.Deals.Count, handedOver.Tasks.Count, heir);
+        return new MemberRemovedDto(heir, heirMember.User?.Name ?? "", handedOver.Leads.Count, handedOver.Deals.Count, handedOver.Tasks.Count);
     }
 
     public async Task<Result<WebhookInfoDto>> GetWebhookInfoAsync(Guid organizationId, Guid userId, CancellationToken ct = default)

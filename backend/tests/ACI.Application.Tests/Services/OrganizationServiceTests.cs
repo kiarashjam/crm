@@ -440,6 +440,7 @@ public class OrganizationServiceTests
         var memberId = Guid.NewGuid();
         var orgId = Guid.NewGuid();
         var member = new OrganizationMember { UserId = memberId, Role = OrgMemberRole.Member };
+        var owner = new OrganizationMember { UserId = ownerId, Role = OrgMemberRole.Owner, User = new User { Id = ownerId, Name = "Owner" } };
 
         _organizationRepositoryMock
             .Setup(r => r.GetMemberRoleAsync(ownerId, orgId, It.IsAny<CancellationToken>()))
@@ -450,14 +451,46 @@ public class OrganizationServiceTests
             .ReturnsAsync(member);
 
         _organizationRepositoryMock
-            .Setup(r => r.RemoveMemberAsync(orgId, memberId, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = orgId, OwnerUserId = ownerId });
+
+        _organizationRepositoryMock
+            .Setup(r => r.GetMemberAsync(orgId, ownerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(owner);
+
+        _organizationRepositoryMock
+            .Setup(r => r.RemoveMemberAsync(orgId, memberId, ownerId, ownerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MemberHandOver.Nothing);
 
         // Act
         var result = await _sut.RemoveMemberAsync(orgId, ownerId, memberId);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
+        result.Value.HandedOverToUserId.Should().Be(ownerId, "with nobody chosen, the owner takes over");
+        _organizationRepositoryMock.Verify(r => r.RemoveMemberAsync(orgId, memberId, ownerId, ownerId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RemoveMemberAsync_RefusesToHandTheWorkToSomeoneWhoCannotDoIt()
+    {
+        var ownerId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var viewerId = Guid.NewGuid();
+        var orgId = Guid.NewGuid();
+        _organizationRepositoryMock.Setup(r => r.GetMemberRoleAsync(ownerId, orgId, It.IsAny<CancellationToken>())).ReturnsAsync(OrgMemberRole.Owner);
+        _organizationRepositoryMock.Setup(r => r.GetMemberAsync(orgId, memberId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizationMember { UserId = memberId, Role = OrgMemberRole.Member });
+        _organizationRepositoryMock.Setup(r => r.GetByIdAsync(orgId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Organization { Id = orgId, OwnerUserId = ownerId });
+        _organizationRepositoryMock.Setup(r => r.GetMemberAsync(orgId, viewerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OrganizationMember { UserId = viewerId, Role = OrgMemberRole.Viewer });
+
+        (await _sut.RemoveMemberAsync(orgId, ownerId, memberId, viewerId)).Error.Code.Should().Be("Organization.HandOverReadOnly");
+        (await _sut.RemoveMemberAsync(orgId, ownerId, memberId, memberId)).Error.Code.Should().Be("Organization.HandOverToLeaver");
+        (await _sut.RemoveMemberAsync(orgId, ownerId, memberId, Guid.NewGuid())).Error.Code.Should().Be("Organization.HandOverOutsider");
+        _organizationRepositoryMock.Verify(r => r.RemoveMemberAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never,
+            "nobody is removed when their work has nowhere to go");
     }
 
     [Fact]

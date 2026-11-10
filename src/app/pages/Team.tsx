@@ -24,6 +24,7 @@ import {
   rejectJoinRequest,
   updateMemberRole,
   removeMember,
+  handedOverSummary,
   isOrgAdmin,
   type OrgMemberDto,
   type InviteDto,
@@ -301,8 +302,9 @@ export default function Team() {
   const [inviteEmails, setInviteEmails] = useState<string[]>([]);
   const [inviting, setInviting] = useState(false);
 
-  // Remove member confirmation
+  // Remove member confirmation, and who takes over their open work ('' = the owner)
   const [removeMemberConfirm, setRemoveMemberConfirm] = useState<OrgMemberDto | null>(null);
+  const [handOverTo, setHandOverTo] = useState('');
   const [removing, setRemoving] = useState(false);
 
   // Role change state
@@ -505,24 +507,32 @@ export default function Team() {
     }
   };
 
+  // Who can take over a leaving member's work: anyone else who can edit records.
+  // Viewers (role 3) only read, so the server refuses them.
+  const handOverChoices = useMemo(
+    () => members.filter(m => m.userId !== removeMemberConfirm?.userId && m.role !== 3),
+    [members, removeMemberConfirm],
+  );
+  const owner = members.find(m => m.role === 0);
+
   // Handle remove member
   const handleRemoveMember = async () => {
     if (!currentOrgId || !removeMemberConfirm) return;
     setRemoving(true);
     try {
-      const success = await removeMember(currentOrgId, removeMemberConfirm.userId);
-      if (success) {
-        setMembers(prev => prev.filter(m => m.userId !== removeMemberConfirm.userId));
-        toast.success(`Removed ${removeMemberConfirm.name} from the team`);
-        setRemoveMemberConfirm(null);
-        if (selectedMember?.userId === removeMemberConfirm.userId) {
-          setSelectedMember(null);
-        }
-      } else {
-        toast.error('Failed to remove member');
+      const removed = await removeMember(currentOrgId, removeMemberConfirm.userId, handOverTo || undefined);
+      setMembers(prev => prev.filter(m => m.userId !== removeMemberConfirm.userId));
+      const moved = handedOverSummary(removed);
+      toast.success(moved
+        ? `Removed ${removeMemberConfirm.name}. ${removed.handedOverToName || 'The owner'} now has their open ${moved}.`
+        : `Removed ${removeMemberConfirm.name} from the team`);
+      setRemoveMemberConfirm(null);
+      setHandOverTo('');
+      if (selectedMember?.userId === removeMemberConfirm.userId) {
+        setSelectedMember(null);
       }
-    } catch {
-      toast.error('Failed to remove member');
+    } catch (err) {
+      toast.error(err instanceof Error && err.message ? err.message : 'Failed to remove member');
     } finally {
       setRemoving(false);
     }
@@ -1234,15 +1244,33 @@ export default function Team() {
       </Dialog>
 
       {/* Remove Member Confirmation */}
-      <AlertDialog open={!!removeMemberConfirm} onOpenChange={(open) => !open && setRemoveMemberConfirm(null)}>
+      <AlertDialog open={!!removeMemberConfirm} onOpenChange={(open) => { if (!open) { setRemoveMemberConfirm(null); setHandOverTo(''); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove team member?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove <strong>{removeMemberConfirm?.name}</strong> from your organization. 
+              This will remove <strong>{removeMemberConfirm?.name}</strong> from your organization.
               They will lose access to all organization data. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="hand-over-to">Hand their open leads, deals and tasks to</Label>
+            <Select value={handOverTo || owner?.userId || ''} onValueChange={setHandOverTo}>
+              <SelectTrigger id="hand-over-to" aria-label="Hand their open work to" className="h-10">
+                <SelectValue placeholder="The owner" />
+              </SelectTrigger>
+              <SelectContent>
+                {handOverChoices.map(m => (
+                  <SelectItem key={m.userId} value={m.userId}>
+                    {m.name}{m.role === 0 ? ' (owner)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500">
+              Won, lost and finished work stays credited to them. Their reminders stop.
+            </p>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={removing}>Cancel</AlertDialogCancel>
             <AlertDialogAction 

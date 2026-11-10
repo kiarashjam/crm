@@ -264,24 +264,25 @@ public class OrganizationsController : ControllerBase
     /// <param name="memberUserId">The member's user ID to remove.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>No content on success.</returns>
-    /// <response code="204">Member removed successfully.</response>
-    /// <response code="400">Cannot remove owner.</response>
+    /// <param name="handOverTo">Who takes over their open leads, deals and tasks; the owner when left out.</param>
+    /// <response code="200">Member removed, and how much of their work moved to whom.</response>
+    /// <response code="400">Cannot remove owner, or the one taking over cannot.</response>
     /// <response code="401">User is not authenticated.</response>
     /// <response code="403">User is not the organization owner.</response>
     /// <response code="404">Member not found.</response>
     [HttpDelete("{id:guid}/members/{memberUserId:guid}")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(MemberRemovedDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> RemoveMember(Guid id, Guid memberUserId, CancellationToken ct)
+    public async Task<ActionResult<MemberRemovedDto>> RemoveMember(Guid id, Guid memberUserId, [FromQuery] Guid? handOverTo, CancellationToken ct)
     {
         var userId = _currentUser.UserId;
         if (userId == null) return Unauthorized();
-        
-        var result = await _organizationService.RemoveMemberAsync(id, userId.Value, memberUserId, ct);
-        return result.ToNoContentResult();
+
+        var result = await _organizationService.RemoveMemberAsync(id, userId.Value, memberUserId, handOverTo, ct);
+        return result.ToActionResult();
     }
 
     /// <summary>

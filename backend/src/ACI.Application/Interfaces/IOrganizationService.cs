@@ -64,14 +64,17 @@ public interface IOrganizationService
     Task<Result> UpdateMemberRoleAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, OrgMemberRole newRole, CancellationToken ct = default);
     
     /// <summary>
-    /// Removes a member from the organization (owner only).
+    /// Removes a member from the organization (owner or manager), and hands their open
+    /// leads, deals and tasks to another member: <paramref name="handOverToUserId"/>, or
+    /// the organization's owner when none is given.
     /// </summary>
     /// <param name="organizationId">The organization ID.</param>
     /// <param name="requestingUserId">The user making the request.</param>
     /// <param name="memberUserId">The member to remove.</param>
+    /// <param name="handOverToUserId">Who takes over their work: a member who can work records.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Success or failure result.</returns>
-    Task<Result> RemoveMemberAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, CancellationToken ct = default);
+    /// <returns>Who took over and how much, or why nothing was done.</returns>
+    Task<Result<MemberRemovedDto>> RemoveMemberAsync(Guid organizationId, Guid requestingUserId, Guid memberUserId, Guid? handOverToUserId = null, CancellationToken ct = default);
     
     /// <summary>
     /// Gets an organization by id (no membership check; used for public webhook resolution).

@@ -1,4 +1,5 @@
 using ACI.Application.Interfaces;
+using ACI.Domain.Common;
 using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.Infrastructure.Persistence;
@@ -81,6 +82,66 @@ public sealed class OrganizationRepository : IOrganizationRepository
             _db.OrganizationMembers.Remove(member);
             await _db.SaveChangesAsync(ct);
         }
+    }
+
+    public async Task<MemberHandOver> RemoveMemberAsync(Guid organizationId, Guid userId, Guid handOverToUserId, Guid actingUserId, CancellationToken ct = default)
+    {
+        // The organization's records, whichever workspace the request came from.
+        using var acting = _db.ActFor(organizationId, actingUserId);
+        var handedOver = MemberHandOver.Nothing;
+        await RecordMerge.InTransactionAsync(_db, async () =>
+        {
+            var member = await _db.OrganizationMembers.FirstOrDefaultAsync(m => m.OrganizationId == organizationId && m.UserId == userId, ct);
+            if (member == null) return false;
+            var now = DateTime.UtcNow;
+
+            // What they work: assigned to them, or theirs with nobody assigned, as every
+            // reminder and notice picks its person. Work that is over keeps whoever did
+            // it, so reports still credit them: a converted, signed or lost lead, a won or
+            // lost deal, a finished task.
+            var leads = (await _db.Leads
+                    .Where(l => l.OrganizationId == organizationId && !l.IsConverted
+                        && (l.AssignedToUserId == userId || (l.AssignedToUserId == null && l.UserId == userId)))
+                    .ToListAsync(ct))
+                .Where(l => !LeadStatusVocabulary.IsClosed(l.Status))
+                .ToList();
+            foreach (var lead in leads)
+            {
+                lead.AssignedToUserId = handOverToUserId;
+                lead.UpdatedAtUtc = now;
+                lead.UpdatedByUserId = actingUserId;
+            }
+            var deals = await _db.Deals
+                .Where(d => d.OrganizationId == organizationId && d.IsWon == null
+                    && (d.AssigneeId == userId || (d.AssigneeId == null && d.UserId == userId)))
+                .ToListAsync(ct);
+            foreach (var deal in deals)
+            {
+                deal.AssigneeId = handOverToUserId;
+                deal.UpdatedAtUtc = now;
+                deal.UpdatedByUserId = actingUserId;
+            }
+            var tasks = await _db.TaskItems
+                .Where(t => t.OrganizationId == organizationId && !t.Completed
+                    && t.Status != Domain.Enums.TaskStatus.Completed && t.Status != Domain.Enums.TaskStatus.Cancelled
+                    && (t.AssigneeId == userId || (t.AssigneeId == null && t.UserId == userId)))
+                .ToListAsync(ct);
+            foreach (var task in tasks)
+            {
+                task.AssigneeId = handOverToUserId;
+                task.UpdatedAtUtc = now;
+                task.UpdatedByUserId = actingUserId;
+            }
+
+            _db.OrganizationMembers.Remove(member);
+            await _db.SaveChangesAsync(ct);
+            handedOver = new MemberHandOver(
+                leads.Select(l => (l.Id, l.Name)).ToList(),
+                deals.Select(d => (d.Id, d.Name)).ToList(),
+                tasks);
+            return true;
+        }, ct);
+        return handedOver;
     }
 
     public async Task BackfillUserDataToOrganizationAsync(Guid userId, Guid organizationId, CancellationToken ct = default)

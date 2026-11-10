@@ -248,9 +248,36 @@ export async function updateMemberRole(organizationId: string, memberUserId: str
   return res.status === 204;
 }
 
-export async function removeMember(organizationId: string, memberUserId: string): Promise<boolean> {
-  const res = await authFetch(`/api/organizations/${organizationId}/members/${memberUserId}`, {
+/** A member was removed: who took over their open work, and how much of it. */
+export interface MemberRemovedDto {
+  handedOverToUserId: string;
+  handedOverToName: string;
+  leads: number;
+  deals: number;
+  tasks: number;
+}
+
+/**
+ * Remove a member (owner or manager). Their open leads, deals and tasks go to
+ * `handOverTo`, or to the owner when it is left out. Throws with the server's
+ * reason when that person cannot take them (read-only, or not a member).
+ */
+export async function removeMember(organizationId: string, memberUserId: string, handOverTo?: string): Promise<MemberRemovedDto> {
+  const query = handOverTo ? `?handOverTo=${encodeURIComponent(handOverTo)}` : '';
+  return authFetchJson<MemberRemovedDto>(`/api/organizations/${organizationId}/members/${memberUserId}${query}`, {
     method: 'DELETE',
   });
-  return res.status === 204;
+}
+
+/** "12 leads, 3 deals and 7 tasks"; the kinds with none left out. Empty when nothing moved. */
+export function handedOverSummary(removed: Pick<MemberRemovedDto, 'leads' | 'deals' | 'tasks'>): string {
+  const parts = [
+    [removed.leads, 'lead'],
+    [removed.deals, 'deal'],
+    [removed.tasks, 'task'],
+  ]
+    .filter(([count]) => (count as number) > 0)
+    .map(([count, noun]) => `${count} ${noun}${count === 1 ? '' : 's'}`);
+  if (parts.length <= 1) return parts.join('');
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
