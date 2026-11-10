@@ -58,12 +58,13 @@ const DUES: Subscription = {
   id: 's1', memberId: 'm1', memberName: 'Jean Dupont', name: 'Gold dues', amount: 299, cadence: 'Monthly', status: 'Active',
   nextChargeAtUtc: '2026-12-01T00:00:00Z', startedAtUtc: '2026-01-01T00:00:00Z', lastChargedAtUtc: '2026-11-01T00:00:00Z',
 };
-const subscriptions = vi.hoisted(() => ({ getSubscriptions: vi.fn(), updateSubscription: vi.fn(), deleteSubscription: vi.fn() }));
+const subscriptions = vi.hoisted(() => ({ getSubscriptions: vi.fn(), updateSubscription: vi.fn(), deleteSubscription: vi.fn(), runDueBillingCycles: vi.fn() }));
 vi.mock('@/app/api/subscriptions', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/subscriptions')>()),
   getSubscriptions: () => subscriptions.getSubscriptions(),
   updateSubscription: (...a: unknown[]) => subscriptions.updateSubscription(...a),
   deleteSubscription: (id: string) => subscriptions.deleteSubscription(id),
+  runDueBillingCycles: () => subscriptions.runDueBillingCycles(),
 }));
 
 const Members = (await import('./Members')).default;
@@ -87,6 +88,7 @@ beforeEach(() => {
   members.deleteMember.mockReset().mockRejectedValue(new ApiError(OPEN_ACCOUNT, 409, '/api/members/m1', true, 'ClubMember.OpenAccount.Conflict'));
   subscriptions.getSubscriptions.mockReset().mockResolvedValue([DUES]);
   subscriptions.updateSubscription.mockReset();
+  subscriptions.runDueBillingCycles.mockReset();
   subscriptions.deleteSubscription.mockReset().mockRejectedValue(new ApiError(BILLED, 409, '/api/subscriptions/s1', true, 'Subscription.HasCharges.Conflict'));
 });
 
@@ -138,5 +140,17 @@ describe('a subscription the server will not change', () => {
 
     await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(changed));
     expect(subscriptions.updateSubscription).toHaveBeenCalledWith('s1', { status: 'Paused' });
+  });
+
+  it('says so when a run of the due cycles stops at one billed already', async () => {
+    const billed = 'This period was billed already, so nothing more was charged.';
+    subscriptions.runDueBillingCycles.mockRejectedValue(new ApiError(billed, 409, '/api/subscriptions/s1/bill', true, 'Subscription.PeriodBilled.Conflict'));
+    const user = userEvent.setup();
+    render(withQueries(<MemoryRouter><Subscriptions /></MemoryRouter>));
+
+    await user.click(await screen.findByRole('button', { name: /Run due cycles/ }));
+
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(billed));
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });

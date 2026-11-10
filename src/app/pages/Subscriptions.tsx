@@ -218,6 +218,11 @@ export default function Subscriptions() {
       const count = await runDueBillingCycles();
       toast.success(`Ran ${count} due cycle${count === 1 ? '' : 's'}`);
       await load();
+    } catch (err) {
+      // One refused (billed already, or at the same moment elsewhere) stops the run: say
+      // so, and show what the ones before it billed.
+      refused(err, 'Could not run the due cycles');
+      await load();
     } finally {
       setRunningAll(false);
     }
