@@ -99,9 +99,11 @@ public class ClubApplicationsTests
     [Fact]
     public async Task ApprovingAgain_OrSeveralAtOnce_MakesOneMemberOneFeeAndOneSubscription()
     {
-        using var factory = new CustomWebApplicationFactory();
+        using var factory = new RaceFactory();
         var (client, _, _) = await ClubAsync(factory);
         var id = (await ApplyAsync(client)).GetProperty("id").GetGuid();
+        // All four read the open application and decide to approve it before any of them claims it.
+        factory.Gate.Arm("applications", readers: 4);
 
         var answers = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => client.PostAsync($"/api/applications/{id}/approve", Body(new { }))));
         var members = new HashSet<Guid>();

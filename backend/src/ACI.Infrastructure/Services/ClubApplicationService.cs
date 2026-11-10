@@ -54,10 +54,12 @@ public sealed class ClubApplicationService : IClubApplications
     private readonly INotificationService _notifications;
     private readonly ITenantContext _tenant;
     private readonly ILogger<ClubApplicationService> _logger;
+    private readonly ILedgerReadObserver _reads;
 
     public ClubApplicationService(AppDbContext db, IClubLedger ledger, IClubCatalog catalog, IClubRules rules, IOutbox outbox,
         IConsentRepository consent, IPermissionService permissions, IWorkspaceRecords records, ILeadService leads,
-        ILeadOpsService leadOps, INotificationService notifications, ITenantContext tenant, ILogger<ClubApplicationService> logger)
+        ILeadOpsService leadOps, INotificationService notifications, ITenantContext tenant, ILogger<ClubApplicationService> logger,
+        ILedgerReadObserver reads)
     {
         _db = db;
         _ledger = ledger;
@@ -72,6 +74,7 @@ public sealed class ClubApplicationService : IClubApplications
         _notifications = notifications;
         _tenant = tenant;
         _logger = logger;
+        _reads = reads;
     }
 
     // ── reads ────────────────────────────────────────────────────────────────
@@ -353,6 +356,8 @@ public sealed class ClubApplicationService : IClubApplications
             // What can refuse is decided before anything is written: the tier, its currency, the household.
             var plan = await PlanAsync(organizationId, app, approval, ct);
             if (!plan.IsSuccess) return plan.Error;
+            // Read and decided, not yet claimed: where a test holds several approvals at once.
+            await _reads.ReadAsync("applications", ct);
 
             var transaction = _db.Database.IsRelational() && _db.Database.CurrentTransaction == null
                 ? await _db.Database.BeginTransactionAsync(ct)
@@ -1116,7 +1121,7 @@ public sealed class ClubApplicationService : IClubApplications
     /// <summary>Checks and copies the request's fields onto the row: on adding, the names and email are required; on changing, a field left out is kept.</summary>
     private async Task<Result> ApplyAsync(Guid organizationId, Guid userId, ClubApplication row, ApplicationWriteRequest r, bool creating, CancellationToken ct)
     {
-        string? Field(string? value, string current) => value == null ? current : value.Trim();
+        string Field(string? value, string current) => value == null ? current : value.Trim();
         var first = Field(r.FirstName, row.FirstName);
         var last = Field(r.LastName, row.LastName);
         var email = Field(r.Email, row.Email);

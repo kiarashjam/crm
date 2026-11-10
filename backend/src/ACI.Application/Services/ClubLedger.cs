@@ -168,11 +168,13 @@ public interface IClubLedger
 /// </summary>
 /// <remarks>
 /// The events and bookings services (IClubEvents, IClubReservations) report here too, once a
-/// change to an event's list or a resource's bookings has read what it decides on.
+/// change to an event's list or a resource's bookings has read what it decides on, and the
+/// approval of an application (IClubApplications) once it has read the open application and
+/// decided what to do, before it claims it.
 /// </remarks>
 public interface ILedgerReadObserver
 {
-    /// <param name="kind">"charges", "gift-cards", "tabs", "subscriptions", "events" or "reservations".</param>
+    /// <param name="kind">"charges", "gift-cards", "tabs", "subscriptions", "events", "reservations" or "applications".</param>
     Task ReadAsync(string kind, CancellationToken ct = default);
 }
 
