@@ -199,7 +199,10 @@ export default function Campaigns() {
     setTestingId(c.id);
     try {
       const result = await sendCampaignTest(c.id);
-      toast.success(`Test sent to ${result.to}. Members have not received it.`);
+      // "queued": the mail server did not take it at once, and the outbox tries again shortly.
+      toast.success(result.status === 'sent'
+        ? `Test sent to ${result.to}. Members have not received it.`
+        : `Test queued for ${result.to}: the mail server did not take it yet, and it is tried again shortly. Members have not received it.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'The test could not be sent.');
     } finally {

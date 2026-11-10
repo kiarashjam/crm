@@ -187,6 +187,18 @@ describe('campaigns', () => {
     expect(campaignsApi.send).not.toHaveBeenCalled();
   });
 
+  it('says a test the mail server did not take at once is queued, not sent', async () => {
+    campaignsApi.test.mockResolvedValue({ messageId: 'msg-2', to: 'me@club.ch', status: 'queued' });
+    const user = userEvent.setup();
+    show(<Campaigns />);
+
+    await screen.findByText('Founders dinner');
+    await user.click(within(rowOf('Founders dinner')).getByRole('button', { name: /Send a test to me/ }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/^Test queued for me@club\.ch: .*tried again shortly/)));
+    expect(toast.success).not.toHaveBeenCalledWith(expect.stringMatching(/^Test sent/));
+  });
+
   it('offers nothing that would change a campaign that has gone, and shows what came of each message', async () => {
     const user = userEvent.setup();
     show(<Campaigns />);
