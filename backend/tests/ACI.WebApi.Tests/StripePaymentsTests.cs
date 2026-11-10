@@ -456,6 +456,31 @@ public class StripePaymentsTests
     }
 
     [Fact]
+    public async Task ACardChargeStripeDidNotAnswerIsNotSaidToHaveChargedNothing_AndStripesWordSettlesIt()
+    {
+        await using var app = new PaymentsApp();
+        var club = await ClubAsync(app);
+        var (memberId, _) = await SavedCardAsync(app, club, autoPay: false);
+        await ChargeAsync(club.Owner, memberId, 299m);
+        // Stripe failed to answer: it may or may not have charged the card before it did.
+        app.Stripe.On("POST", "/v1/payment_intents", _ => ((HttpStatusCode)503, new { error = new { type = "api_error", message = "Something went wrong." } }));
+
+        var attempt = await Json(await club.Owner.PostAsync($"/api/members/{memberId}/card/charge", Body(new { })), "charge the card");
+
+        attempt.GetProperty("status").GetString().Should().Be("failed");
+        attempt.GetProperty("failureMessage").GetString().Should().NotContain("nothing was charged",
+            "a request Stripe did not answer may still have charged the card").And.Contain("not known");
+
+        // It had: Stripe's webhook for it records the payment once, on the same attempt.
+        var metadata = MetadataOf(app.Stripe.Sent("POST", "/v1/payment_intents").Single());
+        await Json(await app.CreateClient().SendAsync(FakeStripe.Webhook(club.Webhook, Secret,
+            IntentEvent("evt_late", "payment_intent.succeeded", "pi_late", "succeeded", 29900, metadata))), "Stripe's word arrives");
+        var online = (await Json(await club.Owner.GetAsync($"/api/online-payments?memberId={memberId}"), "online payments")).EnumerateArray().Single();
+        online.GetProperty("status").GetString().Should().Be("succeeded");
+        (await Json(await club.Owner.GetAsync($"/api/members/{memberId}/balance"), "balance")).GetProperty("balance").GetDecimal().Should().Be(0m);
+    }
+
+    [Fact]
     public async Task ADeclinedCardIsMarkedFailedAndNotTriedAgainOnItsOwn_AndStaffCanChargeTheCardThemselves()
     {
         await using var app = new PaymentsApp();

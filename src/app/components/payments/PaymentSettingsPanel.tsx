@@ -250,13 +250,21 @@ function SettingsForm({ settings, reload }: { settings: PaymentSettings; reload:
         ) : (
           <StateLine ok={false}>Not set up: members cannot pay online, and no card can be saved.</StateLine>
         )}
+        {settings.stripeConfigured && settings.stripeMode === 'test' && (
+          <p className="mb-4 text-sm text-amber-900">
+            Test mode: no real money moves, but test payments are recorded on members&apos; accounts like real ones. Void them
+            before going live.
+          </p>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <Field
             label="Secret key"
             hint={settings.stripeConfigured
-              ? 'Leave empty to keep the key in use. A new key is checked with Stripe before it is kept.'
-              : 'From Stripe, Developers, API keys: the secret key (sk_…) or a restricted key (rk_…) that may write Checkout Sessions, Customers, PaymentIntents, SetupIntents and Refunds.'}
+              ? `Leave empty to keep the key in use. A new key is checked with Stripe before it is kept.${settings.stripeMode === 'test'
+                ? ' Saving a live key forgets the cards and customers saved in test mode, which live mode does not have.'
+                : ''}`
+              : 'From Stripe, Developers, API keys: the secret key (sk_…) or a restricted key (rk_…) that may write Checkout Sessions, Customers, PaymentIntents, PaymentMethods, SetupIntents and Refunds.'}
           >
             <Input
               aria-label="Stripe secret key"

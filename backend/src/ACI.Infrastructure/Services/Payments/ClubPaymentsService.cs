@@ -490,7 +490,11 @@ public sealed partial class ClubPaymentsService : IClubPayments
         {
             attempt.Status = OnlinePaymentStatuses.Failed;
             attempt.FailureCode = Clip(failure.Code, 100);
-            attempt.FailureMessage = Clip(failure.Unreachable ? "Stripe could not be reached; nothing was charged. Try again later." : failure.Message, 500);
+            // Unanswered is not refused: a request that timed out, or got a 5xx, may have charged
+            // the card before Stripe's answer was lost. Stripe's webhook settles the attempt then.
+            attempt.FailureMessage = Clip(failure.Unreachable
+                ? "Stripe did not answer, so whether the card was charged is not known yet; Stripe's confirmation records it if it was. Check the member's payments before trying again."
+                : failure.Message, 500);
             attempt.UpdatedAtUtc = DateTime.UtcNow;
             await SaveAttemptAsync(attempt, ct);
             return;

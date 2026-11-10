@@ -110,6 +110,22 @@ describe('payment settings for a settings manager', () => {
     expect(sent).not.toHaveProperty('stripeWebhookSecret');
   });
 
+  it("says in test mode that test payments land on members' accounts, and what going live forgets", async () => {
+    as([PERMISSION.ManageSettings]);
+    api.settings.mockResolvedValue(CONNECTED);
+    show();
+
+    expect(await screen.findByText(/test payments are recorded on members' accounts/)).toBeInTheDocument();
+    expect(screen.getByText(/Saving a live key forgets the cards and customers saved in test mode/)).toBeInTheDocument();
+  });
+
+  it('asks for a restricted key that may also remove saved cards', async () => {
+    as([PERMISSION.ManageSettings]);
+    show();
+
+    expect(await screen.findByText(/PaymentIntents, PaymentMethods, SetupIntents and Refunds/)).toBeInTheDocument();
+  });
+
   it("warns that payments are never heard of without the webhook secret, and removes the key without dropping the bank's", async () => {
     as([PERMISSION.ManageSettings]);
     api.settings.mockResolvedValue(CONNECTED);
