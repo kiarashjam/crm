@@ -229,7 +229,7 @@ export default function Statements() {
               <QrCode className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               {payment.qrBills ? (
                 <span>
-                  The PDF carries a Swiss QR-bill whose reference says whose statement it is: a payment that comes back in the
+                  When something is due, the PDF carries a Swiss QR-bill whose reference says whose statement it is: a payment that comes back in the
                   bank&apos;s file is matched to the member by it.
                 </span>
               ) : (

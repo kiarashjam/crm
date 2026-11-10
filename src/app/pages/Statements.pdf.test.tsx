@@ -220,6 +220,7 @@ describe('paying a statement', () => {
     payments.status.mockResolvedValue({ ...NOTHING_SET_UP, qrBills: true, qrReferenceType: 'QRR' });
     show();
 
-    expect(await screen.findByText(/carries a Swiss QR-bill/)).toBeInTheDocument();
+    // Only when something is due: a statement of an account in credit is printed without a slip.
+    expect(await screen.findByText(/When something is due, the PDF carries a Swiss QR-bill/)).toBeInTheDocument();
   });
 });
