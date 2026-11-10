@@ -200,8 +200,11 @@ export default function HospitalityReports() {
   // Event attendance (% capacity by event status published)
   const eventAttendance = useMemo(() => {
     const published = events.filter((e) => e.status === 'Published' || e.status === 'Completed');
-    const totalCapacity = published.reduce((s, e) => s + e.capacity, 0);
-    const totalReg = published.reduce((s, e) => s + e.registeredCount, 0);
+    // An event with no limit (capacity 0) has no seats to fill, so it is left out of the
+    // seats and of the share of them taken.
+    const limited = published.filter((e) => e.capacity > 0);
+    const totalCapacity = limited.reduce((s, e) => s + e.capacity, 0);
+    const totalReg = limited.reduce((s, e) => s + e.registeredCount, 0);
     const totalWait = published.reduce((s, e) => s + e.waitlistCount, 0);
     return {
       utilization: totalCapacity > 0 ? totalReg / totalCapacity : 0,
