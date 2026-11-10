@@ -107,6 +107,21 @@ describe('what a write changes', () => {
     expect(changed).not.toContain('leads');
   });
 
+  it("a club member's save or merge refreshes what both the ledger and the campaigns show of them", () => {
+    // Two groups add to what a member write changes. The ledger: a balance set by hand is
+    // an entry, and a merge moves the duplicate's entries, so their tabs and statement. The
+    // communications: a tier or status changes who a campaign reaches, and a merge moves
+    // consent and messages. Neither may push the other's out.
+    expect(resourcesChangedBy('PUT', '/api/members/m-1')).toEqual(
+      expect.arrayContaining(['members', 'charges', 'payments', 'statements', 'campaigns']),
+    );
+    expect(resourcesChangedBy('POST', '/api/members/m-1/merge')).toEqual(
+      expect.arrayContaining(['members', 'charges', 'payments', 'statements', 'tabs', 'campaigns', 'communications', 'duplicates']),
+    );
+    // A consent answer is not money: it leaves the ledger's lists alone.
+    expect(resourcesChangedBy('POST', '/api/members/m-1/consent')).not.toContain('charges');
+  });
+
   it("sending a campaign fills the communications log, and a member's consent or merge refreshes what campaigns reach", () => {
     expect(resourcesChangedBy('POST', '/api/campaigns/c-1/send')).toEqual(['campaigns', 'communications']);
     expect(resourcesChangedBy('POST', '/api/members/m-1/consent')).toEqual(['members', 'campaigns']);
