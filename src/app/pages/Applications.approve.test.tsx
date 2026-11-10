@@ -131,6 +131,27 @@ describe('approving an application', () => {
     expect(screen.queryByRole('button', { name: 'Approve Claire Martin' })).toBeNull();
   });
 
+  it('asks for a tier when the applicant chose none on the public form, instead of breaking the dialog', async () => {
+    // "Not sure yet" on the public form leaves the application without a tier. The dialog
+    // offered that empty tier as a choice, which the select refuses to draw, and the page broke.
+    as([PERMISSION.ClubMembers, PERMISSION.ManageMoney]);
+    applications = [{ ...CLAIRE, requestedTier: '' as Application['requestedTier'] }];
+    const user = userEvent.setup();
+    show();
+
+    expect(await screen.findByText('Requested: no tier chosen')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Approve Claire Martin' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Approve and admit' })).toBeDisabled();
+    await user.click(within(dialog).getByRole('combobox', { name: 'Tier to admit them at' }));
+    expect(screen.queryByRole('option', { name: '' })).toBeNull();
+    await user.click(await screen.findByRole('option', { name: 'Gold' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Approve and admit' }));
+
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toEqual({ method: 'POST', path: '/api/applications/a1/approve', body: { tier: 'Gold', version: 'av1' } });
+  });
+
   it('offers a reviewer who cannot charge accounts no roll-up, and tells them the money is left for finance', async () => {
     as([PERMISSION.ClubMembers]);
     const user = userEvent.setup();

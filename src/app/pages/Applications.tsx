@@ -77,6 +77,9 @@ const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Waitlisted: 'bg-violet-50 text-violet-700 ring-1 ring-violet-200',
 };
 
+/** What an application without a requested tier says instead: the applicant was not sure yet. */
+const NO_TIER = 'no tier chosen';
+
 const STATUS_LABEL: Record<ApplicationStatus, string> = {
   Submitted: 'Submitted',
   UnderReview: 'Under review',
@@ -423,7 +426,7 @@ export default function Applications() {
       ),
     },
     { id: 'status', label: 'Status', cell: (a) => <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[a.status]}`}>{STATUS_LABEL[a.status]}</span> },
-    { id: 'tier', label: 'Requested tier', cell: (a) => a.requestedTier },
+    { id: 'tier', label: 'Requested tier', cell: (a) => a.requestedTier || '—' },
     { id: 'email', label: 'Email', cell: (a) => a.email },
     { id: 'submitted', label: 'Submitted', cell: (a) => formatDate(a.submittedAtUtc) },
     { id: 'links', label: 'Lead and member', byDefault: false, cell: (a) => links(a) },
@@ -530,7 +533,7 @@ export default function Applications() {
                           <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[a.status]}`}>{STATUS_LABEL[a.status]}</span>
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">Requested: {a.requestedTier}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600">Requested: {a.requestedTier || NO_TIER}</span>
                           <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDate(a.submittedAtUtc)}</span>
                           {a.occupation && <span className="inline-flex items-center gap-1 truncate"><Briefcase className="w-3 h-3" /> {a.occupation}</span>}
                         </div>
@@ -559,7 +562,7 @@ export default function Applications() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <h3 className="font-semibold text-slate-900 truncate">{a.firstName} {a.lastName}</h3>
                                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[a.status]}`}>{STATUS_LABEL[a.status]}</span>
-                                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">Requested: {a.requestedTier}</span>
+                                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">Requested: {a.requestedTier || NO_TIER}</span>
                               </div>
                               <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
                                 <span className="inline-flex items-center gap-1 truncate"><Mail className="w-3.5 h-3.5" /> {a.email}</span>
@@ -695,12 +698,14 @@ export default function Applications() {
             <div className="space-y-4 py-2">
               <div>
                 <Label>Tier</Label>
+                {/* An applicant who chose no tier ("Not sure yet" on the public form) has none
+                    to offer here: an empty choice breaks the select, so the reviewer picks one. */}
                 <Select value={approving.tier} onValueChange={(v) => setApproving({ ...approving, tier: v })}>
                   <SelectTrigger aria-label="Tier to admit them at">
-                    <SelectValue />
+                    <SelectValue placeholder="Pick the tier to admit them at" />
                   </SelectTrigger>
                   <SelectContent>
-                    {[...new Set([approving.app.requestedTier, ...tierChoices.map((t) => t.name)])].map((name) => (
+                    {[...new Set([approving.app.requestedTier, ...tierChoices.map((t) => t.name)])].filter(Boolean).map((name) => (
                       <SelectItem key={name} value={name}>{name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -751,7 +756,7 @@ export default function Applications() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setApproving(null)} disabled={busyId === approving?.app.id}>Cancel</Button>
-            <Button onClick={() => approving && void approve(approving)} disabled={busyId === approving?.app.id} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button onClick={() => approving && void approve(approving)} disabled={busyId === approving?.app.id || !approving?.tier} className="bg-emerald-600 hover:bg-emerald-700">
               {busyId === approving?.app.id ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Approving</> : 'Approve and admit'}
             </Button>
           </DialogFooter>
