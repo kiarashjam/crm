@@ -336,6 +336,12 @@ public sealed record PaymentDto
 }
 
 /// <summary>A member's house balance: negative when they owe the club.</summary>
+/// <remarks>
+/// <see cref="Balance"/> is the one at <see cref="AsOfUtc"/>. <see cref="Owed"/>,
+/// <see cref="Credit"/> and <see cref="OpenCharges"/> are what the account holds now (for a
+/// past date, the charges posted by then, as paid today): a statement or a reminder for an
+/// earlier date works from <see cref="IClubLedger.StatementAsync"/> instead.
+/// </remarks>
 public sealed record HouseBalanceDto(
     Guid MemberId, string MemberName, string Currency, decimal Balance, DateTime AsOfUtc,
     decimal Owed, decimal Credit, int OpenCharges);
