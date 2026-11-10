@@ -256,6 +256,38 @@ public class ContractServiceTests
     }
 
     [Fact]
+    public async Task ALeadSavedByARepAsTheContractGoesOutKeepsTheirStepAndGainsTheContracts()
+    {
+        _lead.PipelineState = """{"outreachStatus":"contacted"}""";
+        var draft = await DraftReadyToSendAsync();
+        var raced = false;
+        _leads.Setup(r => r.UpdateAsync(It.IsAny<Lead>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Lead l, Guid _, Guid? __, CancellationToken ___) =>
+            {
+                if (!raced)
+                {
+                    raced = true;
+                    // A rep records the meeting between the contract flow reading the lead
+                    // and saving it, so the save from that read is refused.
+                    _lead = new Lead
+                    {
+                        Id = LeadId, Name = "Jean Dupont", Email = "jean@example.com",
+                        PipelineState = """{"outreachStatus":"contacted","meetingAttended":true}""",
+                    };
+                    throw new ConcurrencyConflictException();
+                }
+                _lead = l;
+                return l;
+            });
+
+        var result = await _sut.SendAsync(draft.Id, UserId, OrgId, resend: false);
+
+        result.IsSuccess.Should().BeTrue("the contract went out, so the request must not fail on the lead");
+        _lead.PipelineState.Should().Contain("\"meetingAttended\":true", "the rep's step stands");
+        _lead.PipelineState.Should().Contain("\"contractStatus\":\"yes\"", "and the contract's steps are merged into it");
+    }
+
+    [Fact]
     public async Task SendingSurvivesACorruptPipelineBlob()
     {
         _lead.PipelineState = "{not json at all";

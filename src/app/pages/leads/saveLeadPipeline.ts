@@ -11,11 +11,16 @@
 // and send it along, so anything else that wrote a pipeline (an e-signed
 // contract, a merge, an integration) left the status behind. The local plan is
 // still computed, but only to explain the server's answer in the toast.
+//
+// And only the steps the edit changed are sent (see pipelinePatch); the server
+// merges them into the pipeline it has. Sending the whole pipeline wrote this
+// tab's copy over the stored one, so a step recorded meanwhile elsewhere, such as
+// the contract steps an e-signature writes, was lost.
 
 import { updateLead } from '@/app/api/leads';
 import { createActivity } from '@/app/api/activities';
 import type { Lead } from '@/app/api/types';
-import { serializePipeline, type LeadPipeline } from './leadPipeline';
+import { pipelinePatch, type LeadPipeline } from './leadPipeline';
 import {
   planStatusSync,
   classifyStatusLabel,
@@ -30,6 +35,8 @@ export interface SavePipelineArgs {
   lead: Pick<Lead, 'id' | 'status' | 'isConverted'>;
   /** The complete next pipeline (not a patch). */
   pipeline: LeadPipeline;
+  /** The pipeline the edit was made on. Only what differs from it is sent. */
+  base: LeadPipeline;
   statusOptions: StatusOption[];
   statusesLoaded: boolean;
   /** The status list arrived empty / failed, so it is never arriving. Only
@@ -117,7 +124,7 @@ export async function saveLeadPipeline(args: SavePipelineArgs): Promise<SavePipe
 
   let updated: Lead | null = null;
   try {
-    updated = await updateLead(lead.id, { pipelineState: serializePipeline(pipeline) });
+    updated = await updateLead(lead.id, { pipelineState: JSON.stringify(pipelinePatch(args.base, pipeline)) });
   } catch {
     return { ok: false, plan: preview, previousStatus };
   }

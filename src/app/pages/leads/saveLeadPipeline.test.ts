@@ -31,6 +31,7 @@ const serverLead = (over: Partial<Lead>): Lead => ({
 const save = (over: Partial<Parameters<typeof saveLeadPipeline>[0]> = {}) => saveLeadPipeline({
   lead,
   pipeline: { outreachStatus: 'contacted' },
+  base: {},
   statusOptions: AGREED,
   statusesLoaded: true,
   ...over,
@@ -51,6 +52,20 @@ describe('saveLeadPipeline', () => {
     expect(updateLead).toHaveBeenCalledTimes(1);
     const [, patch] = updateLead.mock.calls[0]!;
     expect(patch).toEqual({ pipelineState: JSON.stringify({ outreachStatus: 'contacted' }) });
+  });
+
+  it('sends only the steps the edit changed, and a step taken off as null', async () => {
+    // A step recorded elsewhere since this page loaded (the contract steps an
+    // e-signature writes) is not in the change, so the server keeps it.
+    updateLead.mockResolvedValue(serverLead({ status: 'Connected' }));
+
+    await save({
+      base: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingDate: '2026-11-20' },
+      pipeline: { outreachStatus: 'contacted', contactOutcome: 'meeting_scheduled', meetingAttended: true },
+    });
+
+    const [, patch] = updateLead.mock.calls[0]!;
+    expect(JSON.parse(patch.pipelineState)).toEqual({ meetingDate: null, meetingAttended: true });
   });
 
   it('reports the move the server made, with the id the server stored', async () => {

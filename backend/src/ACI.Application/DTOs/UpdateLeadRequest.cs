@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using ACI.Application.Common;
 
 namespace ACI.Application.DTOs;
 
@@ -78,12 +79,14 @@ public record UpdateLeadRequest
     public string? LifecycleStage { get; init; }
 
     /// <summary>
-    /// Serialized JSON of the lead's structured sales-lifecycle progression
-    /// (outreach → meeting → contract → signature → deposit). The client owns the
-    /// shape; the server reads it to work out the status, so sending it can move
-    /// the status even when no status is sent.
+    /// A change to the lead's structured sales-lifecycle progression (outreach → meeting
+    /// → contract → signature → deposit), as a JSON merge patch: the steps sent replace
+    /// the stored ones, a step sent as null is removed, and steps not sent are kept. An
+    /// empty string clears the whole pipeline. The client owns the shape; the server
+    /// reads the result to work out the status, so sending it can move the status even
+    /// when no status is sent.
     /// </summary>
-    [StringLength(8000, ErrorMessage = "Pipeline state is too large")]
+    [StringLength(PipelineStatePatch.MaxLength, ErrorMessage = "Pipeline state is too large")]
     public string? PipelineState { get; init; }
 
     [StringLength(200)]

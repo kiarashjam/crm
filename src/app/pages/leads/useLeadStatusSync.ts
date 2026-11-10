@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { Lead } from '@/app/api/types';
-import type { LeadPipeline } from './leadPipeline';
+import { parsePipeline, type LeadPipeline } from './leadPipeline';
 import {
   planStatusSync,
   statusDrift,
@@ -140,13 +140,15 @@ export function useLeadStatusSync({
    */
   const save = useCallback(
     async (
-      lead: Pick<Lead, 'id' | 'status' | 'isConverted' | 'name'>,
+      lead: Pick<Lead, 'id' | 'status' | 'isConverted' | 'name' | 'pipelineState'>,
       pipeline: LeadPipeline,
       opts?: {
         log?: { subject: string; body?: string };
         onApplied?: (updated: Lead) => void;
         /** Suppress the toast (e.g. when the caller renders its own feedback). */
         quiet?: boolean;
+        /** The pipeline the edit was made on; only what differs from it is sent. The lead's, by default. */
+        base?: LeadPipeline;
       },
     ): Promise<SavePipelineOutcome> => {
       const seq = (seqRef.current.get(lead.id) ?? 0) + 1;
@@ -155,6 +157,7 @@ export function useLeadStatusSync({
       const result = await saveLeadPipeline({
         lead,
         pipeline,
+        base: opts?.base ?? parsePipeline(lead.pipelineState),
         statusOptions,
         statusesLoaded,
         statusesUnavailable,

@@ -367,7 +367,20 @@ public class LeadService : ILeadService
         if (request.LastContactedAt.HasValue) existing.LastContactedAt = request.LastContactedAt;
         if (request.Description != null) existing.Description = request.Description.Trim();
         if (request.LifecycleStage != null) existing.LifecycleStage = request.LifecycleStage.Trim();
-        if (request.PipelineState != null) existing.PipelineState = request.PipelineState;
+        if (request.PipelineState != null)
+        {
+            // The steps this edit changed, merged into the pipeline as it is now, so a step
+            // someone else recorded meanwhile (an e-signed contract, a colleague) is kept.
+            // An empty one clears the whole pipeline, as it always did.
+            if (string.IsNullOrWhiteSpace(request.PipelineState))
+                existing.PipelineState = null;
+            else
+            {
+                var merged = PipelineStatePatch.Apply(existing.PipelineState, request.PipelineState);
+                if (merged.IsFailure) return merged.Error;
+                existing.PipelineState = merged.Value;
+            }
+        }
         if (request.JobTitle != null) existing.JobTitle = request.JobTitle.Trim();
         if (request.Country != null) existing.Country = request.Country.Trim();
         if (request.Industry != null) existing.Industry = request.Industry.Trim();

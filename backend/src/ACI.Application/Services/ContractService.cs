@@ -777,31 +777,45 @@ public class ContractService : IContractService
         var effect = PipelineEffectFor(contract.Status);
         if (effect.Count == 0) return;
 
-        var lead = await _leads.GetByIdAsync(contract.LeadId.Value, userId, organizationId, ct);
-        if (lead is null) return;
-
-        JsonObject state;
-        try
+        // A lead saved by someone else between the read and the save below refuses the save
+        // (see IVersioned). The contract has already moved on and its email may have gone,
+        // so the steps are merged into the newer copy instead of failing the request.
+        for (var attempt = 1; ; attempt++)
         {
-            state = string.IsNullOrWhiteSpace(lead.PipelineState)
-                ? new JsonObject()
-                : JsonNode.Parse(lead.PipelineState!)?.AsObject() ?? new JsonObject();
-        }
-        catch (JsonException)
-        {
-            // A corrupt blob must not stop the contract flow, and must not be
-            // silently replaced either — start fresh but say so.
-            _logger.LogWarning("Lead {LeadId} has unparseable pipelineState; starting a fresh object", lead.Id);
-            state = new JsonObject();
-        }
+            var lead = await _leads.GetByIdAsync(contract.LeadId.Value, userId, organizationId, ct);
+            if (lead is null) return;
 
-        foreach (var (key, value) in effect) state[key] = value;
+            JsonObject state;
+            try
+            {
+                state = string.IsNullOrWhiteSpace(lead.PipelineState)
+                    ? new JsonObject()
+                    : JsonNode.Parse(lead.PipelineState!)?.AsObject() ?? new JsonObject();
+            }
+            catch (JsonException)
+            {
+                // A corrupt blob must not stop the contract flow, and must not be
+                // silently replaced either — start fresh but say so.
+                _logger.LogWarning("Lead {LeadId} has unparseable pipelineState; starting a fresh object", lead.Id);
+                state = new JsonObject();
+            }
 
-        lead.PipelineState = state.ToJsonString();
-        await _statusSync.SaveAsync(lead, userId, organizationId, changedByUserId, ct);
-        _logger.LogInformation(
-            "Contract {ContractId} advanced lead {LeadId} pipeline: {Keys}",
-            contract.Id, lead.Id, string.Join(", ", effect.Keys));
+            foreach (var (key, value) in effect) state[key] = value;
+
+            lead.PipelineState = state.ToJsonString();
+            try
+            {
+                await _statusSync.SaveAsync(lead, userId, organizationId, changedByUserId, ct);
+            }
+            catch (ConcurrencyConflictException) when (attempt < 3)
+            {
+                continue;
+            }
+            _logger.LogInformation(
+                "Contract {ContractId} advanced lead {LeadId} pipeline: {Keys}",
+                contract.Id, lead.Id, string.Join(", ", effect.Keys));
+            return;
+        }
     }
 
     /// <summary>

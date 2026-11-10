@@ -5,6 +5,7 @@ import { servesDemoData, authFetchJson, authFetch } from './apiClient';
 import { createMockStore, mockId } from './mockStore';
 import { ensureDemoPersonContacts, getContacts } from './contacts';
 import { QUALIFIED_OR_BEYOND, statusIn } from '@/app/pages/leads/leadStatusSync';
+import { applyPipelinePatch } from '@/app/pages/leads/leadPipeline';
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -397,6 +398,7 @@ export async function updateLead(
     lastContactedAt: string;
     description: string;
     lifecycleStage: string;
+    /** The steps to change, which the server merges into the stored pipeline (a step sent as null is taken off). See pipelinePatch. */
     pipelineState: string;
   }>,
 ): Promise<Lead | null> {
@@ -408,7 +410,14 @@ export async function updateLead(
     return lead ? mapLead(lead) : null;
   }
   await delay(200);
-  const updated = leadStore.update(id, params as Partial<Lead>);
+  // Merged as the server merges it: what is sent is the change, not the pipeline.
+  const changes = params.pipelineState === undefined ? params : {
+    ...params,
+    pipelineState: params.pipelineState
+      ? applyPipelinePatch(leadStore.byId(id)?.pipelineState, params.pipelineState)
+      : undefined,
+  };
+  const updated = leadStore.update(id, changes as Partial<Lead>);
   ensureDemoPersonContacts();
   return updated;
 }

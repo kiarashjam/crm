@@ -140,9 +140,14 @@ export function SalesTrackerCard({ lead, className, onSaved, statusSync, readOnl
       // The PUT carries the pipeline alone; the server works out the status
       // from it. The hook owns the toast, so a status change the server made
       // is announced with the step that caused it.
-      const pipeline = trackedRowToPipeline(row, parsePipeline(lead.pipelineState));
+      const stored = parsePipeline(lead.pipelineState);
+      const pipeline = trackedRowToPipeline(row, stored);
+      // Measured against the card as it opened, so only the fields changed on it are
+      // sent, and a step saved elsewhere since stays as it is.
+      const base = trackedRowToPipeline(salesExtrasToTrackedRow(extrasFromLead(lead)), stored);
       const outcome = await statusSync.save(lead, pipeline, {
         onApplied: (updated) => onSaved?.(updated),
+        base,
       });
       if (outcome.stale) return;
       if (outcome.ok) {
