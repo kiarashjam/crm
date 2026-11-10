@@ -308,6 +308,7 @@ export default function Visits() {
               }
               actionLabel={visits.length === 0 ? 'Check in' : undefined}
               onAction={visits.length === 0 ? openCheckIn : undefined}
+              actionPermission={PERMISSION.FrontDesk}
               variant="teal"
             />
           ) : (

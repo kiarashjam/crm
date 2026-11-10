@@ -410,6 +410,7 @@ export default function Tabs() {
               description="Open a tab when a member sits down — items add to the running total."
               actionLabel="Open tab"
               onAction={() => setOpenDialog(true)}
+              actionPermission={PERMISSION.FrontDesk}
               variant="orange"
             />
           ) : (

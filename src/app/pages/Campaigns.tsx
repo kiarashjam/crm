@@ -344,6 +344,7 @@ export default function Campaigns() {
                   description={campaigns.length === 0 ? 'Write a campaign for a segment of members.' : 'Try clearing the search.'}
                   actionLabel={campaigns.length === 0 ? 'New campaign' : undefined}
                   onAction={campaigns.length === 0 ? openCreate : undefined}
+                  actionPermission={PERMISSION.ClubMembers}
                   variant="orange"
                 />
               ) : (

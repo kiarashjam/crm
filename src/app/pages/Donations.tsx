@@ -346,6 +346,7 @@ export default function Donations() {
               }
               actionLabel={donations.length === 0 ? 'Record donation' : undefined}
               onAction={donations.length === 0 ? openCreate : undefined}
+              actionPermission={PERMISSION.ManageMoney}
               variant="orange"
             />
           ) : (

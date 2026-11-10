@@ -315,6 +315,7 @@ export default function Communications() {
                   }
                   actionLabel={comms.length === 0 ? 'Email a member' : undefined}
                   onAction={comms.length === 0 ? () => setEmailing(true) : undefined}
+                  actionPermission={PERMISSION.ClubMembers}
                   variant="orange"
                 />
               ) : (

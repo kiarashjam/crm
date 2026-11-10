@@ -424,6 +424,7 @@ export default function GiftCards() {
                   }
                   actionLabel={cards.length === 0 ? 'Issue gift card' : undefined}
                   onAction={cards.length === 0 ? openIssueDialog : undefined}
+                  actionPermission={PERMISSION.ManageMoney}
                   variant="orange"
                 />
               ) : (

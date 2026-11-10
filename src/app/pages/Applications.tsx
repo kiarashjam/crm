@@ -66,8 +66,8 @@ import {
 } from '@/app/components/views';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { WriteOnly } from '@/app/components/WriteOnly';
-import { orgCan, PERMISSION, type Permission } from '@/app/api/organizations';
-import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { PERMISSION } from '@/app/api/organizations';
+import { useMay } from '@/app/hooks/useMay';
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   Submitted: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -113,12 +113,6 @@ function formatDate(iso: string): string {
 
 function errorText(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
-}
-
-/** Whether the signed-in member may do this, as WriteOnly decides it. */
-function useMay(): (permission: Permission) => boolean {
-  const org = useOrgOptional();
-  return (permission) => !org || (!org.isReadOnly && orgCan(org.currentOrg ?? null, permission));
 }
 
 type Review = { app: Application; action: 'waitlist' | 'reject' };

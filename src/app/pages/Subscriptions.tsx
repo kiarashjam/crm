@@ -502,6 +502,7 @@ export default function Subscriptions() {
               }
               actionLabel={subscriptions.length === 0 ? 'New subscription' : undefined}
               onAction={subscriptions.length === 0 ? openCreate : undefined}
+              actionPermission={PERMISSION.ManageMoney}
               variant="orange"
             />
           ) : (
