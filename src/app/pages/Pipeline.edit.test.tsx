@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { withQueries } from '@/test/queryWrapper';
 import type { Deal, DealBoardQuery } from '@/app/api/types';
 import { ApiError } from '@/app/api/apiClient';
 import { demoBoard } from '@/app/api/dealBoardDemo';
@@ -57,7 +58,7 @@ beforeEach(() => {
 });
 
 const openEdit = async () => {
-  render(<MemoryRouter><Pipeline /></MemoryRouter>);
+  render(withQueries(<MemoryRouter><Pipeline /></MemoryRouter>));
   await screen.findAllByText('Autumn gala', undefined, { timeout: 5000 });
   fireEvent.click(screen.getByRole('button', { name: 'Edit deal' }));
   return screen.findByLabelText(/deal name/i);

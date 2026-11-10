@@ -7,6 +7,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom';
 import type { Deal, DealBoard, DealBoardColumn } from '@/app/api/types';
 import { formatMoney } from '@/app/lib/money';
+import { announceDataChanged, resourcesChangedBy } from '@/app/api/dataChanged';
+import { withQueries } from '@/test/queryWrapper';
 
 const api = vi.hoisted(() => ({
   getDeals: vi.fn(), updateDeal: vi.fn(), createDeal: vi.fn(), deleteDeal: vi.fn(),
@@ -104,17 +106,21 @@ beforeEach(() => {
 });
 
 const show = async () => {
-  render(<MemoryRouter><Pipeline /></MemoryRouter>);
+  render(withQueries(<MemoryRouter><Pipeline /></MemoryRouter>));
   await screen.findAllByText('Alpine Club', undefined, { timeout: 5000 });
 };
 
 const enquiryColumn = () => screen.getByRole('heading', { name: 'Enquiry' }).closest('div.flex.flex-col') as HTMLElement;
+/** The read was handed a signal, so a board for filters changed since is cancelled. */
+const cancellable = expect.objectContaining({ signal: expect.any(AbortSignal) });
 
 describe('the board from the server', () => {
   it("asks for the pipeline on screen and shows each stage's own count and money, not the loaded cards'", async () => {
     await show();
 
-    expect(api.getDealBoard).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: PIPELINE }));
+    expect(api.getDealBoard).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: PIPELINE }), cancellable);
+    // It waits for the pipelines, so it never asks for the board of no pipeline first.
+    expect(api.getDealBoard).not.toHaveBeenCalledWith(expect.objectContaining({ pipelineId: undefined }), cancellable);
     const enquiry = enquiryColumn();
     expect(within(enquiry).getByText(/30 deals/)).toBeInTheDocument();
     expect(within(enquiry).getByText(chf(120000))).toBeInTheDocument();
@@ -145,16 +151,16 @@ describe('the board from the server', () => {
     await show();
 
     fireEvent.click(screen.getByRole('button', { name: /My Deals/ }));
-    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ mine: true })));
+    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ mine: true }), cancellable));
 
     fireEvent.click(screen.getByRole('button', { name: /^Stale$/ }));
-    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ mine: true, staleOnly: true })));
+    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ mine: true, staleOnly: true }), cancellable));
 
     fireEvent.change(screen.getByLabelText('Search deals'), { target: { value: 'gala' } });
-    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'gala' })));
+    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'gala' }), cancellable));
 
     fireEvent.change(screen.getByLabelText('Maximum deal value'), { target: { value: '5000' } });
-    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'gala', maxAmount: 5000 })));
+    await waitFor(() => expect(api.getDealBoard).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'gala', maxAmount: 5000 }), cancellable));
   });
 
   it("puts the weighted pipeline and the stale count in the board's figures", async () => {
@@ -174,7 +180,11 @@ describe('the board from the server', () => {
   });
 
   it('reads the board again after a deal is changed, so its stage figures stay true', async () => {
-    api.updateDeal.mockResolvedValue(card({ name: 'Alpine Club 2027' }));
+    // As the real save does, through authFetch: it says deals changed.
+    api.updateDeal.mockImplementation(async () => {
+      announceDataChanged({ resources: resourcesChangedBy('PUT', '/api/deals/d') });
+      return card({ name: 'Alpine Club 2027' });
+    });
     await show();
     const before = api.getDealBoard.mock.calls.length;
 

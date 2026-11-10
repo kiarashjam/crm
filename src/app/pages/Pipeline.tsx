@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import {
@@ -48,13 +48,19 @@ import { Spinner } from '@/app/components/motion/CadenceLoader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { KanbanSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
-import { getDeals, getDealBoard, getDealBoardColumn, getDealById, updateDeal, createDeal, deleteDeal, getCompanies, getContacts, getPipelines, getOrgMembers, messages } from '@/app/api';
+import { getDealBoardColumn, getDealById, updateDeal, createDeal, deleteDeal, messages } from '@/app/api';
+import {
+  dealBoardKey, queryKeys, recordActivitiesKey, tasksKey, useAllCompanies, useAllContacts, useAllDeals, useCacheWriter,
+  useDealBoard, useOrgMembers, usePipelines, useRecordActivities, useTasksList, useWorkspaceScope,
+} from '@/app/hooks/queries';
+import type { OrgMemberDto } from '@/app/api/organizations';
+import { LoadFailed } from '@/app/components/LoadFailed';
 import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
 import { whenChosen } from '@/app/lib/whenChosen';
-import { getActivitiesByDeal, createActivity } from '@/app/api/activities';
+import { createActivity } from '@/app/api/activities';
 import type { Deal, Company, Contact, Pipeline, Activity, DealBoard, DealBoardColumn, DealBoardQuery } from '@/app/api/types';
 import { useDebounce } from '@/app/hooks/useDebounce';
-import { getCurrentOrganizationId, getCurrentUser } from '@/app/lib/auth';
+import { getCurrentUser } from '@/app/lib/auth';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Label } from '@/app/components/ui/label';
@@ -89,7 +95,7 @@ import { dateOnlyKey } from '@/app/lib/zonedTime';
 import { useMoney } from '@/app/hooks/useMoney';
 import { DealCard } from './pipeline/DealCard';
 import { recordHref } from '@/app/hooks/useDocumentTitle';
-import { getTasks, createTask } from '@/app/api/tasks';
+import { createTask } from '@/app/api/tasks';
 import type { TaskItem as TaskItemType } from '@/app/api/types';
 import { useOrg } from '@/app/contexts/OrgContext';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
@@ -125,25 +131,58 @@ function editFormFor(deal: Deal) {
   };
 }
 
+const NO_PIPELINES: Pipeline[] = [];
+const NO_DEALS: Deal[] = [];
+const NO_CONTACTS: Contact[] = [];
+const NO_COMPANIES: Company[] = [];
+const NO_MEMBERS: OrgMemberDto[] = [];
+const NO_TASKS: TaskItemType[] = [];
+const NO_ACTIVITIES: Activity[] = [];
+
+/** The board with one card taken from its column and put at the top of another. */
+function withCardMoved(board: DealBoard, dealId: string, toStageId: string, toStageName: string): DealBoard {
+  const card = board.columns.flatMap((c) => c.deals).find((d) => d.id === dealId);
+  const target = board.columns.find((c) => c.key === toStageId || c.dealStageId === toStageId);
+  if (!card || !target) return board;
+  const moved: Deal = { ...card, dealStageId: target.dealStageId ?? card.dealStageId, stage: toStageName };
+  return {
+    ...board,
+    columns: board.columns.map((c) => {
+      const had = c.deals.some((d) => d.id === dealId);
+      if (c === target) return had ? c : { ...c, count: c.count + 1, deals: [moved, ...c.deals] };
+      return had ? { ...c, count: Math.max(0, c.count - 1), deals: c.deals.filter((d) => d.id !== dealId) } : c;
+    }),
+  };
+}
+
 export default function Pipeline() {
   const { currentOrg, isReadOnly: viewOnly } = useOrg();
   // Working deals takes records.edit: finance, the front desk and read-only members see them.
   const isReadOnly = viewOnly || !orgCan(currentOrg, PERMISSION.EditRecords);
   const money = useMoney();
-  // Every deal, for the table, list and card layouts; read only when one of them is open.
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [allDealsLoaded, setAllDealsLoaded] = useState(false);
-  // The board and the figures above it, from the server, a page of cards per stage.
-  const [board, setBoard] = useState<DealBoard | null>(null);
+  // Everything here is read through the shared cache, keyed by workspace, and read again
+  // after a save that changed it (hooks/queries/invalidation).
+  const ws = useWorkspaceScope();
+  const writeCache = useCacheWriter();
   const [loadingMore, setLoadingMore] = useState<string | null>(null);
   const [boardSort, setBoardSort] = useState<NonNullable<DealBoardQuery['sort']>>('close');
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [pipelinesLoaded, setPipelinesLoaded] = useState(false);
+  // The pipelines first: the board is drawn for one of them.
+  const pipelinesQuery = usePipelines();
+  const pipelines: Pipeline[] = pipelinesQuery.data ?? NO_PIPELINES;
+  const pipelinesLoaded = !pipelinesQuery.isPending;
   const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  usePageLoading(loading);
+  useEffect(() => {
+    if (pipelines.length) setSelectedPipelineId((prev) => prev ?? pipelines[0]?.id ?? null);
+  }, [pipelines]);
   // How this person likes deals shown: the board, a table, a list or cards, saved for them.
   const view = useViewPreference('deals', { layouts: ['board', 'table', 'list', 'grid'] });
+  // Every deal, for the table, list and card layouts; read only when one of them is open.
+  const allDealsQuery = useAllDeals(view.layout !== 'board');
+  const deals: Deal[] = allDealsQuery.data ?? NO_DEALS;
+  /** Show a change in the full list at once, if it has been read; the read after the save confirms it. */
+  const setDeals = useCallback((update: (prev: Deal[]) => Deal[]) => {
+    writeCache<Deal[]>(queryKeys.deals.all(ws), (current) => current && update(current));
+  }, [writeCache, ws]);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -158,8 +197,7 @@ export default function Pipeline() {
     description: '',
     probability: '',
   });
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const contacts: Contact[] = useAllContacts().data ?? NO_CONTACTS;
   const [saving, setSaving] = useState(false);
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [editForm, setEditForm] = useState({ name: '', value: '', currency: '', expectedCloseDate: '', companyId: '', pipelineId: '', stageId: '', assigneeId: '', description: '', probability: '' });
@@ -167,11 +205,13 @@ export default function Pipeline() {
   const [deleteConfirmDeal, setDeleteConfirmDeal] = useState<Deal | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [detailDeal, setDetailDeal] = useState<Deal | null>(null);
+  // The companies to pick from, read once a deal dialog opens.
+  const companies: Company[] = useAllCompanies(createOpen || !!editDeal || !!detailDeal).data ?? NO_COMPANIES;
 
   const openDealDetail = (deal: Deal) => {
     window.open(recordHref(`/deals/${deal.id}`, deal.name, 'Deals'), '_blank', 'noopener,noreferrer');
   };
-  const [orgMembers, setOrgMembers] = useState<{ userId: string; name: string; email: string; role: number }[]>([]);
+  const orgMembers: OrgMemberDto[] = useOrgMembers().data ?? NO_MEMBERS;
   
   // HP-8: Close deal dialog state
   const [closeDeal, setCloseDeal] = useState<Deal | null>(null);
@@ -189,7 +229,9 @@ export default function Pipeline() {
   const [filterStale, setFilterStale] = useState(false);
 
   // HP-7 & HP-8: Tasks linked to deals
-  const [allTasks, setAllTasks] = useState<TaskItemType[]>([]);
+  const allTasks: TaskItemType[] = useTasksList().data ?? NO_TASKS;
+  const setAllTasks = (update: (prev: TaskItemType[]) => TaskItemType[]) =>
+    writeCache<TaskItemType[]>(tasksKey(ws), (current) => update(current ?? []));
   const [addTaskDealId, setAddTaskDealId] = useState<string | null>(null);
   const [addTaskTitle, setAddTaskTitle] = useState('');
   const [savingTask, setSavingTask] = useState(false);
@@ -206,8 +248,13 @@ export default function Pipeline() {
   }, [allTasks]);
   
   // Deal activities state
-  const [dealActivities, setDealActivities] = useState<Activity[]>([]);
-  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  // The open deal's activities, read when its detail opens.
+  const dealActivitiesQuery = useRecordActivities('deal', detailDeal?.id);
+  const dealActivities: Activity[] = dealActivitiesQuery.data ?? NO_ACTIVITIES;
+  const activitiesLoading = !!detailDeal && dealActivitiesQuery.isPending;
+  const setDealActivities = (update: (prev: Activity[]) => Activity[]) => {
+    if (detailDeal) writeCache<Activity[]>(recordActivitiesKey(ws, 'deal', detailDeal.id), (current) => update(current ?? []));
+  };
   const [activityForm, setActivityForm] = useState<{ type: string; subject: string; body: string; facts?: ActivityFactsDraft }>({ type: 'note', subject: '', body: '' });
   const [savingActivity, setSavingActivity] = useState(false);
   
@@ -224,6 +271,42 @@ export default function Pipeline() {
     const fallbackPipelineId = pipelines[0]?.id;
     return deals.filter((d) => (d.pipelineId ?? fallbackPipelineId) === selectedPipelineId);
   }, [deals, pipelines, selectedPipelineId]);
+
+  // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee). The board
+  // sends these to the server; the table, list and card layouts filter every deal here.
+  const currentUserId = useMemo(() => getCurrentUser()?.id, []);
+  // Typed filters wait for a pause in the typing, so each keystroke is not a request.
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const debouncedMin = useDebounce(filterValueMin, 300);
+  const debouncedMax = useDebounce(filterValueMax, 300);
+  const boardQuery = useMemo<DealBoardQuery>(() => ({
+    pipelineId: selectedPipelineId ?? undefined,
+    take: BOARD_PAGE,
+    sort: boardSort,
+    search: debouncedSearch.trim() || undefined,
+    mine: filterMyDeals || undefined,
+    assigneeId: filterAssignee !== 'all' && filterAssignee !== 'unassigned' ? filterAssignee : undefined,
+    unassigned: filterAssignee === 'unassigned' || undefined,
+    minAmount: parseMoneyInput(debouncedMin) ?? undefined,
+    maxAmount: parseMoneyInput(debouncedMax) ?? undefined,
+    closeFrom: filterCloseDateFrom || undefined,
+    closeTo: filterCloseDateTo || undefined,
+    staleOnly: filterStale || undefined,
+  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, debouncedMin, debouncedMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
+
+  // The board for the pipeline on screen and the filters set, a page of cards per stage.
+  // Keyed by those filters, so an older filter's answer can never replace the board for
+  // newer ones, and the read for filters changed since is cancelled. It waits for the
+  // pipelines, so the first read is already for the pipeline on screen.
+  const boardReady = pipelinesLoaded && (pipelines.length === 0 || selectedPipelineId !== null);
+  const boardResult = useDealBoard(boardQuery, boardReady);
+  const board: DealBoard | null = boardResult.data ?? null;
+  const loading = !boardReady || boardResult.isPending;
+  usePageLoading(loading);
+  /** Change the board on screen at once; the read after the save puts the server's figures back. */
+  const setBoard = useCallback((update: (prev: DealBoard) => DealBoard) => {
+    writeCache<DealBoard>(dealBoardKey(ws, boardQuery), (current) => current && update(current));
+  }, [writeCache, ws, boardQuery]);
 
   // The figures above the board: the pipeline's, worked out by the server over all its
   // deals, whatever the filters. They were added up here from every deal downloaded.
@@ -247,27 +330,6 @@ export default function Pipeline() {
     };
   }, [summary]);
 
-  // Filter deals — includes HP-7 (My Deals) and HP-10 (value range, assignee). The board
-  // sends these to the server; the table, list and card layouts filter every deal here.
-  const currentUserId = useMemo(() => getCurrentUser()?.id, []);
-  // Typed filters wait for a pause in the typing, so each keystroke is not a request.
-  const debouncedSearch = useDebounce(searchQuery, 300);
-  const debouncedMin = useDebounce(filterValueMin, 300);
-  const debouncedMax = useDebounce(filterValueMax, 300);
-  const boardQuery = useMemo<DealBoardQuery>(() => ({
-    pipelineId: selectedPipelineId ?? undefined,
-    take: BOARD_PAGE,
-    sort: boardSort,
-    search: debouncedSearch.trim() || undefined,
-    mine: filterMyDeals || undefined,
-    assigneeId: filterAssignee !== 'all' && filterAssignee !== 'unassigned' ? filterAssignee : undefined,
-    unassigned: filterAssignee === 'unassigned' || undefined,
-    minAmount: parseMoneyInput(debouncedMin) ?? undefined,
-    maxAmount: parseMoneyInput(debouncedMax) ?? undefined,
-    closeFrom: filterCloseDateFrom || undefined,
-    closeTo: filterCloseDateTo || undefined,
-    staleOnly: filterStale || undefined,
-  }), [selectedPipelineId, boardSort, debouncedSearch, filterMyDeals, filterAssignee, debouncedMin, debouncedMax, filterCloseDateFrom, filterCloseDateTo, filterStale]);
 
   const filteredDeals = useMemo(() => {
     let result = [...pipelineDeals];
@@ -333,39 +395,14 @@ export default function Pipeline() {
     return filterStage === 'all' ? columns : columns.filter((c) => c.name === filterStage);
   }, [board, filterStage]);
 
-  // A later answer for older filters must not replace the board for newer ones.
-  const boardRequest = useRef(0);
-  const reloadBoard = useCallback(async () => {
-    const request = ++boardRequest.current;
-    try {
-      const next = await getDealBoard(boardQuery);
-      if (request === boardRequest.current) setBoard(next);
-    } catch {
-      if (request === boardRequest.current) toast.error(messages.errors.loadFailed);
-    } finally {
-      if (request === boardRequest.current) setLoading(false);
-    }
-  }, [boardQuery]);
-
-  useEffect(() => {
-    if (pipelinesLoaded) void reloadBoard();
-  }, [pipelinesLoaded, reloadBoard]);
-
-  /** Every deal, for the table, list and card layouts. */
-  const reloadDeals = useCallback(() => {
-    getDeals()
-      .then((list) => { setDeals(list); setAllDealsLoaded(true); })
-      .catch(() => toast.error(messages.errors.loadFailed));
-  }, []);
-
-  useEffect(() => {
-    if (view.layout !== 'board' && !allDealsLoaded) reloadDeals();
-  }, [view.layout, allDealsLoaded, reloadDeals]);
-
-  /** The board again after a change, and every deal too if a layout reads them. */
+  /**
+   * Read the board again now, and every deal if a layout shows them: after duplicates are
+   * merged, after a refused save, and on retry. A save of a deal does not need it: the
+   * cache reads the deals again once the save is announced.
+   */
   const refresh = () => {
-    void reloadBoard();
-    if (allDealsLoaded) reloadDeals();
+    void boardResult.refetch();
+    if (view.layout !== 'board') void allDealsQuery.refetch();
   };
 
   /** The next cards of one column, with the board's filters and order. */
@@ -387,48 +424,6 @@ export default function Pipeline() {
       setLoadingMore(null);
     }
   };
-
-  // The pipelines first: the board is drawn for one of them.
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([getContacts(), getPipelines(), getTasks()])
-      .then(([contactsData, pipelinesData, tasksData]) => {
-        if (!cancelled) {
-          setContacts(contactsData);
-          setPipelines(pipelinesData ?? []);
-          setAllTasks(tasksData ?? []);
-          if (pipelinesData?.length) setSelectedPipelineId((prev) => prev ?? pipelinesData[0]?.id ?? null);
-        }
-      })
-      .catch(() => { if (!cancelled) toast.error(messages.errors.loadFailed); })
-      .finally(() => { if (!cancelled) setPipelinesLoaded(true); });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    if (createOpen || editDeal || detailDeal) {
-      getCompanies().then(setCompanies).catch(() => {});
-    }
-  }, [createOpen, editDeal, detailDeal]);
-
-  // Fetch activities when deal detail is opened
-  useEffect(() => {
-    if (detailDeal) {
-      setActivitiesLoading(true);
-      setDealActivities([]);
-      getActivitiesByDeal(detailDeal.id)
-        .then(setDealActivities)
-        .catch(() => setDealActivities([]))
-        .finally(() => setActivitiesLoading(false));
-    }
-  }, [detailDeal]);
-
-  useEffect(() => {
-    const orgId = getCurrentOrganizationId();
-    if (orgId) getOrgMembers(orgId).then(setOrgMembers).catch(() => setOrgMembers([]));
-    else setOrgMembers([]);
-  }, []);
 
   useEffect(() => {
     if (editDeal) setEditForm(editFormFor(editDeal));
@@ -486,17 +481,23 @@ export default function Pipeline() {
     const payload: { stage: string; dealStageId?: string; isWon?: boolean } = { stage: newStageName };
     if (/^[0-9a-f-]{36}$/i.test(newStageId)) payload.dealStageId = newStageId;
     if (isWon !== undefined) payload.isWon = isWon;
+    // The card moves to its new column at once. The columns' counts, money and stale
+    // deals are the server's to work out again, which the cache does once the save is
+    // announced; a refused move puts the board back as it was.
+    const before = board;
+    if (deal) setBoard((prev) => withCardMoved(prev, dealId, newStageId, newStageName));
+    const putBack = () => { if (before) writeCache<DealBoard>(dealBoardKey(ws, boardQuery), () => before); };
     try {
       const updated = await updateDeal(dealId, payload);
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === dealId ? updated : d)));
         toast.success(messages.success.dealMoved);
-        // The columns' counts, money and stale deals are the server's to work out again.
-        refresh();
       } else {
+        putBack();
         toast.error(messages.errors.generic);
       }
     } catch {
+      putBack();
       toast.error(messages.errors.generic);
     }
   };
@@ -508,7 +509,6 @@ export default function Pipeline() {
       const ok = await deleteDeal(deleteConfirmDeal.id);
       if (ok) {
         setDeals((prev) => prev.filter((d) => d.id !== deleteConfirmDeal.id));
-        refresh();
         toast.success(messages.success.dealDeleted);
         setDeleteConfirmDeal(null);
         if (detailDeal?.id === deleteConfirmDeal.id) setDetailDeal(null);
@@ -564,7 +564,6 @@ export default function Pipeline() {
       });
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === editDeal.id ? updated : d)));
-        refresh();
         toast.success(messages.success.dealUpdated);
         setEditDeal(null);
         if (detailDeal?.id === editDeal.id) setDetailDeal(updated);
@@ -646,7 +645,6 @@ export default function Pipeline() {
       });
       if (created) {
         setDeals((prev) => [created, ...prev]);
-        refresh();
         toast.success(messages.success.dealCreated);
         setCreateOpen(false);
         const pipelineId = selectedPipelineId ?? pipelines[0]?.id ?? '';
@@ -718,7 +716,6 @@ export default function Pipeline() {
       });
       if (updated) {
         setDeals((prev) => prev.map((d) => (d.id === closeDeal.id ? updated : d)));
-        refresh();
         toast.success(closeAsWon ? 'Deal marked as Won!' : 'Deal marked as Lost');
         setCloseDeal(null);
         setCloseReason('');
@@ -1245,8 +1242,13 @@ export default function Pipeline() {
             </motion.div>
           )}
 
+        {!loading && boardResult.isError && board && (
+          <LoadFailed stale what="The board" error={boardResult.error} onRetry={refresh} retrying={boardResult.isFetching} className="mb-4" />
+        )}
         {loading ? (
           <KanbanSkeleton columns={5} />
+        ) : boardResult.isError && !board ? (
+          <LoadFailed what="Your deals" error={boardResult.error} onRetry={refresh} retrying={boardResult.isFetching} />
         ) : !hasDeals ? (
           /* Empty State - matching Leads page style */
           <div className="w-full">

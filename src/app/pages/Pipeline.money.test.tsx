@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { withQueries } from '@/test/queryWrapper';
 import type { Deal, DealBoardQuery } from '@/app/api/types';
 import { formatMoney } from '@/app/lib/money';
 import { demoBoard } from '@/app/api/dealBoardDemo';
@@ -62,7 +63,7 @@ beforeEach(() => {
 
 // The board loads four lists before it draws anything; wait for a deal on it.
 const show = async () => {
-  render(<MemoryRouter><Pipeline /></MemoryRouter>);
+  render(withQueries(<MemoryRouter><Pipeline /></MemoryRouter>));
   await screen.findAllByText('Fondation Léman', undefined, { timeout: 5000 });
 };
 

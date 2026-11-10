@@ -211,18 +211,24 @@ export function useActivitiesPage(params: GetActivitiesPagedOptions, enabled = t
   });
 }
 
-const BY_RECORD = { lead: getActivitiesByLead, deal: getActivitiesByDeal, contact: getActivitiesByContact } as const;
+type RecordKind = 'lead' | 'deal' | 'contact';
 
-export function recordActivitiesKey(ws: WorkspaceScope, kind: keyof typeof BY_RECORD, id: string) {
+function activitiesOf(kind: RecordKind, id: string, req: { signal: AbortSignal }) {
+  if (kind === 'lead') return getActivitiesByLead(id, req);
+  if (kind === 'deal') return getActivitiesByDeal(id, req);
+  return getActivitiesByContact(id, req);
+}
+
+export function recordActivitiesKey(ws: WorkspaceScope, kind: RecordKind, id: string) {
   return queryKeys.activities.forRecord(ws, kind, id);
 }
 
 /** One lead's, deal's or contact's activities. Off while `id` is empty. */
-export function useRecordActivities(kind: keyof typeof BY_RECORD, id: string | null | undefined) {
+export function useRecordActivities(kind: RecordKind, id: string | null | undefined) {
   const ws = useWorkspaceScope();
   return useQuery({
     queryKey: recordActivitiesKey(ws, kind, id ?? ''),
-    queryFn: ({ signal }) => timed(signal, (s) => BY_RECORD[kind](id!, { signal: s })),
+    queryFn: ({ signal }) => timed(signal, (s) => activitiesOf(kind, id!, { signal: s })),
     enabled: !!id,
   });
 }
