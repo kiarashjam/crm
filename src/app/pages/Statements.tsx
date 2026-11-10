@@ -9,8 +9,12 @@
 // The same statement comes as a PDF built on the server (Download PDF), and can be
 // emailed to the member with that PDF attached, through the outbox (Email statement):
 // the browser's print view is no longer the only copy a member can be given.
+//
+// With the club's bank details set, the PDF carries a Swiss QR-bill whose reference says
+// whose statement it is; with Stripe set up, the member can be sent a link to pay online.
 
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   FileText,
   Printer,
@@ -19,6 +23,8 @@ import {
   ChevronRight,
   Download,
   Mail,
+  CreditCard,
+  QrCode,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -35,13 +41,14 @@ import {
 import type { StatementLine } from '@/app/api/charges';
 import { usePageLoading } from '@/app/components/LoadingOverlay';
 import { ClubReadState } from '@/app/components/ClubReadState';
-import { NONE, useClubMembers, useClubReads, useMemberStatement } from '@/app/hooks/queries';
+import { NONE, useClubMembers, useClubReads, useMemberStatement, usePaymentStatus } from '@/app/hooks/queries';
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
 import { downloadStatementPdf, emailStatement } from '@/app/api/billing';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
+import { PayOnlineDialog } from '@/app/components/payments/PayOnlineDialog';
 
 function formatDate(iso: string): string {
   try {
@@ -97,6 +104,9 @@ export default function Statements() {
   const reads = useClubReads(membersQuery, statementQuery);
   usePageLoading(reads.loading);
   const statement = statementQuery.data;
+  // What the club set up for being paid: a failed read only hides the offers, it is not the statement.
+  const payment = usePaymentStatus().data;
+  const [paying, setPaying] = useState(false);
 
   const openingBalance = owed(statement?.openingBalance ?? 0);
   const closingBalance = owed(statement?.closingBalance ?? 0);
@@ -170,6 +180,11 @@ export default function Statements() {
                     <Button variant="outline" onClick={() => void sendByEmail()} disabled={!statement || emailing} className={heroSecondary}>
                       {emailing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Email statement
                     </Button>
+                    {payment?.onlinePayments && (
+                      <Button variant="outline" onClick={() => setPaying(true)} disabled={!member} className={heroSecondary}>
+                        <CreditCard className="h-4 w-4" /> Pay online
+                      </Button>
+                    )}
                   </WriteOnly>
                   <Button onClick={() => void downloadPdf()} disabled={!statement || downloading} className={heroPrimary('slate')}>
                     {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Download PDF
@@ -205,6 +220,33 @@ export default function Statements() {
               </div>
             </PageHero>
           </div>
+
+          {payment && (
+            <p className="mb-4 inline-flex items-start gap-2 text-sm text-slate-500 print:hidden">
+              <QrCode className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              {payment.qrBills ? (
+                <span>
+                  The PDF carries a Swiss QR-bill whose reference says whose statement it is: a payment that comes back in the
+                  bank&apos;s file is matched to the member by it.
+                </span>
+              ) : (
+                <span>
+                  The PDF carries no QR-bill yet: it needs the club&apos;s IBAN and address, set in{' '}
+                  <Link to="/hospitality-settings?tab=payments" className="font-medium underline">Club settings, Payments</Link>.
+                </span>
+              )}
+            </p>
+          )}
+
+          {member && (
+            <PayOnlineDialog
+              open={paying}
+              onOpenChange={setPaying}
+              memberId={member.id}
+              memberName={`${member.firstName} ${member.lastName}`.trim()}
+              canEmail={!!member.email}
+            />
+          )}
 
           <ClubReadState reads={reads} what="The statement">
           {reads.loading ? (
