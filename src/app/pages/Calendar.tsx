@@ -27,6 +27,7 @@ import PageHero from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
 import { useOrgOptional } from '@/app/contexts/OrgContext';
+import { useModules } from '@/app/hooks/useModules';
 import { useWorkScope } from '@/app/lib/workScope';
 import { OUTCOME_LABELS } from '@/app/lib/activityFacts';
 import { cn } from '@/app/components/ui/utils';
@@ -119,8 +120,19 @@ export default function Calendar() {
   const [entriesState, setEntriesState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const [truncated, setTruncated] = useState(false);
 
+  // The club's events and reservations are the Club module's: a workspace that has turned
+  // it off has none to show, and the server refuses to read them.
+  const clubOn = useModules().club;
+
   // An outage used to leave an empty month that read as "nothing booked tonight".
   const loadClub = useCallback(async () => {
+    if (!clubOn) {
+      setEvents([]);
+      setReservations([]);
+      setClubFailed(false);
+      setLoading(false);
+      return;
+    }
     try {
       const [e, r] = await Promise.all([getEvents(), getReservations()]);
       setEvents(e);
@@ -131,7 +143,7 @@ export default function Calendar() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [clubOn]);
 
   useEffect(() => {
     void loadClub();
@@ -242,9 +254,7 @@ export default function Calendar() {
             icon={CalendarDays}
             tone="cyan"
             title="Calendar"
-            subtitle={mine
-              ? 'Your tasks and meetings, with the club’s events and reservations, on a single grid.'
-              : 'The team’s tasks and meetings, with the club’s events and reservations, on a single grid.'}
+            subtitle={`${mine ? 'Your' : 'The team’s'} tasks and meetings${clubOn ? ', with the club’s events and reservations,' : ''} on a single grid.`}
             actions={inWorkspace ? <WorkScopeToggle value={scope} onChange={setScope} mineLabel="Mine" teamLabel="Team" /> : undefined}
           />
 
@@ -298,8 +308,12 @@ export default function Calendar() {
                   <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" aria-hidden="true" />Tasks</li>
                   <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-400" aria-hidden="true" />Meetings</li>
                   <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-sky-400" aria-hidden="true" />Leads’ meetings</li>
-                  <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-pink-400" aria-hidden="true" />Events</li>
-                  <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" />Reservations</li>
+                  {clubOn && (
+                    <>
+                      <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-pink-400" aria-hidden="true" />Events</li>
+                      <li className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" />Reservations</li>
+                    </>
+                  )}
                   {entriesState === 'loading' && (
                     <li className="flex items-center gap-1 text-slate-500" role="status">
                       <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />Loading tasks and meetings
@@ -448,6 +462,7 @@ export default function Calendar() {
                   )}
                 </section>
 
+                {clubOn && (<>
                 <section className="mb-5">
                   <h3 className="text-sm font-semibold text-slate-700 inline-flex items-center gap-2 mb-2">
                     <CalendarHeart className="w-4 h-4 text-pink-600" /> Events ({selectedEvents.length})
@@ -512,6 +527,7 @@ export default function Calendar() {
                     </ul>
                   )}
                 </section>
+                </>)}
               </StaggerItem>
             </div>
           )}

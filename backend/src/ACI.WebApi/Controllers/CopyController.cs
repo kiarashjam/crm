@@ -23,7 +23,6 @@ namespace ACI.WebApi.Controllers;
 [Authorize]
 [Produces("application/json")]
 [Requires(MemberPermissions.EditRecords, WritesOnly = true)]
-[InModule(WorkspaceModules.Sales)]
 public class CopyController : ControllerBase
 {
     private readonly ICopyGeneratorApplicationService _generatorService;

@@ -13,6 +13,7 @@ import {
 } from '@/app/api/applications';
 import type { Household } from '@/app/api/households';
 import { useMemberLinks, usePersonMembership } from '@/app/hooks/queries';
+import { useModules } from '@/app/hooks/useModules';
 import { cn } from '@/app/components/ui/utils';
 
 const STATUS_LABEL: Record<Application['status'], string> = {
@@ -99,7 +100,19 @@ function HouseholdLine({ household, memberId }: { household: Household; memberId
  * What a lead's or a contact's page shows of the club: the member this person became, their
  * applications and their household, and a way to start an application for them.
  */
-export function PersonMembershipCard({ kind, id, personName, readOnly = false }: {
+export function PersonMembershipCard(props: {
+  kind: 'lead' | 'contact';
+  id: string;
+  personName: string;
+  readOnly?: boolean;
+}) {
+  // The club is a module the workspace can turn off; then a lead or a contact has no
+  // membership to show, and the server refuses to read one.
+  const clubOn = useModules().club;
+  return clubOn ? <PersonMembershipBody {...props} /> : null;
+}
+
+function PersonMembershipBody({ kind, id, personName, readOnly = false }: {
   kind: 'lead' | 'contact';
   id: string;
   personName: string;
@@ -168,6 +181,8 @@ export function PersonMembershipCard({ kind, id, personName, readOnly = false }:
 export function MemberLinksCard({ memberId, className }: { memberId: string; className?: string }) {
   const query = useMemberLinks(memberId);
   const data = query.data;
+  // With the Sales module off the lead's page says so, so the lead is named, not linked.
+  const salesOn = useModules().sales;
   return (
     <Shell id={`member-links-${memberId}`} title="Lead, contact and household" className={className}>
       {query.isPending ? (
@@ -181,9 +196,13 @@ export function MemberLinksCard({ memberId, className }: { memberId: string; cla
               {data!.leadId && (
                 <li>
                   <span className="text-xs text-slate-500">Lead </span>
-                  <Link to={`/leads/${data!.leadId}`} className="inline-flex items-center gap-1 font-medium text-slate-900 hover:text-indigo-700">
-                    {data!.leadName ?? 'Open the lead'} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </Link>
+                  {salesOn ? (
+                    <Link to={`/leads/${data!.leadId}`} className="inline-flex items-center gap-1 font-medium text-slate-900 hover:text-indigo-700">
+                      {data!.leadName ?? 'Open the lead'} <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-slate-900">{data!.leadName ?? 'A lead'}</span>
+                  )}
                   {data!.leadStatus && <span className="ml-1.5 text-xs text-slate-500">{data!.leadStatus}</span>}
                 </li>
               )}

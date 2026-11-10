@@ -39,6 +39,7 @@ public class EndpointModuleTests
         ["SearchController"] = "searches both; with Sales off it leaves leads and deals out of what it finds",
         ["EmailController"] = "email to contacts, which belong to both",
         ["TemplatesController"] = "email templates, used for contacts of both modules",
+        ["CopyController"] = "the AI writer, which drafts the email composer's messages to contacts of both modules",
         ["AutomationsController"] = "rules on records of both modules",
         ["ImportsController"] = "files of contacts and companies are for both; a file of leads is refused with Sales off (the action checks)",
         ["WebhookController"] = "the workspace's keys, and leads posted by website forms: refusing those would lose enquiries nobody could be told about",

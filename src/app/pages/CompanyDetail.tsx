@@ -16,6 +16,7 @@ import { getCompanies, getCompanyById, getContactsPaged, getDealsPaged, updateCo
 import { isEditConflict, showEditConflict } from '@/app/lib/editConflict';
 import { authFetchJson, servesDemoData } from '@/app/api/apiClient';
 import { useDocumentTitle } from '@/app/hooks/useDocumentTitle';
+import { useModules } from '@/app/hooks/useModules';
 import type { Company, Contact, Deal } from '@/app/api/types';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
@@ -40,6 +41,8 @@ type CompanyRaw = Company & Record<string, unknown>;
 
 export default function CompanyDetail() {
   const money = useMoney();
+  // Deals are the Sales module's: with it turned off a company has none to show.
+  const salesOn = useModules().sales;
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [company, setCompany] = useState<Company | null>(null);
@@ -105,6 +108,11 @@ export default function CompanyDetail() {
   // HIGH-1: Load deals linked to this company — server-side filtered by companyId
   useEffect(() => {
     if (!id) return;
+    if (!salesOn) {
+      setDeals([]);
+      setDealsLoading(false);
+      return;
+    }
     setDealsLoading(true);
     getDealsPaged({ page: 1, pageSize: 100, companyId: id })
       .then((result) => {
@@ -112,7 +120,7 @@ export default function CompanyDetail() {
       })
       .catch(() => setDeals([]))
       .finally(() => setDealsLoading(false));
-  }, [id]);
+  }, [id, salesOn]);
 
   // Initialize edit form when company loads
   useEffect(() => {
@@ -275,7 +283,7 @@ export default function CompanyDetail() {
             }
             stats={[
               { label: 'Contacts', value: contacts.length, icon: Users, tone: 'emerald', hint: contacts[0] ? `incl. ${contacts[0].name}` : 'none yet' },
-              { label: 'Deals', value: deals.length, icon: Briefcase, tone: 'violet', hint: deals.length > 0 ? `${money.formatDeals(deals)} in all` : 'none yet' },
+              ...(salesOn ? [{ label: 'Deals', value: deals.length, icon: Briefcase, tone: 'violet' as const, hint: deals.length > 0 ? `${money.formatDeals(deals)} in all` : 'none yet' }] : []),
               { label: 'Industry', value: company.industry || '—', icon: Building2, tone: 'blue', hint: company.size ? `${company.size} people` : undefined },
               { label: 'Since', value: createdLabel ?? '—', icon: Clock, tone: 'amber', hint: company.updatedAtUtc ? `updated ${new Date(company.updatedAtUtc).toLocaleDateString()}` : undefined },
             ]}
@@ -317,7 +325,7 @@ export default function CompanyDetail() {
                 )}
               </RecordCard>
 
-              <RecordCard title="Deals" icon={<Briefcase className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={1}>
+              {salesOn && <RecordCard title="Deals" icon={<Briefcase className="h-3.5 w-3.5" />} tone="violet" count={deals.length} index={1}>
                 {dealsLoading ? (
                   <div className="py-6 text-center">
                     <Spinner size={22} className="mx-auto mb-2" />
@@ -357,7 +365,7 @@ export default function CompanyDetail() {
                     ))}
                   </ul>
                 )}
-              </RecordCard>
+              </RecordCard>}
             </div>
 
             <aside className="min-w-0 space-y-5">

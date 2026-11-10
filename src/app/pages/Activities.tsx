@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
+import { useModules } from '@/app/hooks/useModules';
 import { PageTransition } from '@/app/components/PageTransition';
 import { ContentSkeleton } from '@/app/components/PageSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
@@ -173,9 +174,11 @@ export default function Activities() {
   };
 
   // The pickers in the log dialog. Each fails on its own and leaves its picker empty.
+  // Leads and deals are the Sales module's: with it turned off there are none to offer.
+  const salesOn = useModules().sales;
   const contacts: Contact[] = useAllContacts().data ?? NO_CONTACTS;
-  const deals: Deal[] = useAllDeals().data ?? NO_DEALS;
-  const leads: Lead[] = useAllLeads().data ?? NO_LEADS;
+  const deals: Deal[] = useAllDeals(salesOn).data ?? NO_DEALS;
+  const leads: Lead[] = useAllLeads(salesOn).data ?? NO_LEADS;
 
   // Calculate activity statistics
   const activityStats = useMemo(() => {
