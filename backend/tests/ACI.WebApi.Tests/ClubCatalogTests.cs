@@ -228,6 +228,38 @@ public class ClubCatalogTests
     }
 
     [Fact]
+    public async Task AChargeTakenBackForSomethingCancelled_TakesBackItsVatAtTheSameRate()
+    {
+        // A cancelled event ticket, or a booking's deposit given back, is taken back by the
+        // ledger's CancelChargeAsync: a void entry, as VoidChargeAsync makes. A void carries
+        // the VAT rate of the charge it takes back, so a statement's VAT nets to nothing; the
+        // cancellation was written before charges had a rate and carried none, so a cancelled
+        // ticket priced from the catalogue stayed in the statement's VAT.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, org) = await ClubAsync(factory);
+        var memberId = await MemberAsync(client);
+        var ticket = await ItemAsync(client, new { kind = "Ticket", name = "Gala ticket", price = 40, vatRate = 8.1 });
+        var chargeId = (await Json(await client.PostAsync("/api/charges", Body(new { memberId, catalogItemId = ticket.GetProperty("id").GetGuid() })),
+            "charge the ticket")).GetProperty("id").GetGuid();
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            // As the events' service does when a registration is cancelled.
+            using var acting = scope.ServiceProvider.GetRequiredService<ACI.Application.Interfaces.ITenantContext>().ActFor(org, null);
+            var cancelled = await scope.ServiceProvider.GetRequiredService<ACI.Application.Services.IClubLedger>()
+                .CancelChargeAsync(org, chargeId, "The gala was cancelled");
+            cancelled.IsSuccess.Should().BeTrue();
+        }
+
+        var from = Uri.EscapeDataString(DateTime.UtcNow.AddDays(-1).ToString("o"));
+        var to = Uri.EscapeDataString(DateTime.UtcNow.AddDays(1).ToString("o"));
+        var statement = await Json(await client.GetAsync($"/api/members/{memberId}/statement?from={from}&to={to}"), "read the statement");
+        statement.GetProperty("lines").EnumerateArray()
+            .Select(l => (l.GetProperty("entryType").GetString(), l.TryGetProperty("vatRate", out var vat) ? vat.GetDecimal() : (decimal?)null))
+            .Should().BeEquivalentTo([("Charge", (decimal?)8.1m), ("Void", (decimal?)8.1m)], "the void takes back the 8.1% the ticket carried");
+    }
+
+    [Fact]
     public async Task ATabRingsUpAMenuItemAtItsCataloguePrice_AndASubscriptionCopiesItsPriceSoALaterChangeLeavesItAlone()
     {
         using var factory = new CustomWebApplicationFactory();

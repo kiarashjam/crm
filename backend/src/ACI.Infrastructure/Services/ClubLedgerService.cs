@@ -322,6 +322,10 @@ public sealed partial class ClubLedgerService : IClubLedger
             PostedAtUtc = DateTime.UtcNow,
             ReversesChargeId = charge.Id,
             Reason = why,
+            // As VoidChargeAsync's: the VAT the charge carried is taken back at the same rate,
+            // so a cancelled ticket priced from the catalogue leaves the statement's VAT.
+            VatRate = charge.VatRate,
+            CatalogItemId = charge.CatalogItemId,
         };
         Stamp(reversal);
         Touch(account);
