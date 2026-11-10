@@ -313,8 +313,14 @@ public sealed class CampaignService : ICampaignService
     private async Task SendClaimedAsync(Campaign campaign, CancellationToken ct)
     {
         var org = campaign.OrganizationId;
+        // Of two members at one address who may both have it, the one who joined first gets
+        // the email (greeted by name) and the other is recorded as sharing it: the same answer
+        // every time, and one staff can explain. In id order it was a coin toss.
         var members = Matching(await _club.MembersAsync(org, ct), ReadSegment(campaign.Segment))
-            .OrderBy(m => m.Id)
+            .OrderBy(m => m.JoinedAtUtc)
+            .ThenBy(m => m.LastName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.FirstName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(m => m.Id)
             .ToList();
         var already = await _campaigns.RecipientsOfAsync(campaign.Id, ct);
         var done = already.Select(r => r.MemberId).ToHashSet();

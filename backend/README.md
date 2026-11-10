@@ -265,7 +265,7 @@ Every email to a club member goes through the same outbox, one message per membe
 each says what came of it: `queued`, `sent`, `delivered`, `opened` (where open tracking is
 on), `bounced`, or not sent and why (`suppressed`: no consent to marketing, an unsubscribe,
 do not contact; `skipped`: no usable address, or another member at the same address gets
-this campaign). A message says what it is for. **Marketing** goes only to members whose
+this campaign, the one who joined first). A message says what it is for. **Marketing** goes only to members whose
 latest answer for marketing by email is yes and carries an unsubscribe link (with
 `List-Unsubscribe` and `List-Unsubscribe-Post` headers); **service** (statements,
 bookings, their application) goes whatever they said about marketing.

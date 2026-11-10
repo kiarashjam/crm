@@ -238,6 +238,37 @@ public class CampaignTests
     }
 
     [Fact]
+    public async Task OfTwoMembersAtOneAddressTheOneWhoJoinedFirstGetsTheEmail()
+    {
+        await using var app = new App();
+        var club = await ClubAsync(app);
+        async Task<Guid> Joined(string first, string email, DateTime joinedAtUtc) =>
+            (await Json(await club.Owner.PostAsync("/api/members", Body(new
+            {
+                firstName = first, lastName = "Dupont", email, tier = "Gold", status = "Active", joinedAtUtc,
+            })), $"add {first}")).GetProperty("id").GetGuid();
+        // Six households, the newer member's record made first in each: in record order the
+        // member who joined first got the email about one time in two, and the answer changed
+        // from one campaign to the next.
+        var firstJoined = new List<Guid>();
+        var joinedLater = new List<Guid>();
+        for (var i = 0; i < 6; i++)
+        {
+            joinedLater.Add(await Joined($"Zoe{i}", $"home{i}@example.ch", new DateTime(2026, 1, 5, 0, 0, 0, DateTimeKind.Utc)));
+            firstJoined.Add(await Joined($"Yann{i}", $"HOME{i}@example.ch", new DateTime(2019, 3, 1, 0, 0, 0, DateTimeKind.Utc)));
+        }
+        var id = (await CampaignAsync(club, purpose: "service")).GetProperty("id").GetGuid();
+
+        await Json(await club.Owner.PostAsync($"/api/campaigns/{id}/send", null), "send");
+
+        var recipients = await RecipientsAsync(club, id);
+        foreach (var member in firstJoined) Recipient(recipients, member).GetProperty("status").GetString().Should().Be("queued");
+        foreach (var member in joinedLater) Recipient(recipients, member).GetProperty("status").GetString().Should().Be("skipped");
+        await app.DispatchOutboxAsync();
+        app.Mail.Sent.Should().HaveCount(6).And.OnlyContain(e => e.TextBody.StartsWith("Dear Yann"));
+    }
+
+    [Fact]
     public async Task ASendingThatStoppedPartWayIsFinishedWithoutEmailingAnyoneTwice()
     {
         await using var app = new App();
