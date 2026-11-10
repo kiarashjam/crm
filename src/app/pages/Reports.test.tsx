@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom';
 import type { ReportSummary, Forecast, SalesTeam, ReportFilters } from '@/app/api/reporting';
 import type { Pipeline } from '@/app/api/types';
 import { formatMoney } from '@/app/lib/money';
+import { withQueries } from '@/test/queryWrapper';
 
 const summary = (p: Partial<ReportSummary> = {}): ReportSummary => ({
   period: {
@@ -31,8 +32,8 @@ const summary = (p: Partial<ReportSummary> = {}): ReportSummary => ({
 });
 const forecast: Forecast = { firstMonth: '2026-10', months: 6, scope: 'org', teamId: null, rows: [], overdue: [], noCloseDate: [] };
 
-const getReportSummary = vi.fn(async (_filters: ReportFilters) => summary());
-const getForecast = vi.fn(async (_filters: unknown) => forecast);
+const getReportSummary = vi.fn(async (_filters: ReportFilters, _req?: unknown) => summary());
+const getForecast = vi.fn(async (_filters: unknown, _req?: unknown) => forecast);
 const getDeals = vi.fn(async () => []);
 const getActivities = vi.fn(async () => []);
 const getLeads = vi.fn(async () => []);
@@ -42,8 +43,8 @@ const getPipelines = vi.fn(async (): Promise<Pipeline[]> => []);
 
 vi.mock('@/app/api/reporting', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/reporting')>()),
-  getReportSummary: (f: ReportFilters) => getReportSummary(f),
-  getForecast: (f: unknown) => getForecast(f),
+  getReportSummary: (f: ReportFilters, req?: unknown) => getReportSummary(f, req),
+  getForecast: (f: unknown, req?: unknown) => getForecast(f, req),
   getSalesTeams: () => getSalesTeams(),
 }));
 vi.mock('@/app/api', async (importOriginal) => ({
@@ -66,7 +67,7 @@ vi.mock('@/app/contexts/OrgContext', () => ({
 
 import Reports from './Reports';
 
-const renderPage = () => render(<MemoryRouter><Reports /></MemoryRouter>);
+const renderPage = () => render(withQueries(<MemoryRouter><Reports /></MemoryRouter>));
 
 beforeEach(() => {
   localStorage.clear();
@@ -84,6 +85,9 @@ beforeEach(() => {
 
 // Intl writes a no-break space after the code; the page's text is read with plain spaces.
 const swiss = (n: number) => formatMoney(n, 'CHF', { locale: 'de-CH', cents: 'never' }).replace(/\s+/g, ' ');
+
+/** The read was handed a signal, so one for filters changed since is cancelled. */
+const cancellable = expect.objectContaining({ signal: expect.any(AbortSignal) });
 
 const lastRequest = () => {
   const calls = getReportSummary.mock.calls;
@@ -111,7 +115,7 @@ describe('Reports', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Mine' }));
 
-    await waitFor(() => expect(getReportSummary).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'me' })));
+    await waitFor(() => expect(getReportSummary).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'me' }), cancellable));
   });
 
   it('offers the teams once there are any, and asks for the one picked', async () => {
@@ -122,7 +126,7 @@ describe('Reports', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'My team' }));
     fireEvent.change(await screen.findByLabelText('Team'), { target: { value: 'geneva' } });
 
-    await waitFor(() => expect(getReportSummary).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'team', teamId: 'geneva' })));
+    await waitFor(() => expect(getReportSummary).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'team', teamId: 'geneva' }), cancellable));
   });
 
   it('drops a pipeline and a team remembered from another workspace', async () => {
@@ -239,7 +243,7 @@ describe('Reports', () => {
       expect(lastRequest()).toMatchObject({
         from: '2026-10-31T23:00:00.000Z', to: '2026-11-30T23:00:00.000Z', timeZone: 'Europe/Zurich',
       });
-      expect(getForecast).toHaveBeenLastCalledWith(expect.objectContaining({ firstMonth: '2026-11' }));
+      expect(getForecast).toHaveBeenLastCalledWith(expect.objectContaining({ firstMonth: '2026-11' }), cancellable);
     });
 
     it("keeps to a workspace's own zone wherever the browser is", async () => {
@@ -250,7 +254,7 @@ describe('Reports', () => {
       expect(lastRequest()).toMatchObject({
         from: '2026-10-01T04:00:00.000Z', to: '2026-11-01T04:00:00.000Z', timeZone: 'America/New_York',
       });
-      expect(getForecast).toHaveBeenLastCalledWith(expect.objectContaining({ firstMonth: '2026-10' }));
+      expect(getForecast).toHaveBeenLastCalledWith(expect.objectContaining({ firstMonth: '2026-10' }), cancellable);
     });
   });
 
@@ -260,5 +264,16 @@ describe('Reports', () => {
 
     expect(await screen.findByText(/You are in no sales team here/)).toBeInTheDocument();
     expect(screen.queryByText('Open pipeline')).toBeNull();
+  });
+
+  it('keeps the last figures when newer filters fail, and says they are for the previous filters', async () => {
+    renderPage();
+    await screen.findByText('Anna Keller');
+    getReportSummary.mockImplementation(async () => { throw new Error('The server took too long to answer.'); });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mine' }));
+
+    expect(await screen.findByText(/What you see below is for the previous filters/)).toBeInTheDocument();
+    expect(screen.getByText('Anna Keller')).toBeInTheDocument();
   });
 });

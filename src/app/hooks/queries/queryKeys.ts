@@ -81,11 +81,14 @@ export const queryKeys = {
   },
   team: {
     members: (s: WorkspaceScope) => key(s, 'team', 'members'),
+    salesTeams: (s: WorkspaceScope) => key(s, 'team', 'sales-teams'),
   },
   reports: {
     dashboard: (s: WorkspaceScope) => key(s, 'reports', 'dashboard'),
     byStage: (s: WorkspaceScope) => key(s, 'reports', 'by-stage'),
     byAssignee: (s: WorkspaceScope) => key(s, 'reports', 'by-assignee'),
+    summary: (s: WorkspaceScope, filters: object) => key(s, 'reports', 'summary', filters),
+    forecast: (s: WorkspaceScope, params: object) => key(s, 'reports', 'forecast', params),
   },
   sequences: {
     all: (s: WorkspaceScope) => key(s, 'sequences', 'all'),

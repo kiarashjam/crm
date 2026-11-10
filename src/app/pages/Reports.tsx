@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3, TrendingUp, Target, DollarSign, Percent, Users, UserCheck,
   Gauge, Sparkles, Activity as ActivityIcon, Kanban, Filter, AlertTriangle, Info, CalendarClock, Timer,
@@ -13,12 +13,10 @@ import ReportsSkeleton from './reports/ReportsSkeleton';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
 import PageHero from '@/app/components/PageHero';
 import { cn } from '@/app/components/ui/utils';
-import { getLeads, getPipelines } from '@/app/api';
+import { getLeads } from '@/app/api';
+import { useForecast, usePipelines, useReportSummary, useSalesTeams } from '@/app/hooks/queries';
 import type { Lead, Pipeline } from '@/app/api/types';
-import {
-  getForecast, getReportSummary, getSalesTeams,
-  type Forecast, type ReportSummary, type SalesTeam,
-} from '@/app/api/reporting';
+import type { ReportSummary, SalesTeam } from '@/app/api/reporting';
 import { SalesTrackerReport } from './reports/SalesTrackerReport';
 import { ConversionReportPanel } from './reports/ConversionReportPanel';
 import { SectionHead, Kpi, Panel, NoData, BarList, Funnel, CsvButton } from './reports/ReportUI';
@@ -63,17 +61,11 @@ function lastDayOf(toIso: string, timeZone: string): string {
   return dateInputValue(new Date(Date.parse(toIso) - 1), timeZone);
 }
 
+const NO_PIPELINES: Pipeline[] = [];
+const NO_TEAMS: SalesTeam[] = [];
+
 export default function Reports() {
   const [filters, setFilters] = useState<FilterState>(() => loadSavedFilters());
-  const [summary, setSummary] = useState<ReportSummary | null>(null);
-  const [forecast, setForecast] = useState<Forecast | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [forecastError, setForecastError] = useState(false);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [teams, setTeams] = useState<SalesTeam[]>([]);
-  usePageLoading(loading);
   // Every amount is written in the workspace's number format, and its periods and
   // months begin at the workspace's midnight, not at this browser's. Month and day
   // names stay in the viewer's language, like the rest of the page.
@@ -88,70 +80,60 @@ export default function Reports() {
   const canSaveForecast = !servesDemoData() && Boolean(orgs?.hasFetched) && orgCan(org, PERMISSION.SeeAllDeals);
 
   const request = useMemo(() => toReportFilters(filters, timeZone), [filters, timeZone]);
-  const latest = useRef(0);
+
+  // The figures and the forecast for the filters on screen, read through the shared
+  // cache and keyed by those filters: a slower answer to an older filter can no longer
+  // overwrite a newer one (its request is cancelled), and the figures are read again
+  // after a save that changes what they count.
+  const summaryQuery = useReportSummary(request);
+  const forecastParams = useMemo(() => (request
+    ? { scope: request.scope, teamId: request.teamId, pipelineId: request.pipelineId, currency: request.currency, firstMonth: monthOf(new Date(), timeZone), months: 6 }
+    : null), [request, timeZone]);
+  const forecastQuery = useForecast(forecastParams);
+  // The figures last read are kept on screen when newer filters' fail: the page says
+  // they are for the previous filters. A failure renders no zeros, which would read as
+  // "you have no data" — exactly how a page earns a reputation for being wrong.
+  const [summary, setSummary] = useState<ReportSummary | null>(null);
+  useEffect(() => {
+    if (summaryQuery.data) setSummary(summaryQuery.data);
+  }, [summaryQuery.data]);
+  const error = summaryQuery.isError ? reason(summaryQuery.error, 'These figures could not be loaded.') : null;
+  const forecast = forecastQuery.data ?? null;
+  const forecastError = forecastQuery.isError;
+  // A custom period still being typed asks for nothing, and must not leave the page on
+  // its skeleton.
+  const loading = !!request && summary === null && summaryQuery.isPending;
+  const refreshing = summaryQuery.isFetching || forecastQuery.isFetching;
+  usePageLoading(loading);
+
+  const pipelinesQuery = usePipelines();
+  const teamsQuery = useSalesTeams();
+  const pipelines: Pipeline[] = pipelinesQuery.data ?? NO_PIPELINES;
+  const teams: SalesTeam[] = teamsQuery.data ?? NO_TEAMS;
 
   useEffect(() => { saveFilters(filters); }, [filters]);
 
+  // The filters are remembered per browser, not per workspace. A pipeline or team
+  // remembered from another workspace (or since deleted) is not this one's: the server
+  // refused every request for it, and the picker, which lists only this workspace's,
+  // could not show what was being asked for. Without a list there is no picker at all,
+  // so nothing is narrowed by what cannot be seen.
   useEffect(() => {
-    // The filters are remembered per browser, not per workspace. A pipeline or team
-    // remembered from another workspace (or since deleted) is not this one's: the
-    // server refused every request for it, and the picker, which lists only this
-    // workspace's, could not show what was being asked for. Without a list there
-    // is no picker at all, so nothing is narrowed by what cannot be seen.
-    getPipelines()
-      .then((list) => {
-        setPipelines(list);
-        setFilters((f) => (f.pipelineId && !list.some((p) => p.id === f.pipelineId) ? { ...f, pipelineId: '' } : f));
-      })
-      .catch(() => {
-        setPipelines([]);
-        setFilters((f) => (f.pipelineId ? { ...f, pipelineId: '' } : f));
-      });
-    const noTeams = () => setFilters((f) => (f.scope === 'team' || f.teamId ? { ...f, scope: f.scope === 'team' ? 'org' : f.scope, teamId: '' } : f));
-    getSalesTeams()
-      .then((list) => {
-        setTeams(list);
-        // "My team" remembered from a workspace that has teams, in one that has none.
-        if (list.length === 0) noTeams();
-        else setFilters((f) => (f.teamId && !list.some((t) => t.id === f.teamId) ? { ...f, teamId: '' } : f));
-      })
-      .catch(() => {
-        // A personal workspace has no teams, and the server says so with a refusal.
-        setTeams([]);
-        noTeams();
-      });
-  }, []);
-
+    if (pipelinesQuery.isPending) return;
+    const list = pipelinesQuery.data ?? [];
+    setFilters((f) => (f.pipelineId && !list.some((p) => p.id === f.pipelineId) ? { ...f, pipelineId: '' } : f));
+  }, [pipelinesQuery.isPending, pipelinesQuery.data]);
   useEffect(() => {
-    // A custom period still being typed asks for nothing, and must not leave the
-    // page on its skeleton.
-    if (!request) {
-      setLoading(false);
-      return;
+    if (teamsQuery.isPending) return;
+    // A personal workspace has no teams, and the server says so with a refusal.
+    const list = teamsQuery.data ?? [];
+    if (list.length === 0) {
+      // "My team" remembered from a workspace that has teams, in one that has none.
+      setFilters((f) => (f.scope === 'team' || f.teamId ? { ...f, scope: f.scope === 'team' ? 'org' : f.scope, teamId: '' } : f));
+    } else {
+      setFilters((f) => (f.teamId && !list.some((t) => t.id === f.teamId) ? { ...f, teamId: '' } : f));
     }
-    const ticket = ++latest.current;
-    setRefreshing(true);
-    setError(null);
-    setForecastError(false);
-    const scope = { scope: request.scope, teamId: request.teamId, pipelineId: request.pipelineId, currency: request.currency };
-    Promise.allSettled([
-      getReportSummary(request),
-      getForecast({ ...scope, firstMonth: monthOf(new Date(), timeZone), months: 6 }),
-    ]).then(([s, f]) => {
-      // A slower answer to an older filter must not overwrite a newer one.
-      if (ticket !== latest.current) return;
-      if (s.status === 'fulfilled') setSummary(s.value);
-      // Previously a failure rendered zeros, which is indistinguishable from "you
-      // have no data" — and is exactly how a page earns a reputation for being wrong.
-      else setError(reason(s.reason, 'These figures could not be loaded.'));
-      if (f.status === 'fulfilled') setForecast(f.value);
-      else setForecastError(true);
-    }).finally(() => {
-      if (ticket !== latest.current) return;
-      setLoading(false);
-      setRefreshing(false);
-    });
-  }, [request, timeZone]);
+  }, [teamsQuery.isPending, teamsQuery.data]);
 
   const set = (patch: Partial<FilterState>) => setFilters((f) => ({ ...f, ...patch }));
 

@@ -298,7 +298,7 @@ function query(params: Record<string, string | number | undefined | null>): stri
 }
 
 /** Every figure on the Reports page for these filters. Throws when the server refuses. */
-export async function getReportSummary(filters: ReportFilters): Promise<ReportSummary> {
+export async function getReportSummary(filters: ReportFilters, req?: RequestOptions): Promise<ReportSummary> {
   if (servesDemoData()) {
     const { demoReportSummary } = await import('./reportingDemo');
     return demoReportSummary(filters);
@@ -311,7 +311,7 @@ export async function getReportSummary(filters: ReportFilters): Promise<ReportSu
     pipelineId: filters.pipelineId,
     currency: filters.currency,
     tz: filters.timeZone,
-  })}`);
+  })}`, req);
   if (!res) throw new Error('The reports could not be loaded.');
   return res;
 }
@@ -345,6 +345,7 @@ export interface Forecast {
 /** The forecast by expected close month, from `firstMonth` (yyyy-MM) for `months` months. */
 export async function getForecast(
   filters: Pick<ReportFilters, 'scope' | 'teamId' | 'pipelineId' | 'currency'> & { firstMonth: string; months: number },
+  req?: RequestOptions,
 ): Promise<Forecast> {
   if (servesDemoData()) {
     const { demoForecast } = await import('./reportingDemo');
@@ -357,7 +358,7 @@ export async function getForecast(
     teamId: filters.scope === 'team' ? filters.teamId : undefined,
     pipelineId: filters.pipelineId,
     currency: filters.currency,
-  })}`);
+  })}`, req);
   if (!res) throw new Error('The forecast could not be loaded.');
   return res;
 }
@@ -424,8 +425,8 @@ export async function getForecastSnapshots(year: number, month: number, snapshot
 export interface SalesTeam { id: string; name: string; memberUserIds: string[] }
 
 /** The workspace's sales teams. None in demo mode or a personal workspace. */
-export async function getSalesTeams(): Promise<SalesTeam[]> {
+export async function getSalesTeams(req?: RequestOptions): Promise<SalesTeam[]> {
   if (servesDemoData()) return [];
-  const list = await authFetchJson<SalesTeam[]>('/api/teams');
+  const list = await authFetchJson<SalesTeam[]>('/api/teams', req);
   return Array.isArray(list) ? list : [];
 }
