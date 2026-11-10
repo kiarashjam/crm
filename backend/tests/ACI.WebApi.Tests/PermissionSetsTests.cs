@@ -137,6 +137,25 @@ public class PermissionSetsTests
     }
 
     [Fact]
+    public async Task VoidingAnyMoneyTakesBothMoneyPermissions_GiftCardsAsChargesAndPayments()
+    {
+        using var club = await ClubAsync();
+        var memberId = await ClubMemberAsync(club.Owner);
+        var charge = await ChargeAsync(club.Owner, memberId);
+        var card = (await Ok(await club.Owner.PostAsync("/api/gift-cards", Body(new { purchaserName = "Ana", recipientName = "Bea", faceValue = 100 })), "issue a gift card"))
+            .GetProperty("id").GetString()!;
+        var (voider, voiderId) = await JoinAsync(club, "audit@pavillon46.ch", "read_only_accountant");
+        // The owner lets them void, and nothing else about money.
+        await Ok(await club.Owner.PutAsync($"/api/organizations/{club.Org}/members/{voiderId}/permissions",
+            Body(new { preset = "read_only_accountant", permissions = new[] { MemberPermissions.ExportRecords, MemberPermissions.VoidMoney } })), "the owner lets them void");
+
+        await RefusedForAsync(await voider.PostAsync($"/api/charges/{charge}/void", Body(new { reason = "Posted twice" })), MemberPermissions.ManageMoney, "voiding a charge without money.manage");
+        await RefusedForAsync(await voider.PostAsync($"/api/gift-cards/{card}/void", Body(new { reason = "Lost" })), MemberPermissions.ManageMoney,
+            "voiding a gift card without money.manage, as with a charge");
+        (await club.App.Services.Read(db => db.ClubDocuments.Single(d => d.Id == Guid.Parse(card)).Payload)).Should().NotContain("Voided");
+    }
+
+    [Fact]
     public async Task ASalesRepWorksLeadsButCannotDeleteExportOrTouchMoneyAndSettings()
     {
         using var club = await ClubAsync();

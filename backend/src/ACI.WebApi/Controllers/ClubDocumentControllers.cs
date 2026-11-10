@@ -247,7 +247,9 @@ public class GiftCardsController : ControllerBase
     [HttpGet("redemptions")] public async Task<IActionResult> Redemptions(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ListAsync(org, "gift-card-redemptions", ct)); }
     [HttpPost][Requires(MemberPermissions.ManageMoney)] public async Task<IActionResult> Create(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.CreateAsync(org, "gift-cards", await ClubDocs.Body(Request, ct), ct)); }
     [HttpPost("{id:guid}/redeem")][Requires(MemberPermissions.ManageMoney, MemberPermissions.FrontDesk, Any = true)] public async Task<IActionResult> Redeem(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.RedeemGiftCardAsync(org, id, await ClubDocs.Body(Request, ct), Request.Headers["Idempotency-Key"].ToString(), ct)); }
-    [HttpPost("{id:guid}/void")][Requires(MemberPermissions.VoidMoney, What = "void a gift card")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidGiftCardAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
+    // Voiding takes the money permission as well as the void one, as it does for charges
+    // and payments (their controllers ask for money.manage on every change).
+    [HttpPost("{id:guid}/void")][Requires(MemberPermissions.ManageMoney)][Requires(MemberPermissions.VoidMoney, What = "void a gift card")] public async Task<IActionResult> Void(Guid id, CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.VoidGiftCardAsync(org, id, await ClubDocs.Body(Request, ct), ct)); }
 }
 
 [ApiController]

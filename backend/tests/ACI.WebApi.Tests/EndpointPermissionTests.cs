@@ -140,6 +140,8 @@ public class EndpointPermissionTests
         { "ChargesController", "Void", MemberPermissions.VoidMoney },
         { "PaymentsController", "Void", MemberPermissions.VoidMoney },
         { "GiftCardsController", "Void", MemberPermissions.VoidMoney },
+        // Voiding takes the money permission too, as it does for charges and payments.
+        { "GiftCardsController", "Void", MemberPermissions.ManageMoney },
         // A check-in's points are written by the app as a ledger entry, so the front desk may add one.
         { "LoyaltyController", "Add", MemberPermissions.FrontDesk },
         { "PipelinesController", "Create", MemberPermissions.ManageSettings },
