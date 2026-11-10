@@ -1039,6 +1039,86 @@ public static readonly Error AlreadyMember = new(
 
         public static readonly Error PeriodInvalid = new(
             "Club.PeriodInvalid", "A statement's period has to start before it ends and cover at most five years.");
+
+        // ── billing ─────────────────────────────────────────────────────────────
+
+        public static Error PeriodNotStarted(DateTime startsAtUtc) => new(
+            "Subscription.NotDue.Conflict",
+            string.Create(CultureInfo.InvariantCulture,
+                $"This subscription's next period starts on {startsAtUtc:d MMM yyyy}, so nothing was billed. Bill it early to charge that period now."));
+
+        public static readonly Error BilledAhead = new(
+            "Subscription.BilledAhead.Conflict",
+            "The next period has already been billed early, so nothing more was charged. A subscription is billed at most one period ahead.");
+
+        public static Error TierUnknown(string tier) => new(
+            "Member.TierUnknown",
+            $"'{tier}' is not one of the club's membership tiers. Pick one from the price catalogue, or add it there first.");
+
+        public static Error TierNotOnSale(string tier) => new(
+            "Member.TierNotOnSale",
+            $"The {tier} tier is no longer offered, so it can't be given to a member. Members who have it keep it.");
+
+        public static readonly Error MemberNoEmail = new(
+            "ClubMember.NoEmail", "This member has no valid email address on their record, so nothing was sent.");
+
+        public static Error CurrencyMismatch(string itemCurrency, string accountCurrency) => new(
+            "CatalogItem.CurrencyMismatch",
+            $"This item is priced in {itemCurrency} and the member's account is kept in {accountCurrency}, so it can't be charged to it.");
+    }
+
+    /// <summary>
+    /// The club's price catalogue.
+    /// </summary>
+    public static class Catalog
+    {
+        public static readonly Error NotFound = new(
+            "CatalogItem.NotFound", "That catalogue item was not found.");
+
+        public static readonly Error KindInvalid = new(
+            "CatalogItem.KindInvalid", "A catalogue item is a Membership tier, Dues, a Fee, a Product, a Ticket or a MenuItem.");
+
+        public static readonly Error KindFixed = new(
+            "CatalogItem.KindFixed", "An item's kind can't be changed once it exists. Take it off sale and add one of the other kind.");
+
+        public static readonly Error NameRequired = new(
+            "CatalogItem.NameRequired", "A catalogue item needs a name.");
+
+        public static readonly Error PriceInvalid = new(
+            "CatalogItem.PriceInvalid", "A price must be a number from 0 to under 1,000,000,000, to the cent.");
+
+        public static readonly Error VatInvalid = new(
+            "CatalogItem.VatInvalid", "A VAT rate is a percent from 0 to 100, to two decimal places, such as 8.1.");
+
+        public static readonly Error CurrencyInvalid = new(
+            "CatalogItem.CurrencyInvalid", "A currency is a three-letter code, such as CHF.");
+
+        public static readonly Error CadenceInvalid = new(
+            "CatalogItem.CadenceInvalid", "A tier or dues is billed Monthly, Quarterly, SemiAnnual or Annual.");
+
+        public static readonly Error MultiplierInvalid = new(
+            "CatalogItem.MultiplierInvalid", "A loyalty multiplier is a number more than 0 and at most 100, such as 1.5.");
+
+        public static readonly Error ChargeKindInvalid = new(
+            "CatalogItem.ChargeKindInvalid", "An item is charged as Dues, Dining, Bar, Event, Spa, Booking, Retail or Other.");
+
+        public static readonly Error BenefitsInvalid = new(
+            "CatalogItem.BenefitsInvalid", "A tier has at most 20 benefits, each at most 200 characters.");
+
+        public static readonly Error SortOrderInvalid = new(
+            "CatalogItem.SortOrderInvalid", "An item's place in the list is a whole number from 0 to 10,000.");
+
+        public static Error TierNameTaken(string name) => new(
+            "CatalogItem.TierNameTaken.Conflict", $"There is already a tier named {name}. Each tier needs its own name, as members carry it.");
+
+        public static Error NotOnSale(string name) => new(
+            "CatalogItem.NotOnSale.Conflict", $"{name} is no longer on sale, so it can't be charged.");
+
+        public static Error NotForThis(string kind, string use) => new(
+            "CatalogItem.WrongKind", $"A {kind} item can't be used for {use}.");
+
+        public static readonly Error Changed = new(
+            "CatalogItem.Changed.Conflict", "Someone else changed this item at the same moment, so nothing was saved. Reload and try again.");
     }
 
     /// <summary>

@@ -13,14 +13,18 @@ public interface IClubDocumentService
     Task<Result<JsonObject>> UpdateAsync(Guid? organizationId, string kind, Guid id, JsonObject patch, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid? organizationId, string kind, Guid id, CancellationToken ct = default);
     Task<JsonObject?> RsvpAsync(Guid? organizationId, Guid id, CancellationToken ct = default);
+    /// <summary>The hospitality settings as the server applies them: what was saved, over the defaults.</summary>
     Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
-    Task<JsonObject> SaveSettingsAsync(Guid? organizationId, JsonObject patch, CancellationToken ct = default);
+
+    /// <summary>Saves the settings sent, checked first (400 with the reason); answers them as now applied.</summary>
+    Task<Result<JsonObject>> SaveSettingsAsync(Guid? organizationId, JsonObject patch, CancellationToken ct = default);
+
     Task<JsonObject> ResetSettingsAsync(Guid? organizationId, CancellationToken ct = default);
 }
 
 public sealed class ClubDocumentService : IClubDocumentService
 {
-    private const string SettingsKind = "hospitality-settings";
+    private const string SettingsKind = ClubSettings.Kind;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <summary>
@@ -123,21 +127,24 @@ public sealed class ClubDocumentService : IClubDocumentService
         return ev;
     }
 
-    public async Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default)
-    {
-        var rows = await _docs.ListAsync(organizationId, SettingsKind, ct);
-        return rows.Count == 0 ? new JsonObject() : Parse(rows[0].Payload) ?? new JsonObject();
-    }
+    // The settings the server applies (points, billing) are read through ClubSettings, so
+    // the page is answered with exactly those, the defaults filled in, rather than whatever
+    // was last saved with the page left to guess the rest.
+    public async Task<JsonObject> GetSettingsAsync(Guid? organizationId, CancellationToken ct = default) =>
+        ClubSettings.Effective(await StoredSettingsAsync(organizationId, ct));
 
-    public async Task<JsonObject> SaveSettingsAsync(Guid? organizationId, JsonObject patch, CancellationToken ct = default)
+    public async Task<Result<JsonObject>> SaveSettingsAsync(Guid? organizationId, JsonObject patch, CancellationToken ct = default)
     {
-        var current = await GetSettingsAsync(organizationId, ct);
-        foreach (var pair in patch)
+        // Checked before anything is kept: a multiplier of nothing or a grace period of -3
+        // used to be saved and then quietly read as something else.
+        if (ClubSettings.Validate(patch) is { } invalid) return invalid;
+        var current = await StoredSettingsAsync(organizationId, ct) ?? new JsonObject();
+        foreach (var pair in ClubSettings.Clean(patch))
             current[pair.Key] = pair.Value?.DeepClone();
         var rows = await _docs.ListAsync(organizationId, SettingsKind, ct);
         var id = rows.Count == 0 ? Guid.NewGuid() : rows[0].Id;
         await Save(organizationId, SettingsKind, id, current, ct);
-        return current;
+        return ClubSettings.Effective(current);
     }
 
     public async Task<JsonObject> ResetSettingsAsync(Guid? organizationId, CancellationToken ct = default)
@@ -145,7 +152,13 @@ public sealed class ClubDocumentService : IClubDocumentService
         var rows = await _docs.ListAsync(organizationId, SettingsKind, ct);
         foreach (var row in rows)
             await _docs.DeleteAsync(row.Id, organizationId, SettingsKind, ct);
-        return new JsonObject();
+        return ClubSettings.Effective(null);
+    }
+
+    private async Task<JsonObject?> StoredSettingsAsync(Guid? organizationId, CancellationToken ct)
+    {
+        var rows = await _docs.ListAsync(organizationId, SettingsKind, ct);
+        return rows.Count == 0 ? null : Parse(rows[0].Payload);
     }
 
     private async Task EnsureResourcesAsync(Guid? organizationId, CancellationToken ct)

@@ -194,6 +194,36 @@ public class OrganizationCloneTests
             new ClubTabItem { Id = Guid.NewGuid(), OrganizationId = org.Id, TabId = tab.Id, Name = "Negroni", Quantity = 2, UnitPrice = 15, AddedAtUtc = now },
             new ClubGiftCardTransaction { Id = Guid.NewGuid(), OrganizationId = org.Id, GiftCardId = card.Id, Type = "Issue", Amount = 100, AtUtc = now, CreatedAtUtc = now },
             new ClubDonation { Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, MemberName = "Ana Silva", Cause = "Arts", Amount = 50, ReceivedAtUtc = now, CreatedAtUtc = now });
+        // The price catalogue and what billing records: the tier the dues came from, a run,
+        // a reminder of the dues, a statement sent, and the file that went with its email.
+        var goldTier = new ClubCatalogItem
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, Kind = CatalogKinds.Membership, Name = "Gold", Price = 299, Currency = "CHF",
+            Cadence = "Monthly", ChargeKind = "Dues", CreatedAtUtc = now, UpdatedAtUtc = now,
+        };
+        subscription.CatalogItemId = goldTier.Id;
+        dues.CatalogItemId = goldTier.Id;
+        var billingRun = new ClubBillingRun
+        {
+            Id = Guid.NewGuid(), OrganizationId = org.Id, Trigger = BillingRunTriggers.Schedule, ScheduledFor = DateOnly.FromDateTime(now),
+            Status = BillingRunStatuses.Succeeded, StartedAtUtc = now, Currency = "CHF",
+        };
+        db.AddRange(goldTier, billingRun,
+            new ClubPaymentReminder
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, ChargeId = dues.Id, MemberId = member.Id, Step = 1, DaysAfterDue = 3,
+                OutboundMessageId = sentEmail.Id, RunId = billingRun.Id, CreatedAtUtc = now,
+            },
+            new ClubStatementDelivery
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, MemberId = member.Id, PeriodStartUtc = now.AddMonths(-1), PeriodEndUtc = now,
+                Source = StatementSources.Monthly, OutboundMessageId = sentEmail.Id, RunId = billingRun.Id, Currency = "CHF", CreatedAtUtc = now,
+            },
+            new OutboundAttachment
+            {
+                Id = Guid.NewGuid(), OrganizationId = org.Id, OutboundMessageId = sentEmail.Id, FileName = "statement.pdf",
+                ContentType = "application/pdf", Content = [1, 2, 3], CreatedAtUtc = now,
+            });
         db.AddRange(
             new LeadStatusEvent { Id = Guid.NewGuid(), LeadId = lead.Id, OrganizationId = org.Id, ToStatus = "Qualified", ChangedByUserId = rep, ChangedAtUtc = now },
             new LeadScoringRule { Id = Guid.NewGuid(), OrganizationId = org.Id, Field = "source", MatchValue = "Website", Points = 10, IsActive = true },

@@ -74,6 +74,7 @@ internal sealed class ClubMemberConfiguration : IEntityTypeConfiguration<ClubMem
         builder.Property(e => e.DuesAmount).HasPrecision(18, 2);
         builder.Property(e => e.HouseAccountBalance).HasPrecision(18, 2);
         builder.Property(e => e.ManualBalance).HasPrecision(18, 2);
+        builder.Property(e => e.StatusBeforeLapse).HasMaxLength(32);
         builder.HasIndex(e => e.OrganizationId);
     }
 }

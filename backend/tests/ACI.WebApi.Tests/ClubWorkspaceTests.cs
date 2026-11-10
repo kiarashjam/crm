@@ -183,8 +183,9 @@ public class ClubWorkspaceTests
         var memberId = (await MemberAsync(client)).GetProperty("id").GetString();
 
         var sub = await Json(await client.PostAsync("/api/subscriptions", Body(new { memberId, memberName = "Jean Dupont", name = "Locker", amount = 25, cadence = "Quarterly" })), "add subscription");
+        // Billed in advance: the first period starts the day the subscription does.
         DateTime.Parse(sub.GetProperty("nextChargeAtUtc").GetString()!).ToUniversalTime()
-            .Should().BeCloseTo(DateTime.UtcNow.AddDays(91), TimeSpan.FromMinutes(5), "the screen showed Invalid Date without it");
+            .Should().Be(DateTime.UtcNow.Date, "the screen showed Invalid Date without it");
 
         var scheduled = await Json(await client.PostAsync("/api/campaigns", Body(new { name = "Autumn", subject = "Hi", body = "Hello", scheduledAtUtc = DateTime.UtcNow.AddDays(2) })), "schedule campaign");
         scheduled.GetProperty("status").GetString().Should().Be("Scheduled");

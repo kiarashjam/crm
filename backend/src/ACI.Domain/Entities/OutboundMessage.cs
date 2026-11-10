@@ -212,5 +212,26 @@ public static class OutboundSources
     public const string CampaignTest = "campaign_test";
     /// <summary>A message staff wrote to one member, from the Communications page or the member's own.</summary>
     public const string Member = "member";
+    /// <summary>A member's statement, as a PDF: emailed on request or by the monthly run.</summary>
+    public const string Statement = "statement";
+    /// <summary>A reminder of charges a member has not paid by their due date, from the billing run.</summary>
+    public const string PaymentReminder = "reminder";
     public const string Webhook = "webhook";
+}
+
+/// <summary>
+/// A file that goes with an outbox email, such as a statement's PDF: kept with the message
+/// so every attempt, and a retry hours later, sends the same file.
+/// </summary>
+public class OutboundAttachment : Common.BaseEntity
+{
+    public Guid? OrganizationId { get; set; }
+    public Guid OutboundMessageId { get; set; }
+
+    /// <summary>What the recipient sees and saves.</summary>
+    public string FileName { get; set; } = string.Empty;
+
+    public string ContentType { get; set; } = "application/octet-stream";
+    public byte[] Content { get; set; } = [];
+    public DateTime CreatedAtUtc { get; set; }
 }

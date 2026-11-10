@@ -40,13 +40,20 @@ public sealed partial class ClubLedgerService : IClubLedger
     private readonly AppDbContext _db;
     private readonly ICurrentUserService _user;
     private readonly ILedgerReadObserver _reads;
+    private readonly IClubCatalog _catalog;
+    private readonly IClubRules _rules;
 
-    public ClubLedgerService(AppDbContext db, ICurrentUserService user, ILedgerReadObserver reads)
+    public ClubLedgerService(AppDbContext db, ICurrentUserService user, ILedgerReadObserver reads, IClubCatalog catalog, IClubRules rules)
     {
         _db = db;
         _user = user;
         _reads = reads;
+        _catalog = catalog;
+        _rules = rules;
     }
+
+    /// <summary>Kinds of catalogue item a charge can be rung up from: the one-off ones.</summary>
+    private static readonly string[] ChargeableKinds = [CatalogKinds.Fee, CatalogKinds.Product, CatalogKinds.Ticket, CatalogKinds.MenuItem];
 
     // ── reads ────────────────────────────────────────────────────────────────
 
@@ -137,7 +144,7 @@ public sealed partial class ClubLedgerService : IClubLedger
                 Id = c.Id, AtUtc = c.PostedAtUtc, EntryType = c.EntryType, Side = "charge",
                 Description = c.ReversesChargeId != null ? $"Voided: {c.Description}" : c.Description,
                 Debit = Math.Max(0, c.Amount), Credit = Math.Max(0, -c.Amount), Kind = c.Kind, Reference = c.Reference,
-                Reason = c.Reason, ReversesId = c.ReversesChargeId, CreatedByName = c.CreatedByName,
+                Reason = c.Reason, ReversesId = c.ReversesChargeId, CreatedByName = c.CreatedByName, VatRate = c.VatRate,
             }))
             .Concat(payments.Select(p => (At: p.ReceivedAtUtc, Created: p.CreatedAtUtc, Line: new StatementLineDto
             {
@@ -170,24 +177,52 @@ public sealed partial class ClubLedgerService : IClubLedger
     {
         if (ReadKey(idempotencyKey, out var key) is { } badKey) return badKey;
         if (key != null && await ChargeByKeyAsync(organizationId, key, ct) is { } earlier) return await ChargeDtoAsync(organizationId, earlier, ct);
-        if (Money(request.Amount) is not { } amount) return DomainErrors.Club.AmountInvalid;
+
+        // Rung up from the catalogue, the price, the name, the kind and the VAT rate are the
+        // catalogue's: a front desk can't type a different price for a priced item.
+        CatalogItemDto? item = null;
+        if (request.CatalogItemId is { } itemId)
+        {
+            var found = await _catalog.ChargeableAsync(organizationId, itemId, ChargeableKinds, "a charge", ct);
+            if (!found.IsSuccess) return found.Error;
+            item = found.Value;
+        }
+        decimal amount;
+        if (item != null)
+        {
+            var quantity = request.Quantity ?? 1m;
+            if (quantity <= 0 || quantity > 1000 || quantity != Math.Round(quantity, 2)) return DomainErrors.Club.TabQuantityInvalid;
+            if (Money(item.Price * quantity) is not { } total) return DomainErrors.Club.AmountInvalid;
+            amount = total;
+        }
+        else if (Money(request.Amount) is { } typed) amount = typed;
+        else return DomainErrors.Club.AmountInvalid;
+
         var member = await MemberAsync(organizationId, request.MemberId, ct);
         if (member == null) return DomainErrors.Club.MemberNotFound;
-        var kind = (request.Kind ?? "").Trim();
+        var kind = item?.ChargeKind ?? (request.Kind ?? "").Trim();
         if (kind.Length == 0) kind = "Other";
         if (!ChargeKinds.Contains(kind)) return DomainErrors.Club.ChargeKindInvalid;
         var description = (request.Description ?? "").Trim();
+        if (description.Length == 0 && item != null)
+            description = request.Quantity is { } q && q != 1 ? string.Create(CultureInfo.InvariantCulture, $"{item.Name} × {q:0.##}") : item.Name;
         if (description.Length == 0) return DomainErrors.Club.DescriptionRequired;
         if (description.Length > 500) return DomainErrors.Club.TooLong("A description", 500);
         var reference = Trimmed(request.Reference);
         if (reference?.Length > 200) return DomainErrors.Club.TooLong("A reference", 200);
         if (!ReadDate(request.DueAtUtc, out var due)) return DomainErrors.Club.DateInvalid("The due date");
+        if (item == null && request.VatRate is { } typedVat && (typedVat is < 0 or > 100 || typedVat != Math.Round(typedVat, 2)))
+            return DomainErrors.Catalog.VatInvalid;
 
         var account = await AccountAsync(organizationId, member.Id, ct);
+        if (item != null && !string.Equals(item.Currency, account.Currency, StringComparison.OrdinalIgnoreCase))
+            return DomainErrors.Club.CurrencyMismatch(item.Currency, account.Currency);
         var charge = NewCharge(organizationId, member, account, ClubEntryTypes.Charge, kind, description, amount);
         charge.DueAtUtc = due;
         charge.Reference = reference;
         charge.IdempotencyKey = key;
+        charge.CatalogItemId = item?.Id;
+        charge.VatRate = item?.VatRate ?? request.VatRate;
         Touch(account);
         var saved = await SaveAsync(DomainErrors.Club.AccountChanged, ct, async () =>
         {
@@ -236,6 +271,9 @@ public sealed partial class ClubLedgerService : IClubLedger
             PostedAtUtc = DateTime.UtcNow,
             ReversesChargeId = charge.Id,
             Reason = why,
+            // A void takes back the VAT the charge carried, at the same rate.
+            VatRate = charge.VatRate,
+            CatalogItemId = charge.CatalogItemId,
         };
         Stamp(reversal);
         Touch(account);
@@ -805,6 +843,9 @@ public sealed partial class ClubLedgerService : IClubLedger
             Reference = c.Reference,
             TabId = c.TabId,
             SubscriptionId = c.SubscriptionId,
+            BillingPeriodStartUtc = c.BillingPeriodStartUtc,
+            CatalogItemId = c.CatalogItemId,
+            VatRate = c.VatRate,
             Reason = c.Reason,
             VoidedAtUtc = reversal?.PostedAtUtc,
             VoidedByUserId = reversal?.CreatedByUserId,

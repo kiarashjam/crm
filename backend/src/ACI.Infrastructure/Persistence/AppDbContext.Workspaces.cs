@@ -128,6 +128,13 @@ public partial class AppDbContext
         Scope<ConsentRecord>(model, e => e.OrganizationId);
         Scope<Campaign>(model, e => e.OrganizationId);
         Scope<MemberMessage>(model, e => e.OrganizationId);
+        // The club's price catalogue and what its billing run records. A file that goes with
+        // an outbox email says its organization too, though it is only reached through the email.
+        Scope<ClubCatalogItem>(model, e => e.OrganizationId);
+        Scope<ClubBillingRun>(model, e => e.OrganizationId);
+        Scope<ClubPaymentReminder>(model, e => e.OrganizationId);
+        Scope<ClubStatementDelivery>(model, e => e.OrganizationId);
+        Scope<OutboundAttachment>(model, e => e.OrganizationId);
 
         // Copy templates follow a person rather than a workspace (TemplateRepository): the
         // system's templates are everyone's, a person's own go with them, and a team's

@@ -122,6 +122,12 @@ public class ClubCharge : Common.BaseEntity
     public Guid? SubscriptionId { get; set; }
     public DateTime? BillingPeriodStartUtc { get; set; }
 
+    /// <summary>The catalogue item it was charged from, when it was: its name, price and VAT rate were copied.</summary>
+    public Guid? CatalogItemId { get; set; }
+
+    /// <summary>The VAT rate in percent included in the amount, when it is known (a charge from the catalogue); none otherwise.</summary>
+    public decimal? VatRate { get; set; }
+
     /// <summary>From the request's Idempotency-Key: a retry with the same key gets this charge back.</summary>
     public string? IdempotencyKey { get; set; }
 
@@ -208,8 +214,22 @@ public class ClubSubscription : Common.BaseEntity, Common.IVersioned
     public string Status { get; set; } = "Active";
 
     public DateTime StartedAtUtc { get; set; }
+
+    /// <summary>The start of the next period to bill. Each period runs to the same day of the month a cadence later.</summary>
     public DateTime? NextChargeAtUtc { get; set; }
+
     public DateTime? LastChargedAtUtc { get; set; }
+
+    /// <summary>
+    /// The day of the month its periods start on, kept so a subscription that starts on the
+    /// 31st bills on the 30th in a 30-day month and on the 31st again after. None for one
+    /// from before calendar billing: its next date's day is taken when it is next billed.
+    /// </summary>
+    public int? BillingAnchorDay { get; set; }
+
+    /// <summary>The catalogue item (a tier or dues) it was started from, when it was; its name, price and cadence were copied.</summary>
+    public Guid? CatalogItemId { get; set; }
+
     public string? Notes { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public Guid? CreatedByUserId { get; set; }
@@ -328,6 +348,13 @@ public class ClubTabItem : Common.BaseEntity
     public string Name { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+
+    /// <summary>The menu item it was rung up from, when it was: its name, price and VAT rate were copied.</summary>
+    public Guid? CatalogItemId { get; set; }
+
+    /// <summary>The VAT rate in percent included in its price, when it came from the catalogue.</summary>
+    public decimal? VatRate { get; set; }
+
     public DateTime AddedAtUtc { get; set; }
     public Guid? AddedByUserId { get; set; }
     public string? AddedByName { get; set; }

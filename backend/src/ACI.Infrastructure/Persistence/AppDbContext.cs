@@ -69,6 +69,7 @@ public partial class AppDbContext : DbContext
     public DbSet<ForecastSnapshot> ForecastSnapshots => Set<ForecastSnapshot>();
     public DbSet<SentMessage> SentMessages => Set<SentMessage>();
     public DbSet<OutboundMessage> OutboundMessages => Set<OutboundMessage>();
+    public DbSet<OutboundAttachment> OutboundAttachments => Set<OutboundAttachment>();
     public DbSet<EmailSuppression> EmailSuppressions => Set<EmailSuppression>();
     public DbSet<InboundEmail> InboundEmails => Set<InboundEmail>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
@@ -87,6 +88,11 @@ public partial class AppDbContext : DbContext
     public DbSet<ClubTab> ClubTabs => Set<ClubTab>();
     public DbSet<ClubTabItem> ClubTabItems => Set<ClubTabItem>();
     public DbSet<ClubDonation> ClubDonations => Set<ClubDonation>();
+    // The price catalogue and what the billing run records.
+    public DbSet<ClubCatalogItem> ClubCatalogItems => Set<ClubCatalogItem>();
+    public DbSet<ClubBillingRun> ClubBillingRuns => Set<ClubBillingRun>();
+    public DbSet<ClubPaymentReminder> ClubPaymentReminders => Set<ClubPaymentReminder>();
+    public DbSet<ClubStatementDelivery> ClubStatementDeliveries => Set<ClubStatementDelivery>();
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
     public DbSet<SalesTeamMember> SalesTeamMembers => Set<SalesTeamMember>();
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();

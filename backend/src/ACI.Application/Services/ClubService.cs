@@ -4,10 +4,12 @@ using ACI.Domain.Entities;
 
 namespace ACI.Application.Services;
 
+/// <param name="BillingLapsedAtUtc">When the club's billing lapsed the member for a charge left unpaid; none otherwise.</param>
 public record MemberDto(
     Guid Id, string FirstName, string LastName, string Email, string? Phone,
     string Tier, string Status, DateTime JoinedAtUtc, DateTime RenewsAtUtc,
-    decimal DuesAmount, string DuesFrequency, decimal HouseAccountBalance, string? Notes);
+    decimal DuesAmount, string DuesFrequency, decimal HouseAccountBalance, string? Notes,
+    DateTime? BillingLapsedAtUtc = null);
 
 /// <summary>
 /// A member to add, or the fields of one to change. On a change a field left out is
@@ -28,6 +30,16 @@ public class MemberWriteRequest : IMergePatchRequest
     public decimal? HouseAccountBalance { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// On adding a member: start their dues subscription, for their dues (their tier's
+    /// unless others are given), with its first period starting today. Money, so it takes
+    /// money.manage on top of managing members.
+    /// </summary>
+    public bool? StartDues { get; set; }
+
+    /// <summary>On adding a member: charge their tier's initiation fee to their account. Money, so it takes money.manage.</summary>
+    public bool? ChargeInitiationFee { get; set; }
+
     /// <inheritdoc />
     [System.Text.Json.Serialization.JsonIgnore]
     public ISet<string> NullsSent { get; } = new HashSet<string>(StringComparer.Ordinal);
@@ -45,7 +57,16 @@ public class VisitWriteRequest
     public Guid MemberId { get; set; }
     public string? Venue { get; set; }
     public int GuestCount { get; set; }
-    public int PointsAwarded { get; set; }
+
+    /// <summary>
+    /// Not read. The points a visit earns are the club's settings (the venue's points times
+    /// the member's tier multiplier), worked out here; an older screen still sends a figure.
+    /// </summary>
+    public int? PointsAwarded { get; set; }
+
+    /// <summary>False for a visit that earns no points (a staff guest, say); it earns them when left out.</summary>
+    public bool? AwardPoints { get; set; }
+
     public string? Notes { get; set; }
 }
 
@@ -75,7 +96,9 @@ public interface IClubRepository
     /// </summary>
     Task<bool> MergeMembersAsync(Guid keepId, Guid dropId, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<ClubVisit>> VisitsAsync(Guid? organizationId, CancellationToken ct = default);
-    Task AddVisitAsync(ClubVisit visit, CancellationToken ct = default);
+
+    /// <summary>Saves a visit and the points it earned (when it earned any) together, in one save.</summary>
+    Task AddVisitAsync(ClubVisit visit, LoyaltyLedgerEntry? earned = null, CancellationToken ct = default);
     Task<bool> DeleteVisitAsync(Guid id, Guid? organizationId, CancellationToken ct = default);
     Task<IReadOnlyList<LoyaltyLedgerEntry>> LedgerAsync(Guid? organizationId, CancellationToken ct = default);
     Task AddLedgerAsync(LoyaltyLedgerEntry entry, CancellationToken ct = default);
@@ -103,13 +126,18 @@ public sealed class ClubService : IClubService
     private readonly IClubLedger _ledger;
     private readonly IPermissionService _permissions;
     private readonly ICurrentUserService _user;
+    private readonly IClubCatalog _catalog;
+    private readonly IClubRules _rules;
 
-    public ClubService(IClubRepository club, IClubLedger ledger, IPermissionService permissions, ICurrentUserService user)
+    public ClubService(IClubRepository club, IClubLedger ledger, IPermissionService permissions, ICurrentUserService user,
+        IClubCatalog catalog, IClubRules rules)
     {
         _club = club;
         _ledger = ledger;
         _permissions = permissions;
         _user = user;
+        _catalog = catalog;
+        _rules = rules;
     }
 
     /// <remarks>
@@ -134,7 +162,29 @@ public sealed class ClubService : IClubService
         if (request.DuesAmount < 0 || request.HouseAccountBalance is < -MaxMoney or > MaxMoney || request.DuesAmount > MaxMoney)
             return MoneyInvalid;
         var opening = request.HouseAccountBalance ?? 0;
-        if (opening != 0 && await MayNotHandleMoneyAsync(organizationId, ct) is { } refused) return refused;
+        var startDues = request.StartDues == true;
+        var chargeFee = request.ChargeInitiationFee == true;
+        if ((opening != 0 || startDues || chargeFee) && await MayNotHandleMoneyAsync(organizationId, ct) is { } refused) return refused;
+
+        // The tier is one of the club's, and the dues a new member starts with are their
+        // tier's in the price catalogue. They were a table in the browser, and the server
+        // took any tier name and any dues it was sent.
+        var tiers = await _catalog.TiersAsync(organizationId, ct);
+        var tierName = request.Tier?.Trim();
+        CatalogItemDto? tier;
+        if (string.IsNullOrEmpty(tierName))
+        {
+            tier = tiers.FirstOrDefault(t => t.IsActive);
+        }
+        else
+        {
+            tier = tiers.FirstOrDefault(t => string.Equals(t.Name, tierName, StringComparison.OrdinalIgnoreCase));
+            if (tier == null) return DomainErrors.Club.TierUnknown(tierName);
+            if (!tier.IsActive) return DomainErrors.Club.TierNotOnSale(tier.Name);
+        }
+        var duesFrequency = string.IsNullOrWhiteSpace(request.DuesFrequency) ? tier?.Cadence ?? "Monthly" : request.DuesFrequency.Trim();
+        var rules = startDues || chargeFee ? await _rules.ReadAsync(organizationId, ct) : null;
+
         var row = new ClubMember
         {
             Id = Guid.NewGuid(),
@@ -144,20 +194,53 @@ public sealed class ClubService : IClubService
             LastName = last,
             Email = email,
             Phone = request.Phone?.Trim(),
-            Tier = string.IsNullOrWhiteSpace(request.Tier) ? "Bronze" : request.Tier.Trim(),
+            Tier = tier?.Name ?? (string.IsNullOrEmpty(tierName) ? "Bronze" : tierName),
             Status = string.IsNullOrWhiteSpace(request.Status) ? "Pending" : request.Status.Trim(),
             JoinedAtUtc = request.JoinedAtUtc ?? DateTime.UtcNow,
             RenewsAtUtc = request.RenewsAtUtc ?? DateTime.UtcNow.AddYears(1),
-            DuesAmount = request.DuesAmount ?? 0,
-            DuesFrequency = string.IsNullOrWhiteSpace(request.DuesFrequency) ? "Monthly" : request.DuesFrequency.Trim(),
+            DuesAmount = request.DuesAmount ?? tier?.Price ?? 0,
+            DuesFrequency = duesFrequency,
             Notes = request.Notes,
         };
         await _club.SaveMemberAsync(row, ct);
         // The house account opens with the member, and an opening balance is its first entry.
         var opened = await _ledger.OpenWithBalanceAsync(organizationId, row.Id, opening, ct);
         if (!opened.IsSuccess) return opened.Error;
+
+        // What joining costs, when asked for: the tier's initiation fee, once (a retry finds
+        // it posted), and the dues subscription, whose first period starts today.
+        if (chargeFee && tier?.InitiationFee is { } fee && fee > 0)
+        {
+            var posted = await _ledger.PostChargeAsync(organizationId, new PostChargeRequest
+            {
+                MemberId = row.Id,
+                Kind = "Dues",
+                Description = $"Initiation fee, {tier.Name}",
+                Amount = fee,
+                VatRate = tier.VatRate,
+                DueAtUtc = DateTime.UtcNow.AddDays(rules!.Billing.PaymentTermsDays).ToString("o"),
+            }, $"initiation:{row.Id}", ct);
+            if (!posted.IsSuccess) return posted.Error;
+        }
+        if (startDues && row.DuesAmount > 0)
+        {
+            var started = await _ledger.CreateSubscriptionAsync(organizationId, new SubscriptionWriteRequest
+            {
+                MemberId = row.Id,
+                Name = $"{row.Tier} dues",
+                Amount = row.DuesAmount,
+                Cadence = Cadence(row.DuesFrequency),
+                // Linked to the tier when it is one the catalogue keeps (not just one it would give).
+                CatalogItemId = tier != null && tier.Id != Guid.Empty ? tier.Id : null,
+            }, ct);
+            if (!started.IsSuccess) return started.Error;
+        }
         return ToDto(row, opening);
     }
+
+    /// <summary>A member's dues frequency as a subscription's cadence: Monthly unless it is one of the others.</summary>
+    private static string Cadence(string frequency) =>
+        frequency is "Quarterly" or "SemiAnnual" or "Annual" ? frequency : "Monthly";
 
     public async Task<Result<MemberDto>> UpdateMemberAsync(Guid id, Guid? organizationId, MemberWriteRequest request, CancellationToken ct = default)
     {
@@ -176,6 +259,15 @@ public sealed class ClubService : IClubService
             if (!adjusted.IsSuccess) return adjusted.Error;
             balance = adjusted.Value.Balance;
         }
+        // A tier changed to one the club has, and offers: members keep a tier taken off sale,
+        // but nobody is moved onto one.
+        if (!string.IsNullOrWhiteSpace(request.Tier) && !string.Equals(request.Tier.Trim(), row.Tier, StringComparison.OrdinalIgnoreCase))
+        {
+            var tier = await _catalog.TierAsync(organizationId, request.Tier, ct);
+            if (tier == null) return DomainErrors.Club.TierUnknown(request.Tier.Trim());
+            if (!tier.IsActive) return DomainErrors.Club.TierNotOnSale(tier.Name);
+            request.Tier = tier.Name;
+        }
         if (!string.IsNullOrWhiteSpace(request.FirstName)) row.FirstName = request.FirstName.Trim();
         if (!string.IsNullOrWhiteSpace(request.LastName)) row.LastName = request.LastName.Trim();
         if (!string.IsNullOrWhiteSpace(request.Email)) row.Email = request.Email.Trim();
@@ -185,7 +277,14 @@ public sealed class ClubService : IClubService
         if (request.Phone != null) row.Phone = request.Phone.Trim();
         else if (request.Clears(nameof(request.Phone))) row.Phone = null;
         if (!string.IsNullOrWhiteSpace(request.Tier)) row.Tier = request.Tier.Trim();
-        if (!string.IsNullOrWhiteSpace(request.Status)) row.Status = request.Status.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Status) && !string.Equals(request.Status.Trim(), row.Status, StringComparison.Ordinal))
+        {
+            row.Status = request.Status.Trim();
+            // Set by a person, the status is theirs: the billing no longer reinstates a member
+            // it lapsed once someone has decided otherwise.
+            row.BillingLapsedAtUtc = null;
+            row.StatusBeforeLapse = null;
+        }
         if (request.JoinedAtUtc.HasValue) row.JoinedAtUtc = request.JoinedAtUtc.Value;
         if (request.RenewsAtUtc.HasValue) row.RenewsAtUtc = request.RenewsAtUtc.Value;
         if (request.DuesAmount.HasValue) row.DuesAmount = request.DuesAmount.Value;
@@ -222,25 +321,48 @@ public sealed class ClubService : IClubService
         return rows.Select(v => new VisitDto(v.Id, v.MemberId, v.MemberName, v.MemberTier, v.Venue, v.VisitedAtUtc, v.GuestCount, v.PointsAwarded, v.Notes)).ToList();
     }
 
+    /// <remarks>
+    /// The points a visit earns are the club's: the venue's points from the settings times
+    /// the member's tier multiplier from the catalogue, saved with the visit as one entry
+    /// on the loyalty ledger. The browser used to work them out from its own table, send the
+    /// figure, and write the ledger entry in a second request that could fail on its own.
+    /// </remarks>
     public async Task<Result<VisitDto>> CheckInAsync(Guid? organizationId, VisitWriteRequest request, CancellationToken ct = default)
     {
         var member = await _club.MemberAsync(request.MemberId, organizationId, ct);
         if (member == null) return new Error("Member.NotFound", "That member was not found.");
         if (Longer(request.Venue, 32)) return TooLong("A venue", 32);
+        var rules = await _rules.ReadAsync(organizationId, ct);
+        var venue = string.IsNullOrWhiteSpace(request.Venue) ? "Lounge" : request.Venue.Trim();
+        var name = $"{member.FirstName} {member.LastName}".Trim();
+        var points = request.AwardPoints == false ? 0 : rules.PointsForVisit(venue, member.Tier);
+        var now = DateTime.UtcNow;
         var visit = new ClubVisit
         {
             Id = Guid.NewGuid(),
             OrganizationId = organizationId,
             MemberId = member.Id,
-            MemberName = $"{member.FirstName} {member.LastName}".Trim(),
+            MemberName = name,
             MemberTier = member.Tier,
-            Venue = string.IsNullOrWhiteSpace(request.Venue) ? "Lounge" : request.Venue.Trim(),
-            VisitedAtUtc = DateTime.UtcNow,
+            Venue = venue,
+            VisitedAtUtc = now,
             GuestCount = Math.Max(0, request.GuestCount),
-            PointsAwarded = Math.Max(0, request.PointsAwarded),
+            PointsAwarded = points,
             Notes = request.Notes,
         };
-        await _club.AddVisitAsync(visit, ct);
+        var earned = points <= 0 ? null : new LoyaltyLedgerEntry
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organizationId,
+            MemberId = member.Id,
+            MemberName = name,
+            Kind = "Earned",
+            Reason = "Visit",
+            Points = points,
+            Note = $"{venue} check-in",
+            CreatedAtUtc = now,
+        };
+        await _club.AddVisitAsync(visit, earned, ct);
         return new VisitDto(visit.Id, visit.MemberId, visit.MemberName, visit.MemberTier, visit.Venue, visit.VisitedAtUtc, visit.GuestCount, visit.PointsAwarded, visit.Notes);
     }
 
@@ -314,5 +436,5 @@ public sealed class ClubService : IClubService
 
     private static MemberDto ToDto(ClubMember m, decimal balance) => new(
         m.Id, m.FirstName, m.LastName, m.Email, m.Phone, m.Tier, m.Status,
-        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, balance, m.Notes);
+        m.JoinedAtUtc, m.RenewsAtUtc, m.DuesAmount, m.DuesFrequency, balance, m.Notes, m.BillingLapsedAtUtc);
 }

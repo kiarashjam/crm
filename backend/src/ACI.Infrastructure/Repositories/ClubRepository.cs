@@ -140,9 +140,10 @@ public sealed class ClubRepository : IClubRepository
         await _db.ClubVisits.AsNoTracking().Where(v => v.OrganizationId == organizationId)
             .OrderByDescending(v => v.VisitedAtUtc).ToListAsync(ct);
 
-    public async Task AddVisitAsync(ClubVisit visit, CancellationToken ct = default)
+    public async Task AddVisitAsync(ClubVisit visit, LoyaltyLedgerEntry? earned = null, CancellationToken ct = default)
     {
         _db.ClubVisits.Add(visit);
+        if (earned != null) _db.LoyaltyLedger.Add(earned);
         await _db.SaveChangesAsync(ct);
     }
 

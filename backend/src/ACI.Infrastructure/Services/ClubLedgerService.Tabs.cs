@@ -67,20 +67,36 @@ public sealed partial class ClubLedgerService
         return ToDto(tab, []);
     }
 
+    /// <summary>Kinds of catalogue item a tab can ring up.</summary>
+    private static readonly string[] TabKinds = [CatalogKinds.MenuItem, CatalogKinds.Product];
+
     public async Task<Result<TabDto>> AddTabItemAsync(Guid? organizationId, Guid tabId, AddTabItemRequest request, Guid? expectedVersion = null, CancellationToken ct = default)
     {
         var tab = await _db.ClubTabs.FirstOrDefaultAsync(t => t.Id == tabId && t.OrganizationId == organizationId, ct);
         if (tab == null) return DomainErrors.Club.TabNotFound;
         if ((expectedVersion ?? request.Version) is { } version && version != tab.Version) return DomainErrors.Club.TabChanged;
         if (tab.Status != "Open") return DomainErrors.Club.TabNotOpen(tab.Status);
-        var name = (request.Name ?? "").Trim();
+
+        // From the menu, the name, the price and the VAT rate are the catalogue's; an item
+        // typed in by hand (an open item) keeps the price it was given, as before.
+        CatalogItemDto? menuItem = null;
+        if (request.CatalogItemId is { } itemId)
+        {
+            var found = await _catalog.ChargeableAsync(organizationId, itemId, TabKinds, "a tab", ct);
+            if (!found.IsSuccess) return found.Error;
+            menuItem = found.Value;
+            if (!string.Equals(menuItem.Currency, tab.Currency, StringComparison.OrdinalIgnoreCase))
+                return DomainErrors.Club.CurrencyMismatch(menuItem.Currency, tab.Currency);
+        }
+        var name = menuItem?.Name ?? (request.Name ?? "").Trim();
         if (name.Length == 0) return DomainErrors.Club.TabItemNameRequired;
         if (name.Length > 200) return DomainErrors.Club.TooLong("An item name", 200);
         // A quantity of -3 took 45 off the tab with no reason recorded: a comp nobody
         // could trace. A half portion is fine; less than nothing, or a thousand, is not.
         if (request.Quantity is not { } quantity || quantity <= 0 || quantity > 1000 || quantity != Math.Round(quantity, 2))
             return DomainErrors.Club.TabQuantityInvalid;
-        if (request.UnitPrice is not { } unitPrice || unitPrice < 0 || unitPrice > 100_000 || unitPrice != Math.Round(unitPrice, 2))
+        var unitPrice = menuItem?.Price ?? request.UnitPrice ?? -1;
+        if (unitPrice < 0 || unitPrice > 100_000 || unitPrice != Math.Round(unitPrice, 2))
             return DomainErrors.Club.TabPriceInvalid;
 
         var items = await ActiveItemsAsync(tab.Id, ct);
@@ -92,6 +108,8 @@ public sealed partial class ClubLedgerService
             Name = name,
             Quantity = quantity,
             UnitPrice = unitPrice,
+            CatalogItemId = menuItem?.Id,
+            VatRate = menuItem?.VatRate,
             AddedAtUtc = DateTime.UtcNow,
             AddedByUserId = _user.UserId,
             AddedByName = Who(),
@@ -136,6 +154,9 @@ public sealed partial class ClubLedgerService
 
     public async Task<Result<TabDto>> CloseTabAsync(Guid? organizationId, Guid tabId, Guid? expectedVersion = null, CancellationToken ct = default)
     {
+        // The club's points rules, read before anything here is changed (reading them may
+        // save a new workspace's first tiers).
+        var rules = await _rules.ReadAsync(organizationId, ct);
         var tab = await _db.ClubTabs.FirstOrDefaultAsync(t => t.Id == tabId && t.OrganizationId == organizationId, ct);
         if (tab == null) return DomainErrors.Club.TabNotFound;
         var items = await ActiveItemsAsync(tab.Id, ct);
@@ -160,11 +181,16 @@ public sealed partial class ClubLedgerService
                 tab.Venue switch { "Bar" => "Bar", "Spa" => "Spa", _ => "Dining" },
                 $"{label} tab ({items.Count} items)", total);
             charge.TabId = tab.Id;
+            // One VAT rate for the charge when every item on the tab came from the menu at
+            // that rate; a mixed tab, or one with items typed in by hand, records none.
+            var rates = items.Select(i => i.VatRate).Distinct().ToList();
+            charge.VatRate = rates.Count == 1 ? rates[0] : null;
             Touch(account!);
             tab.ChargeId = charge.Id;
         }
-        var multiplier = tab.MemberTier switch { "Silver" => 1.25m, "Gold" => 1.5m, "Platinum" => 2m, _ => 1m };
-        var points = (int)Math.Floor(total * 10m * multiplier);
+        // The base points per unit spent and the tier's multiplier are the club's settings:
+        // they used to be 10 and a table written into this method, whatever the club saved.
+        var points = rules.PointsForSpend(total, tab.MemberTier);
         LoyaltyLedgerEntry? earned = null;
         if (points > 0 && member != null)
         {
@@ -264,8 +290,8 @@ public sealed partial class ClubLedgerService
         Notes = tab.Notes,
         Items = items.OrderBy(i => i.AddedAtUtc).Select(i => new TabItemDto
         {
-            Id = i.Id, Name = i.Name, Quantity = i.Quantity, UnitPrice = i.UnitPrice, AddedAtUtc = i.AddedAtUtc,
-            AddedByUserId = i.AddedByUserId, AddedByName = i.AddedByName,
+            Id = i.Id, Name = i.Name, Quantity = i.Quantity, UnitPrice = i.UnitPrice, CatalogItemId = i.CatalogItemId, VatRate = i.VatRate,
+            AddedAtUtc = i.AddedAtUtc, AddedByUserId = i.AddedByUserId, AddedByName = i.AddedByName,
         }).ToList(),
         Status = tab.Status,
         OpenedAtUtc = tab.OpenedAtUtc,

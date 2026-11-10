@@ -265,10 +265,13 @@ public class SubscriptionsController : ControllerBase
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct) =>
         (await _ledger.DeleteSubscriptionAsync(_user.CurrentOrganizationId, id, ct)).ToNoContentResult();
 
-    /// <summary>Bills the subscription's next period: one dues charge, once per period.</summary>
+    /// <summary>
+    /// Bills the subscription's next period: one dues charge, once per period, once the
+    /// period has started; with <c>early: true</c>, the next period before it starts.
+    /// </summary>
     [HttpPost("{id:guid}/bill")]
-    public async Task<ActionResult> Bill(Guid id, CancellationToken ct) =>
-        Ledger.Answer(this, await _ledger.BillSubscriptionAsync(_user.CurrentOrganizationId, id, ct), s => s.Version);
+    public async Task<ActionResult> Bill(Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] BillSubscriptionRequest? body, CancellationToken ct) =>
+        Ledger.Answer(this, await _ledger.BillSubscriptionAsync(_user.CurrentOrganizationId, id, body?.Early ?? false, ct), s => s.Version);
 }
 
 [ApiController]

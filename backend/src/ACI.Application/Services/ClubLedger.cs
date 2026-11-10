@@ -37,9 +37,13 @@ namespace ACI.Application.Services;
 /// <item><b>Gift cards</b>: issue, redeem, top up, void and expire, each a transaction on the
 /// card; <see cref="GiftCardBalanceAsync"/> at any date.</item>
 /// <item><b>Tabs</b>: open, add and remove items, close (one charge and the points, once) and void.</item>
-/// <item><b>Subscriptions</b>: <see cref="BillSubscriptionAsync"/> bills a period once
-/// (a second bill of the same period is refused by the database), which a daily billing run
-/// can lean on.</item>
+/// <item><b>Subscriptions</b>: <see cref="BillSubscriptionAsync(Guid?, Guid, bool, CancellationToken)"/>
+/// bills a period once (a second bill of the same period is refused by the database), and
+/// <see cref="BillDueAsync"/> bills every period that has started, which the daily billing
+/// run leans on. Periods are calendar months, quarters, half years and years.</item>
+/// <item><b>Prices from the catalogue</b>: a charge, a tab item or a subscription may name a
+/// catalogue item (<see cref="IClubCatalog"/>); the price, the name and the VAT rate are then
+/// the catalogue's, copied when it is made.</item>
 /// </list>
 /// <para>
 /// Every write answers 409 (a code ending ".Conflict") when the record moved on under it:
@@ -113,9 +117,26 @@ public interface IClubLedger
 
     /// <summary>
     /// Posts the charge for the subscription's next period (its next billing date, or now
-    /// when it has none) and moves the date on by its cadence. A period is billed once.
+    /// when it has none) and moves the date on by its cadence. A period is billed once, and
+    /// only once it has started: one that has not is refused (409).
     /// </summary>
     Task<Result<SubscriptionDto>> BillSubscriptionAsync(Guid? organizationId, Guid subscriptionId, CancellationToken ct = default);
+
+    /// <summary>
+    /// As <see cref="BillSubscriptionAsync(Guid?, Guid, CancellationToken)"/>; with
+    /// <paramref name="early"/>, bills the next period before it starts, but never more than
+    /// that one period ahead: a second early bill is refused (409).
+    /// </summary>
+    Task<Result<SubscriptionDto>> BillSubscriptionAsync(Guid? organizationId, Guid subscriptionId, bool early, CancellationToken ct = default);
+
+    /// <summary>
+    /// Bills every period of the subscription that has started by <paramref name="asOfUtc"/>,
+    /// oldest first, one charge each, at most <paramref name="maxPeriods"/> of them; each is
+    /// saved on its own. Returns the charges posted, which is none for a subscription that is
+    /// paused, cancelled or not yet due. A period billed by someone else at the same moment is
+    /// skipped, not billed twice.
+    /// </summary>
+    Task<Result<IReadOnlyList<ChargeDto>>> BillDueAsync(Guid? organizationId, Guid subscriptionId, DateTime asOfUtc, int maxPeriods, CancellationToken ct = default);
 
     /// <summary>Deletes a subscription that never billed anything; one that did is cancelled instead (409).</summary>
     Task<Result> DeleteSubscriptionAsync(Guid? organizationId, Guid subscriptionId, CancellationToken ct = default);
@@ -156,6 +177,22 @@ public sealed class PostChargeRequest
     public decimal? Amount { get; set; }
     public string? DueAtUtc { get; set; }
     public string? Reference { get; set; }
+
+    /// <summary>
+    /// A fee, product, ticket or menu item from the catalogue: the charge is then its price
+    /// times <see cref="Quantity"/>, with its name, charge kind and VAT rate, and any amount
+    /// or kind sent is not used.
+    /// </summary>
+    public Guid? CatalogItemId { get; set; }
+
+    /// <summary>How many of the catalogue item, 1 when left out.</summary>
+    public decimal? Quantity { get; set; }
+
+    /// <summary>
+    /// For a charge typed in by hand: the VAT rate in percent the amount includes, when the
+    /// club wants it on the statement. A catalogue item's own rate is used instead of this.
+    /// </summary>
+    public decimal? VatRate { get; set; }
 }
 
 public sealed class PaymentAllocationRequest
@@ -230,6 +267,10 @@ public sealed class AddTabItemRequest
     public string? Name { get; set; }
     public decimal? Quantity { get; set; }
     public decimal? UnitPrice { get; set; }
+
+    /// <summary>A menu item or product from the catalogue: its name, price and VAT rate are used, not what was typed.</summary>
+    public Guid? CatalogItemId { get; set; }
+
     public Guid? Version { get; set; }
 }
 
@@ -243,7 +284,21 @@ public sealed class SubscriptionWriteRequest
     public string? Status { get; set; }
     public string? Notes { get; set; }
     public string? NextChargeAtUtc { get; set; }
+
+    /// <summary>
+    /// On adding one: a tier or dues item from the catalogue, whose name, price and cadence
+    /// it starts with unless they are sent too.
+    /// </summary>
+    public Guid? CatalogItemId { get; set; }
+
     public Guid? Version { get; set; }
+}
+
+/// <summary>Billing a subscription by hand.</summary>
+public sealed class BillSubscriptionRequest
+{
+    /// <summary>Bill the next period before it starts (one period ahead at most).</summary>
+    public bool Early { get; set; }
 }
 
 public sealed class RecordDonationRequest
@@ -285,6 +340,12 @@ public sealed record ChargeDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Reference { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? TabId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? SubscriptionId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? BillingPeriodStartUtc { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? CatalogItemId { get; init; }
+
+    /// <summary>The VAT rate in percent included in the amount, when known.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? VatRate { get; init; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Reason { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? VoidedAtUtc { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? VoidedByUserId { get; init; }
@@ -375,6 +436,9 @@ public sealed record StatementLineDto
     /// <summary>For a void or a refund: the entry it takes back.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? ReversesId { get; init; }
 
+    /// <summary>For a charge (or its void) whose VAT rate is known: the percent included in it.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? VatRate { get; init; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? CreatedByName { get; init; }
 }
 
@@ -441,6 +505,8 @@ public sealed record TabItemDto
     public string Name { get; init; } = string.Empty;
     public decimal Quantity { get; init; }
     public decimal UnitPrice { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? CatalogItemId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? VatRate { get; init; }
     public DateTime AddedAtUtc { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? AddedByUserId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? AddedByName { get; init; }
@@ -489,6 +555,7 @@ public sealed record SubscriptionDto
     public DateTime StartedAtUtc { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? NextChargeAtUtc { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTime? LastChargedAtUtc { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? CatalogItemId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Notes { get; init; }
     public Guid Version { get; init; }
 }

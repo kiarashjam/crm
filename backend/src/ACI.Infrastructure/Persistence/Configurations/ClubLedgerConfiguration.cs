@@ -40,7 +40,10 @@ internal sealed class ClubChargeConfiguration : IEntityTypeConfiguration<ClubCha
         builder.Property(e => e.Reason).HasMaxLength(500);
         builder.Property(e => e.IdempotencyKey).HasMaxLength(100);
         builder.Property(e => e.CreatedByName).HasMaxLength(200);
+        builder.Property(e => e.VatRate).HasPrecision(5, 2);
         builder.HasIndex(e => new { e.OrganizationId, e.MemberId, e.PostedAtUtc });
+        // What the billing run chases: charges with a due date that may be past it.
+        builder.HasIndex(e => new { e.OrganizationId, e.DueAtUtc }).HasFilter("[DueAtUtc] IS NOT NULL");
         builder.HasOne<ClubCharge>().WithMany().HasForeignKey(e => e.ReversesChargeId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<ClubTab>().WithMany().HasForeignKey(e => e.TabId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne<ClubSubscription>().WithMany().HasForeignKey(e => e.SubscriptionId).OnDelete(DeleteBehavior.NoAction);
@@ -189,6 +192,7 @@ internal sealed class ClubTabItemConfiguration : IEntityTypeConfiguration<ClubTa
         builder.Property(e => e.Name).HasMaxLength(200).IsRequired();
         builder.Property(e => e.Quantity).HasPrecision(9, 2);
         builder.Property(e => e.UnitPrice).HasPrecision(18, 2);
+        builder.Property(e => e.VatRate).HasPrecision(5, 2);
         builder.Property(e => e.AddedByName).HasMaxLength(200);
         builder.Property(e => e.RemovedByName).HasMaxLength(200);
         builder.HasOne<ClubTab>().WithMany().HasForeignKey(e => e.TabId).OnDelete(DeleteBehavior.NoAction);

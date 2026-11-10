@@ -30,6 +30,16 @@ public class ClubMember : Common.BaseEntity
     public decimal ManualBalance { get; set; }
 
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// When the club's billing set the member Lapsed for a charge left unpaid past the grace
+    /// period. Only a lapse the billing made is undone by it, once nothing is overdue; one
+    /// set by hand stays. Cleared when someone changes the status themselves.
+    /// </summary>
+    public DateTime? BillingLapsedAtUtc { get; set; }
+
+    /// <summary>The status the billing's lapse replaced, put back when the member is reinstated.</summary>
+    public string? StatusBeforeLapse { get; set; }
 }
 
 public class ClubVisit : Common.BaseEntity

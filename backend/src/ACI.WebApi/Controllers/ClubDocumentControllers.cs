@@ -144,6 +144,6 @@ public class HospitalityController : ControllerBase
     public HospitalityController(IClubDocumentService docs, ICurrentUserService user) { _docs = docs; _user = user; }
 
     [HttpGet("settings")] public async Task<IActionResult> Get(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.GetSettingsAsync(org, ct)); }
-    [HttpPut("settings")][Requires(MemberPermissions.ManageSettings, What = "change the hospitality settings")] public async Task<IActionResult> Save(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.SaveSettingsAsync(org, await ClubDocs.Body(Request, ct), ct)); }
+    [HttpPut("settings")][Requires(MemberPermissions.ManageSettings, What = "change the hospitality settings")] public async Task<IActionResult> Save(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return ClubDocs.Answer(await _docs.SaveSettingsAsync(org, await ClubDocs.Body(Request, ct), ct)); }
     [HttpPost("settings/reset")][Requires(MemberPermissions.ManageSettings, What = "reset the hospitality settings")] public async Task<IActionResult> Reset(CancellationToken ct) { if (!ClubDocs.User(_user, out var org)) return Unauthorized(); return Ok(await _docs.ResetSettingsAsync(org, ct)); }
 }
