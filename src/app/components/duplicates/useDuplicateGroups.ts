@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { servesDemoData } from '@/app/api/apiClient';
-import { onDataChanged } from '@/app/api/dataChanged';
+import { onDataChanged, touches } from '@/app/api/dataChanged';
 import {
   clearNotSame as clearNotSameOnServer, getNotSamePairs, markNotSame as markNotSameOnServer, pairsOf,
   type DuplicateGroup, type NotSameGroup,
@@ -21,6 +21,15 @@ import type { DuplicateKind } from './kinds';
 const FIRST_LOOK_MS = 700;
 /** A burst of saves is one reason to look again, not many. */
 const SETTLE_MS = 900;
+
+/**
+ * The kinds of record whose saves can change a kind's duplicates: its own, and the
+ * team's "not the same" decisions. A save of anything else is no reason to read the
+ * whole list again, which every save anywhere used to be.
+ */
+function watchedBy(kind: string): string[] {
+  return kind === 'households' ? ['households', 'household-members', 'duplicates'] : [kind, 'duplicates'];
+}
 
 const storageKey = (kind: string) => `cadence.duplicates.notSame.${kind}`;
 
@@ -121,7 +130,9 @@ export function useDuplicateGroups<T extends { id: string }>(
     if (!enabled) return () => { alive.current = false; };
     const first = window.setTimeout(() => { void refresh(); }, delayMs);
     let settle: number | undefined;
-    const stop = onDataChanged(() => {
+    const watched = watchedBy(spec.kind);
+    const stop = onDataChanged((change) => {
+      if (!touches(change, watched)) return;
       window.clearTimeout(settle);
       settle = window.setTimeout(() => { void refresh(); }, SETTLE_MS);
     });
@@ -131,7 +142,7 @@ export function useDuplicateGroups<T extends { id: string }>(
       window.clearTimeout(settle);
       stop();
     };
-  }, [enabled, delayMs, refresh]);
+  }, [enabled, delayMs, refresh, spec.kind]);
 
   const { groups, hidden } = useMemo(() => {
     if (scanned) {

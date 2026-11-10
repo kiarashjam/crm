@@ -6,6 +6,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { Users } from 'lucide-react';
 import type { DuplicateScan } from '@/app/api/dedupe';
 import type { DuplicateKind } from './kinds';
+import { announceDataChanged, resourcesChangedBy } from '@/app/api/dataChanged';
 
 const demo = vi.hoisted(() => ({ on: false }));
 vi.mock('@/app/api/apiClient', async (importActual) => ({
@@ -165,6 +166,24 @@ describe('useDuplicateGroups against the server', () => {
     expect(server.getNotSamePairs).toHaveBeenCalledWith('leads');
     expect(result.current.groups).toHaveLength(0);
     expect(result.current.notSameCount).toBe(1);
+  });
+
+  it('looks again after a save of its own kind, not after a save of anything else', async () => {
+    // Every save anywhere used to make each list page read its whole list again.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const load = vi.fn(async () => [marc, marcAtWork]);
+    const leadsKind = spec({ kind: 'leads', load });
+    renderHook(() => useDuplicateGroups(leadsKind, { delayMs: 0 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(load).toHaveBeenCalledTimes(1);
+
+    act(() => announceDataChanged({ resources: resourcesChangedBy('PUT', '/api/tasks/t-1') }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(load, 'a task has no say in which leads are alike').toHaveBeenCalledTimes(1);
+
+    act(() => announceDataChanged({ resources: resourcesChangedBy('PUT', '/api/leads/l-1') }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });
 

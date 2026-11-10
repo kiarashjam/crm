@@ -1,12 +1,13 @@
 // The panel's lists are read once per workspace and reused across pages.
 //
-// The panel mounts on every page. Before the shared store, each navigation re-read
-// eight lists. These pin that a fresh store reads them, and a second mount reads none.
+// The panel mounts on every page. Before the shared cache, each navigation re-read
+// eight lists. These pin that a fresh cache reads them, and a second mount reads none.
 
 import { describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { resetAgentDataForTests } from './agentData';
+import type { QueryClient } from '@tanstack/react-query';
+import { testQueryClient, withQueries } from '@/test/queryWrapper';
 import { NextActions } from './NextActions';
 
 vi.mock('@/app/api', () => ({
@@ -42,23 +43,24 @@ function reads(): number {
   return lists.reduce((sum, fn) => sum + fn.mock.calls.length, 0);
 }
 
-async function mountPanel(): Promise<void> {
-  render(<MemoryRouter><NextActions /></MemoryRouter>);
+async function mountPanel(client: QueryClient): Promise<void> {
+  render(withQueries(<MemoryRouter><NextActions /></MemoryRouter>, client));
   await screen.findByRole('link', { name: 'Ada' });
   cleanup();
 }
 
 describe('agent list loads', () => {
   it('reads each list once per workspace, then reuses it on the next page', async () => {
-    resetAgentDataForTests();
+    // One cache for the whole visit, as the app keeps one above every page.
+    const client = testQueryClient();
     for (const fn of lists) fn.mockResolvedValue([]);
     vi.mocked(getLeads).mockResolvedValue([ada] as never);
 
-    await mountPanel();
+    await mountPanel(client);
     expect(reads()).toBe(lists.length);
 
     for (const fn of lists) fn.mockClear();
-    await mountPanel();
+    await mountPanel(client);
     expect(reads(), 'a second page inside the freshness window reads nothing').toBe(0);
   });
 });

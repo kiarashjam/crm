@@ -7,7 +7,7 @@ import { useOrgOptional } from '@/app/contexts/OrgContext';
 import { useMotionPreference } from '@/app/hooks/useMotionPreference';
 import { cn } from '@/app/components/ui/utils';
 import { getCurrentUser } from '@/app/lib/auth';
-import { reloadAgentData, useAgentData, type AgentLists } from './agentData';
+import { useAgentData, type AgentLists } from './agentData';
 import { AgentDesk } from './AgentDesk';
 import { AiOrb } from './AgentChatParts';
 import { CHAT_OPEN_KEY, PANEL_OPEN_KEY, requestChatFocus, useStoredFlag, writeFlag } from './panelPrefs';
@@ -17,7 +17,7 @@ import { useNextActionsSlot } from './NextActionsSlot';
 import { itemOnList, pageScope, type PageScope } from './pageScope';
 import { dealPlan, type PlanLine } from './recordPlan';
 import { collectWork, type WorkspaceInput, type WorkSuggestion } from './workspace';
-import { reloadWorkQueue, useWorkQueue } from './workQueueData';
+import { useWorkQueue } from './workQueueData';
 import type { WorkQueue } from '@/app/api/workQueue';
 import { useWorkScope, type WorkScope } from '@/app/lib/workScope';
 import { WorkScopeToggle } from '@/app/components/WorkScopeToggle';
@@ -28,8 +28,8 @@ import { orgCan, PERMISSION } from '@/app/api/organizations';
  * The sales agent's panel: the next thing worth doing, from what is already saved.
  *
  * It sits right after each page's title (NextActionsSlot), so it has to earn its
- * space. The lists come from one shared store that refreshes itself after any
- * save (agentData.ts), so the panel agrees with the page it sits on. On the
+ * space. The lists come from the shared query cache, which re-reads a list after a
+ * save that changed it (agentData.ts), so the panel agrees with the page it sits on. On the
  * Dashboard — the agent's home — it opens with the full queue; elsewhere it
  * shows the single top step, with the rest one click away, and remembers which
  * way you left it. On a record it shows that record's one next step, and
@@ -650,7 +650,7 @@ export function NextActions() {
           <p className="text-sm text-slate-600 dark:text-slate-300">Next steps could not be loaded.</p>
           <button
             type="button"
-            onClick={reloadAgentData}
+            onClick={data.reload}
             className={cn('inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:border-[var(--brand-primary)] dark:border-slate-600 dark:text-slate-100', focusRing)}
           >
             <RotateCw className="h-4 w-4" aria-hidden="true" />
@@ -694,7 +694,7 @@ export function NextActions() {
             <WorkScopeToggle value={whose} onChange={setWhose} />
             <button
               type="button"
-              onClick={reloadWorkQueue}
+              onClick={mine.reload}
               className={cn('inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:border-[var(--brand-primary)] dark:border-slate-600 dark:text-slate-100', focusRing)}
             >
               <RotateCw className="h-4 w-4" aria-hidden="true" />

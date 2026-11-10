@@ -1,7 +1,7 @@
 // The assistant's queue in a workspace: the rep's own work by default, from the server,
 // and the team's one switch away.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -25,8 +25,7 @@ import { getAutomations } from '@/app/api/automations';
 import { getEnrollments, getSequences } from '@/app/api/sequences';
 import { getWorkQueue } from '@/app/api/workQueue';
 import { NextActions } from './NextActions';
-import { resetAgentDataForTests } from './agentData';
-import { resetWorkQueueForTests } from './workQueueData';
+import { withQueries } from '@/test/queryWrapper';
 
 const leads = vi.mocked(getLeads as () => Promise<unknown>);
 const workQueue = vi.mocked(getWorkQueue);
@@ -42,16 +41,14 @@ const TEAMS_LEAD = lost('l-team', "Luca's lead");
 const MY_LEAD = lost('l-mine', 'My lead');
 
 function at(path: string) {
-  return render(
+  return render(withQueries(
     <MemoryRouter initialEntries={[path]}>
       <NextActions />
     </MemoryRouter>,
-  );
+  ));
 }
 
 beforeEach(() => {
-  resetAgentDataForTests();
-  resetWorkQueueForTests();
   localStorage.clear();
   leads.mockReset();
   leads.mockResolvedValue([TEAMS_LEAD, MY_LEAD]);
@@ -60,10 +57,6 @@ beforeEach(() => {
   workQueue.mockResolvedValue({ scope: 'mine', tasks: [], leads: [MY_LEAD] as never, deals: [], truncated: false });
 });
 
-afterEach(() => {
-  resetAgentDataForTests();
-  resetWorkQueueForTests();
-});
 
 describe('the queue in a workspace', () => {
   it("shows the rep's own work from the server, not every rep's", async () => {
@@ -71,7 +64,7 @@ describe('the queue in a workspace', () => {
 
     expect(await screen.findByRole('link', { name: 'My lead' })).toHaveAttribute('href', '/leads/l-mine');
     expect(screen.queryByRole('link', { name: "Luca's lead" })).toBeNull();
-    expect(workQueue).toHaveBeenCalledWith('mine');
+    expect(workQueue).toHaveBeenCalledWith('mine', expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(screen.getByRole('button', { name: 'Mine' })).toHaveAttribute('aria-pressed', 'true');
   });
 
