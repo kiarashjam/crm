@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using ACI.Application.Common;
+using ACI.Domain.Entities;
 using ACI.Domain.Enums;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 using static ACI.WebApi.Tests.Helpers.Workspaces;
 
 namespace ACI.WebApi.Tests;
@@ -269,6 +271,36 @@ public class ClubReservationsTests
         var bookings = await Json(await client.GetAsync("/api/reservations"), "bookings");
         bookings[0].GetProperty("status").GetString().Should().Be("Confirmed");
         bookings[0].GetProperty("depositState").GetString().Should().Be("charged");
+    }
+
+    [Fact]
+    public async Task ABookingWhoseResourceDidNotComeOver_CanStillBeMarkedANoShow()
+    {
+        // A booking moved from a document keeps its resource's id and name even when that
+        // resource did not come over (its own document was not readable). A no-show looked the
+        // resource up for its fee, found nothing and answered 404: the booking could only be
+        // cancelled. With no resource there is no fee to post.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, org) = await ClubAsync(factory);
+        var jean = await MemberAsync(client, "Jean");
+        var id = Guid.NewGuid();
+        using (var scope = factory.Services.CreateScope())
+        {
+            await using var db = scope.ServiceProvider.EveryWorkspace();
+            db.ClubReservations.Add(new ClubReservation
+            {
+                Id = id, OrganizationId = org, ResourceId = Guid.NewGuid(), ResourceName = "The old boathouse", MemberId = jean,
+                MemberName = "Jean Dupont", PartySize = 2, StartAtUtc = DateTime.UtcNow.AddHours(-1), EndAtUtc = DateTime.UtcNow.AddHours(1),
+                Status = "Confirmed", CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var noShow = await Json(await client.PutAsync($"/api/reservations/{id}", Body(new { status = "NoShow" })), "he does not come");
+
+        noShow.GetProperty("status").GetString().Should().Be("NoShow");
+        noShow.GetProperty("resourceName").GetString().Should().Be("The old boathouse");
+        (await Json(await client.GetAsync("/api/charges"), "charges")).GetArrayLength().Should().Be(0);
     }
 
     [Fact]

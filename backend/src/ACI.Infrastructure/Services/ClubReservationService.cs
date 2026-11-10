@@ -428,8 +428,11 @@ public sealed class ClubReservationService : IClubReservations
                 if (needsCheck || status == ReservationStatuses.NoShow)
                 {
                     resource = await _db.ClubResources.FirstOrDefaultAsync(r => r.Id == resourceId && r.OrganizationId == organizationId, ct);
-                    if (resource == null) return DomainErrors.Reservation.ResourceNotFound;
-                    if (needsCheck)
+                    // A booking moved from a document can name a resource that did not come over.
+                    // Its time cannot be checked against one, but a no-show needs it only for the
+                    // fee, and with no resource there is none to post.
+                    if (resource == null && needsCheck) return DomainErrors.Reservation.ResourceNotFound;
+                    if (resource != null && needsCheck)
                     {
                         if (!resource.Active && resourceId != before.ResourceId) return DomainErrors.Reservation.ResourceInactive;
                         resource.BookingsChangedAtUtc = DateTime.UtcNow;
