@@ -215,21 +215,21 @@ describe('hospitality settings', () => {
     await waitFor(() => expect(screen.getByTestId('elsewhere')).toHaveTextContent(/€|EUR/));
   });
 
-  it('saves the points rules the server applies, without a setting it does not', async () => {
+  it('saves the points rules the server applies, the points for coming to an event among them', async () => {
     const user = userEvent.setup();
     show();
 
     await user.click(await screen.findByRole('tab', { name: 'Points' }));
     await user.clear(await screen.findByLabelText('Spa check-in points'));
     await user.type(screen.getByLabelText('Spa check-in points'), '80');
+    // The door's check-in at an event earns these on the server, times the tier's multiplier.
+    await user.clear(screen.getByLabelText('Event attendance points'));
+    await user.type(screen.getByLabelText('Event attendance points'), '75');
     await user.click(screen.getByRole('button', { name: /Save changes/ }));
 
     await waitFor(() => expect(api.update).toHaveBeenCalled());
     expect(api.update.mock.calls[0]![0].visitPointsByVenue).toMatchObject({ Spa: 80, Dining: 50 });
-    // The points for attending an event are not offered (event check-in awards its own,
-    // in the browser, today), so the stored value goes back as it came.
-    expect(screen.queryByLabelText('Event check-in points (base)')).toBeNull();
-    expect(api.update.mock.calls[0]![0].eventCheckInPoints).toBe(50);
+    expect(api.update.mock.calls[0]![0].eventCheckInPoints).toBe(75);
   });
 
   it('turns on automatic billing and lapsing, and saves them with the settings', async () => {

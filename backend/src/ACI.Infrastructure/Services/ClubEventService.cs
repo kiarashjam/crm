@@ -31,13 +31,6 @@ namespace ACI.Infrastructure.Services;
 /// </remarks>
 public sealed partial class ClubEventService : IClubEvents
 {
-    /// <summary>
-    /// The points a member earns for coming to an event, before their tier's multiplier: what
-    /// the event page gave from the browser before the check-in moved here. The hospitality
-    /// settings' eventCheckInPoints is not read by the server yet.
-    /// </summary>
-    public const int CheckInPoints = 50;
-
     private const int MaxName = 200;
     private const int MaxEmail = 320;
     private const decimal MaxPrice = 1_000_000m;
@@ -54,8 +47,9 @@ public sealed partial class ClubEventService : IClubEvents
     private readonly IOutbox _outbox;
     private readonly ICampaignRepository _messages;
     private readonly ILedgerReadObserver _reads;
+    private readonly IClubRules _rules;
 
-    public ClubEventService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, IOutbox outbox, ICampaignRepository messages, ILedgerReadObserver reads)
+    public ClubEventService(AppDbContext db, ICurrentUserService user, IClubLedger ledger, IOutbox outbox, ICampaignRepository messages, ILedgerReadObserver reads, IClubRules rules)
     {
         _db = db;
         _user = user;
@@ -63,6 +57,7 @@ public sealed partial class ClubEventService : IClubEvents
         _outbox = outbox;
         _messages = messages;
         _reads = reads;
+        _rules = rules;
     }
 
     // ── reads ────────────────────────────────────────────────────────────────

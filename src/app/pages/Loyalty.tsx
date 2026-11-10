@@ -545,7 +545,7 @@ export default function Loyalty() {
                   <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
                     <li>Checking in at a venue: the venue&apos;s points, times the tier multiplier</li>
                     <li>Closing a tab: dining, bar and everything else on it</li>
-                    <li>Event attendance, at check-in</li>
+                    <li>Event attendance: {rules?.eventCheckInPoints ?? 50} points at check-in, times the tier multiplier</li>
                     <li>Points given by hand, here</li>
                   </ul>
                 </div>

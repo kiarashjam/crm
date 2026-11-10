@@ -22,6 +22,7 @@ public sealed partial class ClubEventService
         var person = await PersonAsync(organizationId, request, ct);
         if (!person.IsSuccess) return person.Error;
         var p = person.Value;
+        var points = walkIn && p.MemberId != null ? await CheckInPointsAsync(organizationId, p.MemberTier, ct) : 0;
         ClubEventRegistration? added = null;
         var changed = await ChangeListAsync(organizationId, eventId, change =>
         {
@@ -59,7 +60,7 @@ public sealed partial class ClubEventService
             };
             change.Add(added);
             if (RegistrationStatuses.HoldsSeat(added.Status)) change.TicketsToPost.Add(added);
-            if (walkIn) MarkCheckedIn(change, added, p.MemberTier);
+            if (walkIn) MarkCheckedIn(change, added, points);
             return Task.FromResult<Error?>(null);
         }, ct);
         if (!changed.IsSuccess) return changed.Error;
@@ -74,7 +75,9 @@ public sealed partial class ClubEventService
         var reason = (request.Reason ?? "").Trim();
         if (reason.Length > 500) return DomainErrors.ClubEvent.TooLong("A reason", 500);
         // The tier the member has now sets the points a check-in earns, as it did on the page.
-        var tier = next == RegistrationStatuses.CheckedIn ? await TierOfAsync(organizationId, eventId, registrationId, ct) : null;
+        var points = next == RegistrationStatuses.CheckedIn
+            ? await CheckInPointsAsync(organizationId, await TierOfAsync(organizationId, eventId, registrationId, ct), ct)
+            : 0;
 
         ClubEventRegistration? subject = null;
         var changed = await ChangeListAsync(organizationId, eventId, change =>
@@ -84,7 +87,7 @@ public sealed partial class ClubEventService
             if (subject == null) return Task.FromResult<Error?>(DomainErrors.ClubEvent.RegistrationNotFound);
             return Task.FromResult(next switch
             {
-                RegistrationStatuses.CheckedIn => CheckIn(change, subject, tier),
+                RegistrationStatuses.CheckedIn => CheckIn(change, subject, points),
                 RegistrationStatuses.Cancelled => CancelOne(change, subject, reason.Length == 0 ? "Cancelled by the club" : reason),
                 RegistrationStatuses.Reserved => GiveSeat(change, subject),
                 _ => MarkNoShow(change, subject),
@@ -187,7 +190,7 @@ public sealed partial class ClubEventService
     /// door hosts both checking someone in gave the points twice. A check-in that already
     /// happened is refused (409), and the points are given here, once, with the check-in.
     /// </remarks>
-    private Error? CheckIn(ListChange change, ClubEventRegistration registration, string? memberTier)
+    private Error? CheckIn(ListChange change, ClubEventRegistration registration, int points)
     {
         if (change.Event.Status == ClubEventStatuses.Cancelled) return DomainErrors.ClubEvent.NotOpen(change.Event.Status);
         switch (registration.Status)
@@ -209,11 +212,25 @@ public sealed partial class ClubEventService
                     change.FeesToTakeBack.Add((registration, "Came after being marked a no-show"));
                 break;
         }
-        MarkCheckedIn(change, registration, memberTier);
+        MarkCheckedIn(change, registration, points);
         return null;
     }
 
-    private void MarkCheckedIn(ListChange change, ClubEventRegistration registration, string? memberTier)
+    /// <summary>
+    /// What a member earns for coming to an event: the club's event check-in points times
+    /// their tier's multiplier, from the hospitality settings and the price catalogue, as a
+    /// tab's close and a venue check-in work theirs out.
+    /// </summary>
+    /// <remarks>
+    /// The door gave 50 points times a multiplier written into the code (Silver 1.25, Gold
+    /// 1.5, Platinum 2), so a tier the club added or repriced earned at the old rate or at 1,
+    /// and the setting changed nothing. Read before the list is: the read can give a new
+    /// workspace its default tiers, which is no part of a change to the list.
+    /// </remarks>
+    private async Task<int> CheckInPointsAsync(Guid? organizationId, string? memberTier, CancellationToken ct) =>
+        (await _rules.ReadAsync(organizationId, ct)).PointsForEventCheckIn(memberTier);
+
+    private void MarkCheckedIn(ListChange change, ClubEventRegistration registration, int points)
     {
         var now = DateTime.UtcNow;
         registration.Status = RegistrationStatuses.CheckedIn;
@@ -222,8 +239,9 @@ public sealed partial class ClubEventService
         registration.CheckedInByName = Who();
         registration.UpdatedAtUtc = now;
         if (registration.MemberId is not Guid memberId || registration.PointsAwarded != null) return;
-        var multiplier = memberTier switch { "Silver" => 1.25m, "Gold" => 1.5m, "Platinum" => 2m, _ => 1m };
-        var points = (int)Math.Floor(CheckInPoints * multiplier);
+        registration.PointsAwarded = points;
+        // A club that gives no points for coming writes no entry of nothing, as a visit does not.
+        if (points <= 0) return;
         var entry = new LoyaltyLedgerEntry
         {
             Id = Guid.NewGuid(),
@@ -237,7 +255,6 @@ public sealed partial class ClubEventService
             CreatedAtUtc = now,
         };
         change.Points.Add(entry);
-        registration.PointsAwarded = points;
         registration.LoyaltyEntryId = entry.Id;
     }
 

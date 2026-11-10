@@ -3,8 +3,8 @@
 // - The price catalogue: membership tiers (dues, cadence, initiation fee, VAT, loyalty
 //   multiplier, benefits) and every other price (dues, fees, products, tickets, menu
 //   items). The server takes its prices from here.
-// - Points: base points per unit spent on a tab and points per visit by venue, each
-//   times the member's tier multiplier.
+// - Points: base points per unit spent on a tab, points per visit by venue and points
+//   for coming to an event, each times the member's tier multiplier.
 // - Billing: what the daily run does on its own, what billing now would post, and the
 //   runs so far.
 //
@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Settings, Save, RotateCcw, Crown, Sparkles, Loader2, Coins, Plus, X, Receipt, Tag, CalendarClock, PlayCircle,
+  Settings, Save, RotateCcw, Crown, Sparkles, Loader2, Coins, Plus, X, Receipt, Tag, CalendarClock, PlayCircle, PartyPopper,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
@@ -655,6 +655,19 @@ function PointsPanel({ draft, onChange, currency }: { draft: Settings_; onChange
             </div>
           ))}
         </div>
+      </div>
+      {/* The door's check-in at an event earns these on the server, once per registration. */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-1 inline-flex items-center gap-2 font-semibold text-slate-900">
+          <PartyPopper className="h-4 w-4 text-violet-500" /> Events
+        </h3>
+        <p className="mb-4 text-sm text-slate-500">
+          Checking a member in at an event, on the guest list or as a walk-in, earns this many points, times their tier multiplier.
+        </p>
+        {/* Not "Event check-in points": that is the label of the Event venue's visit points above. */}
+        <Label>Event attendance points</Label>
+        <Input aria-label="Event attendance points" type="number" min="0" value={draft.eventCheckInPoints}
+          onChange={(e) => onChange({ ...draft, eventCheckInPoints: Math.max(0, Math.floor(numberOr(e.target.value, 0))) })} />
       </div>
     </div>
   );

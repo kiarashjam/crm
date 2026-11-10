@@ -145,6 +145,38 @@ public class ClubEventsTests
     }
 
     [Fact]
+    public async Task ACheckInEarnsTheClubsEventPoints_TimesTheMultiplierTheTierHasInTheCatalogue()
+    {
+        // The tiers and their multipliers are the price catalogue's, and the points for coming
+        // to an event are a hospitality setting, as for a tab's close and a venue check-in. The
+        // door gave 50 points times a multiplier written into its code, so a tier the club
+        // added earned at 1, and the setting changed nothing.
+        using var factory = new CustomWebApplicationFactory();
+        var (client, _, _) = await ClubAsync(factory);
+        await Json(await client.PostAsync("/api/catalog", Body(new { kind = "Membership", name = "Founder", price = 450, loyaltyMultiplier = 2.5 })), "add the Founder tier");
+        await Json(await client.PutAsync("/api/hospitality/settings", Body(new { eventCheckInPoints = 80 })), "events earn 80 points");
+        var eventId = await EventAsync(client, capacity: 40);
+        var jean = await MemberAsync(client, "Jean", tier: "Founder");
+        var marie = await MemberAsync(client, "Marie", tier: "Gold");
+        var attendee = await Json(await RegisterAsync(client, eventId, jean), "register Jean");
+
+        var checkedIn = await Json(await SetStatusAsync(client, eventId, attendee, "CheckedIn"), "check Jean in");
+        var walkIn = await Json(await client.PostAsync($"/api/events/{eventId}/attendees/walk-in", Body(new { memberId = marie })), "Marie walks in");
+
+        checkedIn.GetProperty("pointsAwarded").GetInt32().Should().Be(200, "80 points at Founder's 2.5");
+        walkIn.GetProperty("pointsAwarded").GetInt32().Should().Be(120, "80 points at Gold's 1.5");
+
+        // A club that gives nothing for coming to events writes no entry of nothing.
+        await Json(await client.PutAsync("/api/hospitality/settings", Body(new { eventCheckInPoints = 0 })), "events earn nothing");
+        var luc = await MemberAsync(client, "Luc", tier: "Gold");
+        var none = await Json(await client.PostAsync($"/api/events/{eventId}/attendees/walk-in", Body(new { memberId = luc })), "Luc walks in");
+        none.GetProperty("pointsAwarded").GetInt32().Should().Be(0);
+        var points = await Json(await client.GetAsync("/api/loyalty/ledger"), "points");
+        points.EnumerateArray().Where(p => p.GetProperty("reason").GetString() == "EventAttendance")
+            .Select(p => p.GetProperty("points").GetInt32()).Should().BeEquivalentTo([200, 120]);
+    }
+
+    [Fact]
     public async Task AFullEventWaitlistsTheNext_AndACancellationGivesThemTheSeat_TheirTicket_AndAnEmail()
     {
         using var factory = new CustomWebApplicationFactory();
