@@ -517,7 +517,9 @@ try
             await using var schemaLock = await ACI.WebApi.SchemaLock.AcquireAsync(
                 db.Database.GetConnectionString()!, TimeSpan.FromMinutes(10));
 
-            if (!await databaseCreator.HasTablesAsync())
+            // Empty but for, at most, the history table a cut-off first start left behind
+            // (see SchemaBaseline.IsEmptyAsync).
+            if (await ACI.WebApi.SchemaBaseline.IsEmptyAsync(db))
             {
                 Log.Information("Empty database: creating it from the migrations...");
                 await db.Database.MigrateAsync();

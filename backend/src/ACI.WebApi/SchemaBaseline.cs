@@ -41,6 +41,30 @@ public static class SchemaBaseline
     public static string MigrationId { get; } = typeof(Baseline).GetCustomAttribute<MigrationAttribute>()!.Id;
 
     /// <summary>
+    /// Whether the database has no tables yet, other than the migrations history: one for
+    /// the migrations to make, not one made the old way.
+    /// </summary>
+    /// <remarks>
+    /// MigrateAsync makes the history table before it runs the baseline, outside the
+    /// baseline's transaction, so a first start cut off part-way through the baseline leaves
+    /// that table and nothing else. EF's HasTablesAsync counts it, and such a database was
+    /// taken for one made the old way: the start-up DDL's first statement, a foreign key to
+    /// Users, then failed on every start.
+    /// </remarks>
+    public static async Task<bool> IsEmptyAsync(AppDbContext db, CancellationToken ct = default) =>
+        await db.Database.SqlQueryRaw<int>(OtherTablesSql).SingleAsync(ct) == 0;
+
+    // EF's own HasTablesAsync query (user tables, not the ones SSMS makes for diagrams),
+    // less the history table.
+    private const string OtherTablesSql = @"
+        SELECT COUNT(*) AS [Value] FROM sys.objects o
+        WHERE o.[type] = 'U' AND o.[is_ms_shipped] = 0
+            AND o.[name] <> N'" + HistoryRepository.DefaultTableName + @"'
+            AND NOT EXISTS (SELECT 1 FROM sys.extended_properties ep
+                WHERE ep.[major_id] = o.[object_id] AND ep.[minor_id] = 0 AND ep.[class] = 1
+                    AND ep.[name] = N'microsoft_database_tools_support')";
+
+    /// <summary>
     /// Records the baseline on a database made the old way, once it has everything the
     /// baseline would have made. Does nothing on a database the migrations made, one already
     /// recorded, or one with no tables yet.

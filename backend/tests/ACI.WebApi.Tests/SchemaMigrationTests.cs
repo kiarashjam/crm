@@ -2,6 +2,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using ACI.Infrastructure.Services;
 using ACI.WebApi.Tests.Helpers;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ACI.WebApi.Tests;
@@ -55,6 +58,32 @@ public class SchemaMigrationTests
         {
             await SqlServerApp.DropDatabaseAsync(started);
             await SqlServerApp.DropDatabaseAsync(migrated);
+        }
+    }
+
+    [SqlServerFact]
+    public async Task AFirstStartCutOffDuringTheBaselineIsFinishedByTheNextStart()
+    {
+        // MigrateAsync makes the history table first, outside the baseline's transaction. A
+        // first start cut off part-way through the baseline (a slow start recycled by the
+        // host, a dropped connection) rolls the baseline back and leaves that table behind.
+        // The next start took the database for one made the old way, and the old DDL's
+        // first statement, a foreign key to Users, failed on that start and every one after.
+        await SqlServerApp.WaitForServerAsync();
+        var database = await SqlServerApp.NewDatabaseAsync();
+        try
+        {
+            await using (var db = SqlServerSchema.Context(database))
+                await db.Database.ExecuteSqlRawAsync(db.GetService<IHistoryRepository>().GetCreateScript());
+
+            using (var app = SqlServerApp.Start(database))
+                await ShouldWorkAsync(app);
+
+            (await SqlServerSchema.HistoryAsync(database)).Should().Equal(SqlServerSchema.AllMigrationIds());
+        }
+        finally
+        {
+            await SqlServerApp.DropDatabaseAsync(database);
         }
     }
 
