@@ -49,6 +49,7 @@ import { downloadStatementPdf, emailStatement } from '@/app/api/billing';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { PERMISSION } from '@/app/api/organizations';
 import { PayOnlineDialog } from '@/app/components/payments/PayOnlineDialog';
+import { servesDemoData } from '@/app/api/apiClient';
 
 function formatDate(iso: string): string {
   try {
@@ -105,7 +106,9 @@ export default function Statements() {
   usePageLoading(reads.loading);
   const statement = statementQuery.data;
   // What the club set up for being paid: a failed read only hides the offers, it is not the statement.
-  const payment = usePaymentStatus().data;
+  // Demo data has no payments: its statements print in the browser, with no slip to speak of.
+  const paymentStatus = usePaymentStatus().data;
+  const payment = servesDemoData() ? undefined : paymentStatus;
   const [paying, setPaying] = useState(false);
 
   const openingBalance = owed(statement?.openingBalance ?? 0);

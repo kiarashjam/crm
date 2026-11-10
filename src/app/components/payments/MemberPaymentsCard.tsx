@@ -17,10 +17,10 @@ import {
 } from '@/app/components/ui/dialog';
 import { WriteOnly } from '@/app/components/WriteOnly';
 import { LoadFailed } from '@/app/components/LoadFailed';
-import { ApiError } from '@/app/api/apiClient';
+import { ApiError, servesDemoData } from '@/app/api/apiClient';
 import { PERMISSION } from '@/app/api/organizations';
 import type { Charge } from '@/app/api/charges';
-import { chargeSavedCard, removeSavedCard, setAutoPay, type MemberPaymentProfile } from '@/app/api/payments';
+import { DEMO_MESSAGE, chargeSavedCard, removeSavedCard, setAutoPay, type MemberPaymentProfile } from '@/app/api/payments';
 import { useMemberPaymentProfile, usePaymentStatus } from '@/app/hooks/queries';
 import { useRegional } from '@/app/hooks/useMoney';
 import { formatClubMoney } from '@/app/lib/clubMoney';
@@ -59,7 +59,9 @@ export function MemberPaymentsCard({ memberId, memberName, memberEmail, openChar
       <h3 className="mb-3 inline-flex items-center gap-2 font-semibold text-slate-900">
         <CreditCard className="h-4 w-4 text-indigo-600" /> Online payments
       </h3>
-      {profileQuery.isError && !profile ? (
+      {servesDemoData() ? (
+        <p className="text-sm text-slate-500">{DEMO_MESSAGE}</p>
+      ) : profileQuery.isError && !profile ? (
         <LoadFailed what="This member's online payments" error={profileQuery.error} onRetry={() => void profileQuery.refetch()} retrying={profileQuery.isFetching} />
       ) : !profile || !status ? (
         <Loader2 className="h-5 w-5 animate-spin text-slate-400" aria-label="Loading online payments" />

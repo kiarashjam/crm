@@ -31,9 +31,10 @@ const as = (permissions: Permission[]) => {
   };
 };
 
+const demo = vi.hoisted(() => ({ on: false }));
 vi.mock('@/app/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/apiClient')>()),
-  servesDemoData: () => false,
+  servesDemoData: () => demo.on,
 }));
 vi.mock('@/app/api/hospitalitySettings', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/hospitalitySettings')>()),
@@ -90,6 +91,7 @@ beforeEach(() => {
   localStorage.clear();
   resetClubCurrency();
   org.current = null;
+  demo.on = false;
   toast.success.mockReset();
   toast.error.mockReset();
   confirm.mockReset().mockReturnValue(true);
@@ -201,6 +203,16 @@ describe('paying a statement', () => {
     await screen.findByText('Gold dues');
     expect(await screen.findByText(/carries no QR-bill yet/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Club settings, Payments' })).toHaveAttribute('href', '/hospitality-settings?tab=payments');
+    expect(screen.queryByRole('button', { name: /Pay online/ })).toBeNull();
+  });
+
+  it('says nothing of QR-bills or paying online with demo data, which has neither', async () => {
+    demo.on = true;
+    as([PERMISSION.ManageMoney]);
+    show();
+
+    await screen.findByText('Gold dues');
+    expect(screen.queryByText(/QR-bill/)).toBeNull();
     expect(screen.queryByRole('button', { name: /Pay online/ })).toBeNull();
   });
 

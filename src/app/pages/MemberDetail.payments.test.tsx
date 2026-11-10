@@ -23,9 +23,10 @@ vi.mock('@/app/hooks/useMotionPreference', () => ({ useMotionPreference: () => t
 vi.mock('@/app/pages/members/MemberConsentPanel', () => ({ default: () => null }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
+const demo = vi.hoisted(() => ({ on: false }));
 vi.mock('@/app/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/apiClient')>()),
-  servesDemoData: () => false,
+  servesDemoData: () => demo.on,
 }));
 vi.mock('@/app/api/hospitalitySettings', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/hospitalitySettings')>()),
@@ -119,6 +120,7 @@ beforeEach(() => {
   localStorage.clear();
   resetClubCurrency();
   org.current = null;
+  demo.on = false;
   confirm.mockClear();
   toast.success.mockReset();
   toast.error.mockReset();
@@ -222,6 +224,15 @@ describe("a member's online payments", () => {
     expect(within(card).getByRole('link', { name: /Set up Stripe/ })).toHaveAttribute('href', '/hospitality-settings?tab=payments');
     expect(within(card).queryByRole('button', { name: /Pay online/ })).toBeNull();
     expect(within(card).queryByRole('button', { name: /save a card/ })).toBeNull();
+  });
+
+  it('says demo data has no online payments, rather than offering to set them up', async () => {
+    demo.on = true;
+    const { card } = await show();
+
+    expect(await within(card).findByText(/demo data has none/)).toBeInTheDocument();
+    expect(within(card).queryByText(/Online payments are not set up/)).toBeNull();
+    expect(within(card).queryByRole('button')).toBeNull();
   });
 
   it('shows someone who may not take payments the card, with nothing to change it', async () => {

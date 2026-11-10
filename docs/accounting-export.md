@@ -22,7 +22,7 @@ credit members hold.
 | Column | What it holds |
 | --- | --- |
 | Date | The day the entry counts on. |
-| Document | A short document number: a letter for the kind of entry and the first 8 characters of its id (`C-1A2B3C4D`). C charge, V void of a charge, O opening balance, A correction, P payment, R refund, W payment voided, K credit used or released, G gift card. |
+| Document | A short document number: a letter for the kind of entry and the first 8 characters of its id (`C-1A2B3C4D`). C charge, V void of a charge, O opening balance, A correction, P payment, R refund, W payment voided, K credit used or released, G gift card. The invoice printed for a charge (House accounts, Invoice) carries the same number. |
 | Debit | The account debited. |
 | Credit | The account credited. |
 | Amount | The amount. With layout `gross`, VAT included. |
