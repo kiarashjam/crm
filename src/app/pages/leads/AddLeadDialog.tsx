@@ -283,7 +283,9 @@ export function AddLeadDialog({
                 </Label>
                 <Select
                   value={form.referredByContactId || 'none'}
-                  onValueChange={(v) => setForm((f) => ({ ...f, referredByContactId: v === 'none' ? '' : v }))}
+                  // A referrer emptied by Radix itself, while the contact list is still
+                  // loading, would be saved as "no referrer" (see whenChosen).
+                  onValueChange={whenChosen((v) => setForm((f) => ({ ...f, referredByContactId: v === 'none' ? '' : v })))}
                 >
                   <SelectTrigger aria-label="Referred By (optional)" className="h-11 bg-slate-50/50 border-slate-200 focus:bg-white focus:border-orange-300 focus:ring-orange-100">
                     <SelectValue placeholder="Select contact (or none)" />

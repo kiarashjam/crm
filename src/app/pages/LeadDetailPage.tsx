@@ -49,6 +49,7 @@ import { useLeadStatusSync } from './leads/useLeadStatusSync';
 import type { StatusDrift, SuggestReason } from './leads/leadStatusSync';
 import { StatusSyncStrip } from './leads/components/StatusSyncStrip';
 import { AddLeadDialog } from './leads/AddLeadDialog';
+import { leadEditForm, useFreshLeadOnOpen } from './leads/useFreshLeadOnOpen';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, LIFECYCLE_STAGES, EMPTY_LEAD_FORM } from './leads/config';
 import { isValidGuid } from './leads/utils';
 import { loadLeadAssignments, setLeadAssignment } from './leads/leadAssignmentStore';
@@ -704,24 +705,23 @@ export default function LeadDetailPage() {
   // the leads list's openEdit so the two stay behaviourally identical.
   const openEdit = useCallback(() => {
     if (!lead) return;
-    const sourceOpt = sourceOptions.find((s) => s.id === lead.leadSourceId || s.name === lead.source);
-    const statusOpt = statusOptions.find((s) => s.id === lead.leadStatusId || s.name === lead.status);
-    setEditForm({
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone ?? '',
-      referredByContactId: lead.referredByContactId ?? '',
-      companyId: lead.companyId ?? '',
-      source: lead.source ?? (sourceOpt?.name ?? 'Manual'),
-      status: lead.status,
-      leadSourceId: lead.leadSourceId ?? (sourceOpt?.id ?? ''),
-      leadStatusId: lead.leadStatusId ?? (statusOpt?.id ?? ''),
-      leadScore: lead.leadScore?.toString() ?? '',
-      description: lead.description ?? '',
-      lifecycleStage: lead.lifecycleStage ?? '',
-    });
+    setEditForm(leadEditForm(lead, sourceOptions, statusOptions));
     setEditOpen(true);
   }, [lead, sourceOptions, statusOptions]);
+
+  // The editor's save is checked against the version it opened with, and this page's
+  // own assignments, referrers and logged calls give the lead new versions it does not
+  // read back. So the editor starts from the lead as it is now (see useFreshLeadOnOpen).
+  useFreshLeadOnOpen(
+    editOpen ? lead?.id : undefined,
+    () => !!lead && JSON.stringify(editForm) === JSON.stringify(leadEditForm(lead, sourceOptions, statusOptions)),
+    (fresh) => {
+      if (!lead) return;
+      const merged = { ...lead, ...fresh, assignedToId: fresh.assignedToId ?? lead.assignedToId };
+      setLead(merged);
+      setEditForm(leadEditForm(merged, sourceOptions, statusOptions));
+    },
+  );
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

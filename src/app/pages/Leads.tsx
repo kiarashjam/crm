@@ -96,6 +96,7 @@ import {
 import { LeadAssignmentMigrationDialog } from './leads/components/LeadAssignmentMigrationDialog';
 import { LeadReferralMigrationDialog } from './leads/components/LeadReferralMigrationDialog';
 import { FALLBACK_STATUSES, FALLBACK_SOURCES, EMPTY_LEAD_FORM, STATUS_BADGE_COLORS } from './leads/config';
+import { leadEditForm, useFreshLeadOnOpen } from './leads/useFreshLeadOnOpen';
 import { QUALIFIED_OR_BEYOND, statusIn } from './leads/leadStatusSync';
 import { findStatusFixes } from './leads/bulkStatusReconcile';
 import StatusReconcileDialog from './leads/components/StatusReconcileDialog';
@@ -1022,24 +1023,30 @@ export default function Leads() {
   const openEdit = (lead: Lead) => {
     void ensureCompaniesAndContacts();
     setEditingLead(lead);
-    const sourceOpt = sourceOptions.find((s) => s.id === lead.leadSourceId || s.name === lead.source);
-    const statusOpt = statusOptions.find((s) => s.id === lead.leadStatusId || s.name === lead.status);
-    setForm({
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone ?? '',
-        referredByContactId: lead.referredByContactId ?? '',
-      companyId: lead.companyId ?? '',
-      source: lead.source ?? (sourceOpt?.name ?? 'Manual'),
-      status: lead.status,
-      leadSourceId: lead.leadSourceId ?? (sourceOpt?.id ?? ''),
-      leadStatusId: lead.leadStatusId ?? (statusOpt?.id ?? ''),
-      leadScore: lead.leadScore?.toString() ?? '',
-      description: lead.description ?? '',
-      lifecycleStage: lead.lifecycleStage ?? '',
-    });
+    setForm(leadEditForm(lead, sourceOptions, statusOptions));
     setDialogOpen(true);
   };
+
+  // The dialog's save is checked against the version it opened with, and the row may be
+  // hours old or behind this page's own inline assignment or referrer. So the dialog
+  // starts from the lead as it is now (see useFreshLeadOnOpen). The row itself is left
+  // to the save: a change to the list re-runs the ?edit hand-over below, which opens
+  // the dialog again on the row while its param lingers, over what is being typed.
+  useFreshLeadOnOpen(
+    dialogOpen ? editingLead?.id : undefined,
+    () => !!editingLead && JSON.stringify(form) === JSON.stringify(leadEditForm(editingLead, sourceOptions, statusOptions)),
+    (fresh) => {
+      if (!editingLead) return;
+      const merged: Lead = {
+        ...editingLead,
+        ...fresh,
+        assignedToId: fresh.assignedToId ?? editingLead.assignedToId,
+        relationships: fresh.relationships ?? editingLead.relationships,
+      };
+      setEditingLead(merged);
+      setForm(leadEditForm(merged, sourceOptions, statusOptions));
+    },
+  );
 
   // Lead detail lives on its own page (/leads/:id). A click opens that page
   // in a new browser tab so the list (filters, sort, scroll) stays put.

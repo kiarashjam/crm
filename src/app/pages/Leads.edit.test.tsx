@@ -16,7 +16,7 @@ const lead: Lead = {
 const api = vi.hoisted(() => ({
   getLeads: vi.fn(), getLeadsPaged: vi.fn(), getLeadStats: vi.fn(), getLeadById: vi.fn(), updateLead: vi.fn(),
   getCompanies: vi.fn(), getContacts: vi.fn(), getDeals: vi.fn(), getPipelines: vi.fn(),
-  getLeadStatuses: vi.fn(), getLeadSources: vi.fn(), getActivitiesByLeadIds: vi.fn(),
+  getLeadStatuses: vi.fn(), getLeadSources: vi.fn(), getActivitiesByLeadIds: vi.fn(), setLeadReferral: vi.fn(),
 }));
 vi.mock('@/app/api', async () => ({ ...(await vi.importActual<typeof import('@/app/api')>('@/app/api')), ...api }));
 vi.mock('@/app/api/organizations', async () => ({
@@ -109,5 +109,54 @@ describe('the lead edit dialog', () => {
 
     await waitFor(() => expect(api.updateLead).toHaveBeenCalledTimes(2));
     expect(api.updateLead.mock.calls[1]![1]).toMatchObject({ phone: '+41 79 999 99 99', version: 'v2' });
+  });
+
+  // The list's copy goes stale under the page's own changes: an inline assignment or a
+  // referrer gives the lead a new version the row never reads back, and a save from
+  // that copy was refused as changed by someone else.
+  it('opens on the lead as it is now when the list holds an older copy', async () => {
+    api.getLeadById.mockResolvedValue({ ...lead, phone: '+41 79 555 55 55', version: 'v2' });
+
+    await openEdit();
+    await screen.findByDisplayValue('+41 79 555 55 55');
+    await saveDialog();
+
+    await waitFor(() => expect(api.updateLead).toHaveBeenCalledTimes(1));
+    expect(api.updateLead.mock.calls[0]![1]).toMatchObject({ phone: '+41 79 555 55 55', version: 'v2' });
+  });
+
+  it('keeps what was typed when a newer copy arrives after typing began', async () => {
+    let arrive: (fresh: Lead) => void = () => {};
+    // The first read is the ?edit hand-over's own; the second is the dialog's.
+    api.getLeadById.mockResolvedValueOnce(lead).mockReturnValueOnce(new Promise<Lead>((resolve) => { arrive = resolve; }));
+
+    const phone = await openEdit();
+    await waitFor(() => expect(api.getLeadById).toHaveBeenCalledTimes(2));
+    fireEvent.change(phone, { target: { value: '+41 79 222 22 22' } });
+    await act(async () => { arrive({ ...lead, phone: '+41 79 555 55 55', version: 'v2' }); });
+
+    expect(screen.getByDisplayValue('+41 79 222 22 22')).toBeInTheDocument();
+    await saveDialog();
+    await waitFor(() => expect(api.updateLead).toHaveBeenCalledTimes(1));
+    // Still checked against the copy it was typed on, so a stale save is refused, not written.
+    expect(api.updateLead.mock.calls[0]![1]).toMatchObject({ phone: '+41 79 222 22 22', version: 'v1' });
+  });
+
+  it('keeps the referrer when the newer copy arrives before the contact list does', async () => {
+    // Radix reports "" for a select whose value has no option yet; taken as chosen, the
+    // referrer was saved as removed.
+    api.getContacts.mockReturnValue(new Promise(() => {}));
+    const referred = { ...lead, referredByContactId: 'c1' };
+    api.getLeads.mockResolvedValue([referred]);
+    api.getLeadsPaged.mockResolvedValue({ items: [referred], totalCount: 1, page: 1, pageSize: 25 });
+    api.getLeadById.mockResolvedValue({ ...lead, phone: '+41 79 555 55 55', referredByContactId: 'c2', version: 'v2' });
+
+    await openEdit();
+    await screen.findByDisplayValue('+41 79 555 55 55');
+    await saveDialog();
+
+    await waitFor(() => expect(api.updateLead).toHaveBeenCalledTimes(1));
+    expect(api.updateLead.mock.calls[0]![1]).toMatchObject({ version: 'v2' });
+    expect(api.setLeadReferral).not.toHaveBeenCalled();
   });
 });
