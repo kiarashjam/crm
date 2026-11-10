@@ -58,13 +58,21 @@ const DUES: Subscription = {
   id: 's1', memberId: 'm1', memberName: 'Jean Dupont', name: 'Gold dues', amount: 299, cadence: 'Monthly', status: 'Active',
   nextChargeAtUtc: '2026-12-01T00:00:00Z', startedAtUtc: '2026-01-01T00:00:00Z', lastChargedAtUtc: '2026-11-01T00:00:00Z',
 };
-const subscriptions = vi.hoisted(() => ({ getSubscriptions: vi.fn(), updateSubscription: vi.fn(), deleteSubscription: vi.fn(), runDueBillingCycles: vi.fn() }));
+const subscriptions = vi.hoisted(() => ({ getSubscriptions: vi.fn(), updateSubscription: vi.fn(), deleteSubscription: vi.fn(), runBillingNow: vi.fn() }));
 vi.mock('@/app/api/subscriptions', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/app/api/subscriptions')>()),
   getSubscriptions: () => subscriptions.getSubscriptions(),
   updateSubscription: (...a: unknown[]) => subscriptions.updateSubscription(...a),
   deleteSubscription: (id: string) => subscriptions.deleteSubscription(id),
-  runDueBillingCycles: () => subscriptions.runDueBillingCycles(),
+}));
+// Billing what is due is the server's run now, in one request.
+vi.mock('@/app/api/billing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/api/billing')>()),
+  runBillingNow: () => subscriptions.runBillingNow(),
+}));
+vi.mock('@/app/api/catalog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/api/catalog')>()),
+  getCatalog: async () => [],
 }));
 
 const Members = (await import('./Members')).default;
@@ -88,7 +96,7 @@ beforeEach(() => {
   members.deleteMember.mockReset().mockRejectedValue(new ApiError(OPEN_ACCOUNT, 409, '/api/members/m1', true, 'ClubMember.OpenAccount.Conflict'));
   subscriptions.getSubscriptions.mockReset().mockResolvedValue([DUES]);
   subscriptions.updateSubscription.mockReset();
-  subscriptions.runDueBillingCycles.mockReset();
+  subscriptions.runBillingNow.mockReset();
   subscriptions.deleteSubscription.mockReset().mockRejectedValue(new ApiError(BILLED, 409, '/api/subscriptions/s1', true, 'Subscription.HasCharges.Conflict'));
 });
 
@@ -142,15 +150,32 @@ describe('a subscription the server will not change', () => {
     expect(subscriptions.updateSubscription).toHaveBeenCalledWith('s1', { status: 'Paused' });
   });
 
-  it('says so when a run of the due cycles stops at one billed already', async () => {
-    const billed = 'This period was billed already, so nothing more was charged.';
-    subscriptions.runDueBillingCycles.mockRejectedValue(new ApiError(billed, 409, '/api/subscriptions/s1/bill', true, 'Subscription.PeriodBilled.Conflict'));
+  it('says so when billing what is due is refused', async () => {
+    const refusedRun = 'You need the money.manage permission to bill what is due.';
+    subscriptions.runBillingNow.mockRejectedValue(new ApiError(refusedRun, 403, '/api/billing/run', true, 'Permission.Denied'));
     const user = userEvent.setup();
     render(withQueries(<MemoryRouter><Subscriptions /></MemoryRouter>));
 
-    await user.click(await screen.findByRole('button', { name: /Run due cycles/ }));
+    await user.click(await screen.findByRole('button', { name: /Bill what is due/ }));
 
-    await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(billed));
+    await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(refusedRun));
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('says which subscriptions a run could not bill, as it bills the others', async () => {
+    subscriptions.runBillingNow.mockResolvedValue({
+      id: 'r1', trigger: 'manual', status: 'partly_failed', startedAtUtc: '2026-11-10T08:00:00Z', steps: ['billing'],
+      subscriptionsBilled: 1, chargesPosted: 1, amountBilled: 299, currency: 'CHF', overdueCharges: 0, subscriptionsPastDue: 0,
+      remindersQueued: 0, membersLapsed: 0, membersReinstated: 0, statementsQueued: 0,
+      failures: [{ what: 'subscription', id: 's2', name: 'Anne Muster: Silver dues', error: "This member's account is in EUR; the subscription bills CHF." }],
+    });
+    const user = userEvent.setup();
+    render(withQueries(<MemoryRouter><Subscriptions /></MemoryRouter>));
+
+    await user.click(await screen.findByRole('button', { name: /Bill what is due/ }));
+
+    await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith('Billed 1 period for 1 subscription'));
+    expect(toast.error).toHaveBeenCalledWith(
+      "1 could not be billed. Anne Muster: Silver dues: This member's account is in EUR; the subscription bills CHF.");
   });
 });

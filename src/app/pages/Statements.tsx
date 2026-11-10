@@ -5,6 +5,10 @@
 // and refund in the order it happened with what was owed after it, and the balance
 // carried. It used to be added up here from the charges and payments lists, which left out
 // opening balances, corrections and refunds.
+//
+// The same statement comes as a PDF built on the server (Download PDF), and can be
+// emailed to the member with that PDF attached, through the outbox (Email statement):
+// the browser's print view is no longer the only copy a member can be given.
 
 import { useState } from 'react';
 import {
@@ -13,7 +17,10 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
+  Download,
+  Mail,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import AppHeader from '@/app/components/AppHeader';
 import { PageTransition } from '@/app/components/PageTransition';
 import { MAIN_CONTENT_ID } from '@/app/components/SkipLink';
@@ -32,6 +39,9 @@ import { NONE, useClubMembers, useClubReads, useMemberStatement } from '@/app/ho
 import PageHero, { heroPrimary, heroSecondary } from '@/app/components/PageHero';
 import { StaggerItem } from '@/app/components/motion/Stagger';
 import { useClubMoney } from '@/app/hooks/useClubMoney';
+import { downloadStatementPdf, emailStatement } from '@/app/api/billing';
+import { WriteOnly } from '@/app/components/WriteOnly';
+import { PERMISSION } from '@/app/api/organizations';
 
 function formatDate(iso: string): string {
   try {
@@ -103,6 +113,39 @@ export default function Statements() {
 
   const print = () => window.print();
 
+  const [downloading, setDownloading] = useState(false);
+  const [emailing, setEmailing] = useState(false);
+  const failed = (err: unknown, fallback: string) =>
+    toast.error(err instanceof Error && err.message ? err.message : fallback);
+
+  const downloadPdf = async () => {
+    if (!member) return;
+    setDownloading(true);
+    try {
+      await downloadStatementPdf(member.id, fromUtc, toUtc);
+    } catch (err) {
+      failed(err, 'Could not build the statement PDF');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const sendByEmail = async () => {
+    if (!member) return;
+    if (!confirm(`Email ${member.firstName} ${member.lastName} their statement for ${monthLabel(cursor)}, the PDF attached?`)) return;
+    setEmailing(true);
+    try {
+      const sent = await emailStatement(member.id, fromUtc, toUtc);
+      if (sent.status === 'queued') toast.success(`Statement on its way to ${member.email}`);
+      // Not sent, and why: they asked not to get the club's email, say.
+      else toast.error(sent.reason ?? 'The statement was not sent');
+    } catch (err) {
+      failed(err, 'Could not email the statement');
+    } finally {
+      setEmailing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-subtle">
       <AppHeader />
@@ -119,9 +162,19 @@ export default function Statements() {
               title="Statements"
               subtitle="Monthly billing summary — charges, payments, and ending balance."
               actions={
-                <Button onClick={print} disabled={!statement} className={heroPrimary('slate')}>
-                  <Printer className="h-4 w-4" /> Print
-                </Button>
+                <>
+                  <Button variant="outline" onClick={print} disabled={!statement} className={heroSecondary}>
+                    <Printer className="h-4 w-4" /> Print
+                  </Button>
+                  <WriteOnly permission={PERMISSION.ManageMoney}>
+                    <Button variant="outline" onClick={() => void sendByEmail()} disabled={!statement || emailing} className={heroSecondary}>
+                      {emailing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Email statement
+                    </Button>
+                  </WriteOnly>
+                  <Button onClick={() => void downloadPdf()} disabled={!statement || downloading} className={heroPrimary('slate')}>
+                    {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Download PDF
+                  </Button>
+                </>
               }
             >
               <div className="flex flex-col md:flex-row md:items-center gap-3">
