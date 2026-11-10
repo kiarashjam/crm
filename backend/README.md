@@ -110,6 +110,32 @@ For org-scoped data, include:
 X-Organization-Id: your-org-guid
 ```
 
+### Editing a lead, deal, contact or company
+
+Every read of one of these returns its `version`, and `GET /api/{records}/{id}` and the
+`PUT` answer carry it as the `ETag` too. Every save gives the record a new version.
+
+- **An edit made from an older read is refused.** Send the version the edit was made from,
+  as `version` in the body or as `If-Match: "<version>"`. When anyone has saved the record
+  since, the `PUT` answers `409` with `errorCode` `Lead.Changed.Conflict` (or `Deal.`,
+  `Contact.`, `Company.`) and a sentence telling the person to reload, and nothing is
+  written. The edit forms send it. Leave it out for a change to a field that reads nothing
+  else, such as moving a deal to another stage: that change is applied to the record as it
+  is now. Two saves made from the same read never both win; the second is refused even
+  without a version. A save that loses that race where no service words it answers `409`
+  with `errorCode` `Record.Changed.Conflict`.
+- **A field sent as `null` is cleared; a field left out is kept** (JSON merge-patch
+  semantics): a contact's `companyId`, `phone`, `jobTitle`, `preferredContactMethod` and
+  `description`; a deal's `companyId`, `contactId`, `assigneeId`, `expectedCloseDateUtc`,
+  `probability` and `description`; a company's fields other than `name` (an empty string
+  clears them too); a lead's `companyId`, `phone`, `description`, `lifecycleStage`,
+  `jobTitle`, `country`, `industry` and `companySize`; and a club member's `phone` and
+  `notes` (`PUT /api/members/{id}`). A `null` for a required field is ignored.
+- **`pipelineState` on `PUT /api/leads/{id}` is a change, not the whole pipeline.** It is a
+  JSON object merged into the stored pipeline: the steps sent replace the stored ones, a
+  step sent as `null` is removed, and the rest are kept. An empty string clears the whole
+  pipeline; anything but a JSON object is refused with 400.
+
 ---
 
 ## API Endpoints Reference
@@ -125,7 +151,7 @@ X-Organization-Id: your-org-guid
 | `GET` | `/api/contacts/{id}` | Get single contact |
 | `GET` | `/api/contacts/{id}/lookalikes` | Contacts that look like this one (the duplicate rules), less those marked not the same |
 | `POST` | `/api/contacts` | Create contact |
-| `PUT` | `/api/contacts/{id}` | Update contact |
+| `PUT` | `/api/contacts/{id}` | Update contact (see [Editing](#editing-a-lead-deal-contact-or-company)) |
 | `DELETE` | `/api/contacts/{id}` | Delete contact (a lead it was made for does not get another) |
 
 ### Companies
@@ -137,7 +163,7 @@ X-Organization-Id: your-org-guid
 | `GET` | `/api/companies/export` | Every company the list shows, as CSV |
 | `GET` | `/api/companies/{id}` | Get company |
 | `POST` | `/api/companies` | Create company |
-| `PUT` | `/api/companies/{id}` | Update company |
+| `PUT` | `/api/companies/{id}` | Update company (see [Editing](#editing-a-lead-deal-contact-or-company)) |
 
 ### Duplicates
 
@@ -160,7 +186,7 @@ X-Organization-Id: your-org-guid
 | `GET` | `/api/deals/board/column?column=&skip=` (+ the board's filters) | The next cards of one board column |
 | `GET` | `/api/deals/{id}/stage-history` | The stages a deal has been in, newest first |
 | `POST` | `/api/deals` | Create deal |
-| `PUT` | `/api/deals/{id}` | Update deal |
+| `PUT` | `/api/deals/{id}` | Update deal (see [Editing](#editing-a-lead-deal-contact-or-company)) |
 | `DELETE` | `/api/deals/{id}` | Delete deal |
 
 ### Leads
@@ -170,7 +196,7 @@ X-Organization-Id: your-org-guid
 | `GET` | `/api/leads` | List leads |
 | `GET` | `/api/leads/search?q=` | Search leads |
 | `POST` | `/api/leads` | Create lead |
-| `PUT` | `/api/leads/{id}` | Update lead |
+| `PUT` | `/api/leads/{id}` | Update lead; `pipelineState` is merged (see [Editing](#editing-a-lead-deal-contact-or-company)) |
 | `DELETE` | `/api/leads/{id}` | Delete lead |
 | `POST` | `/api/leads/{id}/convert` | Convert to Contact/Company/Deal |
 

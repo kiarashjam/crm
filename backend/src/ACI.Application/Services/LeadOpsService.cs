@@ -351,7 +351,17 @@ public sealed class LeadOpsService : ILeadOpsService
             await _automation.RescoreAsync(lead, ct);
             // The general update does not take the owner (a stale copy would undo a
             // concurrent assignment), so the owner goes through AssignAsync.
-            var saved = await _leadRepository.UpdateAsync(lead, userId, organizationId, ct) != null;
+            bool saved;
+            try
+            {
+                saved = await _leadRepository.UpdateAsync(lead, userId, organizationId, ct) != null;
+            }
+            catch (ConcurrencyConflictException)
+            {
+                // Saved by someone else in the moment between this read and this write
+                // (see IVersioned): counted as not updated, and the rest still are.
+                saved = false;
+            }
             if (saved && request.AssignedToUserId is Guid newOwner)
             {
                 saved = await _leadRepository.AssignAsync(id, userId, organizationId, newOwner, ct) != null;
